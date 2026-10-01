@@ -16,6 +16,7 @@ import {
 } from '../achievements/service.js';
 import { reconcileReferralQualification } from '../referrals/service.js';
 import { deriveClassicTournamentSeed, deriveShotSeed } from '../duel/seed.js';
+import { mergeEquipmentSelection, type EquipmentSelection } from '../duel/equipmentSelection.js';
 import {
   assertGameplayActionAllowed,
   getGameplayLockState,
@@ -240,6 +241,7 @@ function classicInventoryTiming(row: ClassicInventoryRow): DuelInventoryTiming {
 
 export interface ClassicLoadoutSnapshot {
   items: ClassicLoadoutItemSnapshot[];
+  profileSelection?: EquipmentSelection;
 }
 
 export interface ClassicInventoryAvailabilityItem extends ClassicLoadoutItemSnapshot {}
@@ -538,26 +540,11 @@ async function resolveClassicLoadout(
   client: PoolClient,
   userId: string,
   selection?: ClassicLoadoutSelection,
+  explicitSelection = selection !== undefined,
 ): Promise<ClassicLoadoutSnapshot> {
   let resolved = selection;
   if (resolved === undefined) {
-    const { rows } = await client.query<{
-      equipped_stick_id: string | null;
-      equipped_skates_id: string | null;
-      equipped_nutrition_id: string | null;
-    }>(
-      `select coalesce(equipped_stick_instance_id, equipped_stick_item_id) as equipped_stick_id,
-              coalesce(equipped_skates_instance_id, equipped_skates_item_id) as equipped_skates_id,
-              coalesce(equipped_nutrition_instance_id, equipped_nutrition_item_id)
-                as equipped_nutrition_id
-         from user_equipment where user_id = $1`,
-      [userId],
-    );
-    resolved = {
-      stick: rows[0]?.equipped_stick_id ?? null,
-      skates: rows[0]?.equipped_skates_id ?? null,
-      nutrition: rows[0]?.equipped_nutrition_id ?? null,
-    };
+    resolved = await profileClassicSelection(client, userId);
   }
   const requested = [
     { kind: 'stick' as const, id: resolved.stick ?? null },
@@ -602,7 +589,7 @@ async function resolveClassicLoadout(
   for (const entry of requested) {
     const row = byId.get(entry.id);
     if (!row || row.item_kind !== entry.kind) {
-      if (selection === undefined) continue;
+      if (!explicitSelection) continue;
       throw new AppError('conflict', `invalid ${entry.kind} classic loadout item`, 409);
     }
     items.push({
@@ -622,6 +609,59 @@ async function resolveClassicLoadout(
     });
   }
   return { items };
+}
+
+async function profileClassicSelection(
+  client: PoolClient,
+  userId: string,
+): Promise<EquipmentSelection> {
+  const { rows } = await client.query<{
+    stick: string | null;
+    skates: string | null;
+    nutrition: string | null;
+  }>(
+    `select coalesce(equipped_stick_instance_id, equipped_stick_item_id) as stick,
+            coalesce(equipped_skates_instance_id, equipped_skates_item_id) as skates,
+            coalesce(equipped_nutrition_instance_id, equipped_nutrition_item_id) as nutrition
+       from user_equipment where user_id = $1`,
+    [userId],
+  );
+  return rows[0] ?? { stick: null, skates: null, nutrition: null };
+}
+
+function classicSelectionFromSnapshot(snapshot: ClassicLoadoutSnapshot): EquipmentSelection {
+  return {
+    stick: snapshot.items.find((item) => item.kind === 'stick')?.id ?? null,
+    skates: snapshot.items.find((item) => item.kind === 'skates')?.id ?? null,
+    nutrition: snapshot.items.find((item) => item.kind === 'nutrition')?.id ?? null,
+  };
+}
+
+async function resolveClassicBoundaryLoadout(
+  client: PoolClient,
+  sessionId: string,
+  userId: string,
+  periodNumber: number,
+  changes: ClassicLoadoutSelection = {},
+): Promise<ClassicLoadoutSnapshot> {
+  const profile = await profileClassicSelection(client, userId);
+  const previous =
+    periodNumber > 1
+      ? ((await fetchClassicPeriodLoadout(client, sessionId, periodNumber - 1))?.snapshot ?? null)
+      : null;
+  const selected = mergeEquipmentSelection(
+    previous ? classicSelectionFromSnapshot(previous) : profile,
+    previous?.profileSelection ?? null,
+    profile,
+    changes,
+  );
+  const loadout = await resolveClassicLoadout(
+    client,
+    userId,
+    selected,
+    Object.keys(changes).length > 0,
+  );
+  return { ...loadout, profileSelection: profile };
 }
 
 async function fetchClassicInventoryAvailability(
@@ -1084,7 +1124,9 @@ async function buildState(
     ),
   );
   const storedLoadout = await fetchClassicPeriodLoadout(client, session.id, boundaryPeriod);
-  const loadout = storedLoadout?.snapshot ?? (await resolveClassicLoadout(client, userId));
+  const loadout =
+    storedLoadout?.snapshot ??
+    (await resolveClassicBoundaryLoadout(client, session.id, userId, boundaryPeriod));
   const allConsumption = await client.query<{ consumption: ClassicInventoryConsumptionItem[] }>(
     `select consumption from tournament_classic_period_loadout
       where session_id = $1 order by period_number`,
@@ -1413,7 +1455,13 @@ export async function startClassicGamePeriod(
       throw new AppError('conflict', 'all classic periods are completed', 409);
     }
     const periodNumber = session.current_period + 1;
-    const loadout = await resolveClassicLoadout(client, input.userId, input.loadout);
+    const loadout = await resolveClassicBoundaryLoadout(
+      client,
+      session.id,
+      input.userId,
+      periodNumber,
+      input.loadout ?? {},
+    );
     await client.query(
       `insert into tournament_classic_period_loadout
          (session_id, period_number, selection, snapshot, consumption, created_at, updated_at)

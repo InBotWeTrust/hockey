@@ -652,7 +652,7 @@ export async function startOrResumeBonusAttempt(
         experience: Number(game.reward_experience),
       };
       const attemptId = randomUUID();
-      const dailySlot = await reserveDailyAttemptSlot(client, {
+      await reserveDailyAttemptSlot(client, {
         userId: input.userId,
         timezone: user.timezone,
         skillCode: game.skill_code,
@@ -699,12 +699,6 @@ export async function startOrResumeBonusAttempt(
           input.now,
         ],
       );
-      await client.query(
-        `insert into bonus_game_daily_attempt_slot
-           (user_id, local_date, skill_code, slot, attempt_id, created_at)
-         values ($1, $2::date, $3, $4, $5, $6)`,
-        [input.userId, dailySlot.localDate, game.skill_code, dailySlot.slot, attemptId, input.now],
-      );
       const attempt = await loadBonusAttemptDto(client, rows[0]!);
       await client.query('commit');
       return { attempt, created: true };
@@ -738,7 +732,7 @@ export async function startBonusPeriod(
   let deferredError: AppError | null = null;
   let result: BonusGameAttemptDTO | null = null;
   try {
-    await lockUser(client, input.userId);
+    const user = await lockUser(client, input.userId);
     await lockBonusEconomyBalances(client, input.userId, input.now);
     const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
     await lockBonusGameCatalogForRead(client);
@@ -765,6 +759,27 @@ export async function startBonusPeriod(
       deferredError = new AppError('bonus_period_not_ready', 'bonus period is not ready', 409);
     } else {
       const nextPeriod = Number(attempt.current_period) + 1;
+      if (nextPeriod === 1) {
+        const dailySlot = await reserveDailyAttemptSlot(client, {
+          userId: input.userId,
+          timezone: user.timezone,
+          skillCode: attempt.rules_snapshot.skillCode,
+          now: input.now,
+        });
+        await client.query(
+          `insert into bonus_game_daily_attempt_slot
+             (user_id, local_date, skill_code, slot, attempt_id, created_at)
+           values ($1, $2::date, $3, $4, $5, $6)`,
+          [
+            input.userId,
+            dailySlot.localDate,
+            attempt.rules_snapshot.skillCode,
+            dailySlot.slot,
+            attempt.id,
+            input.now,
+          ],
+        );
+      }
       const qualificationRules = qualificationForAttempt(attempt);
       const goalWindowEndsAt =
         qualificationRules.type === 'survive_goal_windows'

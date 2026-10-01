@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import type { Pool } from 'pg';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   reconcileCompletedMonthlyRating,
   getPendingMonthlyRatingCongratulations,
@@ -112,6 +112,35 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect((await pool.query('select * from monthly_duel_rating_season')).rows).toHaveLength(1);
   });
 
+  it('automatically reconciles completed months when the server lifecycle starts', async () => {
+    await seedSeason('2026-08', 10);
+    const { databaseUrl, redisUrl } = getTestUrls();
+    const lifecycleApp = await buildApp({
+      config: {
+        NODE_ENV: 'test',
+        HOST: '127.0.0.1',
+        PORT: 3000,
+        LOG_LEVEL: 'silent',
+        DATABASE_URL: databaseUrl,
+        REDIS_URL: redisUrl,
+        JWT_SECRET: jwtSecret,
+        REFRESH_SECRET: 'monthly-lifecycle-refresh-at-least-16',
+        TELEGRAM_BOT_TOKEN: 'monthly-lifecycle-test-bot',
+        DAILY_SEED_SECRET: 'monthly-lifecycle-daily-seed-at-least-16',
+      },
+      pushSchedulerEnabled: false,
+      pushWorkerEnabled: false,
+      monthlyRatingLifecycleEnabled: true,
+    });
+    try {
+      await lifecycleApp.ready();
+      expect(await placements()).toHaveLength(10);
+      expect((await pool.query('select * from monthly_duel_rating_season')).rows).toHaveLength(1);
+    } finally {
+      await lifecycleApp.close();
+    }
+  });
+
   it('pays a qualified solo-format winner even with fewer than ten eligible players', async () => {
     const users = await seedSeason('2026-08', 2);
     await reconcileCompletedMonthlyRating(pool, september);
@@ -137,17 +166,17 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       `select settings_snapshot #>> '{classic,first,stars}' as stars
          from monthly_duel_rating_season where season_key = '2026-08'`,
     )).rows[0]).toEqual({ stars: '30' });
-    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!, september);
+    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!);
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({
-      season_key: '2026-08', stars: 330, experience: 30,
+      season_key: '2026-08', points: expect.any(Number), stars: 330, experience: 30,
       awards: [
-        { scope: 'overall', place: 1, stars: 300 },
-        { scope: 'classic', place: 1, stars: 30, experience: 30 },
+        { scope: 'overall', place: 1, points: expect.any(Number), stars: 300 },
+        { scope: 'classic', place: 1, points: expect.any(Number), stars: 30, experience: 30 },
       ],
     });
     await acknowledgeMonthlyRatingCongratulations(pool, users[0]!, pending[0]!.id, september);
-    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!, september)).toEqual([]);
+    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!)).toEqual([]);
     await acknowledgeMonthlyRatingCongratulations(pool, users[0]!, pending[0]!.id, september);
     expect((await pool.query('select xp from users where id = $1', [users[0]])).rows[0]).toEqual({ xp: 330 });
   });
@@ -188,7 +217,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(format.rows).toHaveLength(2);
     expect(format.rows.every((row) => row.stars === 0 && row.experience === 0)).toBe(true);
     expect((await pool.query('select * from monthly_duel_format_economy_event')).rows).toEqual([]);
-    expect((await getPendingMonthlyRatingCongratulations(pool, users[0]!, september))).toHaveLength(1);
+    expect((await getPendingMonthlyRatingCongratulations(pool, users[0]!))).toHaveLength(1);
   });
 
   it('shows a format-only award when the overall section is disabled', async () => {
@@ -199,7 +228,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
        on conflict (key) do update set value = excluded.value`,
     );
     await reconcileCompletedMonthlyRating(pool, september);
-    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!, september);
+    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!);
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({
       stars: 30, experience: 30,
@@ -217,7 +246,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
        ('amateur.monthly_rating.classic.first.experience', '0'::jsonb, 'experience', 'test')`,
     );
     await reconcileCompletedMonthlyRating(pool, september);
-    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!, september)).toEqual([]);
+    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!)).toEqual([]);
     expect((await pool.query('select * from monthly_duel_format_economy_event')).rows).toEqual([]);
   });
 
@@ -391,12 +420,21 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     ).toBe(32500);
   });
 
-  it('pending reconciles all older seasons, returns only positive owned rewards oldest first, and read is idempotent', async () => {
+  it('pending reads do not reconcile an unfinished lifecycle', async () => {
+    const users = await seedSeason('2026-08', 10);
+
+    expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!)).toEqual([]);
+    expect(await placements()).toEqual([]);
+    expect((await pool.query('select * from monthly_duel_rating_season')).rows).toEqual([]);
+  });
+
+  it('returns reconciled positive owned rewards oldest first and read is idempotent', async () => {
     const users = await seedSeason('2026-06', 10);
     await seedSeason('2026-08', 10, users);
     await seedSeason('2026-07', 10, users);
     await seedSeason('2026-09', 10, users);
-    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!, september);
+    await reconcileCompletedMonthlyRating(pool, september);
+    const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!);
     expect(pending.map((r) => r.season_key)).toEqual(['2026-06', '2026-07', '2026-08']);
     expect(
       (
@@ -408,7 +446,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
         )
       ).rows[0],
     ).toEqual({ xp: 990, balance: 45000, tokens: 30 });
-    expect(await getPendingMonthlyRatingCongratulations(pool, users[9]!, september)).toEqual([]);
+    expect(await getPendingMonthlyRatingCongratulations(pool, users[9]!)).toEqual([]);
     const id = pending[0]!.id;
     await expect(
       acknowledgeMonthlyRatingCongratulations(pool, users[1]!, id, september),
@@ -420,7 +458,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
         .rows[0].viewed_at,
     ).toEqual(september);
     expect(
-      (await getPendingMonthlyRatingCongratulations(pool, users[0]!, september)).map(
+      (await getPendingMonthlyRatingCongratulations(pool, users[0]!)).map(
         (r) => r.season_key,
       ),
     ).toEqual(['2026-07', '2026-08']);
@@ -449,6 +487,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
 
   it('exposes authenticated pending/read routes with owned positive rewards and validates IDs', async () => {
     const users = await seedSeason('2020-01', 10);
+    await reconcileCompletedMonthlyRating(pool, september);
     const jwt = createJwt({
       accessSecret: jwtSecret,
       refreshSecret: 'monthly-test-refresh-at-least-16',
@@ -510,18 +549,31 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       `insert into amateur_duel_limit_reservation (match_id, user_id, duel_kind, accepted_at)
        select item.id, $2, 'express',
               date_trunc('month', now() at time zone 'Europe/Moscow') at time zone 'Europe/Moscow'
-                + ((item.ordinal - 1) / 2) * interval '1 day'
          from unnest($1::uuid[]) with ordinality as item(id, ordinal)`, [matches.rows.map((row) => row.id), opponent],
     );
     const jwt = createJwt({ accessSecret: jwtSecret, refreshSecret: 'monthly-test-refresh-at-least-16' });
-    const auth = { authorization: `Bearer ${await jwt.issueAccessToken({ sub: self })}` };
-    const response = await app.inject({ method: 'GET',
-      url: `/duel/amateur/challenge/availability?opponent_user_id=${opponent}`, headers: auth });
-    expect(response.statusCode).toBe(200);
-    expect(response.json().formats.express).toMatchObject({
-      available: false, reason: 'format', player: 'opponent',
-    });
-    expect(response.json().formats.classic).toMatchObject({ available: true });
+    const realNow = new Date();
+    const moscowNow = new Date(realNow.getTime() + 3 * 60 * 60 * 1000);
+    const monthEndUtc = new Date(Date.UTC(
+      moscowNow.getUTCFullYear(),
+      moscowNow.getUTCMonth() + 1,
+      0,
+      12,
+    ) - 3 * 60 * 60 * 1000);
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(monthEndUtc);
+    try {
+      const auth = { authorization: `Bearer ${await jwt.issueAccessToken({ sub: self })}` };
+      const response = await app.inject({ method: 'GET',
+        url: `/duel/amateur/challenge/availability?opponent_user_id=${opponent}`, headers: auth });
+      expect(response.statusCode).toBe(200);
+      expect(response.json().formats.express).toMatchObject({
+        available: false, reason: 'format', player: 'opponent',
+      });
+      expect(response.json().formats.classic).toMatchObject({ available: true });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 

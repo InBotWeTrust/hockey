@@ -28,6 +28,7 @@ import { adminRoutes } from './admin/routes.js';
 import { pushRoutes } from './push/routes.js';
 import { pushSchedulerPlugin } from './plugins/pushScheduler.js';
 import { tournamentLifecyclePlugin } from './plugins/tournamentLifecycle.js';
+import { monthlyRatingLifecyclePlugin } from './plugins/monthlyRatingLifecycle.js';
 import { createObjectStorageClient } from './storage/objectStorage.js';
 import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
@@ -51,6 +52,8 @@ export interface BuildAppOptions {
   pushWorkerEnabled?: boolean;
   tournamentLifecycleEnabled?: boolean;
   tournamentLifecycleIntervalMs?: number;
+  monthlyRatingLifecycleEnabled?: boolean;
+  monthlyRatingLifecycleIntervalMs?: number;
 }
 
 export async function buildApp(options: BuildAppOptions = {}) {
@@ -116,6 +119,12 @@ export async function buildApp(options: BuildAppOptions = {}) {
   }
   await app.register(redisPlugin, { url: config.REDIS_URL });
   await app.register(realtimePlugin);
+  await app.register(monthlyRatingLifecyclePlugin, {
+    enabled: options.monthlyRatingLifecycleEnabled ?? (config.NODE_ENV === 'test' ? false : true),
+    ...(options.monthlyRatingLifecycleIntervalMs === undefined
+      ? {}
+      : { intervalMs: options.monthlyRatingLifecycleIntervalMs }),
+  });
   await app.register(tournamentLifecyclePlugin, {
     enabled: options.tournamentLifecycleEnabled ?? (config.NODE_ENV === 'test' ? false : true),
     ...(options.tournamentLifecycleIntervalMs === undefined

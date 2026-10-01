@@ -15,6 +15,7 @@ import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
   abandonBonusAttempt,
+  acknowledgeBonusPreview,
   purchaseBonusGame,
   startBonusAttempt,
   type BonusGameCard,
@@ -33,7 +34,7 @@ import {
   enduranceQualificationLines,
   qualificationDescription,
 } from '../game/bonusGameQualification.js';
-import { catalogBonusGameArtwork } from '../game/bonusGameArtwork.js';
+import { catalogBonusGameArtwork, versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { bonusGameArtworkUrls, preloadArtwork } from '../app/artworkCache.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useBonusGameStore } from '../stores/bonusGameStore.js';
@@ -46,10 +47,14 @@ function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | 
   const resetMs = Date.parse(resetsAt);
   if (!Number.isFinite(resetMs)) return null;
   const totalSeconds = Math.max(0, Math.ceil((resetMs - nowMs) / 1_000));
-  const hours = String(Math.floor(totalSeconds / 3_600)).padStart(2, '0');
-  const minutes = String(Math.floor((totalSeconds % 3_600) / 60)).padStart(2, '0');
-  const seconds = String(totalSeconds % 60).padStart(2, '0');
-  return `${hours}:${minutes}:${seconds}`;
+  const days = Math.floor(totalSeconds / 86_400);
+  const hours = Math.floor((totalSeconds % 86_400) / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  if (days > 0) return `${days} д ${hours} ч ${minutes} мин`;
+  if (hours > 0) return `${hours} ч ${minutes} мин ${seconds} сек`;
+  if (minutes > 0) return `${minutes} мин ${seconds} сек`;
+  return `${seconds} сек`;
 }
 
 const skillLabels: Record<BonusSkillCode, string> = {
@@ -111,6 +116,7 @@ export function BonusGamesScreen(): JSX.Element {
   });
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
+  const [previewGame, setPreviewGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
@@ -123,8 +129,13 @@ export function BonusGamesScreen(): JSX.Element {
   const refreshedAllowanceResetRef = useRef<string | null>(null);
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const startMutation = useMutation({
-    mutationFn: startBonusAttempt,
+    mutationFn: async (gameId: string) => {
+      const response = await startBonusAttempt(gameId);
+      if (!response.attempt.preview_required) return response;
+      return await acknowledgeBonusPreview(response.attempt.id, false);
+    },
     onSuccess: (response) => {
+      setPreviewGame(null);
       useBonusGameStore.getState().applyState(response.attempt);
       navigate(
         `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
@@ -168,7 +179,7 @@ export function BonusGamesScreen(): JSX.Element {
       );
       return;
     }
-    if (isPlayable(game)) startMutation.mutate(game.id);
+    if (isPlayable(game)) setPreviewGame(game);
   };
 
   const switchAttemptMutation = useMutation({
@@ -222,7 +233,7 @@ export function BonusGamesScreen(): JSX.Element {
   useEffect(() => {
     if (
       selectedAllowance === undefined ||
-      allowanceCountdown !== '00:00:00' ||
+      Date.parse(selectedAllowance.resets_at) > allowanceNowMs ||
       refreshedAllowanceResetRef.current === selectedAllowance.resets_at
     ) {
       return;
@@ -326,7 +337,7 @@ export function BonusGamesScreen(): JSX.Element {
                   {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
                 </strong>
                 {allowanceCountdown !== null ? (
-                  <span>До обновления {allowanceCountdown}</span>
+                  <span>До обновления: {allowanceCountdown}</span>
                 ) : null}
               </div>
             </>
@@ -416,6 +427,54 @@ export function BonusGamesScreen(): JSX.Element {
         )}
       </section>
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
+      {previewGame !== null ? (
+        <AccessibleModal
+          title={previewGame.preview_title || previewGame.title}
+          ariaLabel={`Описание игры «${previewGame.title}»`}
+          copy={null}
+          closeBlocked={startMutation.isPending}
+          onRequestClose={() => {
+            if (!startMutation.isPending) setPreviewGame(null);
+          }}
+          cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
+          headerAction={
+            <button
+              type="button"
+              className="icon-btn"
+              aria-label="Закрыть"
+              disabled={startMutation.isPending}
+              onClick={() => setPreviewGame(null)}
+            >
+              <X size={15} aria-hidden="true" />
+            </button>
+          }
+        >
+          <img
+            className="bonus-game-preview-modal__artwork"
+            src={versionBonusGameArtwork(previewGame.preview_artwork_url)}
+            alt={`Локация «${previewGame.arena.title}» и её вратарь`}
+          />
+          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.preview_story}</p>
+          <p className="bonus-game-preview-modal__condition">
+            {qualificationDescription(previewGame.qualification_rules)}
+          </p>
+          {startMutation.isError ? (
+            <p role="alert" className="bonus-game-abandon-error">
+              {safeUiError(startMutation.error)}
+            </p>
+          ) : null}
+          <div className="modal-actions">
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              disabled={startMutation.isPending}
+              onClick={() => startMutation.mutate(previewGame.id)}
+            >
+              {startMutation.isPending ? 'Подготавливаем…' : 'К игре'}
+            </button>
+          </div>
+        </AccessibleModal>
+      ) : null}
       {purchaseGame !== null ? (
         <AccessibleModal
           title="Открыть бонусную игру?"

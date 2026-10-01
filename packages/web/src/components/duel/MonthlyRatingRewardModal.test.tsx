@@ -17,9 +17,9 @@ const acknowledgement = {
 
 describe('MonthlyRatingRewardModal', () => {
   it.each([
-    [1, 'Вы победитель зачета дуэлей за август'],
-    [2, 'Вы заняли 2-е место в зачете дуэлей за август'],
-    [17, 'Вы заняли 17-е место в зачете дуэлей за август'],
+    [1, 'Вы стали победителем общего зачёта дуэлей за\u00a0август'],
+    [2, 'Вы заняли 2-е место в общем зачёте дуэлей за\u00a0август'],
+    [17, 'Вы заняли 17-е место в общем зачёте дуэлей за\u00a0август'],
   ])('shows the exact Russian title for place %i', (place, title) => {
     render(
       <MonthlyRatingRewardModal
@@ -44,9 +44,12 @@ describe('MonthlyRatingRewardModal', () => {
     );
 
     expect(
-      screen.getByRole('dialog', { name: 'Вы победитель зачета дуэлей за август' }),
+      screen.getByRole('dialog', {
+        name: 'Вы стали победителем общего зачёта дуэлей за\u00a0август',
+      }),
     ).toBeInTheDocument();
     expect(screen.queryByText('Август 2026')).toBeNull();
+    expect(screen.getByRole('heading', { level: 2 }).textContent).toContain('за\u00a0август');
   });
 
   it('renders every positive currency and hides zero-value rewards', () => {
@@ -62,6 +65,73 @@ describe('MonthlyRatingRewardModal', () => {
     expect(screen.getByLabelText('Монеты: 15000')).toBeInTheDocument();
     expect(screen.getByLabelText('Звёзды: 300')).toBeInTheDocument();
     expect(screen.queryByLabelText(/Токены:/)).toBeNull();
+  });
+
+  it.each([
+    [1, '1 очко'],
+    [2, '2 очка'],
+    [5, '5 очков'],
+    [11, '11 очков'],
+    [21, '21 очко'],
+    [22, '22 очка'],
+    [25, '25 очков'],
+  ])('uses the correct Russian points form for %i', (points, expected) => {
+    render(
+      <MonthlyRatingRewardModal
+        congratulation={{ ...acknowledgement, points }}
+        pending={false}
+        error={null}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText(new RegExp(`${expected}$`))).toBeInTheDocument();
+  });
+
+  it('labels format placements as other standings without a card container', () => {
+    const { container } = render(
+      <MonthlyRatingRewardModal
+        congratulation={{
+          ...acknowledgement,
+          points: 999,
+          awards: [
+            {
+              scope: 'overall',
+              place: 1,
+              points: 999,
+              coins: 15_000,
+              stars: 300,
+              experience: 0,
+              tokens: 10,
+            },
+            {
+              scope: 'classic',
+              place: 1,
+              points: 42,
+              coins: 0,
+              stars: 30,
+              experience: 30,
+              tokens: 0,
+            },
+          ],
+        }}
+        pending={false}
+        error={null}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    const otherStandingsTitle = screen.getByRole('heading', { name: 'Другие зачёты' });
+    const rewardsTitle = screen.getByRole('heading', { name: 'Награды' });
+    expect(otherStandingsTitle).toBeInTheDocument();
+    expect(
+      rewardsTitle.compareDocumentPosition(otherStandingsTitle)
+      & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(screen.getByText('Классика:').closest('p')).toHaveTextContent(
+      'Классика: 1-е место · 42 очка',
+    );
+    expect(container.querySelector('.monthly-rating-reward-modal__secondary-results')).toBeNull();
   });
 
   it('shows all positive currency rows with their shared reward colors', () => {
@@ -98,6 +168,19 @@ describe('MonthlyRatingRewardModal', () => {
     expect(onConfirm).not.toHaveBeenCalled();
   });
 
+  it('keeps initial focus at the top so a tall modal does not open scrolled to the button', () => {
+    render(
+      <MonthlyRatingRewardModal
+        congratulation={acknowledgement}
+        pending={false}
+        error={null}
+        onConfirm={vi.fn()}
+      />,
+    );
+
+    expect(document.activeElement).toHaveAttribute('data-monthly-rating-modal-start');
+  });
+
   it('disables acknowledgement while the request is pending and keeps an errored acknowledgement visible', () => {
     const onConfirm = vi.fn();
     const { rerender } = render(
@@ -109,7 +192,7 @@ describe('MonthlyRatingRewardModal', () => {
       />,
     );
 
-    expect(screen.getByRole('button', { name: 'Закрываем…' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Сохраняем…' })).toBeDisabled();
     rerender(
       <MonthlyRatingRewardModal
         congratulation={acknowledgement}

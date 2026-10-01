@@ -1494,8 +1494,10 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     const speed = await createGame({ skillCode: 'speed', sortOrder: 1 });
 
     const firstAccuracy = await startAttempt(accuracy.id);
+    await startPeriod(firstAccuracy.id);
     await abandonAttempt(firstAccuracy.id);
     const secondAccuracy = await startAttempt(accuracy.id);
+    await startPeriod(secondAccuracy.id);
     await abandonAttempt(secondAccuracy.id);
 
     const exhausted = await app.inject({
@@ -1510,6 +1512,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     });
 
     const independentSpeed = await startAttempt(speed.id);
+    await startPeriod(independentSpeed.id);
     await abandonAttempt(independentSpeed.id);
 
     const catalog = await app.inject({ method: 'GET', url: '/bonus-games', headers });

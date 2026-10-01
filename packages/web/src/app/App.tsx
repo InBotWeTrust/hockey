@@ -6,7 +6,7 @@ import './design-system.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { BottomNav, isBottomNavVisible } from '../components/BottomNav.js';
+import { BottomNav, isBottomNavVisible, isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
@@ -48,6 +48,13 @@ const TournamentResultPreviewScreen = lazy(() =>
     default: module.TournamentResultPreviewScreen,
   })),
 );
+const MonthlyRatingRewardPreviewScreen = import.meta.env.DEV
+  ? lazy(() =>
+      import('../components/duel/MonthlyRatingRewardPreviewScreen.js').then((module) => ({
+        default: module.MonthlyRatingRewardPreviewScreen,
+      })),
+    )
+  : null;
 const InventoryScreen = lazy(() =>
   import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
 );
@@ -291,6 +298,7 @@ function AppExperience(): JSX.Element {
   const bottomNavVisible =
     location.pathname !== '/dev/tournament-result-preview' &&
     location.pathname !== '/dev/daily-period-preview' &&
+    location.pathname !== '/dev/monthly-rating-reward-preview' &&
     (!MARKSMANSHIP_CONSTRUCTOR_ENABLED ||
       location.pathname !== '/profile/marksmanship-constructor') &&
     isBottomNavVisible(location, user);
@@ -324,7 +332,7 @@ function AppExperience(): JSX.Element {
       <ChatRealtime />
       <NativeNotificationBridge />
       <NativeUpdateBridge enabled={androidReleaseAccess} />
-      <DuelInviteToast />
+      <DuelInviteToast suppressed={isOpenRinkRoute(location)} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
@@ -368,6 +376,12 @@ function AppExperience(): JSX.Element {
                 <Route
                   path="/dev/daily-period-preview"
                   element={<DailyPeriodPreviewScreen />}
+                />
+              )}
+              {MonthlyRatingRewardPreviewScreen && (
+                <Route
+                  path="/dev/monthly-rating-reward-preview"
+                  element={<MonthlyRatingRewardPreviewScreen />}
                 />
               )}
               <Route
@@ -615,6 +629,7 @@ function AppFrame(): JSX.Element {
     location.pathname === '/login' ||
     location.pathname === '/prices' ||
     location.pathname === '/demo' ||
+    (import.meta.env.DEV && location.pathname === '/dev/monthly-rating-reward-preview') ||
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
 
