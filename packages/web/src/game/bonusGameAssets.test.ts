@@ -7,8 +7,55 @@ import * as bonusGameAssets from './bonusGameAssets';
 const { BONUS_GAME_ASSETS, BONUS_GAME_SECTION_ARTWORK, WORLD_TOUR_BONUS_GAME_ASSETS } =
   bonusGameAssets;
 
+const HOCKEY_CITY_SLUGS = [
+  'minsk',
+  'shanghai',
+  'sochi',
+  'tolyatti',
+  'moscow',
+  'nizhny-novgorod',
+  'cherepovets',
+  'yaroslavl',
+  'kazan',
+  'saint-petersburg',
+  'astana',
+  'nizhnekamsk',
+  'novosibirsk',
+  'vladivostok',
+  'khabarovsk',
+  'ufa',
+  'yekaterinburg',
+  'omsk',
+  'chelyabinsk',
+  'magnitogorsk',
+] as const;
+
+const NHL_CITY_SLUGS = [
+  'toronto',
+  'montreal',
+  'boston',
+  'new-york-metro',
+  'philadelphia',
+  'washington',
+  'pittsburgh',
+  'detroit',
+  'chicago',
+  'nashville',
+  'dallas',
+  'denver',
+  'salt-lake-city',
+  'winnipeg',
+  'edmonton',
+  'calgary',
+  'vancouver',
+  'seattle',
+  'los-angeles',
+  'las-vegas',
+] as const;
+
 const WORLD_TOUR_SLUGS = [
   'moscow',
+  'buenos-aires',
   'istanbul',
   'rome',
   'paris',
@@ -81,15 +128,31 @@ async function findGoalCreaseCenterX(filePath: string): Promise<number> {
     .removeAlpha()
     .raw()
     .toBuffer({ resolveWithObject: true });
+
+  // Measure the compact cyan component on the contract's first complete row.
+  // At y=780 antialiasing may still split the top outline into two fragments.
+  const y = 781;
+  const isCreasePixel = (x: number): boolean => {
+    const offset = (y * info.width + x) * info.channels;
+    const red = data[offset]!;
+    const green = data[offset + 1]!;
+    const blue = data[offset + 2]!;
+    return blue - red > 20 && blue - green > 3;
+  };
+  if (isCreasePixel(606)) {
+    let left = 606;
+    let right = 606;
+    while (left > 0 && isCreasePixel(left - 1)) left -= 1;
+    while (right + 1 < info.width && isCreasePixel(right + 1)) right += 1;
+    const width = right - left + 1;
+    if (width >= 85 && width <= 248) return (left + right) / 2;
+  }
+
   let weightedX = 0;
   let totalWeight = 0;
-
-  // The crease is the only compact cyan marking immediately below the fixed
-  // goal line. Weight its blue separation from the surrounding ice instead
-  // of relying on one exact generated colour.
-  for (let y = 780; y <= 840; y += 1) {
+  for (let sampleY = 780; sampleY <= 840; sampleY += 1) {
     for (let x = 400; x <= 812; x += 1) {
-      const offset = (y * info.width + x) * info.channels;
+      const offset = (sampleY * info.width + x) * info.channels;
       const red = data[offset]!;
       const green = data[offset + 1]!;
       const blue = data[offset + 2]!;
@@ -98,9 +161,9 @@ async function findGoalCreaseCenterX(filePath: string): Promise<number> {
       totalWeight += weight;
     }
   }
+  if (totalWeight > 0) return weightedX / totalWeight;
 
-  if (totalWeight === 0) throw new Error(`Unable to detect goal crease in ${filePath}`);
-  return weightedX / totalWeight;
+  throw new Error(`Unable to detect goal crease in ${filePath}`);
 }
 
 async function findGoalCreaseTopY(filePath: string): Promise<number> {
@@ -347,7 +410,7 @@ describe('bonus game runtime assets', () => {
     }
   });
 
-  it('declares the complete 13-city World Tour runtime asset set', () => {
+  it('declares the World Tour runtime asset set including Buenos Aires', () => {
     const worldTour = (
       bonusGameAssets as unknown as {
         WORLD_TOUR_BONUS_GAME_ASSETS?: Record<
@@ -377,12 +440,178 @@ describe('bonus game runtime assets', () => {
         width: 1212,
         height: 2000,
       });
-      expect(readWebpDimensions(path.resolve('public', entry!.preview.slice(1)))).toEqual({
-        width: 1254,
-        height: 1254,
-      });
+      expect(readWebpDimensions(path.resolve('public', entry!.preview.slice(1)))).toEqual(
+        slug === 'buenos-aires'
+          ? { width: 600, height: 600 }
+          : { width: 1254, height: 1254 },
+      );
       expect(existsSync(path.resolve('public', entry!.goalkeeperReady.slice(1)))).toBe(true);
       expect(existsSync(path.resolve('public', entry!.goalkeeperSave.slice(1)))).toBe(true);
+    }
+  });
+
+  it('declares the approved hockey-city routes with a reusable Moscow set', () => {
+    const hockeyCities = (
+      bonusGameAssets as unknown as {
+        HOCKEY_CITY_BONUS_GAME_ASSETS?: Record<
+          string,
+          { arena: string; preview: string; goalkeeperReady: string; goalkeeperSave: string }
+        >;
+      }
+    ).HOCKEY_CITY_BONUS_GAME_ASSETS;
+
+    expect(Object.keys(hockeyCities ?? {})).toEqual(HOCKEY_CITY_SLUGS);
+    for (const slug of HOCKEY_CITY_SLUGS) {
+      const prefix = '/bonus-games/hockey-cities';
+      expect(hockeyCities?.[slug]).toEqual({
+        arena: `${prefix}/arenas/${slug}.webp`,
+        preview: `${prefix}/previews/${slug}.webp`,
+        goalkeeperReady: `${prefix}/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSave: `${prefix}/goalkeepers/${slug}-save.webp`,
+      });
+    }
+  });
+
+  it('declares the two approved ten-city NHL routes in gameplay order', () => {
+    const nhlCities = (
+      bonusGameAssets as unknown as {
+        NHL_CITY_BONUS_GAME_ASSETS?: Record<
+          string,
+          { arena: string; preview: string; goalkeeperReady: string; goalkeeperSave: string }
+        >;
+      }
+    ).NHL_CITY_BONUS_GAME_ASSETS;
+
+    expect(Object.keys(nhlCities ?? {})).toEqual(NHL_CITY_SLUGS);
+    for (const slug of NHL_CITY_SLUGS) {
+      const prefix = '/bonus-games/nhl-cities';
+      expect(nhlCities?.[slug]).toEqual({
+        arena: `${prefix}/arenas/${slug}.webp`,
+        preview: `${prefix}/previews/${slug}.webp`,
+        goalkeeperReady: `${prefix}/goalkeepers/${slug}-ready.webp`,
+        goalkeeperSave: `${prefix}/goalkeepers/${slug}-save.webp`,
+      });
+    }
+  });
+
+  it.each([
+    'toronto',
+    'montreal',
+    'boston',
+    'new-york-metro',
+    'philadelphia',
+    'washington',
+    'pittsburgh',
+    'detroit',
+    'chicago',
+    'nashville',
+    'dallas',
+    'denver',
+    'salt-lake-city',
+    'winnipeg',
+    'edmonton',
+    'calgary',
+    'vancouver',
+    'seattle',
+    'los-angeles',
+    'las-vegas',
+  ] as const)(
+    'ships the %s NHL-city runtime asset contract',
+    async (slug) => {
+    const entry = bonusGameAssets.NHL_CITY_BONUS_GAME_ASSETS[slug];
+    const arenaPath = path.resolve('public', entry.arena.slice(1));
+    const previewPath = path.resolve('public', entry.preview.slice(1));
+    const readyPath = path.resolve('public', entry.goalkeeperReady.slice(1));
+    const savePath = path.resolve('public', entry.goalkeeperSave.slice(1));
+
+    for (const filePath of [arenaPath, previewPath, readyPath, savePath]) {
+      expect(existsSync(filePath), filePath).toBe(true);
+    }
+    expect(readWebpDimensions(arenaPath)).toEqual({ width: 1212, height: 2000 });
+    expect(readWebpDimensions(previewPath)).toEqual({ width: 600, height: 600 });
+    expect(readWebpDimensions(readyPath)).toEqual({ width: 500, height: 500 });
+    expect(readWebpDimensions(savePath)).toEqual({ width: 500, height: 500 });
+
+    const referenceReady = await visibleAlphaBounds(
+      path.resolve('public/sprites/test-goalie-black.webp'),
+    );
+    const referenceSave = await visibleAlphaBounds(
+      path.resolve('public/sprites/test-goalie-black-save.webp'),
+    );
+    const ready = await visibleAlphaBounds(readyPath);
+    const save = await visibleAlphaBounds(savePath);
+    const expectedReadyHeight = (referenceReady.height * 500) / referenceReady.canvasHeight;
+    const expectedSaveHeight = (referenceSave.height * 500) / referenceSave.canvasHeight;
+
+    expect(Math.abs(ready.height - expectedReadyHeight)).toBeLessThanOrEqual(8);
+    expect(Math.abs(save.height - expectedSaveHeight)).toBeLessThanOrEqual(8);
+    expect(Math.abs((await findGoalCreaseCenterX(arenaPath)) - 606)).toBeLessThanOrEqual(4);
+    expect(Math.abs((await findGoalCreaseTopY(arenaPath)) - 781)).toBeLessThanOrEqual(2);
+    expect(Math.abs((await findGoalLineY(arenaPath, 400)) - 779)).toBeLessThanOrEqual(1);
+    expect(Math.abs((await findGoalLineY(arenaPath, 812)) - 779)).toBeLessThanOrEqual(1);
+    },
+  );
+
+  it('ships the complete hockey-city asset contract at runtime dimensions', () => {
+    const hockeyCities = bonusGameAssets.HOCKEY_CITY_BONUS_GAME_ASSETS;
+
+    for (const slug of HOCKEY_CITY_SLUGS) {
+      const entry = hockeyCities[slug];
+      expect(readWebpDimensions(path.resolve('public', entry.arena.slice(1))), `${slug} arena`).toEqual({
+        width: 1212,
+        height: 2000,
+      });
+      expect(
+        readWebpDimensions(path.resolve('public', entry.preview.slice(1))),
+        `${slug} preview`,
+      ).toEqual({ width: 600, height: 600 });
+
+      const goalkeeperDimensions = { width: 500, height: 500 };
+      expect(
+        readWebpDimensions(path.resolve('public', entry.goalkeeperReady.slice(1))),
+        `${slug} ready`,
+      ).toEqual(goalkeeperDimensions);
+      expect(
+        readWebpDimensions(path.resolve('public', entry.goalkeeperSave.slice(1))),
+        `${slug} save`,
+      ).toEqual(goalkeeperDimensions);
+    }
+  });
+
+  it('keeps hockey-city goalkeepers at the amateur reference scale', async () => {
+    const referenceReady = await visibleAlphaBounds(
+      path.resolve('public/sprites/test-goalie-black.webp'),
+    );
+    const referenceSave = await visibleAlphaBounds(
+      path.resolve('public/sprites/test-goalie-black-save.webp'),
+    );
+    const referenceReadyHeight =
+      (referenceReady.height * 500) / referenceReady.canvasHeight;
+    const referenceSaveHeight = (referenceSave.height * 500) / referenceSave.canvasHeight;
+
+    for (const slug of HOCKEY_CITY_SLUGS) {
+      const ready = await visibleAlphaBounds(
+        path.resolve('public/bonus-games/hockey-cities/goalkeepers', `${slug}-ready.webp`),
+      );
+      const save = await visibleAlphaBounds(
+        path.resolve('public/bonus-games/hockey-cities/goalkeepers', `${slug}-save.webp`),
+      );
+
+      if (slug === 'moscow') {
+        expect(Math.abs(ready.height - save.height), `${slug}: approved pose scale`).toBeLessThanOrEqual(
+          1,
+        );
+        continue;
+      }
+
+      expect.soft(
+        Math.abs(ready.height - referenceReadyHeight),
+        `${slug}: ready visible height=${ready.height}`,
+      ).toBeLessThanOrEqual(8);
+      expect.soft(
+        Math.abs(save.height - referenceSaveHeight),
+        `${slug}: save visible height=${save.height}`,
+      ).toBeLessThanOrEqual(8);
     }
   });
 
@@ -434,6 +663,17 @@ describe('bonus game runtime assets', () => {
     }
   });
 
+  it('keeps the reviewed Astana goal-line alignment at the left goal position', async () => {
+    const filePath = path.resolve(
+      'public/bonus-games/hockey-cities/arenas',
+      'astana.webp',
+    );
+    const lineY = await findGoalLineY(filePath, 400);
+
+    expect(lineY, `astana: left goal position line at Y=${lineY}`).toBeGreaterThanOrEqual(768);
+    expect(lineY, `astana: left goal position line at Y=${lineY}`).toBeLessThanOrEqual(770);
+  });
+
   it('keeps every World Tour goal crease centred under the goal', async () => {
     const expectedCenterX = 606;
 
@@ -467,6 +707,7 @@ describe('bonus game runtime assets', () => {
 
   it('normalises World Tour ready and save poses to the same visible height', async () => {
     for (const slug of WORLD_TOUR_SLUGS) {
+      const canvasSize = slug === 'buenos-aires' ? 500 : 1254;
       const ready = await visibleAlphaBounds(
         path.resolve('public/bonus-games/world-tour/goalkeepers', `${slug}-ready.webp`),
       );
@@ -477,11 +718,11 @@ describe('bonus game runtime assets', () => {
       expect(
         { width: ready.canvasWidth, height: ready.canvasHeight },
         `${slug}: ready canvas`,
-      ).toEqual({ width: 1254, height: 1254 });
+      ).toEqual({ width: canvasSize, height: canvasSize });
       expect(
         { width: save.canvasWidth, height: save.canvasHeight },
         `${slug}: save canvas`,
-      ).toEqual({ width: 1254, height: 1254 });
+      ).toEqual({ width: canvasSize, height: canvasSize });
       expect(
         Math.abs(ready.height - save.height),
         `${slug}: visible pose height`,

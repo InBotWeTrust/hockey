@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { loadConfig } from '../src/config.js';
+import { loadConfig, resolveBonusDailyAttemptLimit } from '../src/config.js';
 
 const base = {
   NODE_ENV: 'development',
@@ -43,6 +43,24 @@ describe('loadConfig', () => {
   it('accepts an optional access token lifetime for long-running local sessions', () => {
     expect(loadConfig({ ...base, ACCESS_TOKEN_TTL_SEC: '604800' }).ACCESS_TOKEN_TTL_SEC).toBe(604800);
     expect(loadConfig(base).ACCESS_TOKEN_TTL_SEC).toBeUndefined();
+  });
+
+  it('parses an optional bonus-game daily attempt limit', () => {
+    expect(
+      loadConfig({ ...base, BONUS_DAILY_ATTEMPT_LIMIT: '100' }).BONUS_DAILY_ATTEMPT_LIMIT,
+    ).toBe(100);
+    expect(loadConfig(base).BONUS_DAILY_ATTEMPT_LIMIT).toBeUndefined();
+    expect(() => loadConfig({ ...base, BONUS_DAILY_ATTEMPT_LIMIT: '0' })).toThrow();
+  });
+
+  it('uses 100 local attempts while keeping the production default at 2', () => {
+    expect(resolveBonusDailyAttemptLimit(loadConfig(base))).toBe(100);
+    expect(resolveBonusDailyAttemptLimit(loadConfig({ ...base, NODE_ENV: 'production' }))).toBe(2);
+    expect(
+      resolveBonusDailyAttemptLimit(
+        loadConfig({ ...base, NODE_ENV: 'production', BONUS_DAILY_ATTEMPT_LIMIT: '100' }),
+      ),
+    ).toBe(100);
   });
 
   it('treats VK_APP_ID as optional and normalizes blank value', () => {

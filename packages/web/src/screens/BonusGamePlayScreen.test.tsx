@@ -447,11 +447,11 @@ describe('BonusGamePlayScreen', () => {
     expect(document.querySelector('.bonus-game-endurance-hud')).toBeNull();
   });
 
-  it('uses the standard amateur goalkeeper visuals for endurance', () => {
+  it('uses the city goalkeeper visuals from an endurance attempt snapshot', () => {
     setStore({
       attempt: enduranceAttempt({
-        goalkeeper_ready_url: '/sprites/training-goalie-amateur.webp',
-        goalkeeper_save_url: '/sprites/training-goalie-amateur-save.webp',
+        goalkeeper_ready_url: '/bonus-games/hockey-cities/goalkeepers/astana-ready.webp',
+        goalkeeper_save_url: '/bonus-games/hockey-cities/goalkeepers/astana-save.webp',
       }),
       receivedAtPerformanceMs: 1_000,
     });
@@ -461,24 +461,26 @@ describe('BonusGamePlayScreen', () => {
     const props = playViewProbe.mock.lastCall?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
       goalieOptions: {
-        idleSpriteUrl: '/sprites/test-goalie-black.webp',
-        saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
+        idleSpriteUrl:
+          '/bonus-games/hockey-cities/goalkeepers/astana-ready.webp?v=20261001-nhl-city-tours-v1',
+        saveSpriteUrl:
+          '/bonus-games/hockey-cities/goalkeepers/astana-save.webp?v=20261001-nhl-city-tours-v1',
         idleSizeScale: 1.22,
         saveSizeScale: 0.96,
       },
       preloadAssets: [
-        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
-        '/sprites/test-goalie-black.webp',
-        '/sprites/test-goalie-black-save.webp',
+        '/bonus-games/arenas/beach.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/hockey-cities/goalkeepers/astana-ready.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/hockey-cities/goalkeepers/astana-save.webp?v=20261001-nhl-city-tours-v1',
       ],
     });
   });
 
-  it('uses the blue amateur goalkeeper for an existing marksmanship attempt', () => {
+  it('uses the city goalkeeper visuals from a marksmanship attempt snapshot', () => {
     setStore({
       attempt: marksmanshipAttempt({
-        goalkeeper_ready_url: '/sprites/training-goalie-amateur.webp',
-        goalkeeper_save_url: '/sprites/training-goalie-amateur-save.webp',
+        goalkeeper_ready_url: '/bonus-games/hockey-cities/goalkeepers/minsk-ready.webp',
+        goalkeeper_save_url: '/bonus-games/hockey-cities/goalkeepers/minsk-save.webp',
       }),
     });
 
@@ -487,13 +489,15 @@ describe('BonusGamePlayScreen', () => {
     const props = playViewProbe.mock.lastCall?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
       goalieOptions: {
-        idleSpriteUrl: '/sprites/test-goalie-black.webp',
-        saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
+        idleSpriteUrl:
+          '/bonus-games/hockey-cities/goalkeepers/minsk-ready.webp?v=20261001-nhl-city-tours-v1',
+        saveSpriteUrl:
+          '/bonus-games/hockey-cities/goalkeepers/minsk-save.webp?v=20261001-nhl-city-tours-v1',
       },
       preloadAssets: [
-        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
-        '/sprites/test-goalie-black.webp',
-        '/sprites/test-goalie-black-save.webp',
+        '/bonus-games/arenas/beach.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/hockey-cities/goalkeepers/minsk-ready.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/hockey-cities/goalkeepers/minsk-save.webp?v=20261001-nhl-city-tours-v1',
       ],
     });
   });
@@ -750,7 +754,7 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('heading', { name: 'Первая квалификация' })).toBeInTheDocument();
     expect(screen.getByRole('img', { name: 'Локация «Пляж» и её вратарь' })).toHaveAttribute(
       'src',
-      '/bonus-games/location-cards/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/location-cards/beach.webp?v=20261001-nhl-city-tours-v1',
     );
     const qualification = screen.getByText('20 голов из 50 бросков');
     expect(qualification).toBeInTheDocument();
@@ -832,7 +836,7 @@ describe('BonusGamePlayScreen', () => {
 
     expect(screen.getByTestId('bonus-rink-background')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/arenas/beach.webp?v=20261001-nhl-city-tours-v1',
     );
     const props = playViewProbe.mock.calls.at(-1)?.[0] as Record<string, unknown>;
     expect(props).toMatchObject({
@@ -842,12 +846,12 @@ describe('BonusGamePlayScreen', () => {
       goals: 18,
       shotsTotal: 50,
       stickEffects: STICK_NEUTRAL,
-      longCourtBackground: '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      longCourtBackground: '/bonus-games/arenas/beach.webp?v=20261001-nhl-city-tours-v1',
       initialSceneElapsedMs: 6_000,
       initialShooterElapsedMs: 4_800,
       goalieOptions: {
-        idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
-        saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
+        idleSpriteUrl: '/bonus-games/goalkeepers/beach-ready.webp?v=20261001-nhl-city-tours-v1',
+        saveSpriteUrl: '/bonus-games/goalkeepers/beach-save.webp?v=20261001-nhl-city-tours-v1',
         visualYScale: 0.72,
         visualYOffset: 62,
         visualXScale: 0.9,
@@ -865,9 +869,9 @@ describe('BonusGamePlayScreen', () => {
         goalFrequency: 0.5,
       },
       preloadAssets: [
-        '/bonus-games/arenas/beach.webp?v=20260829-world-tour-user-pngs-v10',
-        '/bonus-games/goalkeepers/beach-ready.webp?v=20260831-goalkeeper-framing-v1',
-        '/bonus-games/goalkeepers/beach-save.webp?v=20260831-goalkeeper-framing-v1',
+        '/bonus-games/arenas/beach.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/goalkeepers/beach-ready.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/goalkeepers/beach-save.webp?v=20261001-nhl-city-tours-v1',
       ],
     });
     expect(props).not.toHaveProperty('rinkAspectRatio');

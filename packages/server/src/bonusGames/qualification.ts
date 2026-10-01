@@ -80,11 +80,22 @@ interface BonusSkillPeriodRule {
 }
 
 export function validateBonusSkillRules(
-  skillCode: 'speed' | 'accuracy' | 'marksmanship' | 'endurance',
+  skillCode: 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge',
   rules: BonusQualificationRules,
   periods: BonusSkillPeriodRule[],
   useInventory = false,
 ): void {
+  if (skillCode === 'challenge') {
+    const delegatedSkill = rules.type === 'goals_in_time'
+      ? 'speed'
+      : rules.type === 'goals_from_shots'
+        ? 'accuracy'
+        : rules.type === 'points_in_time'
+          ? 'marksmanship'
+          : 'endurance';
+    validateBonusSkillRules(delegatedSkill, rules, periods, useInventory);
+    return;
+  }
   if (skillCode === 'endurance') {
     if (rules.type !== 'survive_goal_windows') {
       throw new Error('endurance requires survive goal windows rules');

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildBonusGoalieConfig,
+  parseBonusChallengeEnvironmentRules,
   parseBonusPeriodRules,
   type BonusSkillCode,
   type BonusPeriodRule,
@@ -23,10 +24,52 @@ function validRule(periodNumber: number): BonusPeriodRule {
 }
 
 describe('bonus game rule contracts', () => {
-  it('includes endurance in the bonus skill contract', () => {
-    const skill: BonusSkillCode = 'endurance';
+  it('includes challenges in the bonus skill contract', () => {
+    const skill: BonusSkillCode = 'challenge';
 
-    expect(skill).toBe('endurance');
+    expect(skill).toBe('challenge');
+  });
+
+  it('parses immutable challenge fatigue, speed phases and stumble windows', () => {
+    expect(parseBonusChallengeEnvironmentRules({
+      fatigue: {
+        slowdownStartMs: 10_000,
+        heavyStartMs: 25_000,
+        stopStartMs: 40_000,
+        stopDurationMs: 4_000,
+        recoveryDurationMs: 10_000,
+        slowMultiplier: 0.85,
+        heavyMultiplier: 0.65,
+      },
+      speedPhases: [{ durationMs: 20_000, shooterMultiplier: 1.2, puckSpeedMultiplier: 1.1 }],
+      stumbleWindows: [{ startMs: 45_000, durationMs: 600 }],
+    })).toEqual({
+      fatigue: {
+        slowdownStartMs: 10_000,
+        heavyStartMs: 25_000,
+        stopStartMs: 40_000,
+        stopDurationMs: 4_000,
+        recoveryDurationMs: 10_000,
+        slowMultiplier: 0.85,
+        heavyMultiplier: 0.65,
+      },
+      speedPhases: [{ durationMs: 20_000, shooterMultiplier: 1.2, puckSpeedMultiplier: 1.1 }],
+      stumbleWindows: [{ startMs: 45_000, durationMs: 600 }],
+    });
+  });
+
+  it('rejects overlapping or unordered challenge fatigue thresholds', () => {
+    expect(() => parseBonusChallengeEnvironmentRules({
+      fatigue: {
+        slowdownStartMs: 10_000,
+        heavyStartMs: 9_000,
+        stopStartMs: 40_000,
+        stopDurationMs: 4_000,
+        recoveryDurationMs: 10_000,
+        slowMultiplier: 0.85,
+        heavyMultiplier: 0.65,
+      },
+    })).toThrow('invalid bonus challenge environment rules');
   });
 
   it('rejects gaps in period numbering', () => {

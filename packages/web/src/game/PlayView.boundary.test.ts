@@ -18,3 +18,18 @@ it('loads independently from the Daily screen module', async () => {
 
   expect(playViewModule.PlayView).toEqual(expect.any(Function));
 });
+
+it('raises every NHL arena slightly without changing the source asset geometry', async () => {
+  const playViewModule = await import('./PlayView.js');
+
+  expect(
+    playViewModule.resolveLongCourtBackgroundPlacement(
+      '/bonus-games/nhl-cities/arenas/toronto.webp?v=test',
+    ),
+  ).toEqual({ top: '-0.25%', height: '100.25%' });
+  expect(
+    playViewModule.resolveLongCourtBackgroundPlacement(
+      '/bonus-games/hockey-cities/arenas/minsk.webp?v=test',
+    ),
+  ).toEqual({ top: '0', height: '100%' });
+});

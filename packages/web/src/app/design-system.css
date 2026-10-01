@@ -1802,10 +1802,23 @@
 
 .bonus-games-skill-tabs {
   width: 100%;
+  min-width: 0;
 }
 
 .bonus-games-skill-tabs .segmented-tabs {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.bonus-games-skill-tabs .segmented-tabs--scrollable {
+  gap: 4px;
+  padding-inline: 4px;
+}
+
+.bonus-games-skill-tabs .segmented-tabs--scrollable .segmented-tabs__item {
+  padding-inline: 8px;
 }
 
 .bonus-games-attempt-progress {

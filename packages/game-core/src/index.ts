@@ -176,3 +176,11 @@ export {
   type DuelPlayerFatigueLevel,
   type DuelPlayerConditionStatus,
 } from './duelInventory.js';
+export {
+  getBonusChallengeCondition,
+  type BonusChallengeCondition,
+  type BonusChallengeEnvironmentRules,
+  type BonusChallengeFatigueRules,
+  type BonusChallengeSpeedPhase,
+  type BonusChallengeStumbleWindow,
+} from './bonusChallenge.js';
