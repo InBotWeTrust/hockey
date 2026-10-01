@@ -55,21 +55,40 @@ export function getBonusChallengeShooterMotionTime(
   elapsedMs: number,
   shooterFrequency: number,
   pauses: readonly BonusChallengeShotPause[],
+  fromElapsedMs = 0,
 ): number {
   const end = Math.max(0, elapsedMs);
-  const boundaries = new Set([0, end]);
-  const add = (value: number): void => { if (value > 0 && value < end) boundaries.add(value); };
+  const begin = Math.min(end, Math.max(0, fromElapsedMs));
+  const boundaries = new Set([begin, end]);
+  const add = (value: number): void => { if (value > begin && value < end) boundaries.add(value); };
   const fatigue = rules.fatigue;
-  if (fatigue) {
+  // Integrate complete fatigue cycles analytically: legal cycles can be 1 ms.
+  const integrate = (time: number, multiplier: number): number => {
+    const rate = (factor: number): number => Math.max(0.1 / shooterFrequency, multiplier * factor);
+    if (!fatigue) return time * rate(1);
     const cycle = Math.max(1, fatigue.stopStartMs + fatigue.stopDurationMs + fatigue.recoveryDurationMs);
-    for (let start = 0; start < end; start += cycle) {
-      for (const offset of [0, fatigue.slowdownStartMs, fatigue.heavyStartMs,
-        fatigue.stopStartMs, fatigue.stopStartMs + fatigue.stopDurationMs]) add(start + offset);
-    }
-  }
+    const offsets = [...new Set([0, fatigue.slowdownStartMs, fatigue.heavyStartMs,
+      fatigue.stopStartMs, fatigue.stopStartMs + fatigue.stopDurationMs, cycle])]
+      .filter((value) => value >= 0 && value <= cycle).sort((a, b) => a - b);
+    const area = (limit: number): number => {
+      let total = 0;
+      for (let index = 1; index < offsets.length; index += 1) {
+        const start = offsets[index - 1]!;
+        const finish = Math.min(limit, offsets[index]!);
+        if (finish <= start) continue;
+        if (start >= fatigue.stopStartMs && start < fatigue.stopStartMs + fatigue.stopDurationMs) continue;
+        const recovering = start >= fatigue.stopStartMs + fatigue.stopDurationMs;
+        const factor = recovering ? 1 : start >= fatigue.heavyStartMs ? fatigue.heavyMultiplier
+          : start >= fatigue.slowdownStartMs ? fatigue.slowMultiplier : 1;
+        total += (finish - start) * rate(factor);
+      }
+      return total;
+    };
+    return Math.floor(time / cycle) * area(cycle) + area(time % cycle);
+  };
   if (rules.speedPhases?.length) {
     const cycle = rules.speedPhases.reduce((sum, phase) => sum + Math.max(1, phase.durationMs), 0);
-    for (let start = 0; start < end; start += cycle) {
+    for (let start = Math.floor(begin / cycle) * cycle; start < end; start += cycle) {
       let cursor = start;
       for (const phase of rules.speedPhases) { add(cursor); cursor += Math.max(1, phase.durationMs); }
     }
@@ -92,11 +111,67 @@ export function getBonusChallengeShooterMotionTime(
       pauseEnd = Math.max(pauseEnd, pause.tapTime + pause.flightMs);
     }
     if (middle < pauseEnd) continue;
-    const condition = getBonusChallengeCondition(rules, middle);
-    if (!condition.canShoot) continue;
-    motion += (finish - start) * Math.max(0.1 / shooterFrequency, condition.shooterSpeedMultiplier);
+    if (rules.stumbleWindows?.some((window) => middle >= window.startMs && middle < window.startMs + window.durationMs)) continue;
+    const multiplier = (rules.baseModifiers?.shooterMultiplier ?? 1)
+      * (phaseAt(rules.speedPhases, middle)?.shooterMultiplier ?? 1);
+    motion += integrate(finish, multiplier) - integrate(start, multiplier);
   }
   return motion;
+}
+
+/** A render sampler owns one immutable rules/history snapshot. Local pauses are append-only. */
+export function createBonusChallengeMotionSampler(
+  rules: BonusChallengeEnvironmentRules,
+  shooterFrequency: number,
+  authoritative: readonly BonusChallengeShotPause[],
+): (elapsedMs: number, local: readonly BonusChallengeShotPause[]) => number {
+  let localCount = -1;
+  let ordered: BonusChallengeShotPause[] = [];
+  let previousTime = 0;
+  let motion = 0;
+  return (elapsedMs, local) => {
+    if (local.length !== localCount) {
+      localCount = local.length;
+      const acceptedTimes = [...authoritative].map((pause) => pause.tapTime).sort((a, b) => a - b);
+      const pending = local.filter((pause) => {
+        let low = 0;
+        let high = acceptedTimes.length;
+        while (low < high) {
+          const middle = Math.floor((low + high) / 2);
+          if (acceptedTimes[middle]! < pause.tapTime - 0.001) low = middle + 1;
+          else high = middle;
+        }
+        return low === acceptedTimes.length || Math.abs(acceptedTimes[low]! - pause.tapTime) >= 0.001;
+      });
+      const all = [...authoritative, ...pending].sort((a, b) => a.tapTime - b.tapTime);
+      ordered = [];
+      for (const pause of all) {
+        const last = ordered[ordered.length - 1];
+        if (last && pause.tapTime <= last.tapTime + last.flightMs) {
+          last.flightMs = Math.max(last.flightMs, pause.tapTime + pause.flightMs - last.tapTime);
+        } else ordered.push({ ...pause });
+      }
+      previousTime = 0;
+      motion = 0;
+    }
+    if (elapsedMs < previousTime) { previousTime = 0; motion = 0; }
+    // Merged intervals have sorted ends as well as starts: skip historical flights.
+    let low = 0;
+    let high = ordered.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      const pause = ordered[middle]!;
+      if (pause.tapTime + pause.flightMs <= previousTime) low = middle + 1;
+      else high = middle;
+    }
+    const relevant: BonusChallengeShotPause[] = [];
+    for (let index = low; index < ordered.length && ordered[index]!.tapTime < elapsedMs; index += 1) {
+      relevant.push(ordered[index]!);
+    }
+    motion += getBonusChallengeShooterMotionTime(rules, elapsedMs, shooterFrequency, relevant, previousTime);
+    previousTime = elapsedMs;
+    return motion;
+  };
 }
 
 function phaseAt(
