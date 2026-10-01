@@ -56,6 +56,7 @@ const approvedStaticMediaSlugs = [
 
 const approvedWorldTourMediaSlugs = [
   'moscow',
+  'buenos-aires',
   'istanbul',
   'rome',
   'paris',
@@ -70,25 +71,91 @@ const approvedWorldTourMediaSlugs = [
   'tokyo',
 ] as const;
 
+const approvedHockeyCityMediaSlugs = [
+  'minsk',
+  'shanghai',
+  'sochi',
+  'tolyatti',
+  'moscow',
+  'nizhny-novgorod',
+  'cherepovets',
+  'yaroslavl',
+  'kazan',
+  'saint-petersburg',
+  'astana',
+  'nizhnekamsk',
+  'novosibirsk',
+  'vladivostok',
+  'khabarovsk',
+  'ufa',
+  'yekaterinburg',
+  'omsk',
+  'chelyabinsk',
+  'magnitogorsk',
+] as const;
+
+const approvedNhlCityMediaSlugs = [
+  'toronto',
+  'montreal',
+  'boston',
+  'new-york-metro',
+  'philadelphia',
+  'washington',
+  'pittsburgh',
+  'detroit',
+  'chicago',
+  'nashville',
+  'dallas',
+  'denver',
+  'salt-lake-city',
+  'winnipeg',
+  'edmonton',
+  'calgary',
+  'vancouver',
+  'seattle',
+  'los-angeles',
+  'las-vegas',
+] as const;
+
 const approvedStaticMediaPaths = {
   arena_artwork: new Set([
     ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`),
     ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/arenas/${slug}.webp`),
+    ...approvedHockeyCityMediaSlugs.map(
+      (slug) => `/bonus-games/hockey-cities/arenas/${slug}.webp`,
+    ),
+    ...approvedNhlCityMediaSlugs.map((slug) => `/bonus-games/nhl-cities/arenas/${slug}.webp`),
   ]),
   arena_thumbnail: new Set([
     ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/arenas/${slug}.webp`),
     ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/previews/${slug}.webp`),
+    ...approvedHockeyCityMediaSlugs.map(
+      (slug) => `/bonus-games/hockey-cities/previews/${slug}.webp`,
+    ),
+    ...approvedNhlCityMediaSlugs.map((slug) => `/bonus-games/nhl-cities/previews/${slug}.webp`),
   ]),
   goalkeeper_ready: new Set([
     ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-ready.webp`),
     ...approvedWorldTourMediaSlugs.map(
       (slug) => `/bonus-games/world-tour/goalkeepers/${slug}-ready.webp`,
     ),
+    ...approvedHockeyCityMediaSlugs.map(
+      (slug) => `/bonus-games/hockey-cities/goalkeepers/${slug}-ready.webp`,
+    ),
+    ...approvedNhlCityMediaSlugs.map(
+      (slug) => `/bonus-games/nhl-cities/goalkeepers/${slug}-ready.webp`,
+    ),
   ]),
   goalkeeper_save: new Set([
     ...approvedStaticMediaSlugs.map((slug) => `/bonus-games/goalkeepers/${slug}-save.webp`),
     ...approvedWorldTourMediaSlugs.map(
       (slug) => `/bonus-games/world-tour/goalkeepers/${slug}-save.webp`,
+    ),
+    ...approvedHockeyCityMediaSlugs.map(
+      (slug) => `/bonus-games/hockey-cities/goalkeepers/${slug}-save.webp`,
+    ),
+    ...approvedNhlCityMediaSlugs.map(
+      (slug) => `/bonus-games/nhl-cities/goalkeepers/${slug}-save.webp`,
     ),
   ]),
   preview: new Set([
@@ -97,6 +164,10 @@ const approvedStaticMediaPaths = {
       `/bonus-games/previews/${slug}.webp`,
     ]),
     ...approvedWorldTourMediaSlugs.map((slug) => `/bonus-games/world-tour/previews/${slug}.webp`),
+    ...approvedHockeyCityMediaSlugs.map(
+      (slug) => `/bonus-games/hockey-cities/previews/${slug}.webp`,
+    ),
+    ...approvedNhlCityMediaSlugs.map((slug) => `/bonus-games/nhl-cities/previews/${slug}.webp`),
   ]),
 } satisfies Record<BonusMediaReferenceField, ReadonlySet<string>>;
 
@@ -110,7 +181,7 @@ const title = z.string().trim().min(1).max(120);
 const mediaUrl = z.string().trim().max(2048);
 const statusSchema = z.enum(['draft', 'active', 'archived']);
 const accessTypeSchema = z.enum(['free', 'paid']);
-const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship', 'endurance']);
+const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship', 'endurance', 'challenge']);
 
 const arenaCreateSchema = z
   .object({

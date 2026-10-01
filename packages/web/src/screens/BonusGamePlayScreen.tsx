@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   classifyMarksmanshipShot,
+  getBonusChallengeCondition,
   GOAL_OPENING,
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_GOALIE_VISUAL_Y_OFFSET,
@@ -16,6 +17,7 @@ import {
   type MarksmanshipV4Technique,
   type MarksmanshipV5Technique,
   type MarksmanshipV6Technique,
+  type DuelPlayerCondition,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -57,9 +59,6 @@ const BONUS_GAME_GOALIE_OPTIONS: Omit<GoalieOptions, 'idleSpriteUrl' | 'saveSpri
   saveVisualYOffset: 10,
 };
 
-const AMATEUR_GOALKEEPER_READY_URL = '/sprites/test-goalie-black.webp';
-const AMATEUR_GOALKEEPER_SAVE_URL = '/sprites/test-goalie-black-save.webp';
-
 // PlayView normally applies the deferred server DTO at the end of the puck animation.
 // Keep a screen-level fallback so a throttled/lost animation callback cannot leave the
 // accepted shot locked forever and prevent the next (possibly qualifying) shot.
@@ -67,16 +66,10 @@ const BONUS_PENDING_SHOT_FALLBACK_PADDING_MS = 1_250;
 const BONUS_PENDING_SHOT_FALLBACK_MIN_DELAY_MS = 250;
 
 function bonusGoalieOptions(attempt: BonusGameAttempt): GoalieOptions {
-  const usesAmateurGoalkeeper =
-    attempt.rules.skill_code === 'endurance' || attempt.rules.skill_code === 'marksmanship';
   return {
     ...BONUS_GAME_GOALIE_OPTIONS,
-    idleSpriteUrl: usesAmateurGoalkeeper
-      ? AMATEUR_GOALKEEPER_READY_URL
-      : versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
-    saveSpriteUrl: usesAmateurGoalkeeper
-      ? AMATEUR_GOALKEEPER_SAVE_URL
-      : versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
+    idleSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_ready_url),
+    saveSpriteUrl: versionBonusGameGoalkeeper(attempt.goalkeeper_save_url),
   };
 }
 
@@ -1105,6 +1098,22 @@ export function BonusGamePlayScreen(): JSX.Element {
     attempt.rules.skill_code === 'speed' ? futureBonusPeriodDurationMs(attempt) : rule.duration_ms;
   const goalieConfig = goalieConfigFor(attempt, rule);
   const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
+  const challengeEnvironment = attempt.rules.challenge_environment ?? null;
+  const challengeCondition = challengeEnvironment === null
+    ? undefined
+    : (
+        elapsedMs: number,
+        speeds: SpeedOverrides,
+        reusable?: DuelPlayerCondition,
+      ) => {
+        const condition = getBonusChallengeCondition(
+          challengeEnvironment,
+          elapsedMs,
+          reusable,
+        );
+        condition.puckSpeedDelta = speeds.puckSpeed * (condition.puckSpeedMultiplier - 1);
+        return condition;
+      };
   const stickItem = attempt.current_loadout?.items.find((item) => item.kind === 'stick');
   const arenaArtworkUrl = versionBonusGameArtwork(attempt.arena.artwork_url);
   const goalieOptions = bonusGoalieOptions(attempt);
@@ -1216,6 +1225,10 @@ export function BonusGamePlayScreen(): JSX.Element {
         periodNumber={periodNumber}
         periodsTotal={attempt.rules.total_periods}
         speedOverrides={speedOverrides}
+        duelCondition={challengeCondition}
+        statusNotice={challengeEnvironment?.baseModifiers?.label}
+        statusNoticeClassName="bonus-challenge-environment-notice"
+        statusNoticeUnderScoreboard={challengeEnvironment?.baseModifiers !== undefined}
         stickEffects={{
           ...STICK_NEUTRAL,
           shotZoneMultiplier: stickItem?.effects.shotZoneMultiplier ?? 1,

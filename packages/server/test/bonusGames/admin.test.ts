@@ -56,6 +56,7 @@ const APPROVED_STATIC_SLUGS = [
 
 const WORLD_TOUR_STATIC_SLUGS = [
   'moscow',
+  'buenos-aires',
   'istanbul',
   'rome',
   'paris',

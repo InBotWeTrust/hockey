@@ -62,6 +62,7 @@ const skillLabels: Record<BonusSkillCode, string> = {
   accuracy: 'Точность',
   marksmanship: 'Меткость',
   endurance: 'Выносливость',
+  challenge: 'Испытания',
 };
 
 function safeUiError(error: unknown): string {
@@ -120,7 +121,7 @@ export function BonusGamesScreen(): JSX.Element {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance'
+    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
       ? stored
       : 'speed';
   });
@@ -308,6 +309,7 @@ export function BonusGamesScreen(): JSX.Element {
             activeTab={selectedSkill}
             ariaLabel="Навык"
             onChange={selectSkill}
+            scrollable
           />
         </div>
 
@@ -701,7 +703,9 @@ function BonusGameCard({
         </span>
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
-        {game.description && <p className="bonus-game-card__description">{game.description}</p>}
+        {!featured && game.description ? (
+          <p className="bonus-game-card__description">{game.description}</p>
+        ) : null}
         <p className="bonus-game-card__details">
           <span className="bonus-game-card__details-primary">
             {enduranceDetails?.[0] ?? qualificationDescription(game.qualification_rules)}

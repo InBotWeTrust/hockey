@@ -13,6 +13,7 @@ import type {
   MarksmanshipV6Technique,
   MarksmanshipSeriesClassification,
   MarksmanshipV3Reason,
+  BonusChallengeEnvironmentRules,
 } from '@hockey/game-core';
 
 export type BonusGameCardState =
@@ -27,7 +28,7 @@ export type BonusGameCardState =
 export type BonusAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusGoaliePattern = 'linear' | 'sine' | 'dash';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
 export type EnduranceQualificationRules = {
   type: 'survive_goal_windows';
   activeTimeMs: number;
@@ -140,6 +141,7 @@ export interface BonusGameCard {
   preview_artwork_url: string;
   preview_revision: number;
   period_rules: BonusPeriodRule[];
+  challenge_environment?: BonusChallengeEnvironmentRules | null;
   reward: BonusReward;
   goalkeeper_ready_url: string;
   goalkeeper_save_url: string;
@@ -181,6 +183,7 @@ export interface BonusAttemptRules {
   preview_artwork_url: string;
   preview_revision: number;
   periods: BonusPeriodRule[];
+  challenge_environment?: BonusChallengeEnvironmentRules | null;
 }
 
 export interface BonusGameAttempt {

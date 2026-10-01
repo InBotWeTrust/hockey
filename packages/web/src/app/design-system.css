@@ -1880,10 +1880,23 @@
 
 .bonus-games-skill-tabs {
   width: 100%;
+  min-width: 0;
 }
 
 .bonus-games-skill-tabs .segmented-tabs {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.bonus-games-skill-tabs .segmented-tabs--scrollable {
+  gap: 4px;
+  padding-inline: 4px;
+}
+
+.bonus-games-skill-tabs .segmented-tabs--scrollable .segmented-tabs__item {
+  padding-inline: 8px;
 }
 
 .bonus-games-attempt-progress {
@@ -4091,6 +4104,18 @@
   max-width: min(calc(100% - 40px), 316px);
   font-size: clamp(9px, 2.75vw, 12px);
   white-space: nowrap;
+}
+
+.bonus-challenge-environment-notice.initial-training-feedback-notice--scoreboard {
+  width: max-content;
+  max-width: min(calc(100% - 40px), 404px);
+  padding-inline: clamp(8px, 2.4cqw, 13px);
+  font-size: clamp(8px, 2.25cqw, 11px);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: nowrap;
 }
 
 .duel-heavy-fatigue-notice::before {

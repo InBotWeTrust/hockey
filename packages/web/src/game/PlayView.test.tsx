@@ -234,6 +234,45 @@ describe('PlayView', () => {
     await waitFor(() => expect(screen.queryByText('Возьми чуть правее')).toBeNull());
   });
 
+  it('replaces the compact environment notice with a fatigue notice', async () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="challenge-notice"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="Лёд тает · игрок −10% · шайба −10%"
+        statusNoticeClassName="bonus-challenge-environment-notice"
+        statusNoticeUnderScoreboard
+        duelCondition={() => ({
+          puckSpeedDelta: 0,
+          shooterSpeedMultiplier: 0.765,
+          canShoot: true,
+          status: 'tired',
+          fatigueLevel: 'medium',
+          stumbleActive: false,
+          shooterXOffsetPx: 0,
+          fatigueMs: 10_000,
+          nutritionConsumed: 0,
+          skatesConsumed: 0,
+        })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByText('Усталость · замедление 24%')).toBeInTheDocument();
+    expect(screen.queryByText('Лёд тает · игрок −10% · шайба −10%')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
   it('uses the primary button to mark an observation without taking a shot', () => {
     const mark = vi.fn();
     const submitShot = vi.fn(() => new Promise<null>(() => undefined));

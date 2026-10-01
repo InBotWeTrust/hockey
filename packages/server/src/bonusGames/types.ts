@@ -1,10 +1,14 @@
-import type { GoalieConfig, GoaliePatternId } from '@hockey/game-core';
+import type {
+  BonusChallengeEnvironmentRules,
+  GoalieConfig,
+  GoaliePatternId,
+} from '@hockey/game-core';
 import { z } from 'zod';
 import type { BonusQualificationRules } from './qualification.js';
 import type { PeriodLoadoutSnapshot } from '../inventory/periodLoadout.js';
 
 export type BonusGameStatus = 'draft' | 'active' | 'archived';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
@@ -68,9 +72,65 @@ export interface BonusRulesSnapshot {
   previewArtworkUrl: string;
   previewRevision: number;
   periods: BonusPeriodRule[];
+  challengeEnvironment: BonusChallengeEnvironmentRules | null;
   goalkeeperReadyUrl: string;
   goalkeeperSaveUrl: string;
   arena: BonusArenaSnapshot;
+}
+
+const challengeFatigueSchema = z.object({
+  slowdownStartMs: z.number().int().min(0).max(86_400_000),
+  heavyStartMs: z.number().int().min(0).max(86_400_000),
+  stopStartMs: z.number().int().min(0).max(86_400_000),
+  stopDurationMs: z.number().int().min(1).max(60_000),
+  recoveryDurationMs: z.number().int().min(0).max(60_000),
+  slowMultiplier: z.number().min(0.1).max(1),
+  heavyMultiplier: z.number().min(0.1).max(1),
+}).strict().superRefine((value, context) => {
+  if (value.slowdownStartMs > value.heavyStartMs || value.heavyStartMs > value.stopStartMs) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'fatigue thresholds must be ordered' });
+  }
+  if (value.heavyMultiplier > value.slowMultiplier) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'heavy fatigue must not be faster' });
+  }
+});
+
+const challengeEnvironmentSchema = z.object({
+  baseModifiers: z.object({
+    goalMultiplier: z.number().min(0.1).max(3),
+    goalieMultiplier: z.number().min(0.1).max(3),
+    shooterMultiplier: z.number().min(0.1).max(3),
+    puckSpeedMultiplier: z.number().min(0.1).max(3),
+    label: z.string().trim().min(1).max(120),
+  }).strict().optional(),
+  fatigue: challengeFatigueSchema.optional(),
+  stumbleWindows: z.array(z.object({
+    startMs: z.number().int().min(0).max(86_400_000),
+    durationMs: z.number().int().min(1).max(10_000),
+  }).strict()).max(20).optional(),
+  speedPhases: z.array(z.object({
+    durationMs: z.number().int().min(1_000).max(86_400_000),
+    shooterMultiplier: z.number().min(0.1).max(3),
+    puckSpeedMultiplier: z.number().min(0.1).max(3),
+  }).strict()).min(1).max(20).optional(),
+}).strict();
+
+export function parseBonusChallengeEnvironmentRules(
+  value: unknown,
+): BonusChallengeEnvironmentRules | null {
+  if (value === null || value === undefined) return null;
+  const parsed = challengeEnvironmentSchema.safeParse(value);
+  if (!parsed.success) throw new Error('invalid bonus challenge environment rules');
+  return {
+    ...(parsed.data.baseModifiers === undefined
+      ? {}
+      : { baseModifiers: parsed.data.baseModifiers }),
+    ...(parsed.data.fatigue === undefined ? {} : { fatigue: parsed.data.fatigue }),
+    ...(parsed.data.stumbleWindows === undefined
+      ? {}
+      : { stumbleWindows: parsed.data.stumbleWindows }),
+    ...(parsed.data.speedPhases === undefined ? {} : { speedPhases: parsed.data.speedPhases }),
+  };
 }
 
 export interface ArenaThemeRow {
@@ -106,6 +166,7 @@ export interface BonusGameRow {
   preview_artwork_url: string;
   preview_revision: number;
   period_rules: BonusPeriodRule[];
+  challenge_environment: unknown | null;
   reward_coins: number;
   reward_stars: number;
   reward_experience: number;
@@ -228,6 +289,7 @@ export interface BonusGameDTO {
   previewArtworkUrl: string;
   previewRevision: number;
   periods: BonusPeriodRule[];
+  challengeEnvironment: BonusChallengeEnvironmentRules | null;
   reward: BonusRewardSnapshot;
   goalkeeperReadyUrl: string;
   goalkeeperSaveUrl: string;

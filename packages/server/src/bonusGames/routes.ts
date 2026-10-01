@@ -19,6 +19,7 @@ import type { BonusGameAttemptDTO, BonusPeriodRule } from './types.js';
 
 export interface BonusGameRouteOptions {
   bonusSeedSecret: string;
+  dailyAttemptLimit: number;
 }
 
 const gameParamsSchema = z.object({ gameId: z.string().uuid() }).strict();
@@ -276,6 +277,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
       preview_artwork_url: attempt.rules.previewArtworkUrl,
       preview_revision: attempt.rules.previewRevision,
       periods: attempt.rules.periods.map(toPeriodRuleDto),
+      challenge_environment: attempt.rules.challengeEnvironment,
     },
     reward: attempt.reward,
     arena: {
@@ -333,7 +335,12 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
       const now = new Date();
       await reconcileCurrentAttempt(app, request.user.id, now);
       const games = await listBonusGameCards(app.pg, request.user.id);
-      const attemptAllowances = await fetchBonusAttemptAllowances(app.pg, request.user.id, now);
+      const attemptAllowances = await fetchBonusAttemptAllowances(
+        app.pg,
+        request.user.id,
+        now,
+        opts.dailyAttemptLimit,
+      );
       return {
         games: games.map(toCatalogGameHttpDto),
         active_attempt: games.find((game) => game.active_attempt !== null)?.active_attempt ?? null,
@@ -365,6 +372,13 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
             used: attemptAllowances.endurance.used,
             remaining: attemptAllowances.endurance.remaining,
             resets_at: attemptAllowances.endurance.resetsAt,
+          },
+          challenge: {
+            skill_code: attemptAllowances.challenge.skillCode,
+            daily_limit: attemptAllowances.challenge.dailyLimit,
+            used: attemptAllowances.challenge.used,
+            remaining: attemptAllowances.challenge.remaining,
+            resets_at: attemptAllowances.challenge.resetsAt,
           },
         },
       };
@@ -405,6 +419,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
           gameId: params.gameId,
           now,
           seedSecret: opts.bonusSeedSecret,
+          dailyAttemptLimit: opts.dailyAttemptLimit,
         });
         return reply
           .status(result.created ? 201 : 200)

@@ -321,6 +321,44 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return { id: game.rows[0]!.id, arenaId: defaultArenaId };
   }
 
+  async function createFatigueChallengeGame(): Promise<TestGame> {
+    gameSequence += 1;
+    const slug = `shot-game-${gameSequence}`;
+    const game = await pool.query<{ id: string }>(
+      `insert into bonus_game
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
+          challenge_environment, use_inventory, reward_coins, reward_stars, reward_experience,
+          arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url, revision)
+       values ($1, $2, 'challenge', '', $3, 'active', 'free', 0,
+               25, $4::jsonb, 1, 0, $5::jsonb,
+               $6::jsonb, false, 0, 5, 5, $7, $8, $9, 1)
+       returning id`,
+      [
+        slug,
+        `Испытание ${gameSequence}`,
+        gameSequence,
+        JSON.stringify({ type: 'goals_in_time', targetGoals: 25, activeTimeMs: 150_000 }),
+        JSON.stringify([{ ...PERIODS[0]!, durationMs: 150_000, shotsLimit: null }]),
+        JSON.stringify({
+          fatigue: {
+            slowdownStartMs: 10_000,
+            heavyStartMs: 25_000,
+            stopStartMs: 40_000,
+            stopDurationMs: 4_000,
+            recoveryDurationMs: 10_000,
+            slowMultiplier: 0.85,
+            heavyMultiplier: 0.65,
+          },
+        }),
+        defaultArenaId,
+        `/goalies/${slug}-ready.webp`,
+        `/goalies/${slug}-save.webp`,
+      ],
+    );
+    return { id: game.rows[0]!.id, arenaId: defaultArenaId };
+  }
+
   async function storedMarksmanshipState(attemptId: string) {
     const { rows } = await pool.query<{
       total_points: number;
@@ -575,7 +613,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
 
   it('settles one V3 category once and retains the V2 snapshot calculation', async () => {
     const userId = await createUser();
-    const v3Game = await createMarksmanshipGame(100, true);
+    const v3Game = await createMarksmanshipGame(4, true);
     const v3AttemptId = await createActiveAttempt(userId, v3Game.id);
     const request = {
       userId, attemptId: v3AttemptId, claimedShotIndex: 1,
@@ -587,7 +625,13 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       serverResult: 'goal', awardedPoints: 4, totalPoints: 4,
       scoreDetails: { version: 3, category: 4, reason: 'instant' },
     });
-    expect(await submitBonusShot(pool, request)).toEqual(first);
+    expect(await submitBonusShot(pool, request)).toMatchObject({
+      serverResult: 'goal',
+      awardedPoints: 4,
+      totalPoints: 4,
+      rewardGranted: null,
+      scoreDetails: { version: 3, category: 4, reason: 'instant' },
+    });
     expect(await storedMarksmanshipState(v3AttemptId)).toMatchObject({ total_points: 4, shots: 1 });
 
     const v2Game = await createMarksmanshipGame(1_000);
@@ -1069,6 +1113,23 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         now: SHOT_AT,
       }),
     ).rejects.toMatchObject({ code: 'bonus_shot_index_mismatch', statusCode: 409 });
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
+  });
+
+  it('rejects a challenge shot while the immutable fatigue snapshot is resting', async () => {
+    const userId = await createUser();
+    const game = await createFatigueChallengeGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    await expect(submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: { ...GOAL_INPUT, tapTime: 40_500, shooterTapTime: 40_500 },
+      claimedResult: 'miss',
+      now: new Date(NOW.getTime() + 40_500),
+    })).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 409 });
+
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
   });
 

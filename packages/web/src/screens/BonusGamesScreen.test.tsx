@@ -87,6 +87,7 @@ function mockCatalog(
     accuracyRemaining?: number;
     marksmanshipRemaining?: number;
     enduranceRemaining?: number;
+    challengeRemaining?: number;
     resetsAt?: string;
     dailyAccess?: { qualifyingGoals: number; unlockGoalsRequired: number };
   } = {},
@@ -101,6 +102,7 @@ function mockCatalog(
     accuracyRemaining = 2,
     marksmanshipRemaining = 100,
     enduranceRemaining = 100,
+    challengeRemaining = 2,
     resetsAt = '2026-08-25T00:00:00.000Z',
     dailyAccess,
   } = options;
@@ -144,6 +146,13 @@ function mockCatalog(
                   daily_limit: 100,
                   used: 100 - enduranceRemaining,
                   remaining: enduranceRemaining,
+                  resets_at: resetsAt,
+                },
+                challenge: {
+                  skill_code: 'challenge',
+                  daily_limit: 2,
+                  used: 2 - challengeRemaining,
+                  remaining: challengeRemaining,
                   resets_at: resetsAt,
                 },
               },
@@ -351,10 +360,10 @@ describe('BonusGamesScreen', () => {
     const compactCard = screen.getByRole('heading', { name: 'Выносливость 3' }).closest('article')!;
 
     expect(
-      within(featuredCard).getByText(
+      within(featuredCard).queryByText(
         'Продержитесь до конца периода, забивая хотя бы 1 шайбу в каждом временном окне.',
       ),
-    ).toBeInTheDocument();
+    ).not.toBeInTheDocument();
     expect(within(featuredCard).getByText('Продержаться 03:10 мин')).toHaveClass(
       'bonus-game-card__details-primary',
     );
@@ -403,6 +412,7 @@ describe('BonusGamesScreen', () => {
   it.each([
     ['speed', 'Скорость'],
     ['endurance', 'Выносливость'],
+    ['challenge', 'Испытания'],
   ] as const)(
     'renders completed/total %s games as a semantic progress fill',
     async (skill, label) => {
@@ -418,7 +428,11 @@ describe('BonusGamesScreen', () => {
           }),
           card({ id: `${skill}-2`, skill_code: skill, title: `${label} 2`, sort_order: 2 }),
         ],
-        skill === 'endurance' ? { enduranceRemaining: 37 } : { speedRemaining: 1 },
+        skill === 'endurance'
+          ? { enduranceRemaining: 37 }
+          : skill === 'challenge'
+            ? { challengeRemaining: 1 }
+            : { speedRemaining: 1 },
       );
       renderCatalog();
 
@@ -810,7 +824,10 @@ describe('BonusGamesScreen', () => {
       'aria-selected',
       'true',
     );
-    expect(screen.getByRole('tablist', { name: 'Навык' })).toHaveClass('segmented-tabs');
+    expect(screen.getByRole('tablist', { name: 'Навык' })).toHaveClass(
+      'segmented-tabs',
+      'segmented-tabs--scrollable',
+    );
     expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveClass(
       'segmented-tabs__item--active',
     );
@@ -1368,7 +1385,7 @@ describe('BonusGamesScreen', () => {
     const artwork = await screen.findByAltText('Площадка «Пляж»');
     expect(artwork).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/featured/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/arenas/featured/beach.webp?v=20261001-nhl-city-tours-v1',
     );
     expect(artwork).toHaveStyle({ objectPosition: 'center top' });
     expect(artwork.parentElement).toHaveClass('bonus-game-card__artwork-frame');
@@ -1511,7 +1528,7 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByAltText('Площадка «Пляж»')).toHaveAttribute(
       'src',
-      '/bonus-games/arenas/featured/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/arenas/featured/beach.webp?v=20261001-nhl-city-tours-v1',
     );
   });
 
@@ -1756,10 +1773,10 @@ describe('BonusGamesScreen', () => {
 
     await waitFor(() =>
       expect(preloadArtwork).toHaveBeenCalledWith([
-        '/bonus-games/arenas/featured/speed-1.webp?v=20260829-world-tour-user-pngs-v10',
-        '/bonus-games/previews/beach.webp?v=20260829-world-tour-user-pngs-v10',
-        '/bonus-games/arenas/compact/speed-2.webp?v=20260829-world-tour-user-pngs-v10',
-        '/bonus-games/arenas/compact/speed-3.webp?v=20260829-world-tour-user-pngs-v10',
+        '/bonus-games/arenas/featured/speed-1.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/previews/beach.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/arenas/compact/speed-2.webp?v=20261001-nhl-city-tours-v1',
+        '/bonus-games/arenas/compact/speed-3.webp?v=20261001-nhl-city-tours-v1',
       ]),
     );
   });

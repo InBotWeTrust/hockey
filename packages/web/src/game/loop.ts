@@ -208,27 +208,45 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     if (!cfg) return;
     const now = advanceRenderClock();
     const overrides = opts.getSpeedOverrides?.();
-    if (
-      cachedActiveConfig === null ||
-      activeConfigSource !== cfg ||
-      activeConfigGoalFrequency !== (overrides?.goalFreq ?? null) ||
-      activeConfigGoalieFrequency !== (overrides?.goalieFreq ?? null)
-    ) {
-      activeConfigSource = cfg;
-      activeConfigGoalFrequency = overrides?.goalFreq ?? null;
-      activeConfigGoalieFrequency = overrides?.goalieFreq ?? null;
-      cachedActiveConfig = overrides
-        ? { ...cfg, goalFrequency: overrides.goalFreq, frequency: overrides.goalieFreq }
-        : cfg;
-      goalieSimulator = null;
-    }
-    const activeCfg = cachedActiveConfig;
     const sf = overrides?.shooterFreq ?? 0.45;
     const o = getOffsets();
     const tScene = sceneT(now);
     const rawCondition = overrides
       ? opts.getDuelCondition?.(tScene, overrides, reusableCondition)
       : null;
+    const goalSpeedMultiplier = Number(
+      (rawCondition as (DuelPlayerCondition & { goalSpeedMultiplier?: number }) | null)
+        ?.goalSpeedMultiplier ?? 1,
+    );
+    const goalieSpeedMultiplier = Number(
+      (rawCondition as (DuelPlayerCondition & { goalieSpeedMultiplier?: number }) | null)
+        ?.goalieSpeedMultiplier ?? 1,
+    );
+    const effectiveGoalFrequency = overrides
+      ? Math.max(0.1, overrides.goalFreq * goalSpeedMultiplier)
+      : null;
+    const effectiveGoalieFrequency = overrides
+      ? Math.max(0.1, overrides.goalieFreq * goalieSpeedMultiplier)
+      : null;
+    if (
+      cachedActiveConfig === null ||
+      activeConfigSource !== cfg ||
+      activeConfigGoalFrequency !== effectiveGoalFrequency ||
+      activeConfigGoalieFrequency !== effectiveGoalieFrequency
+    ) {
+      activeConfigSource = cfg;
+      activeConfigGoalFrequency = effectiveGoalFrequency;
+      activeConfigGoalieFrequency = effectiveGoalieFrequency;
+      cachedActiveConfig = overrides
+        ? {
+            ...cfg,
+            goalFrequency: effectiveGoalFrequency!,
+            frequency: effectiveGoalieFrequency!,
+          }
+        : cfg;
+      goalieSimulator = null;
+    }
+    const activeCfg = cachedActiveConfig;
     if (rawCondition?.stumbleActive === true) {
       if (heldStumbleCondition === null) heldStumbleCondition = { ...rawCondition };
       heldStumbleUntilMs = Math.max(heldStumbleUntilMs, now + MIN_STUMBLE_PAUSE_MS);

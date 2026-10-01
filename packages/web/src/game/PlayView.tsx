@@ -549,6 +549,15 @@ export function computeInitialElapsedMs(timing: PlaySessionTiming): number {
   return computeInitialPlayClocks(timing).sceneElapsedMs;
 }
 
+export function resolveLongCourtBackgroundPlacement(backgroundUrl: string): {
+  top: string;
+  height: string;
+} {
+  return backgroundUrl.includes('/bonus-games/nhl-cities/arenas/')
+    ? { top: '-0.25%', height: '100.25%' }
+    : { top: '0', height: '100%' };
+}
+
 function TrainingPerspectiveRink({
   design = 'standard',
   scoreboard,
@@ -559,6 +568,7 @@ function TrainingPerspectiveRink({
   longBackground?: string | undefined;
 }): JSX.Element {
   const isLong = design === 'long';
+  const longBackgroundPlacement = resolveLongCourtBackgroundPlacement(longBackground);
   return (
     <div
       role="img"
@@ -579,9 +589,13 @@ function TrainingPerspectiveRink({
         aria-hidden="true"
         style={{
           position: 'absolute',
-          inset: 0,
+          top: isLong ? longBackgroundPlacement.top : '0',
+          left: 0,
+          right: 0,
           width: '100%',
-          height: isLong ? '100%' : `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
+          height: isLong
+            ? longBackgroundPlacement.height
+            : `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})`,
           objectFit: 'cover',
         }}
       />
@@ -1747,6 +1761,20 @@ export function PlayView<TState>({
       0.1,
       overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
     );
+    const effectiveGoalFreq = Math.max(
+      0.1,
+      overrides.goalFreq * (('goalSpeedMultiplier' in (duelShotCondition ?? {}))
+        ? Number((duelShotCondition as { goalSpeedMultiplier?: number }).goalSpeedMultiplier ?? 1)
+        : 1),
+    );
+    const effectiveGoalieFreq = Math.max(
+      0.1,
+      overrides.goalieFreq * (('goalieSpeedMultiplier' in (duelShotCondition ?? {}))
+        ? Number((duelShotCondition as { goalieSpeedMultiplier?: number }).goalieSpeedMultiplier ?? 1)
+        : 1),
+    );
+    activeCfg.frequency = effectiveGoalieFreq;
+    activeCfg.goalFrequency = effectiveGoalFreq;
     const ordinaryShooterX =
       computeShooterX(shooterTapTime + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
@@ -1760,8 +1788,8 @@ export function PlayView<TState>({
       shooterTapTime,
       puckSpeedPerMs: puckSpeed,
       shooterFrequency: effectiveShooterFreq,
-      goalieFrequency: overrides.goalieFreq,
-      goalFrequency: overrides.goalFreq,
+      goalieFrequency: effectiveGoalieFreq,
+      goalFrequency: effectiveGoalFreq,
     };
     const result: ShotResult =
       shotResolverRef.current?.({

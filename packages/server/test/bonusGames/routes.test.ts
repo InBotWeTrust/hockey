@@ -166,6 +166,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         REFRESH_SECRET,
         TELEGRAM_BOT_TOKEN: 'test-bot-token',
         DAILY_SEED_SECRET: BONUS_SEED_SECRET,
+        BONUS_DAILY_ATTEMPT_LIMIT: 2,
       },
       pushSchedulerEnabled: false,
       pushWorkerEnabled: false,

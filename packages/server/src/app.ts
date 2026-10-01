@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import { healthRoutes } from './routes/health.js';
-import { loadConfig, type AppConfig } from './config.js';
+import { loadConfig, resolveBonusDailyAttemptLimit, type AppConfig } from './config.js';
 import { dbPlugin } from './plugins/db.js';
 import { redisPlugin } from './plugins/redis.js';
 import { errorsPlugin } from './plugins/errors.js';
@@ -204,7 +204,10 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(referralAdminRoutes);
   if (config.NODE_ENV !== 'test') await app.register(referralRiskCleanupPlugin);
   await app.register(arenaRoutes);
-  await app.register(bonusGameRoutes, { bonusSeedSecret: config.DAILY_SEED_SECRET });
+  await app.register(bonusGameRoutes, {
+    bonusSeedSecret: config.DAILY_SEED_SECRET,
+    dailyAttemptLimit: resolveBonusDailyAttemptLimit(config),
+  });
   await app.register(inventoryRoutes);
   await app.register(
     mediaRoutes,

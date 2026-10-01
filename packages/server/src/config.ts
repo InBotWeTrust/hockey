@@ -35,6 +35,7 @@ const schema = z
     JWT_SECRET: z.string().min(16),
     REFRESH_SECRET: z.string().min(16),
     ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().min(60).max(30 * 24 * 60 * 60).optional(),
+    BONUS_DAILY_ATTEMPT_LIMIT: z.coerce.number().int().min(1).max(100).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1),
     VK_APP_ID: optionalNonEmptyString,
     ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: optionalNonEmptyString,
@@ -151,6 +152,10 @@ export type AppConfig = z.infer<typeof schema>;
 
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
   return schema.parse(env);
+}
+
+export function resolveBonusDailyAttemptLimit(config: AppConfig): number {
+  return config.BONUS_DAILY_ATTEMPT_LIMIT ?? (config.NODE_ENV === 'production' ? 2 : 100);
 }
 
 const migrationSchema = z.object({
