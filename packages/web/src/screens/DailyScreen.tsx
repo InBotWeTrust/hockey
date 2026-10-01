@@ -161,10 +161,7 @@ import {
 } from '../api/amateurDuel.js';
 import { AmateurDuelRatingTab } from '../components/duel/AmateurDuelRatingTab.js';
 import { AmateurDuelHistoryTab } from '../components/duel/AmateurDuelHistoryTab.js';
-import {
-  DuelEquipmentSelectionRadio,
-  DuelLockerTab,
-} from '../components/duel/DuelLockerTab.js';
+import { DuelEquipmentSelectionRadio, DuelLockerTab } from '../components/duel/DuelLockerTab.js';
 import { StartPeriodModal } from '../components/StartPeriodModal.js';
 import { getLastSeenAt, setLastSeenAt } from '../stores/seenPeriods.js';
 import { TournamentCatalog } from '../tournament/TournamentCatalog.js';
@@ -1608,18 +1605,18 @@ function GameHub({
         subtitle: locked
           ? gameplayLockCopy(gameplayLock, now)
           : completed
-          ? 'Игра завершена, результат сохранён.'
-          : started
-            ? 'Турнирная игра уже начата.'
-            : 'Отдельная игра по правилам турнира',
+            ? 'Игра завершена, результат сохранён.'
+            : started
+              ? 'Турнирная игра уже начата.'
+              : 'Отдельная игра по правилам турнира',
         ...(!completed && !started && !locked
           ? { subtitleLines: ['Отдельная игра', 'по правилам турнира'] as [string, string] }
           : {}),
         meta: locked
           ? 'Турнирная игра временно недоступна.'
           : completed
-          ? ''
-          : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
+            ? ''
+            : `${game.current_period > 0 ? `${game.current_period}-й период` : 'Три периода'} · до ${formatEventRemaining(deadlineRemaining)}`,
         ctaLabel: lockedByRecovery
           ? 'Сократить восстановление'
           : locked
@@ -1652,40 +1649,40 @@ function GameHub({
               ),
             }
           : completed
-          ? {
-              scoreboard: (
-                <DailyHubScoreboard
-                  activePeriod={null}
-                  ariaLabel={`Завершена. До обновления ${formatHms(deadlineRemaining)}`}
-                  periodsTotal={3}
-                  timer={formatHms(deadlineRemaining)}
-                  timerLabel="До обновления"
-                  timerOnly
-                />
-              ),
-            }
-          : {
-              scoreboard: (
-                <DailyHubScoreboard
-                  activePeriod={
-                    game.state === 'period_active'
-                      ? game.current_period
-                      : Math.min(3, game.current_period + 1)
-                  }
-                  ariaLabel={
-                    isBreak
-                      ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
-                      : `${game.tournament_title}. ${game.tournament_day}-й тур. До конца дня ${formatEventRemaining(deadlineRemaining)}`
-                  }
-                  periodsTotal={3}
-                  spacious
-                  timer={
-                    isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
-                  }
-                  timerLabel={isBreak ? 'Перерыв' : 'До конца дня'}
-                />
-              ),
-            }),
+            ? {
+                scoreboard: (
+                  <DailyHubScoreboard
+                    activePeriod={null}
+                    ariaLabel={`Завершена. До обновления ${formatHms(deadlineRemaining)}`}
+                    periodsTotal={3}
+                    timer={formatHms(deadlineRemaining)}
+                    timerLabel="До обновления"
+                    timerOnly
+                  />
+                ),
+              }
+            : {
+                scoreboard: (
+                  <DailyHubScoreboard
+                    activePeriod={
+                      game.state === 'period_active'
+                        ? game.current_period
+                        : Math.min(3, game.current_period + 1)
+                    }
+                    ariaLabel={
+                      isBreak
+                        ? `${game.tournament_title}. ${game.tournament_day}-й тур. Перерыв. До конца ${formatMs(breakRemaining)}. Период ${Math.min(3, game.current_period + 1)}`
+                        : `${game.tournament_title}. ${game.tournament_day}-й тур. До конца дня ${formatEventRemaining(deadlineRemaining)}`
+                    }
+                    periodsTotal={3}
+                    spacious
+                    timer={
+                      isBreak ? formatMs(breakRemaining) : formatEventRemaining(deadlineRemaining)
+                    }
+                    timerLabel={isBreak ? 'Перерыв' : 'До конца дня'}
+                  />
+                ),
+              }),
       };
     });
   const arenaEntries: ArenaEntry[] = [
@@ -3514,10 +3511,7 @@ export function initialTrainingCatalogAfterCompletion(
       current.open_training_unlock_source ?? (unlocked ? 'course' : null),
     exercises: current.exercises.map((exercise) => {
       if (exercise.key === completedKey) return { ...exercise, state: 'completed' };
-      if (
-        exercise.position === completedExercise.position + 1 &&
-        exercise.state === 'locked'
-      ) {
+      if (exercise.position === completedExercise.position + 1 && exercise.state === 'locked') {
         return { ...exercise, state: 'available' };
       }
       return exercise;
@@ -3559,9 +3553,10 @@ function TrainingPlaceholder({
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
-  const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(() =>
-    queryClient.getQueryData<InitialTrainingCatalogResponse>(INITIAL_TRAINING_COURSE_QUERY_KEY) ??
-    null,
+  const [courseCatalog, setCourseCatalog] = useState<InitialTrainingCatalogResponse | null>(
+    () =>
+      queryClient.getQueryData<InitialTrainingCatalogResponse>(INITIAL_TRAINING_COURSE_QUERY_KEY) ??
+      null,
   );
   const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(courseCatalog !== null);
   const [courseCatalogError, setCourseCatalogError] = useState(false);
@@ -3656,47 +3651,48 @@ function TrainingPlaceholder({
   };
 
   const trainingLock = courseCatalog?.gameplay_lock ?? null;
-  const trainingLockModal = trainingLockModalOpen && trainingLock ? (
-    <AccessibleModal
-      title="Тренировка недоступна"
-      copy={
-        trainingLock.reason === 'active_daily'
-          ? 'Сначала завершите ежедневную игру.'
-          : `${gameplayLockCopy(trainingLock)}.`
-      }
-      onClose={() => setTrainingLockModalOpen(false)}
-      headerAction={
-        <button
-          type="button"
-          className="icon-btn"
-          aria-label="Закрыть"
-          onClick={() => setTrainingLockModalOpen(false)}
-        >
-          <X size={16} aria-hidden="true" />
-        </button>
-      }
-    >
-      <div className="modal-actions">
-        {trainingLock.reason === 'active_daily' ? (
+  const trainingLockModal =
+    trainingLockModalOpen && trainingLock ? (
+      <AccessibleModal
+        title="Тренировка недоступна"
+        copy={
+          trainingLock.reason === 'active_daily'
+            ? 'Сначала завершите ежедневную игру.'
+            : `${gameplayLockCopy(trainingLock)}.`
+        }
+        onClose={() => setTrainingLockModalOpen(false)}
+        headerAction={
           <button
             type="button"
-            className="modal-primary btn btn--cta"
-            onClick={() => navigate('/?view=daily', { replace: true })}
-          >
-            К ежедневной игре
-          </button>
-        ) : (
-          <button
-            type="button"
-            className="modal-primary btn btn--cta"
+            className="icon-btn"
+            aria-label="Закрыть"
             onClick={() => setTrainingLockModalOpen(false)}
           >
-            Понятно
+            <X size={16} aria-hidden="true" />
           </button>
-        )}
-      </div>
-    </AccessibleModal>
-  ) : null;
+        }
+      >
+        <div className="modal-actions">
+          {trainingLock.reason === 'active_daily' ? (
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              onClick={() => navigate('/?view=daily', { replace: true })}
+            >
+              К ежедневной игре
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="modal-primary btn btn--cta"
+              onClick={() => setTrainingLockModalOpen(false)}
+            >
+              Понятно
+            </button>
+          )}
+        </div>
+      </AccessibleModal>
+    ) : null;
 
   if (
     !courseCatalogLoaded &&
@@ -3753,8 +3749,12 @@ function TrainingPlaceholder({
       return (
         <InitialTrainingPlay
           exerciseKey={exercise.key}
-          onBack={() => navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })}
-          onCourse={() => navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })}
+          onBack={() =>
+            navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })
+          }
+          onCourse={() =>
+            navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })
+          }
           onNext={() => {
             if (nextExercise) {
               navigate(
@@ -3763,7 +3763,9 @@ function TrainingPlaceholder({
               );
             }
           }}
-          onOpenTraining={() => navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })}
+          onOpenTraining={() =>
+            navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
+          }
           onCatalogRefresh={(completedKey) => {
             setCourseCatalog((current) => {
               if (current === null) return current;
@@ -3916,10 +3918,7 @@ function TrainingPlaceholder({
           </div>
         </div>
         <div className="training-summary-grid">
-          <TotalCell
-            label="ЛИМИТ"
-            value={data ? `${data.shots_taken}/${data.shots_limit}` : '—'}
-          />
+          <TotalCell label="ЛИМИТ" value={data ? `${data.shots_taken}/${data.shots_limit}` : '—'} />
           <TotalCell label="ЧАСТОТА" value="24ч" />
           <TotalCell
             label="ДО ОБНОВЛЕНИЯ"
@@ -4431,8 +4430,13 @@ function DuelKindPreferencePicker({
               active={selectedSet.has(kind)}
               disabled={locks?.[kind]?.blocked === true}
               ariaDisabled={limitUnavailable}
-              title={locks?.[kind] ? ordinaryDuelLockCopy(locks[kind]!)
-                : limitUnavailable ? 'Лимит дуэлей этого формата исчерпан' : undefined}
+              title={
+                locks?.[kind]
+                  ? ordinaryDuelLockCopy(locks[kind]!)
+                  : limitUnavailable
+                    ? 'Лимит дуэлей этого формата исчерпан'
+                    : undefined
+              }
               onClick={() => {
                 if (limitUnavailable) onLimitUnavailable(kind);
                 else toggleKind(kind);
@@ -4560,13 +4564,14 @@ export function duelAdmissionErrorCopy(error: unknown): string {
   const limit = error.details?.duelLimit;
   if (!limit || typeof limit !== 'object') return error.message;
   const details = limit as { reason?: unknown; retryAt?: unknown };
-  const reason = {
-    daily: 'Дневной лимит дуэлей исчерпан.',
-    weekly: 'Недельный лимит дуэлей исчерпан.',
-    monthly: 'Месячный лимит дуэлей исчерпан.',
-    format: 'Месячный лимит этого формата исчерпан.',
-    outgoing: 'Достигнут лимит исходящих вызовов.',
-  }[String(details.reason)] ?? error.message;
+  const reason =
+    {
+      daily: 'Дневной лимит дуэлей исчерпан.',
+      weekly: 'Недельный лимит дуэлей исчерпан.',
+      monthly: 'Месячный лимит дуэлей исчерпан.',
+      format: 'Месячный лимит этого формата исчерпан.',
+      outgoing: 'Достигнут лимит исходящих вызовов.',
+    }[String(details.reason)] ?? error.message;
   const retry = typeof details.retryAt === 'string' ? new Date(details.retryAt) : null;
   return retry && !Number.isNaN(retry.getTime())
     ? `${reason} Снова доступно ${retry.toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' })} (МСК).`
@@ -4623,13 +4628,19 @@ function AmateurDuelsPage({
   const duelLock = matches.data?.duel_lock;
   const duelBlocked = duelLock?.blocked === true;
   useGameplayLockRefresh(duelLock);
-  const searchKind = (selectedTemplateId
-    ? templates.data?.templates.find((item) => item.id === selectedTemplateId)
-    : sortDuelTemplates(templates.data?.templates ?? [])[0])?.duel_kind ?? null;
+  const searchKind =
+    (selectedTemplateId
+      ? templates.data?.templates.find((item) => item.id === selectedTemplateId)
+      : sortDuelTemplates(templates.data?.templates ?? [])[0]
+    )?.duel_kind ?? null;
   const opponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'search', opponentQuery, searchKind],
     queryFn: () => searchAmateurOpponents(opponentQuery, 12, [searchKind!]),
-    enabled: !duelBlocked && duelCreationMode === 'challenge' && searchKind !== null && opponentQuery.trim().length > 0,
+    enabled:
+      !duelBlocked &&
+      duelCreationMode === 'challenge' &&
+      searchKind !== null &&
+      opponentQuery.trim().length > 0,
   });
   const onlineOpponents = useQuery({
     queryKey: ['amateur-duel', 'opponents', 'online', searchKind],
@@ -4639,8 +4650,11 @@ function AmateurDuelsPage({
   });
   useEffect(() => {
     if (!selectedOpponent || !searchKind) return;
-    if (selectedOpponent.format_limits?.[searchKind]?.available === false ||
-        selectedOpponent.format_locks?.[searchKind]?.blocked) setSelectedOpponent(null);
+    if (
+      selectedOpponent.format_limits?.[searchKind]?.available === false ||
+      selectedOpponent.format_locks?.[searchKind]?.blocked
+    )
+      setSelectedOpponent(null);
   }, [searchKind, selectedOpponent]);
   const rating = useQuery({
     queryKey: ['amateur-duel', 'rating', 'current'],
@@ -4745,7 +4759,8 @@ function AmateurDuelsPage({
   const formatLimits = matches.data?.format_limits;
   const selectedSelfLimit = selectedTemplate ? formatLimits?.[selectedTemplate.duel_kind] : null;
   const selectedOpponentLimit = selectedTemplate
-    ? selectedOpponent?.format_limits?.[selectedTemplate.duel_kind] : null;
+    ? selectedOpponent?.format_limits?.[selectedTemplate.duel_kind]
+    : null;
   const isChallengeTemplateAvailable = (template: AmateurDuelTemplate): boolean =>
     !formatLocks?.[template.duel_kind]?.blocked &&
     formatLimits?.[template.duel_kind]?.available !== false &&
@@ -4755,8 +4770,9 @@ function AmateurDuelsPage({
     ? isChallengeTemplateAvailable(selectedTemplate)
     : false;
   const firstAvailableChallengeTemplate = templateItems.find(isChallengeTemplateAvailable) ?? null;
-  const eligibleMatchmakingKinds = matchmakingKinds.filter((kind) =>
-    !formatLocks?.[kind]?.blocked && formatLimits?.[kind]?.available !== false);
+  const eligibleMatchmakingKinds = matchmakingKinds.filter(
+    (kind) => !formatLocks?.[kind]?.blocked && formatLimits?.[kind]?.available !== false,
+  );
   const unavailableFormat = DUEL_KIND_OPTIONS.find((kind) => formatLocks?.[kind]?.blocked);
   const matchmakingFormatLock = unavailableFormat ? formatLocks?.[unavailableFormat] : null;
   const opponentOptions = opponentQuery.trim().length > 0 ? (opponents.data?.users ?? []) : [];
@@ -4789,8 +4805,14 @@ function AmateurDuelsPage({
   }, [selectedTemplateId, templateItems]);
 
   useEffect(() => {
-    if (duelCreationMode !== 'challenge' || !challengeAutoSelectPending.current ||
-        !templates.isSuccess || !matches.isSuccess || !selectedTemplate) return;
+    if (
+      duelCreationMode !== 'challenge' ||
+      !challengeAutoSelectPending.current ||
+      !templates.isSuccess ||
+      !matches.isSuccess ||
+      !selectedTemplate
+    )
+      return;
     challengeAutoSelectPending.current = false;
     if (!selectedChallengeTemplateAvailable && firstAvailableChallengeTemplate) {
       setSelectedTemplateId(firstAvailableChallengeTemplate.id);
@@ -4909,7 +4931,13 @@ function AmateurDuelsPage({
               {renderDuelCards(outgoingInvites)}
             </section>
           )}
-          <DuelLimitsSection limits={matches.data?.duel_limits} loading={matches.isPending} onReset={() => { void matches.refetch(); }} />
+          <DuelLimitsSection
+            limits={matches.data?.duel_limits}
+            loading={matches.isPending}
+            onReset={() => {
+              void matches.refetch();
+            }}
+          />
           <div className="duel-section">
             <div className="section-label duel-section-title">Новая дуэль</div>
             <section className="duel-creation-card" aria-label="Новая дуэль">
@@ -5022,9 +5050,11 @@ function AmateurDuelsPage({
                       {ordinaryDuelLockCopy(challengeLock)}
                     </p>
                   )}
-                  {(selectedSelfLimit?.available === false || selectedOpponentLimit?.available === false) && (
+                  {(selectedSelfLimit?.available === false ||
+                    selectedOpponentLimit?.available === false) && (
                     <p role="status" className="modal-copy duel-format-warning">
-                      {selectedSelfLimit?.available === false ? 'У вас' : 'У соперника'} исчерпан лимит дуэлей для выбранного формата.
+                      {selectedSelfLimit?.available === false ? 'У вас' : 'У соперника'} исчерпан
+                      лимит дуэлей для выбранного формата.
                     </p>
                   )}
                   {templateItems.length > 0 && selectedTemplate ? (
@@ -5036,7 +5066,8 @@ function AmateurDuelsPage({
                         options={templateItems.map((template) => {
                           const unavailable =
                             formatLimits?.[template.duel_kind]?.available === false ||
-                            selectedOpponent?.format_limits?.[template.duel_kind]?.available === false;
+                            selectedOpponent?.format_limits?.[template.duel_kind]?.available ===
+                              false;
                           return {
                             value: template.id,
                             label: unavailable
@@ -5691,6 +5722,7 @@ function AmateurDuelPlayView({
   const [now, setNow] = useState(Date.now());
   const [dismissedResultMatchId, setDismissedResultMatchId] = useState<string | null>(null);
   const [selectedLoadout, setSelectedLoadout] = useState<AmateurDuelLoadoutSelection>({});
+  const pendingLoadoutChangesRef = useRef<AmateurDuelLoadoutSelection>({});
   const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
     null,
   );
@@ -5737,6 +5769,7 @@ function AmateurDuelPlayView({
   useEffect(() => {
     setDismissedResultMatchId(null);
     setSelectedLoadout({});
+    pendingLoadoutChangesRef.current = {};
     setShowTournamentReadinessExplanation(true);
     setDisableTournamentReadinessExplanation(false);
     previousReadyStateRef.current = null;
@@ -5783,7 +5816,18 @@ function AmateurDuelPlayView({
       preserveSelectedLoadoutAfterReadyRef.current = false;
       return;
     }
-    setSelectedLoadout(duelLoadoutSelectionFromMatch(match));
+    setSelectedLoadout({
+      ...duelLoadoutSelectionFromMatch(match),
+      ...pendingLoadoutChangesRef.current,
+    });
+  }, [match]);
+
+  useEffect(() => {
+    if (!match || match.source === 'tournament' || match.me.state !== 'accepted') return;
+    setSelectedLoadout({
+      ...duelLoadoutSelectionFromMatch(match),
+      ...pendingLoadoutChangesRef.current,
+    });
   }, [match]);
 
   useEffect(() => {
@@ -5901,6 +5945,12 @@ function AmateurDuelPlayView({
   const usesTournamentPeriodLoadout =
     match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
   const loadoutEditable = isDuelLoadoutEditable(match.source, match.me.state);
+  const startDuelPeriodWithPending = async (): Promise<void> => {
+    const started = await startPeriod(
+      duelStartPeriodLoadoutSelection(pendingLoadoutChangesRef.current),
+    );
+    if (started !== null) pendingLoadoutChangesRef.current = {};
+  };
   const handleDirectDuelAction = async (): Promise<void> => {
     if (inFlight || duelBlocked) return;
     if (!amateurAccess.hasFullAccess) {
@@ -5912,16 +5962,18 @@ function AmateurDuelPlayView({
       if (usesTournamentPeriodLoadout) preserveSelectedLoadoutAfterReadyRef.current = true;
       const readyMatch = await ready(usesTournamentPeriodLoadout ? {} : selectedLoadout);
       if (readyMatch === null) preserveSelectedLoadoutAfterReadyRef.current = false;
+      else if (!usesTournamentPeriodLoadout) pendingLoadoutChangesRef.current = {};
       return;
     }
     if (canStartArenaDuelPeriod(match, matchNow)) {
       if (usesTournamentPeriodLoadout) {
-        const confirmed = await confirmTournamentLoadout(selectedLoadout);
+        const confirmed = await confirmTournamentLoadout(pendingLoadoutChangesRef.current);
         if (confirmed === null) return;
+        pendingLoadoutChangesRef.current = {};
         await startPeriod();
         return;
       }
-      await startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout));
+      await startDuelPeriodWithPending();
     }
   };
   const dismissTournamentReadinessExplanation = async (): Promise<void> => {
@@ -6056,6 +6108,10 @@ function AmateurDuelPlayView({
             onSelect={(itemId) => {
               const kind = selectedLoadoutKind;
               setSelectedLoadout((current) => ({ ...current, [kind]: itemId }));
+              pendingLoadoutChangesRef.current = {
+                ...pendingLoadoutChangesRef.current,
+                [kind]: itemId,
+              };
               setSelectedLoadoutKind(null);
             }}
           />
@@ -6282,10 +6338,7 @@ function AmateurDuelPlayView({
           pending={inFlight}
           onHome={onBack}
           onStart={() =>
-            guardAmateurMutation(
-              amateurAccess,
-              () => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout)),
-            )
+            guardAmateurMutation(amateurAccess, () => void startDuelPeriodWithPending())
           }
         />
       )}
@@ -6293,12 +6346,7 @@ function AmateurDuelPlayView({
         type="button"
         className="btn btn--cta"
         disabled={!canStart || inFlight}
-        onClick={() =>
-          guardAmateurMutation(
-            amateurAccess,
-            () => void startPeriod(duelStartPeriodLoadoutSelection(match, selectedLoadout)),
-          )
-        }
+        onClick={() => guardAmateurMutation(amateurAccess, () => void startDuelPeriodWithPending())}
       >
         {startButtonLabel}
       </button>
@@ -6644,7 +6692,10 @@ function DuelResultCard({
                       <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
                     </span>
                     <span className="duel-result-card__reward-values">
-                      <span className="duel-result-points" aria-label={`Очки за дуэль: ${pointsText}`}>
+                      <span
+                        className="duel-result-points"
+                        aria-label={`Очки за дуэль: ${pointsText}`}
+                      >
                         <span>Очки</span>
                         <strong>{pointsText}</strong>
                       </span>
@@ -7819,10 +7870,7 @@ export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
     '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
 };
 
-const DUEL_EQUIPMENT_META: Record<
-  InventoryEquipmentKind,
-  { title: string; empty: string }
-> = {
+const DUEL_EQUIPMENT_META: Record<InventoryEquipmentKind, { title: string; empty: string }> = {
   stick: { title: 'Клюшка', empty: 'Без клюшки' },
   skates: { title: 'Коньки', empty: 'Без коньков' },
   nutrition: { title: 'Питание', empty: 'Без питания' },
@@ -7938,12 +7986,9 @@ export function isDuelInventoryLow(
 }
 
 function duelStartPeriodLoadoutSelection(
-  match: AmateurDuelMatch,
-  selectedLoadout: AmateurDuelLoadoutSelection,
+  changes: AmateurDuelLoadoutSelection,
 ): AmateurDuelLoadoutSelection | undefined {
-  if (selectedLoadout.stick === undefined) return undefined;
-  const selectedStick = selectedDuelAvailabilityItem(match, 'stick', selectedLoadout.stick);
-  return { stick: selectedStick ? selectedStick.id : null };
+  return Object.keys(changes).length > 0 ? changes : undefined;
 }
 
 function duelLoadoutSelectionFromMatch(match: AmateurDuelMatch): AmateurDuelLoadoutSelection {
@@ -9212,14 +9257,12 @@ function DailyPlayView({
                 ? 'НАЧИНАЕМ...'
                 : 'НАЧАТЬ'
               : isBreak || isDailyLockedByTraining || isActiveDailyLocked
-                  ? 'ЛЁД ГОТОВИТСЯ'
-                  : isClosed
-                    ? 'ИГРА ЗАВЕРШЕНА'
-                    : undefined
+                ? 'ЛЁД ГОТОВИТСЯ'
+                : isClosed
+                  ? 'ИГРА ЗАВЕРШЕНА'
+                  : undefined
         }
-        inactiveAction={
-          canStartPeriod ? handleStartPeriod : undefined
-        }
+        inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
         primaryActionBlocked={needsReconcile || isActiveDailyLocked}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
@@ -9619,11 +9662,15 @@ function ClassicTournamentPlayView({
   const [deferredState, setDeferredState] = useState<ClassicTournamentState | null>(null);
   const [statsModalState, setStatsModalState] = useState<ClassicTournamentState | null>(null);
   const [selectedLoadout, setSelectedLoadout] = useState<ClassicTournamentLoadoutSelection>({});
+  const pendingClassicLoadoutChangesRef = useRef<ClassicTournamentLoadoutSelection>({});
   const [selectedLoadoutKind, setSelectedLoadoutKind] = useState<InventoryEquipmentKind | null>(
     null,
   );
 
   const summaryCandidate = deferredState ?? data;
+  useEffect(() => {
+    pendingClassicLoadoutChangesRef.current = {};
+  }, [data?.session_id]);
   useEffect(() => {
     if (summaryCandidate?.state !== 'closed') return;
     void queryClient.invalidateQueries({ queryKey: ['tournaments'] });
@@ -9646,8 +9693,16 @@ function ClassicTournamentPlayView({
 
   useEffect(() => {
     if (!data) return;
-    setSelectedLoadout(classicLoadoutSelection(data));
+    setSelectedLoadout({
+      ...classicLoadoutSelection(data),
+      ...pendingClassicLoadoutChangesRef.current,
+    });
   }, [data?.current_period, data?.loadout, data?.loadout_editable, data?.session_id]);
+
+  const startClassicPeriodWithPending = async (): Promise<void> => {
+    const started = await startPeriod(pendingClassicLoadoutChangesRef.current);
+    if (started !== null) pendingClassicLoadoutChangesRef.current = {};
+  };
 
   useEffect(() => {
     if (data?.state !== 'break_active' && data?.state !== 'closed' && !data?.gameplay_lock?.blocked)
@@ -9813,7 +9868,7 @@ function ClassicTournamentPlayView({
             data.gameplay_lock?.reason === 'recent_gameplay')
             ? showAmateurRestriction
             : canStart
-              ? () => startPeriod(selectedLoadout)
+              ? () => startClassicPeriodWithPending()
               : undefined
         }
         entranceBeforeInactiveAction={amateurAccess.hasFullAccess}
@@ -9848,6 +9903,10 @@ function ClassicTournamentPlayView({
           onClose={() => setSelectedLoadoutKind(null)}
           onSelect={(id) => {
             setSelectedLoadout((current) => ({ ...current, [selectedLoadoutKind]: id }));
+            pendingClassicLoadoutChangesRef.current = {
+              ...pendingClassicLoadoutChangesRef.current,
+              [selectedLoadoutKind]: id,
+            };
             setSelectedLoadoutKind(null);
           }}
         />
