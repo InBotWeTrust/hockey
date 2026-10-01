@@ -1761,6 +1761,20 @@ export function PlayView<TState>({
       0.1,
       overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
     );
+    const effectiveGoalFreq = Math.max(
+      0.1,
+      overrides.goalFreq * (('goalSpeedMultiplier' in (duelShotCondition ?? {}))
+        ? Number((duelShotCondition as { goalSpeedMultiplier?: number }).goalSpeedMultiplier ?? 1)
+        : 1),
+    );
+    const effectiveGoalieFreq = Math.max(
+      0.1,
+      overrides.goalieFreq * (('goalieSpeedMultiplier' in (duelShotCondition ?? {}))
+        ? Number((duelShotCondition as { goalieSpeedMultiplier?: number }).goalieSpeedMultiplier ?? 1)
+        : 1),
+    );
+    activeCfg.frequency = effectiveGoalieFreq;
+    activeCfg.goalFrequency = effectiveGoalFreq;
     const ordinaryShooterX =
       computeShooterX(shooterTapTime + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
@@ -1774,8 +1788,8 @@ export function PlayView<TState>({
       shooterTapTime,
       puckSpeedPerMs: puckSpeed,
       shooterFrequency: effectiveShooterFreq,
-      goalieFrequency: overrides.goalieFreq,
-      goalFrequency: overrides.goalFreq,
+      goalieFrequency: effectiveGoalieFreq,
+      goalFrequency: effectiveGoalFreq,
     };
     const result: ShotResult =
       shotResolverRef.current?.({

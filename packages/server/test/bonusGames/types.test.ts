@@ -32,6 +32,13 @@ describe('bonus game rule contracts', () => {
 
   it('parses immutable challenge fatigue, speed phases and stumble windows', () => {
     expect(parseBonusChallengeEnvironmentRules({
+      baseModifiers: {
+        goalMultiplier: 1.2,
+        goalieMultiplier: 1.4,
+        shooterMultiplier: 0.9,
+        puckSpeedMultiplier: 0.9,
+        label: 'Лёд тает · игрок −10% · шайба −10%',
+      },
       fatigue: {
         slowdownStartMs: 10_000,
         heavyStartMs: 25_000,
@@ -44,6 +51,13 @@ describe('bonus game rule contracts', () => {
       speedPhases: [{ durationMs: 20_000, shooterMultiplier: 1.2, puckSpeedMultiplier: 1.1 }],
       stumbleWindows: [{ startMs: 45_000, durationMs: 600 }],
     })).toEqual({
+      baseModifiers: {
+        goalMultiplier: 1.2,
+        goalieMultiplier: 1.4,
+        shooterMultiplier: 0.9,
+        puckSpeedMultiplier: 0.9,
+        label: 'Лёд тает · игрок −10% · шайба −10%',
+      },
       fatigue: {
         slowdownStartMs: 10_000,
         heavyStartMs: 25_000,

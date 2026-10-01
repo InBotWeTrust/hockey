@@ -21,13 +21,24 @@ export interface BonusChallengeSpeedPhase {
   puckSpeedMultiplier: number;
 }
 
+export interface BonusChallengeBaseModifiers {
+  goalMultiplier: number;
+  goalieMultiplier: number;
+  shooterMultiplier: number;
+  puckSpeedMultiplier: number;
+  label: string;
+}
+
 export interface BonusChallengeEnvironmentRules {
+  baseModifiers?: BonusChallengeBaseModifiers;
   fatigue?: BonusChallengeFatigueRules;
   stumbleWindows?: BonusChallengeStumbleWindow[];
   speedPhases?: BonusChallengeSpeedPhase[];
 }
 
 export interface BonusChallengeCondition extends DuelPlayerCondition {
+  goalSpeedMultiplier: number;
+  goalieSpeedMultiplier: number;
   puckSpeedMultiplier: number;
 }
 
@@ -50,6 +61,8 @@ function baseCondition(): BonusChallengeCondition {
   return {
     puckSpeedDelta: 0,
     puckSpeedMultiplier: 1,
+    goalSpeedMultiplier: 1,
+    goalieSpeedMultiplier: 1,
     shooterSpeedMultiplier: 1,
     canShoot: true,
     status: 'normal',
@@ -72,9 +85,13 @@ export function getBonusChallengeCondition(
   if (!rules) return result;
 
   const elapsed = Math.max(0, elapsedMs);
+  const base = rules.baseModifiers;
   const phase = phaseAt(rules.speedPhases, elapsed);
   const phaseShooterMultiplier = phase?.shooterMultiplier ?? 1;
-  result.puckSpeedMultiplier = phase?.puckSpeedMultiplier ?? 1;
+  const baseShooterMultiplier = base?.shooterMultiplier ?? 1;
+  result.goalSpeedMultiplier = base?.goalMultiplier ?? 1;
+  result.goalieSpeedMultiplier = base?.goalieMultiplier ?? 1;
+  result.puckSpeedMultiplier = (base?.puckSpeedMultiplier ?? 1) * (phase?.puckSpeedMultiplier ?? 1);
 
   const fatigue = rules.fatigue;
   if (fatigue) {
@@ -98,16 +115,16 @@ export function getBonusChallengeCondition(
     if (!recovering && cycleElapsed >= fatigue.heavyStartMs) {
       result.status = 'nutrition_slowdown';
       result.fatigueLevel = 'heavy';
-      result.shooterSpeedMultiplier = fatigue.heavyMultiplier * phaseShooterMultiplier;
+      result.shooterSpeedMultiplier = baseShooterMultiplier * fatigue.heavyMultiplier * phaseShooterMultiplier;
     } else if (!recovering && cycleElapsed >= fatigue.slowdownStartMs) {
       result.status = 'tired';
       result.fatigueLevel = 'medium';
-      result.shooterSpeedMultiplier = fatigue.slowMultiplier * phaseShooterMultiplier;
+      result.shooterSpeedMultiplier = baseShooterMultiplier * fatigue.slowMultiplier * phaseShooterMultiplier;
     } else {
-      result.shooterSpeedMultiplier = phaseShooterMultiplier;
+      result.shooterSpeedMultiplier = baseShooterMultiplier * phaseShooterMultiplier;
     }
   } else {
-    result.shooterSpeedMultiplier = phaseShooterMultiplier;
+    result.shooterSpeedMultiplier = baseShooterMultiplier * phaseShooterMultiplier;
   }
 
   const stumbling = rules.stumbleWindows?.some(

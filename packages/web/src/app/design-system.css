@@ -4028,6 +4028,18 @@
   white-space: nowrap;
 }
 
+.bonus-challenge-environment-notice.initial-training-feedback-notice--scoreboard {
+  width: max-content;
+  max-width: min(calc(100% - 40px), 404px);
+  padding-inline: clamp(8px, 2.4cqw, 13px);
+  font-size: clamp(8px, 2.25cqw, 11px);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: nowrap;
+}
+
 .duel-heavy-fatigue-notice::before {
   background: #f97316;
 }

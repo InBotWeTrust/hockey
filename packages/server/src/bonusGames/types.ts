@@ -96,6 +96,13 @@ const challengeFatigueSchema = z.object({
 });
 
 const challengeEnvironmentSchema = z.object({
+  baseModifiers: z.object({
+    goalMultiplier: z.number().min(0.1).max(3),
+    goalieMultiplier: z.number().min(0.1).max(3),
+    shooterMultiplier: z.number().min(0.1).max(3),
+    puckSpeedMultiplier: z.number().min(0.1).max(3),
+    label: z.string().trim().min(1).max(120),
+  }).strict().optional(),
   fatigue: challengeFatigueSchema.optional(),
   stumbleWindows: z.array(z.object({
     startMs: z.number().int().min(0).max(86_400_000),
@@ -115,6 +122,9 @@ export function parseBonusChallengeEnvironmentRules(
   const parsed = challengeEnvironmentSchema.safeParse(value);
   if (!parsed.success) throw new Error('invalid bonus challenge environment rules');
   return {
+    ...(parsed.data.baseModifiers === undefined
+      ? {}
+      : { baseModifiers: parsed.data.baseModifiers }),
     ...(parsed.data.fatigue === undefined ? {} : { fatigue: parsed.data.fatigue }),
     ...(parsed.data.stumbleWindows === undefined
       ? {}

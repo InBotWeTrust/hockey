@@ -1027,8 +1027,8 @@ function authoritativeShotInput(
     shooterTapTime: input.shooterTapTime,
     puckSpeedPerMs: rule.puckSpeedPerMs * condition.puckSpeedMultiplier,
     shooterFrequency: rule.shooterFrequency * condition.shooterSpeedMultiplier,
-    goalieFrequency: rule.goalieFrequency,
-    goalFrequency: rule.goalFrequency,
+    goalieFrequency: rule.goalieFrequency * condition.goalieSpeedMultiplier,
+    goalFrequency: rule.goalFrequency * condition.goalSpeedMultiplier,
   };
 }
 

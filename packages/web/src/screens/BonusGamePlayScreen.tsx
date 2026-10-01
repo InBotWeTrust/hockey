@@ -1288,6 +1288,9 @@ export function BonusGamePlayScreen(): JSX.Element {
         periodsTotal={attempt.rules.total_periods}
         speedOverrides={speedOverrides}
         duelCondition={challengeCondition}
+        statusNotice={challengeEnvironment?.baseModifiers?.label}
+        statusNoticeClassName="bonus-challenge-environment-notice"
+        statusNoticeUnderScoreboard={challengeEnvironment?.baseModifiers !== undefined}
         stickEffects={{
           ...STICK_NEUTRAL,
           shotZoneMultiplier: stickItem?.effects.shotZoneMultiplier ?? 1,

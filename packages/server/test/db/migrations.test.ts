@@ -288,10 +288,24 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       expect(game.preview_artwork_url).toBe(`/bonus-games/location-cards/${locationSlug}.webp`);
     }
     expect(challengeTrack[0]?.challenge_environment).toMatchObject({
-      fatigue: { slowdownStartMs: 10_000 },
+      baseModifiers: {
+        shooterMultiplier: 0.9,
+        puckSpeedMultiplier: 0.9,
+        label: 'Лёд тает · игрок −10% · шайба −10%',
+      },
+      fatigue: { slowdownStartMs: 8_000 },
     });
     expect(challengeTrack[6]?.challenge_environment).toMatchObject({
-      fatigue: { slowdownStartMs: 10_000 },
+      baseModifiers: { shooterMultiplier: 0.82, puckSpeedMultiplier: 0.85 },
+      fatigue: { slowdownStartMs: 6_000 },
+    });
+    expect(challengeTrack[9]?.challenge_environment).toMatchObject({
+      baseModifiers: {
+        goalMultiplier: 0.65,
+        goalieMultiplier: 0.63,
+        shooterMultiplier: 0.6,
+        puckSpeedMultiplier: 0.62,
+      },
     });
     expect(marksmanshipTrack.map((game) => game.reward_stars)).toEqual(
       speedTrack.map((game) => game.reward_stars),
