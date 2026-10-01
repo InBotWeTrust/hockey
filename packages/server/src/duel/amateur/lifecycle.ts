@@ -47,6 +47,7 @@ export interface TournamentDuelReservationRow {
 }
 
 const reservationLoadoutSchema = z.object({
+  reservationStartPeriod: z.number().int().min(1).optional(),
   items: z
     .array(
       z.object({
@@ -108,6 +109,27 @@ export async function releaseRemainingDuelInventoryReserve(
   participant: DuelInventoryReservationParticipant,
 ): Promise<void> {
   const items = reservationItemsFromSnapshot(participant.loadoutSnapshot);
+  const parsedSnapshot = reservationLoadoutSchema.safeParse(participant.loadoutSnapshot ?? {});
+  const reservationStartPeriod = parsedSnapshot.success
+    ? parsedSnapshot.data.reservationStartPeriod
+    : undefined;
+  const report =
+    reservationStartPeriod === undefined
+      ? []
+      : (
+          await client.query<{ inventory_report: unknown }>(
+            `select inventory_report from amateur_duel_participant where match_id = $1 and user_id = $2`,
+            [participant.matchId, participant.userId],
+          )
+        ).rows[0]?.inventory_report;
+  const reportedPeriods = z
+    .array(
+      z.object({
+        periodNumber: z.number().int().min(1),
+        consumed: z.array(z.object({ id: z.string().uuid(), charges: z.number().min(0) })),
+      }),
+    )
+    .safeParse(report);
   const reserveCostPerPeriod = items.reduce((sum, item) => sum + item.duelPeriodCost, 0);
   const periodsConsumed = Math.floor(
     Number(participant.consumedInventoryCharges) / Math.max(1, reserveCostPerPeriod),
@@ -115,7 +137,15 @@ export async function releaseRemainingDuelInventoryReserve(
   for (const item of items) {
     const consumedForItem = Math.min(
       item.chargesReserved,
-      periodsConsumed * item.duelPeriodCost,
+      reservationStartPeriod === undefined
+        ? periodsConsumed * item.duelPeriodCost
+        : reportedPeriods.success
+          ? reportedPeriods.data
+              .filter((period) => period.periodNumber >= reservationStartPeriod)
+              .flatMap((period) => period.consumed)
+              .filter((entry) => entry.id === (item.instanceId ?? item.itemId))
+              .reduce((sum, entry) => sum + entry.charges, 0)
+          : 0,
     );
     const remaining = Math.max(0, item.chargesReserved - consumedForItem);
     if (remaining <= 0) continue;

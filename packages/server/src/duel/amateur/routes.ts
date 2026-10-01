@@ -94,6 +94,11 @@ import {
 } from './periodLoadout.js';
 import { assertNotPlayoffOpponents, getBlockedPlayoffOpponentIds } from './playoffOpponentLock.js';
 import {
+  mergeEquipmentSelection,
+  equipmentSelectionChanged,
+  type EquipmentSelection,
+} from '../equipmentSelection.js';
+import {
   DEFAULT_DUEL_REWARD_RULES,
   duelRewardRulesSchema,
   parseDuelRewardRules,
@@ -651,6 +656,8 @@ interface LoadoutSnapshot {
   items: LoadoutItemSnapshot[];
   powerScore: number;
   powerCap: number;
+  profileSelection?: EquipmentSelection;
+  reservationStartPeriod?: number;
 }
 
 interface InventoryAvailabilityItem {
@@ -1012,6 +1019,10 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
         .default([]),
       powerScore: z.number().int().min(0).default(0),
       powerCap: z.number().int().min(0).default(powerCap),
+      profileSelection: z
+        .object({ stick: uuid.nullable(), skates: uuid.nullable(), nutrition: uuid.nullable() })
+        .optional(),
+      reservationStartPeriod: z.number().int().min(1).optional(),
     })
     .safeParse(value ?? {});
   if (!parsed.success) return emptyLoadout(powerCap);
@@ -1035,6 +1046,10 @@ function loadoutFromUnknown(value: unknown, powerCap = 0): LoadoutSnapshot {
     }),
     powerScore: parsed.data.powerScore,
     powerCap: parsed.data.powerCap,
+    ...(parsed.data.profileSelection ? { profileSelection: parsed.data.profileSelection } : {}),
+    ...(parsed.data.reservationStartPeriod
+      ? { reservationStartPeriod: parsed.data.reservationStartPeriod }
+      : {}),
   };
 }
 
@@ -1938,40 +1953,81 @@ function loadoutSelectionFromSnapshot(loadout: LoadoutSnapshot): LoadoutSelectio
   };
 }
 
-async function previousTournamentLoadoutSelection(
+async function profileEquipmentSelection(
   client: PoolClient,
-  matchId: string,
   userId: string,
-  powerCap: number,
-): Promise<LoadoutSelection | null> {
-  const { rows } = await client.query<{ loadout_snapshot: unknown }>(
-    `select previous_participant.loadout_snapshot
-       from tournament_fixture_segment current_segment
-       join tournament_fixture current_fixture on current_fixture.id = current_segment.fixture_id
-       join tournament_fixture previous_fixture
-         on previous_fixture.series_id = current_fixture.series_id
-       join tournament_fixture_segment previous_segment on previous_segment.fixture_id = previous_fixture.id
-       join amateur_duel_match previous_match on previous_match.id = previous_segment.duel_match_id
-       join amateur_duel_participant previous_participant
-         on previous_participant.match_id = previous_match.id and previous_participant.user_id = $2
-      where current_segment.duel_match_id = $1
-        and current_fixture.series_id is not null
-        and previous_match.source = 'tournament'
-        and previous_participant.tournament_loadout_period is not null
-        and (
-          previous_match.id <> $1
-          or previous_participant.tournament_loadout_period <= previous_participant.current_period
-        )
-      order by previous_fixture.fixture_number desc,
-               previous_segment.sequence_number desc,
-               previous_participant.tournament_loadout_period desc
-      limit 1`,
-    [matchId, userId],
+): Promise<EquipmentSelection> {
+  const { rows } = await client.query<{
+    stick: string | null;
+    skates: string | null;
+    nutrition: string | null;
+  }>(
+    `select coalesce(equipped_stick_instance_id, equipped_stick_item_id) as stick,
+            coalesce(equipped_skates_instance_id, equipped_skates_item_id) as skates,
+            coalesce(equipped_nutrition_instance_id, equipped_nutrition_item_id) as nutrition
+       from user_equipment where user_id = $1`,
+    [userId],
   );
-  const row = rows[0];
-  return row
-    ? loadoutSelectionFromSnapshot(loadoutFromUnknown(row.loadout_snapshot, powerCap))
-    : null;
+  return rows[0] ?? { stick: null, skates: null, nutrition: null };
+}
+
+function unconsumedReservationItems(loadout: LoadoutSnapshot, report: InventoryPeriodReport[]) {
+  const startPeriod = loadout.reservationStartPeriod ?? 1;
+  return loadout.items.map((item) => {
+    const consumed = report
+      .filter((period) => period.periodNumber >= startPeriod)
+      .flatMap((period) => period.consumed)
+      .filter((entry) => entry.id === item.id)
+      .reduce((sum, entry) => sum + entry.charges, 0);
+    return { ...item, chargesReserved: Math.max(0, item.chargesReserved - consumed) };
+  });
+}
+
+async function nextOrdinaryPeriodLoadout(
+  client: PoolClient,
+  participant: DuelParticipantRow,
+  rules: DuelRulesSnapshot,
+  changes: LoadoutSelection,
+): Promise<{ loadout: LoadoutSnapshot; previous: LoadoutItemSnapshot[]; changed: boolean }> {
+  const current = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+  const profile = await profileEquipmentSelection(client, participant.user_id);
+  const selected = mergeEquipmentSelection(
+    loadoutSelectionFromSnapshot(current) as EquipmentSelection,
+    current.profileSelection ?? null,
+    profile,
+    changes,
+  );
+  const previous = unconsumedReservationItems(
+    current,
+    inventoryReportFromUnknown(participant.inventory_report),
+  );
+  if (
+    !equipmentSelectionChanged(
+      loadoutSelectionFromSnapshot(current) as EquipmentSelection,
+      selected,
+    )
+  ) {
+    return { loadout: { ...current, profileSelection: profile }, previous, changed: false };
+  }
+  const reservedCredits = new Map<string, number>();
+  for (const item of previous) {
+    reservedCredits.set(item.id, item.chargesReserved);
+    reservedCredits.set(item.itemId, item.chargesReserved);
+  }
+  const loadout = await buildLoadoutSnapshot(client, participant.user_id, selected, rules, {
+    reservationPeriods: rules.totalPeriods - participant.current_period,
+    reservedCredits,
+    explicitSelection: Object.keys(changes).length > 0,
+  });
+  return {
+    loadout: {
+      ...loadout,
+      profileSelection: profile,
+      reservationStartPeriod: participant.current_period + 1,
+    },
+    previous,
+    changed: true,
+  };
 }
 
 async function buildTournamentLoadoutSnapshot(
@@ -1982,32 +2038,29 @@ async function buildTournamentLoadoutSnapshot(
     selection: LoadoutSelection;
     rules: DuelRulesSnapshot;
     previousBoundaryLoadout: LoadoutSnapshot | null;
+    previousGameLoadout?: LoadoutSnapshot | null;
   },
 ): Promise<LoadoutSnapshot> {
-  const explicitlySelected =
-    input.selection.stick !== undefined ||
-    input.selection.skates !== undefined ||
-    input.selection.nutrition !== undefined;
-  const carried = explicitlySelected
-    ? input.selection
-    : await previousTournamentLoadoutSelection(
-        client,
-        input.matchId,
-        input.userId,
-        input.rules.powerCap,
-      );
-  const selected = carried ?? {};
+  const profile = await profileEquipmentSelection(client, input.userId);
+  const previous = input.previousBoundaryLoadout ?? input.previousGameLoadout ?? null;
+  const selected = mergeEquipmentSelection(
+    previous ? (loadoutSelectionFromSnapshot(previous) as EquipmentSelection) : profile,
+    previous?.profileSelection ?? null,
+    profile,
+    input.selection,
+  );
   const reservedCredits = new Map<string, number>();
   for (const item of input.previousBoundaryLoadout?.items ?? []) {
     reservedCredits.set(item.id, item.chargesReserved);
     reservedCredits.set(item.itemId, item.chargesReserved);
   }
-  return buildLoadoutSnapshot(client, input.userId, selected, input.rules, {
+  const loadout = await buildLoadoutSnapshot(client, input.userId, selected, input.rules, {
     reservationPeriods: 1,
     reservedCredits,
-    explicitSelection: explicitlySelected,
+    explicitSelection: Object.keys(input.selection).length > 0,
     requirePositiveResource: true,
   });
+  return { ...loadout, profileSelection: profile };
 }
 
 function sameLoadoutSelection(left: LoadoutSnapshot, right: LoadoutSnapshot): boolean {
@@ -2017,34 +2070,6 @@ function sameLoadoutSelection(left: LoadoutSnapshot, right: LoadoutSnapshot): bo
       .sort()
       .join('|');
   return selection(left) === selection(right);
-}
-
-function loadoutWithUpdatedShotStick(
-  current: LoadoutSnapshot,
-  stickOnly: LoadoutSnapshot,
-  rules: DuelRulesSnapshot,
-): LoadoutSnapshot {
-  const currentStick = current.items.find((item) => item.kind === 'stick');
-  if (currentStick && currentStick.chargesReserved > 0) {
-    throw new AppError('conflict', 'cannot switch reserved duel stick between periods', 409);
-  }
-  const nextStick = stickOnly.items.find((item) => item.kind === 'stick');
-  if (nextStick && nextStick.resourceUnit !== 'shot') {
-    throw new AppError(
-      'conflict',
-      'only shot-resource sticks can be switched between periods',
-      409,
-    );
-  }
-  const items = [
-    ...current.items.filter((item) => item.kind !== 'stick'),
-    ...(nextStick ? [nextStick] : []),
-  ];
-  const powerScore = items.reduce((sum, item) => sum + item.powerScore, 0);
-  if (rules.rankedEnabled && powerScore > rules.powerCap) {
-    throw new AppError('conflict', 'duel loadout exceeds power cap', 409);
-  }
-  return { items, powerScore, powerCap: rules.powerCap };
 }
 
 function loadoutWithActiveShotStick(
@@ -2073,7 +2098,7 @@ function loadoutWithActiveShotStick(
   if (rules.rankedEnabled && powerScore > rules.powerCap) {
     throw new AppError('conflict', 'duel loadout exceeds power cap', 409);
   }
-  return { items, powerScore, powerCap: rules.powerCap };
+  return { ...current, items, powerScore, powerCap: rules.powerCap };
 }
 
 async function syncLegacyInventoryAggregate(
@@ -2186,7 +2211,11 @@ async function consumeInventoryForPeriod(
         [participant.user_id, item.itemId, item.duelPeriodCost],
       );
     }
-    const alreadyConsumed = Number(participant.consumed_inventory_charges);
+    const alreadyConsumed = inventoryReportFromUnknown(participant.inventory_report)
+      .filter((period) => period.periodNumber >= (loadout.reservationStartPeriod ?? 1))
+      .flatMap((period) => period.consumed)
+      .filter((entry) => entry.id === item.id)
+      .reduce((sum, entry) => sum + entry.charges, 0);
     const remainingReserved = Math.max(
       0,
       item.chargesReserved - alreadyConsumed - item.duelPeriodCost,
@@ -2818,8 +2847,7 @@ async function settleMatchIfReady(
     const noParticipantStarted =
       shotCount.rows[0]?.total === 0 &&
       participants.every(
-        (participant) =>
-          Number(participant.shots_taken) === 0 && Number(participant.goals) === 0,
+        (participant) => Number(participant.shots_taken) === 0 && Number(participant.goals) === 0,
       );
     if (noParticipantStarted) {
       const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
@@ -2957,9 +2985,10 @@ async function settleMatchIfReady(
   }
 
   const stake = settlementPolicy.settleStake ? Number(match.stake_amount) : 0;
-  const ordinaryRewardSettings = match.ordinary_reward_snapshot === null
-    ? null
-    : ordinaryRewardSettingsSchema.parse(match.ordinary_reward_snapshot);
+  const ordinaryRewardSettings =
+    match.ordinary_reward_snapshot === null
+      ? null
+      : ordinaryRewardSettingsSchema.parse(match.ordinary_reward_snapshot);
   if (settlementPolicy.grantTemplateRewards) {
     // Full rewards are retryable when an account has no room. Never truncate a
     // promised amount or let PostgreSQL overflow after a partial payout.
@@ -2985,16 +3014,25 @@ async function settleMatchIfReady(
           : participantOutcome === 'draw'
             ? rules.drawCurrencyReward + stake
             : 0);
-      const ordinaryReward = ordinaryRewardSettings === null ? null : ordinaryDuelReward(
-        ordinaryRewardSettings,
-        participantOutcome,
-        Number(participant.experience_snapshot),
-        Number(other.experience_snapshot),
-        participant.state === 'completed',
-      );
-      const stars = ordinaryReward?.stars ??
+      const ordinaryReward =
+        ordinaryRewardSettings === null
+          ? null
+          : ordinaryDuelReward(
+              ordinaryRewardSettings,
+              participantOutcome,
+              Number(participant.experience_snapshot),
+              Number(other.experience_snapshot),
+              participant.state === 'completed',
+            );
+      const stars =
+        ordinaryReward?.stars ??
         reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
-      const account = await client.query<{ xp: number; experience: number; coins: number; tokens: number }>(
+      const account = await client.query<{
+        xp: number;
+        experience: number;
+        coins: number;
+        tokens: number;
+      }>(
         `select u.xp,u.experience,coalesce(c.balance,0) as coins,coalesce(t.balance,0) as tokens from users u
           left join user_currency_account c on c.user_id=u.id
           left join user_reward_token_account t on t.user_id=u.id where u.id=$1`,
@@ -3094,14 +3132,18 @@ async function settleMatchIfReady(
           : participantOutcome === 'draw'
             ? rules.drawCurrencyReward
             : 0);
-      const ordinaryReward = ordinaryRewardSettings === null ? null : ordinaryDuelReward(
-        ordinaryRewardSettings,
-        participantOutcome,
-        experience,
-        opponentExperience,
-        participant.state === 'completed',
-      );
-      const stars = ordinaryReward?.stars ??
+      const ordinaryReward =
+        ordinaryRewardSettings === null
+          ? null
+          : ordinaryDuelReward(
+              ordinaryRewardSettings,
+              participantOutcome,
+              experience,
+              opponentExperience,
+              participant.state === 'completed',
+            );
+      const stars =
+        ordinaryReward?.stars ??
         reward.stars + (participantOutcome === 'win' ? rules.winStarReward : 0);
       if (stars > 0) {
         await client.query('update users set xp = xp + $2 where id = $1', [
@@ -3143,7 +3185,12 @@ async function settleMatchIfReady(
       }
     }
   }
-  if (settlementPolicy.grantTemplateRewards && ordinaryRewardSettings === null && winnerUserId !== null && rules.winStarReward > 0) {
+  if (
+    settlementPolicy.grantTemplateRewards &&
+    ordinaryRewardSettings === null &&
+    winnerUserId !== null &&
+    rules.winStarReward > 0
+  ) {
     await appendEvent(client, winnerUserId, 'amateur_duel_star_reward', {
       match_id: match.id,
       outcome,
@@ -3630,19 +3677,29 @@ async function participantWithTournamentLoadoutPreview(
   rules: DuelRulesSnapshot,
 ): Promise<DuelParticipantRow> {
   if (
+    match.source !== 'tournament' &&
+    participant.state === 'accepted' &&
+    participant.current_period < rules.totalPeriods
+  ) {
+    const { loadout } = await nextOrdinaryPeriodLoadout(client, participant, rules, {});
+    return { ...participant, loadout_snapshot: loadout };
+  }
+  if (
     match.source !== 'tournament' ||
     !usesTournamentPeriodLoadoutLifecycle(rules) ||
-    participant.state !== 'accepted' ||
-    participant.tournament_loadout_period === participant.current_period + 1
+    participant.state !== 'accepted'
   ) {
     return participant;
   }
+  const previous = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+  const confirmed = participant.tournament_loadout_period === participant.current_period + 1;
   const loadout = await buildTournamentLoadoutSnapshot(client, {
     matchId: match.id,
     userId: participant.user_id,
     selection: {},
     rules,
-    previousBoundaryLoadout: null,
+    previousBoundaryLoadout: confirmed ? previous : null,
+    previousGameLoadout: participant.current_period > 0 ? previous : null,
   });
   return { ...participant, loadout_snapshot: loadout };
 }
@@ -4058,18 +4115,27 @@ async function assertOpenDuelSlots(client: PoolClient, userIds: string[]): Promi
   }
 }
 
-async function openDuelState(client: PoolClient, userIds: string[]): Promise<{
+async function openDuelState(
+  client: PoolClient,
+  userIds: string[],
+): Promise<{
   counts: Map<string, number>;
   outgoing: Map<string, number>;
   pairs: Set<string>;
 }> {
   const { rows } = await client.query<{
-    challenger_user_id: string; opponent_user_id: string; source: AmateurDuelSource; status: MatchStatus;
-  }>(`select challenger_user_id, opponent_user_id, source, status
+    challenger_user_id: string;
+    opponent_user_id: string;
+    source: AmateurDuelSource;
+    status: MatchStatus;
+  }>(
+    `select challenger_user_id, opponent_user_id, source, status
        from amateur_duel_match
       where status in ('invited', 'ready_check', 'active')
         and source is distinct from 'tournament'
-        and (challenger_user_id = any($1::uuid[]) or opponent_user_id = any($1::uuid[]))`, [userIds]);
+        and (challenger_user_id = any($1::uuid[]) or opponent_user_id = any($1::uuid[]))`,
+    [userIds],
+  );
   const counts = new Map<string, number>();
   const outgoing = new Map<string, number>();
   const pairs = new Set<string>();
@@ -4613,34 +4679,71 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const settings = await getGameSettings(client);
         const now = new Date();
         const templates = await fetchMatchmakingTemplates(
-          client, ['express', 'express_plus', 'classic'], now, false);
-        const durations = new Map(templates.map((template) => [template.duel_kind,
-          duelAdmissionDurationMs(makeRulesSnapshot(template, settings))]));
-        const locks = await getTournamentGameplayLockStates(client,
-          [req.user.id, query.opponent_user_id], now);
-        const capacity = await duelCapacities(client, [req.user.id, query.opponent_user_id],
-          settings.amateur.limits, now);
+          client,
+          ['express', 'express_plus', 'classic'],
+          now,
+          false,
+        );
+        const durations = new Map(
+          templates.map((template) => [
+            template.duel_kind,
+            duelAdmissionDurationMs(makeRulesSnapshot(template, settings)),
+          ]),
+        );
+        const locks = await getTournamentGameplayLockStates(
+          client,
+          [req.user.id, query.opponent_user_id],
+          now,
+        );
+        const capacity = await duelCapacities(
+          client,
+          [req.user.id, query.opponent_user_id],
+          settings.amateur.limits,
+          now,
+        );
         const open = await openDuelState(client, [req.user.id, query.opponent_user_id]);
-        const formats = {} as Record<DuelKind, {
-          available: boolean;
-          reason: string | null;
-          retryAt: string | null;
-          player: 'self' | 'opponent' | null;
-        }>;
+        const formats = {} as Record<
+          DuelKind,
+          {
+            available: boolean;
+            reason: string | null;
+            retryAt: string | null;
+            player: 'self' | 'opponent' | null;
+          }
+        >;
         for (const kind of ['express', 'express_plus', 'classic'] as const) {
           const duration = durations.get(kind) ?? 0;
           const selfLock = getSafeSegmentStartLockFromState(locks.get(req.user.id)!, now, duration);
-          const opponentLock = getSafeSegmentStartLockFromState(locks.get(query.opponent_user_id)!, now, duration);
+          const opponentLock = getSafeSegmentStartLockFromState(
+            locks.get(query.opponent_user_id)!,
+            now,
+            duration,
+          );
           const self = capacity.get(req.user.id)![kind];
           const opponent = capacity.get(query.opponent_user_id)![kind];
-          const pair = pairAvailability(self, opponent,
-            open.counts.get(req.user.id) ?? 0, open.counts.get(query.opponent_user_id) ?? 0,
-            open.outgoing.get(req.user.id) ?? 0, MAX_OPEN_DUEL_SLOTS,
-            Math.min(settings.amateur.limits.outgoingInvites, self.available));
+          const pair = pairAvailability(
+            self,
+            opponent,
+            open.counts.get(req.user.id) ?? 0,
+            open.counts.get(query.opponent_user_id) ?? 0,
+            open.outgoing.get(req.user.id) ?? 0,
+            MAX_OPEN_DUEL_SLOTS,
+            Math.min(settings.amateur.limits.outgoingInvites, self.available),
+          );
           const blocked = selfLock.blocked
-            ? { available: false, reason: 'tournament', player: 'self' as const, retryAt: selfLock.endsAt }
+            ? {
+                available: false,
+                reason: 'tournament',
+                player: 'self' as const,
+                retryAt: selfLock.endsAt,
+              }
             : opponentLock.blocked
-              ? { available: false, reason: 'tournament', player: 'opponent' as const, retryAt: opponentLock.endsAt }
+              ? {
+                  available: false,
+                  reason: 'tournament',
+                  player: 'opponent' as const,
+                  retryAt: opponentLock.endsAt,
+                }
               : pair;
           formats[kind] = {
             available: blocked.available,
@@ -4663,19 +4766,24 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       })
       .parse(req.query);
     const requestedKinds = query.kinds?.split(',') ?? ['express', 'express_plus', 'classic'];
-    if (requestedKinds.length === 0 || requestedKinds.some((kind) =>
-      !['express', 'express_plus', 'classic'].includes(kind))) {
+    if (
+      requestedKinds.length === 0 ||
+      requestedKinds.some((kind) => !['express', 'express_plus', 'classic'].includes(kind))
+    ) {
       throw new AppError('validation_error', 'invalid duel kinds', 400);
     }
     return withTransaction(app, async (client) => {
       const settings = await getGameSettings(client);
       const now = new Date();
-      const selfCapacity = (await duelCapacities(client, [req.user.id], settings.amateur.limits, now))
-        .get(req.user.id)!;
+      const selfCapacity = (
+        await duelCapacities(client, [req.user.id], settings.amateur.limits, now)
+      ).get(req.user.id)!;
       const selfOpen = await openDuelState(client, [req.user.id]);
-      if (requestedKinds.every((kind) => selfCapacity[kind as DuelKind].reason !== null) ||
-          (selfOpen.counts.get(req.user.id) ?? 0) >= MAX_OPEN_DUEL_SLOTS ||
-          (selfOpen.outgoing.get(req.user.id) ?? 0) >= settings.amateur.limits.outgoingInvites) {
+      if (
+        requestedKinds.every((kind) => selfCapacity[kind as DuelKind].reason !== null) ||
+        (selfOpen.counts.get(req.user.id) ?? 0) >= MAX_OPEN_DUEL_SLOTS ||
+        (selfOpen.outgoing.get(req.user.id) ?? 0) >= settings.amateur.limits.outgoingInvites
+      ) {
         return { users: [] };
       }
       type CandidateRow = {
@@ -4687,16 +4795,25 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         level: number;
       };
       const templates = await fetchMatchmakingTemplates(
-        client, ['express', 'express_plus', 'classic'], now, false,
+        client,
+        ['express', 'express_plus', 'classic'],
+        now,
+        false,
       );
       const formatDurations = templates.map((template) => ({
         kind: template.duel_kind,
         durationMs: duelAdmissionDurationMs(makeRulesSnapshot(template, settings)),
       }));
       const users: Array<{
-        userId: string; displayName: string; avatarUrl: string | null; lastSeenAt: string | null;
+        userId: string;
+        displayName: string;
+        avatarUrl: string | null;
+        lastSeenAt: string | null;
         format_locks: Record<string, GameplayLockDTO | null>;
-        format_limits: Record<string, { available: boolean; reason: string | null; retryAt: string | null }>;
+        format_limits: Record<
+          string,
+          { available: boolean; reason: string | null; retryAt: string | null }
+        >;
       }> = [];
       let offset = 0;
       while (users.length < query.limit) {
@@ -4715,9 +4832,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const ids = rows.map((row) => row.id);
         const locks = await getTournamentGameplayLockStates(client, ids, now);
         const playoffOpponents = await getBlockedPlayoffOpponentIds(client, req.user.id, ids);
-        const available = rows.filter((row) => !locks.get(row.id)!.blocked && !playoffOpponents.has(row.id));
-        const capacities = await duelCapacities(client, available.map((row) => row.id),
-          settings.amateur.limits, now);
+        const available = rows.filter(
+          (row) => !locks.get(row.id)!.blocked && !playoffOpponents.has(row.id),
+        );
+        const capacities = await duelCapacities(
+          client,
+          available.map((row) => row.id),
+          settings.amateur.limits,
+          now,
+        );
         const open = await openDuelState(client, [req.user.id, ...available.map((row) => row.id)]);
         for (const row of available) {
           if (open.pairs.has([req.user.id, row.id].sort().join(':'))) continue;
@@ -4725,19 +4848,37 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             (['express', 'express_plus', 'classic'] as const).map((kind) => {
               const self = selfCapacity[kind];
               const opponent = capacities.get(row.id)![kind];
-              const result = pairAvailability(self, opponent,
-                selfOpen.counts.get(req.user.id) ?? 0, open.counts.get(row.id) ?? 0,
-                selfOpen.outgoing.get(req.user.id) ?? 0, MAX_OPEN_DUEL_SLOTS,
-                Math.min(settings.amateur.limits.outgoingInvites, self.available));
-              return [kind, { available: result.available, reason: result.reason,
-                retryAt: result.retryAt?.toISOString() ?? null }];
+              const result = pairAvailability(
+                self,
+                opponent,
+                selfOpen.counts.get(req.user.id) ?? 0,
+                open.counts.get(row.id) ?? 0,
+                selfOpen.outgoing.get(req.user.id) ?? 0,
+                MAX_OPEN_DUEL_SLOTS,
+                Math.min(settings.amateur.limits.outgoingInvites, self.available),
+              );
+              return [
+                kind,
+                {
+                  available: result.available,
+                  reason: result.reason,
+                  retryAt: result.retryAt?.toISOString() ?? null,
+                },
+              ];
             }),
           );
-          const formatLocks = Object.fromEntries(formatDurations.map(({ kind, durationMs }) => [
-            kind, toDuelLockDto(getSafeSegmentStartLockFromState(locks.get(row.id)!, now, durationMs)),
-          ]));
-          if (!requestedKinds.some((kind) =>
-            formatLimits[kind]?.available && !formatLocks[kind]?.blocked)) continue;
+          const formatLocks = Object.fromEntries(
+            formatDurations.map(({ kind, durationMs }) => [
+              kind,
+              toDuelLockDto(getSafeSegmentStartLockFromState(locks.get(row.id)!, now, durationMs)),
+            ]),
+          );
+          if (
+            !requestedKinds.some(
+              (kind) => formatLimits[kind]?.available && !formatLocks[kind]?.blocked,
+            )
+          )
+            continue;
           users.push({
             userId: row.id,
             displayName: row.display_name,
@@ -4830,8 +4971,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
       }
       const limitSettings = (await getGameSettings(client)).amateur.limits;
-      const formatCapacities = (await duelCapacities(client, [req.user.id], limitSettings, now))
-        .get(req.user.id)!;
+      const formatCapacities = (
+        await duelCapacities(client, [req.user.id], limitSettings, now)
+      ).get(req.user.id)!;
       const limitUsage = await duelLimitUsage(client, req.user.id, limitSettings, now);
       return {
         matches,
@@ -4840,11 +4982,14 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         formatLimits: Object.fromEntries(
           (['express', 'express_plus', 'classic'] as const).map((kind) => {
             const capacity = formatCapacities[kind];
-            return [kind, {
-              available: capacity.reason === null,
-              reason: capacity.reason,
-              retryAt: capacity.retryAt?.toISOString() ?? null,
-            }];
+            return [
+              kind,
+              {
+                available: capacity.reason === null,
+                reason: capacity.reason,
+                retryAt: capacity.retryAt?.toISOString() ?? null,
+              },
+            ];
           }),
         ),
         limitUsage,
@@ -5201,7 +5346,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         now,
       );
       await assertOutgoingInviteCapacity(
-        client, req.user.id, template.duel_kind, settings.amateur.limits, now,
+        client,
+        req.user.id,
+        template.duel_kind,
+        settings.amateur.limits,
+        now,
       );
       await assertOrdinaryDuelStart(
         client,
@@ -5457,7 +5606,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         await assertFullAmateurAccess(client, req.user.id);
         match = (await reconcileMatch(client, match, now)).match;
-        if (match.status !== 'invited' && match.status !== 'ready_check' && match.status !== 'active') {
+        if (
+          match.status !== 'invited' &&
+          match.status !== 'ready_check' &&
+          match.status !== 'active'
+        ) {
           throw new AppError('conflict', 'duel has already started', 409);
         }
         const rules = parseRulesSnapshot(match.rules_snapshot);
@@ -5469,14 +5622,19 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           if (shots.rows[0]?.total !== 0) {
             throw new AppError('conflict', 'duel has already started', 409);
           }
-          await client.query(
-            'update amateur_duel_match set ends_at = $2 where id = $1',
-            [match.id, now],
-          );
-          match = (await settleMatchIfReady(client, await fetchMatchForUpdate(client, match.id), now)).match;
+          await client.query('update amateur_duel_match set ends_at = $2 where id = $1', [
+            match.id,
+            now,
+          ]);
+          match = (
+            await settleMatchIfReady(client, await fetchMatchForUpdate(client, match.id), now)
+          ).match;
           return {
             matchId: match.id,
-            opponentUserId: match.opponent_user_id === req.user.id ? match.challenger_user_id : match.opponent_user_id,
+            opponentUserId:
+              match.opponent_user_id === req.user.id
+                ? match.challenger_user_id
+                : match.opponent_user_id,
             title: rules.title,
             match: await buildMatchStateDto(client, match, req.user.id, now),
           };
@@ -5571,6 +5729,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)
             ? emptyLoadout(rules.powerCap)
             : await buildLoadoutSnapshot(client, req.user.id, parsed.data.loadout, rules);
+        if (match.source !== 'tournament') {
+          loadout.profileSelection = await profileEquipmentSelection(client, req.user.id);
+          loadout.reservationStartPeriod = 1;
+        }
         await client.query(
           `update amateur_duel_participant
               set state = 'ready',
@@ -5708,6 +5870,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           selection: parsed.data.loadout,
           rules,
           previousBoundaryLoadout,
+          previousGameLoadout:
+            participant.current_period > 0
+              ? loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap)
+              : null,
         });
         if (
           previousBoundaryLoadout === null ||
@@ -5877,7 +6043,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         for (const kind of eligibleKinds) {
           if (!opponentKinds.includes(kind)) continue;
-          if ((await duelCapacity(client, ticket.user_id, kind, settings.amateur.limits, now)).reason)
+          if (
+            (await duelCapacity(client, ticket.user_id, kind, settings.amateur.limits, now)).reason
+          )
             continue;
           const template = templatesByKind.get(kind)!;
           const duration = duelAdmissionDurationMs(makeRulesSnapshot(template, settings));
@@ -6127,6 +6295,41 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             409,
           );
         }
+        if (match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)) {
+          const previous = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
+          const loadout = await buildTournamentLoadoutSnapshot(client, {
+            matchId: match.id,
+            userId: req.user.id,
+            selection: {},
+            rules,
+            previousBoundaryLoadout: previous,
+          });
+          if (!sameLoadoutSelection(previous, loadout)) {
+            const delta = await adjustTournamentPeriodReservation(client, {
+              userId: req.user.id,
+              matchId: match.id,
+              previous: previous.items,
+              next: loadout.items,
+            });
+            participant.loadout_snapshot = loadout;
+            await client.query(
+              `update amateur_duel_participant
+                  set loadout_snapshot = $3,
+                      reserved_inventory_charges = reserved_inventory_charges + $4,
+                      inventory_effects_snapshot = $5,
+                      tournament_loadout_version = tournament_loadout_version + 1,
+                      updated_at = now()
+                where match_id = $1 and user_id = $2`,
+              [
+                match.id,
+                req.user.id,
+                JSON.stringify(loadout),
+                delta,
+                JSON.stringify(combineEffects(loadout.items)),
+              ],
+            );
+          }
+        }
         if (parsed.data.loadout !== undefined) {
           if (match.source === 'tournament' && usesTournamentPeriodLoadoutLifecycle(rules)) {
             throw new AppError(
@@ -6135,21 +6338,37 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               409,
             );
           }
-          const currentLoadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
-          const stickOnly = await buildLoadoutSnapshot(
+        }
+        if (match.source !== 'tournament') {
+          const { loadout, previous, changed } = await nextOrdinaryPeriodLoadout(
             client,
-            req.user.id,
-            { stick: parsed.data.loadout.stick ?? null },
+            participant,
             rules,
+            parsed.data.loadout ?? {},
           );
-          const nextLoadout = loadoutWithUpdatedShotStick(currentLoadout, stickOnly, rules);
-          participant.loadout_snapshot = nextLoadout;
+          const reservationDelta = changed
+            ? await adjustTournamentPeriodReservation(client, {
+                userId: req.user.id,
+                matchId: match.id,
+                previous,
+                next: loadout.items,
+              })
+            : 0;
+          participant.loadout_snapshot = loadout;
           await client.query(
             `update amateur_duel_participant
                 set loadout_snapshot = $3,
+                    reserved_inventory_charges = reserved_inventory_charges + $4,
+                    inventory_effects_snapshot = $5,
                     updated_at = now()
               where match_id = $1 and user_id = $2`,
-            [match.id, req.user.id, JSON.stringify(nextLoadout)],
+            [
+              match.id,
+              req.user.id,
+              JSON.stringify(loadout),
+              reservationDelta,
+              JSON.stringify(combineEffects(loadout.items)),
+            ],
           );
         }
         await consumeInventoryForPeriod(client, participant, rules);
@@ -6538,7 +6757,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       [seasonKey],
     );
     const closedSettings = snapshot.rows[0]?.settings_snapshot as
-      | typeof settings.amateur.monthlyRating | undefined;
+      | typeof settings.amateur.monthlyRating
+      | undefined;
     const { rows } = await app.pg.query<RatingRow>(
       `with entries as (
          select entry.* from amateur_duel_rating_match entry
@@ -6587,7 +6807,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       season_key: seasonKey,
       scope: query.scope,
       reward_rules: closedSettings?.[query.scope]?.first
-        ? closedSettings[query.scope] : settings.amateur.monthlyRating[query.scope],
+        ? closedSettings[query.scope]
+        : settings.amateur.monthlyRating[query.scope],
       rating_visible: settings.amateur.ratingVisibility === 'enabled',
       available_seasons: seasonRows.map((row) => row.season_key),
       rating,
