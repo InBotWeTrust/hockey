@@ -5,6 +5,8 @@ import {
   PUCK_START,
   classifyMarksmanshipShot,
   getBonusChallengeCondition,
+  getBonusChallengeShooterMotionTime,
+  type BonusChallengeShotPause,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
   STICK_NEUTRAL,
@@ -101,7 +103,7 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70] as const;
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
@@ -245,11 +247,15 @@ export async function loadBonusAttemptDto(
     [attempt.id, attempt.current_period],
   );
   const derived = rows[0]!;
-  return toBonusAttemptDto(attempt, {
+  const dto = toBonusAttemptDto(attempt, {
     currentPeriodShotsTaken: Number(derived.current_period_shots_taken),
     rewardGranted: derived.reward_granted,
     currentLoadout: derived.current_loadout,
   });
+  if (Number(attempt.game_core_version) >= 71 && attempt.rules_snapshot.challengeEnvironment) {
+    dto.currentPeriodShotPauses = (await fetchBonusPeriodShotState(client, attempt.id, Number(attempt.current_period))).shotPauses;
+  }
+  return dto;
 }
 
 export async function reconcileCurrentBonusAttempt(
@@ -934,6 +940,7 @@ interface BonusPeriodShotState {
   lastTapTime: number | null;
   lastShooterTapTime: number | null;
   goalInputs: MarksmanshipSeriesGoal[];
+  shotPauses: BonusChallengeShotPause[];
 }
 
 async function fetchBonusPeriodShotState(
@@ -946,6 +953,7 @@ async function fetchBonusPeriodShotState(
     last_tap_time: number | null;
     last_shooter_tap_time: number | null;
     goal_inputs: MarksmanshipSeriesGoal[];
+    shot_pauses: BonusChallengeShotPause[];
   }>(
     `select count(*)::int as count,
             (array_agg(
@@ -964,12 +972,16 @@ async function fetchBonusPeriodShotState(
                 ) order by shot_index
               ) filter (where server_result = 'goal'),
               '[]'::jsonb
-            ) as goal_inputs
+            ) as goal_inputs,
+            coalesce(jsonb_agg(jsonb_build_object(
+              'tapTime', (input_payload->>'tapTime')::double precision,
+              'flightMs', ($3::double precision / (input_payload->>'puckSpeedPerMs')::double precision)
+            ) order by shot_index), '[]'::jsonb) as shot_pauses
        from shot_session
       where mode = 'bonus'
         and bonus_game_attempt_id = $1
         and period_number = $2`,
-    [attemptId, periodNumber],
+    [attemptId, periodNumber, PUCK_START.y - GOAL_OPENING.y],
   );
   const row = rows[0]!;
   return {
@@ -981,6 +993,7 @@ async function fetchBonusPeriodShotState(
       tapTime: Number(goal.tapTime),
       shooterTapTime: Number(goal.shooterTapTime),
     })),
+    shotPauses: row.shot_pauses,
   };
 }
 
@@ -1084,6 +1097,7 @@ function assertBonusShotTimeFresh(
   input: SubmitBonusShotInput['input'],
   rule: BonusPeriodRule,
   now: Date,
+  shotPauses?: readonly BonusChallengeShotPause[],
 ): void {
   if (attempt.period_started_at === null) {
     throw new AppError('bonus_period_not_ready', 'active bonus period has no start time', 409);
@@ -1094,7 +1108,9 @@ function assertBonusShotTimeFresh(
   // Period expiry remains wall-clock based, while the deterministic scene uses
   // the same one-second result pause as the daily game after every accepted shot.
   const expectedSceneTime = Math.max(0, elapsedMs - previousShots * BONUS_SHOT_RESULT_PAUSE_MS);
-  const expectedShooterTime = expectedSceneTime - previousShots * flightMs;
+  const expectedShooterTime = expectedSceneTime - (shotPauses
+    ? shotPauses.reduce((total, pause) => total + pause.flightMs, 0)
+    : previousShots * flightMs);
   const accumulatedTimerDrift = previousShots * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS;
   const isNearAuthoritativeClock = (actual: number, expected: number): boolean =>
     actual >= expected - BONUS_SHOT_STALE_TOLERANCE_MS - accumulatedTimerDrift &&
@@ -1110,7 +1126,7 @@ function assertBonusShotTimeFresh(
   const shooterLag = input.tapTime - input.shooterTapTime;
   const previousShooterLag =
     previousInput === null ? 0 : previousInput.tapTime - previousInput.shooterTapTime;
-  const expectedLagIncrease = previousInput === null ? 0 : flightMs;
+  const expectedLagIncrease = previousInput === null ? 0 : (shotPauses?.at(-1)?.flightMs ?? flightMs);
   // Validate one rendered flight at a time. Comparing against a theoretical
   // zero-drift total made a harmless few milliseconds per animation accumulate
   // until a later shot was rejected solely because its index was high.
@@ -1276,6 +1292,9 @@ export async function submitBonusShot(
             rule,
             attempt.rules_snapshot.challengeEnvironment,
           );
+          const useMotionClock = Number(attempt.game_core_version) >= 71 &&
+            attempt.rules_snapshot.challengeEnvironment !== null &&
+            attempt.rules_snapshot.challengeEnvironment !== undefined;
           const effectiveRule = {
             ...rule,
             puckSpeedPerMs: shotInput.puckSpeedPerMs ?? rule.puckSpeedPerMs,
@@ -1288,7 +1307,15 @@ export async function submitBonusShot(
             input.input,
             effectiveRule,
             input.now,
+            useMotionClock ? periodShotState.shotPauses : undefined,
           );
+          // Check wall-clock bounds before integrating a client-supplied elapsed time.
+          if (useMotionClock) {
+            shotInput.shooterMotionTime = getBonusChallengeShooterMotionTime(
+              attempt.rules_snapshot.challengeEnvironment!, input.input.tapTime,
+              rule.shooterFrequency, periodShotState.shotPauses);
+            shotInput.shooterFrequency = rule.shooterFrequency;
+          }
           const shotSeed = deriveShotSeed(
             attempt.attempt_seed,
             attempt.current_period,

@@ -250,6 +250,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     closed_at: attempt.closedAt,
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
+    ...(attempt.currentPeriodShotPauses ? { current_period_shot_pauses: attempt.currentPeriodShotPauses } : {}),
     goals: attempt.goals,
     total_points: attempt.totalPoints,
     current_goal_streak: attempt.currentGoalStreak,

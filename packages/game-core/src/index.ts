@@ -178,6 +178,8 @@ export {
 } from './duelInventory.js';
 export {
   getBonusChallengeCondition,
+  getBonusChallengeShooterMotionTime,
+  type BonusChallengeShotPause,
   type BonusChallengeCondition,
   type BonusChallengeEnvironmentRules,
   type BonusChallengeFatigueRules,

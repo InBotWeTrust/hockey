@@ -75,9 +75,12 @@ export function deriveBonusGameClockBasis(attempt: BonusGameAttempt): BonusGameC
   const acceptedShots = Math.max(0, attempt.current_period_shots_taken);
   const sceneElapsedMs = Math.max(0, wallElapsedMs - acceptedShots * SHOT_RESULT_PAUSE_MS);
   const flightMs = (PUCK_START.y - GOAL_OPENING.y) / rule.puck_speed_per_ms;
+  const flightTotal = attempt.current_period_shot_pauses
+    ? attempt.current_period_shot_pauses.reduce((sum, pause) => sum + pause.flightMs, 0)
+    : acceptedShots * flightMs;
   return {
     sceneElapsedMs,
-    shooterElapsedMs: Math.max(0, sceneElapsedMs - acceptedShots * flightMs),
+    shooterElapsedMs: Math.max(0, sceneElapsedMs - flightTotal),
   };
 }
 

@@ -212,6 +212,7 @@ export interface BonusGameAttempt {
   reward_granted: boolean;
   attempt_seed: string;
   game_core_version: number;
+  current_period_shot_pauses?: { tapTime: number; flightMs: number }[];
   definition_revision: number;
   server_now: string;
   rules: BonusAttemptRules;

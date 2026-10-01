@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for bonus challenge environment modifiers', () => {
-    expect(GAME_CORE_VERSION).toBe(70);
+  it('is bumped for deterministic bonus challenge movement clocks', () => {
+    expect(GAME_CORE_VERSION).toBe(71);
   });
 });

@@ -4118,6 +4118,25 @@
   text-wrap: nowrap;
 }
 
+.fitted-scoreboard-notice.initial-training-feedback-notice--scoreboard {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-inline: 13px;
+  font-size: 12px;
+  white-space: nowrap;
+  text-wrap: nowrap;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.fitted-scoreboard-notice > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .duel-heavy-fatigue-notice::before {
   background: #f97316;
 }

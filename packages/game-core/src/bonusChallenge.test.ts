@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getBonusChallengeCondition, type BonusChallengeEnvironmentRules } from './bonusChallenge.js';
+import { getBonusChallengeCondition, getBonusChallengeShooterMotionTime, type BonusChallengeEnvironmentRules } from './bonusChallenge.js';
 
 const beach: BonusChallengeEnvironmentRules = {
   fatigue: {
@@ -14,6 +14,19 @@ const beach: BonusChallengeEnvironmentRules = {
 };
 
 describe('bonus challenge environment', () => {
+  it('integrates movement across fatigue, rest and recovery without changing the raw clock', () => {
+    expect(getBonusChallengeShooterMotionTime(beach, 10_000, 0.65, [])).toBe(10_000);
+    expect(getBonusChallengeShooterMotionTime(beach, 25_000, 0.65, [])).toBe(22_750);
+    expect(getBonusChallengeShooterMotionTime(beach, 40_000, 0.65, [])).toBe(32_500);
+    expect(getBonusChallengeShooterMotionTime(beach, 44_000, 0.65, [])).toBe(32_500);
+    expect(getBonusChallengeShooterMotionTime(beach, 54_000, 0.65, [])).toBe(42_500);
+  });
+
+  it('subtracts only the part of each shot flight spent moving, including a fatigue boundary', () => {
+    const pauses = [{ tapTime: 9_900, flightMs: 200 }];
+    expect(getBonusChallengeShooterMotionTime(beach, 10_200, 0.65, pauses)).toBe(9_985);
+    expect(getBonusChallengeShooterMotionTime(beach, 10_000, 0.65, pauses)).toBe(9_900);
+  });
   it('applies permanent environment modifiers to every moving entity', () => {
     const rules: BonusChallengeEnvironmentRules = {
       baseModifiers: {

@@ -35,6 +35,7 @@ import {
   type ShotResult,
   type AdvancedTrainingEpisodeSample,
   type StickEffects,
+  type BonusChallengeShotPause,
 } from '@hockey/game-core';
 import { useAuthStore } from '../auth/authStore.js';
 import { triggerShotOutcomeHaptic } from '../feedback/haptics.js';
@@ -49,6 +50,7 @@ import { ResultModal, type ResultModalKind } from '../components/ResultModal.js'
 import type { Scale } from './coords.js';
 import { createGameLoop, type GameLoop, type SpeedOverrides } from './loop.js';
 import { PixiStage } from './PixiStage.js';
+import { FittedNotice } from './FittedNotice.js';
 import { Goal, type GoalOptions } from './renderer/Goal.js';
 import { Goalie, type GoalieOptions } from './renderer/Goalie.js';
 import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
@@ -373,6 +375,7 @@ export interface PlayViewProps<TState> {
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
   shotResolver?: PlayShotResolver | undefined;
+  shooterMotionTime?: ((sceneMs: number, pauses: readonly BonusChallengeShotPause[]) => number) | undefined;
   duelCondition?:
     | ((
         elapsedMs: number,
@@ -713,6 +716,7 @@ export function PlayView<TState>({
   hitboxesOptions = PERSPECTIVE_HITBOX_OPTIONS,
   shotResolver = resolveNewTrainingCourtShot,
   duelCondition,
+  shooterMotionTime,
   hudAddon,
   statusNotice,
   statusNoticeTone,
@@ -936,6 +940,8 @@ export function PlayView<TState>({
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
   const duelConditionRef = useRef(duelCondition);
+  const shooterMotionTimeRef = useRef(shooterMotionTime);
+  shooterMotionTimeRef.current = shooterMotionTime;
   duelConditionRef.current = duelCondition;
   const readyPresenceRef = useRef(readyPresence);
   readyPresenceRef.current = readyPresence;
@@ -1480,6 +1486,10 @@ export function PlayView<TState>({
         getEpisodeSample: (sceneMs) => episodeSamplerRef.current?.(sceneMs) ?? null,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
+        ...(shooterMotionTimeRef.current ? {
+          getShooterMotionTime: (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
+            shooterMotionTimeRef.current!(ms, pauses),
+        } : {}),
         onDuelConditionChange: syncCurrentDuelCondition,
         onClockTick: (sceneElapsedMs, shooterElapsedMs) => {
           onSceneClockRef.current?.(sceneElapsedMs, shooterElapsedMs);
@@ -1757,7 +1767,8 @@ export function PlayView<TState>({
     const shooterTapTime = loop.getShooterT();
     const duelShotCondition = duelConditionRef.current?.(tapTime, overrides) ?? null;
     if (duelShotCondition && !duelShotCondition.canShoot) return;
-    const effectiveShooterFreq = Math.max(
+    const shooterMotionT = loop.getShooterMotionT();
+    const effectiveShooterFreq = shooterMotionT !== undefined ? overrides.shooterFreq : Math.max(
       0.1,
       overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
     );
@@ -1776,7 +1787,7 @@ export function PlayView<TState>({
     activeCfg.frequency = effectiveGoalieFreq;
     activeCfg.goalFrequency = effectiveGoalFreq;
     const ordinaryShooterX =
-      computeShooterX(shooterTapTime + offsets.shooter, effectiveShooterFreq) +
+      computeShooterX((shooterMotionT ?? shooterTapTime) + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
     const sx = episodeSamplerRef.current?.(tapTime).playerX ?? ordinaryShooterX;
     const puckSpeed = clampPuckSpeed(
@@ -1786,6 +1797,7 @@ export function PlayView<TState>({
     const input = {
       tapTime,
       shooterTapTime,
+      ...(shooterMotionT !== undefined ? { shooterMotionTime: shooterMotionT } : {}),
       puckSpeedPerMs: puckSpeed,
       shooterFrequency: effectiveShooterFreq,
       goalieFrequency: effectiveGoalieFreq,
@@ -1869,7 +1881,7 @@ export function PlayView<TState>({
     setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
-    loop.beginShooterPause();
+    loop.beginShooterPause(flightMs);
     playerRef.current?.playShot();
     const targetPoint = puckResultContact(result, sx);
     const puckShotPath = {
@@ -2148,16 +2160,16 @@ export function PlayView<TState>({
     !hideRinkScoreboard &&
     (showDuelStumbleNotice || Boolean(duelFatigueNotice) || (statusNoticeUnderScoreboard && Boolean(effectiveStatusNotice)));
   const gameNotice = showDuelStumbleNotice ? (
-    <div
+    <FittedNotice fit={noticeInScoreboard}
       role="status"
       aria-live="polite"
       className={`duel-stumble-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
       style={routeGameStyle}
     >
       Споткнулся · бросок недоступен
-    </div>
+    </FittedNotice>
   ) : duelFatigueNotice ? (
-    <div
+    <FittedNotice fit={noticeInScoreboard}
       role="status"
       aria-live="polite"
       className={`duel-fatigue-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
@@ -2171,9 +2183,9 @@ export function PlayView<TState>({
       style={routeGameStyle}
     >
       {duelFatigueNotice}
-    </div>
+    </FittedNotice>
   ) : effectiveStatusNotice ? (
-    <div
+    <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
       role="status"
       aria-live="polite"
       className={`initial-training-feedback-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
@@ -2190,7 +2202,7 @@ export function PlayView<TState>({
       style={routeGameStyle}
     >
       {effectiveStatusNotice}
-    </div>
+    </FittedNotice>
   ) : null;
   const primaryButtonDisabled =
     primaryActionBlocked ||

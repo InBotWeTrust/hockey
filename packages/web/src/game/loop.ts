@@ -16,6 +16,7 @@ import {
   PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
   PERSPECTIVE_COURT_VISUAL_X_CENTER,
   type DuelPlayerCondition,
+  type BonusChallengeShotPause,
 } from '@hockey/game-core';
 import type { Scale } from './coords.js';
 import type { Goal } from './renderer/Goal.js';
@@ -62,6 +63,7 @@ export interface GameLoopOpts {
   getMaxSceneTimeMs?: () => number | undefined;
   getTimeScale?: (sceneElapsedMs: number) => number;
   getEpisodeSample?: (sceneElapsedMs: number) => AdvancedTrainingEpisodeSample | null;
+  getShooterMotionTime?: (sceneElapsedMs: number, pauses: readonly BonusChallengeShotPause[]) => number;
 }
 
 export interface GameLoop {
@@ -79,11 +81,12 @@ export interface GameLoop {
   // пауза заканчивается, t продолжается с того же значения, поэтому
   // треугольные волны / синусоиды возобновляются с той же точки в ту же
   // сторону, в которую двигались до остановки.
-  beginShooterPause: () => void;
+  beginShooterPause: (flightMs?: number) => void;
   endShooterPause: (expectedDurationMs?: number) => void;
   beginScenePause: () => void;
   endScenePause: () => void;
   getShooterT: () => number;
+  getShooterMotionT: () => number | undefined;
   getSceneT: () => number;
   getRenderNow: () => number;
 }
@@ -137,6 +140,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
   let scenePausedTotal = 0;
   let scenePauseStartedAt: number | null = null;
   let shooterTimeShift = 0;
+  let shotPauses: BonusChallengeShotPause[] = [];
   let lastShooterFreq: number | null = null;
   let lastShooterDirection: 1 | -1 = 1;
   let lastRenderedShooterX: number | null = null;
@@ -259,8 +263,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
         ? rawCondition
         : (heldStumbleCondition ?? rawCondition);
     opts.onDuelConditionChange?.(condition ?? null);
-    const conditionPausesShooter =
-      condition?.stumbleActive === true || condition?.status === 'exhausted_stop';
+    const conditionPausesShooter = !opts.getShooterMotionTime && (
+      condition?.stumbleActive === true || condition?.status === 'exhausted_stop');
     let justEndedConditionPause = false;
     let conditionPauseReleaseX: number | null = null;
     if (conditionPausesShooter) {
@@ -315,7 +319,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     }
     const goalieState: GoalieState = goalieSimulator(tScene, o.goalie);
     const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
-    const ordinaryShooterX = conditionPausesShooter
+    const motionTime = opts.getShooterMotionTime?.(tScene, shotPauses);
+    const ordinaryShooterX = motionTime !== undefined
+      ? shooterX(motionTime + o.shooter, sf)
+      : conditionPausesShooter
       ? (frozenConditionShooterX ??
         shooterX(shiftedShooterTWithOffset, effectiveShooterFreq) +
           (condition?.shooterXOffsetPx ?? 0))
@@ -386,6 +393,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     conditionPauseStartedAt = null;
     scenePauseStartedAt = null;
     shooterTimeShift = 0;
+    shotPauses = [];
     lastShooterFreq = null;
     lastShooterDirection = 1;
     lastRenderedShooterX = null;
@@ -422,7 +430,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     getShooterX(tMs, freq = 0.45) {
       return shooterX(tMs, freq);
     },
-    beginShooterPause() {
+    beginShooterPause(flightMs) {
+      if (shooterPauseStartedAt === null && flightMs !== undefined && opts.getShooterMotionTime) {
+        shotPauses.push({ tapTime: sceneT(renderNowMs), flightMs });
+      }
       if (shooterPauseStartedAt === null) shooterPauseStartedAt = renderNowMs;
     },
     endShooterPause(expectedDurationMs) {
@@ -444,7 +455,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       }
     },
     getShooterT() {
-      return shooterT(renderNowMs) + shooterTimeShift;
+      return shooterT(renderNowMs) + (opts.getShooterMotionTime ? 0 : shooterTimeShift);
+    },
+    getShooterMotionT() {
+      return opts.getShooterMotionTime?.(sceneT(renderNowMs), shotPauses);
     },
     getSceneT() {
       return sceneT(renderNowMs);

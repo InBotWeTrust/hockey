@@ -93,7 +93,7 @@ export function resolvePerspectiveCourtEmptyGoalShot(
   cfg: GoalieConfig,
   phaseOffsets?: SessionPhaseOffsets,
 ): Extract<ShotResult, { type: 'goal' | 'miss' }> {
-  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,
@@ -113,7 +113,7 @@ export function resolvePerspectiveCourtShot(
   stick: StickEffects,
   phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
-  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,
