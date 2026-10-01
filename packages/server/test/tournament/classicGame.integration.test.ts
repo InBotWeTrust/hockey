@@ -556,12 +556,8 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
         order by id`,
       [instances.map((instance) => instance.id)],
     );
-    expect(
-      new Map(balances.rows.map((row) => [row.id, Number(row.charges_available)])),
-    ).toEqual(
-      new Map(
-        instances.map((instance) => [instance.id, instance.id === selected.id ? 6623 : 514]),
-      ),
+    expect(new Map(balances.rows.map((row) => [row.id, Number(row.charges_available)]))).toEqual(
+      new Map(instances.map((instance) => [instance.id, instance.id === selected.id ? 6623 : 514])),
     );
   });
 
@@ -622,6 +618,84 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
     expect(secondPeriod.loadout.items).toEqual([
       expect.objectContaining({ id: equipped.id, instanceId: equipped.id, itemId }),
     ]);
+  });
+
+  it('applies profile equipment changed during a classic break and carries it through the game', async () => {
+    const skatesId = await seedClassicConditionItem(pool, 'skates', 10000);
+    const nutritionId = await seedClassicConditionItem(pool, 'nutrition', 1000000);
+    const first = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+    });
+    expect(first.loadout.items).toEqual([]);
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+    await pool.query(
+      `insert into user_equipment (user_id, equipped_skates_item_id, equipped_nutrition_item_id)
+       values ($1, $2, $3)
+       on conflict (user_id) do update
+         set equipped_skates_item_id = excluded.equipped_skates_item_id,
+             equipped_nutrition_item_id = excluded.equipped_nutrition_item_id`,
+      [PLAYER_ID, skatesId, nutritionId],
+    );
+    const preview = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+    });
+    expect(preview.loadout.items.map((item) => item.kind)).toEqual(['skates', 'nutrition']);
+    const second = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+    });
+    expect(second.loadout.items.map((item) => item.kind)).toEqual(['skates', 'nutrition']);
+  });
+
+  it('keeps an in-game classic equipment override for later periods without changing the profile', async () => {
+    const skatesId = await seedClassicConditionItem(pool, 'skates', 10000);
+    const first = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      loadout: { skates: skatesId },
+    });
+    await submitClassicGameShot(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: NOW,
+      seedSecret: SEED_SECRET,
+      shotIndex: 1,
+      input: { tapTime: 0 },
+      claimedResult: 'miss',
+    });
+    const preview = await getClassicGameState(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+    });
+    expect(preview.loadout.items.map((item) => item.id)).toEqual([skatesId]);
+    const second = await startClassicGamePeriod(pool, {
+      userId: PLAYER_ID,
+      tournamentId: TOURNAMENT_ID,
+      now: new Date(NOW.getTime() + 1),
+      seedSecret: SEED_SECRET,
+    });
+    expect(second.loadout.items.map((item) => item.id)).toEqual([skatesId]);
+    expect(first.loadout.items.map((item) => item.id)).toEqual([skatesId]);
   });
 
   it('snapshots the selected inventory timing configured in the admin catalog', async () => {

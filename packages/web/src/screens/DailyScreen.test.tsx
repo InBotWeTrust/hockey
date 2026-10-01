@@ -964,7 +964,7 @@ describe('DailyScreen', () => {
     ).toBe(false);
   });
 
-  it('shows classic inventory circles and submits the selected loadout with period start', async () => {
+  it('shows classic inventory circles and leaves untouched slots to the server at period start', async () => {
     const stick = {
       id: '00000000-0000-4000-8000-000000000901',
       itemId: '00000000-0000-4000-8000-000000000901',
@@ -1014,9 +1014,7 @@ describe('DailyScreen', () => {
       const startCall = fetchMock.mock.calls.find(([input]) =>
         String(input).endsWith('/classic/period/start'),
       );
-      expect(startCall?.[1]?.body).toBe(
-        JSON.stringify({ loadout: { stick: stick.id, skates: null, nutrition: null } }),
-      );
+      expect(startCall?.[1]?.body).toBe(JSON.stringify({ loadout: {} }));
     });
   });
 

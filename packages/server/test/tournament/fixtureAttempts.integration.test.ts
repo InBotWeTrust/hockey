@@ -2175,7 +2175,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     }
   });
 
-  it('inherits the latest tournament-local selection in the next game of the same series', async () => {
+  it('starts the next game of a tournament series from the profile, not the previous game', async () => {
     const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'attempt-loadout-next-game');
     const stick = await pool.query<{ id: string }>(
       `insert into admin_inventory_items
@@ -2294,9 +2294,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       headers: { authorization: `Bearer ${homeToken}` },
     });
     expect(beforeConfirmation.statusCode).toBe(200);
-    expect(beforeConfirmation.json().match.me.loadout.items).toMatchObject([
-      { id: stickId, kind: 'stick', title: 'Series-only stick' },
-    ]);
+    expect(beforeConfirmation.json().match.me.loadout.items).toEqual([]);
 
     const carried = await app.inject({
       method: 'POST',
@@ -2305,9 +2303,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       payload: { loadout: {} },
     });
     expect(carried.statusCode).toBe(200);
-    expect(carried.json().match.me.loadout.items).toMatchObject([
-      { id: stickId, kind: 'stick', title: 'Series-only stick' },
-    ]);
+    expect(carried.json().match.me.loadout.items).toEqual([]);
     const profile = await pool.query(`select 1 from user_equipment where user_id = $1`, [
       fixture.home_user_id,
     ]);
