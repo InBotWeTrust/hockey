@@ -331,6 +331,7 @@ export interface MonthlyRatingCongratulation {
   id: string;
   season_key: string;
   place: number;
+  points?: number;
   matches_played: number;
   eligible_count: number;
   rewarded_count: number;
@@ -342,6 +343,7 @@ export interface MonthlyRatingCongratulation {
   awards?: Array<{
     scope: 'overall' | 'express' | 'express_plus' | 'classic';
     place: number;
+    points?: number;
     coins: number;
     stars: number;
     experience: number;

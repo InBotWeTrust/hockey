@@ -42,10 +42,12 @@ interface MockSectionsData {
     stars: number;
     experience?: number;
     tokens: number;
+    points?: number;
     created_at: string;
     awards?: Array<{
       scope: 'overall' | 'express' | 'express_plus' | 'classic';
       place: number;
+      points?: number;
       coins: number;
       stars: number;
       experience: number;
@@ -428,9 +430,9 @@ describe('SectionsScreen', () => {
   });
 
   it.each([
-    [1, 'Вы победитель зачета дуэлей за август'],
-    [2, 'Вы заняли 2-е место в зачете дуэлей за август'],
-    [17, 'Вы заняли 17-е место в зачете дуэлей за август'],
+    [1, 'Вы стали победителем общего зачёта дуэлей за\u00a0август'],
+    [2, 'Вы заняли 2-е место в общем зачёте дуэлей за\u00a0август'],
+    [17, 'Вы заняли 17-е место в общем зачёте дуэлей за\u00a0август'],
   ])(
     'fetches and shows the approved monthly title for place %i only from the sections queue',
     async (place, title) => {
@@ -466,20 +468,46 @@ describe('SectionsScreen', () => {
         id: '00000000-0000-4000-8000-000000000972',
         season_key: '2026-08', place: 1, matches_played: 30,
         eligible_count: 2, rewarded_count: 2,
-        coins: 15000, stars: 330, experience: 30, tokens: 10,
+        coins: 15000, stars: 330, experience: 30, tokens: 10, points: 999,
         awards: [
-          { scope: 'overall', place: 1, coins: 15000, stars: 300, experience: 0, tokens: 10 },
-          { scope: 'classic', place: 1, coins: 0, stars: 30, experience: 30, tokens: 0 },
+          { scope: 'overall', place: 1, points: 999, coins: 15000, stars: 300, experience: 0, tokens: 10 },
+          { scope: 'classic', place: 1, points: 42, coins: 0, stars: 30, experience: 30, tokens: 0 },
         ],
         created_at: '2026-09-01T00:00:00.000Z',
       }],
     });
     renderSections();
-    const dialog = await screen.findByRole('dialog', { name: /Ваши награды в зачётах дуэлей/ });
-    expect(dialog).toHaveTextContent('Общий зачёт: победа');
-    expect(dialog).toHaveTextContent('Классика: победа');
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Вы стали победителем общего зачёта дуэлей за\u00a0август',
+    });
+    expect(dialog).toHaveTextContent('1-е место · 999 очков');
+    expect(dialog).toHaveTextContent('Классика: 1-е место · 42 очка');
     expect(dialog).toHaveTextContent('330');
+    expect(within(dialog).getByRole('button', { name: 'Понятно' })).toBeInTheDocument();
+    expect(dialog.querySelector('.lucide-trending-up')).not.toBeNull();
+    expect(dialog.querySelector('.lucide-trophy')).toBeNull();
     expect(dialog.querySelectorAll('img[src="/modes/amateur-duel.webp"]')).toHaveLength(1);
+  });
+
+  it('shows a format winner title and points when only the Classic award is present', async () => {
+    mockSectionsApi({
+      pendingMonthlyRatingCongratulations: [{
+        id: '00000000-0000-4000-8000-000000000973',
+        season_key: '2026-09', place: 1, matches_played: 12,
+        eligible_count: 12, rewarded_count: 3,
+        coins: 0, stars: 30, experience: 30, tokens: 0, points: 87,
+        awards: [
+          { scope: 'classic', place: 1, points: 87, coins: 0, stars: 30, experience: 30, tokens: 0 },
+        ],
+        created_at: '2026-10-01T00:00:00.000Z',
+      }],
+    });
+    renderSections();
+
+    const dialog = await screen.findByRole('dialog', {
+      name: 'Вы победитель зачёта дуэлей за\u00a0сентябрь в формате «Классика»',
+    });
+    expect(dialog).toHaveTextContent('1-е место · 87 очков');
   });
 
   it('does not show monthly rewards before the higher-priority tournament queue is known', async () => {
@@ -532,7 +560,7 @@ describe('SectionsScreen', () => {
     });
 
     expect(await screen.findByText('Приоритетный турнир')).toBeInTheDocument();
-    expect(screen.queryByText(/зачет[ае] дуэлей за август/)).toBeNull();
+    expect(screen.queryByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeNull();
   });
 
   it('blocks monthly and weekly rewards behind a retryable tournament-queue error', async () => {
@@ -556,7 +584,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить награды.');
-    expect(screen.queryByRole('dialog', { name: /зачете дуэлей/ })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /зач[её]те дуэлей/ })).toBeNull();
     const profileCallsBeforeRetry = vi
       .mocked(fetch)
       .mock.calls.filter(([input]) =>
@@ -656,14 +684,14 @@ describe('SectionsScreen', () => {
     });
     const client = renderSections();
 
-    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
+    expect(await screen.findByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeInTheDocument();
     void client.refetchQueries({
       queryKey: ['amateur-duel', 'rating', 'congratulations', 'pending'],
       exact: true,
     });
     await waitFor(() => expect(monthlyRequestCount).toBe(2));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
     await waitFor(() => expect(monthlyRequestCount).toBe(3));
     staleMonthly.resolve(
       jsonResponse({
@@ -684,7 +712,7 @@ describe('SectionsScreen', () => {
       }),
     );
 
-    await waitFor(() => expect(screen.queryByText(/зачет[ае] дуэлей за август/)).toBeNull());
+    await waitFor(() => expect(screen.queryByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeNull());
   });
 
   it('does not show a monthly rating modal when a pending placement has no reward', async () => {
@@ -707,7 +735,7 @@ describe('SectionsScreen', () => {
     renderSections();
 
     await screen.findByText('Быстрый доступ');
-    expect(screen.queryByRole('dialog', { name: /зачете дуэлей/ })).toBeNull();
+    expect(screen.queryByRole('dialog', { name: /зач[её]те дуэлей/ })).toBeNull();
   });
 
   it('acknowledges monthly rating congratulations oldest first and advances the queue', async () => {
@@ -741,11 +769,11 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByText(/зачет[ае] дуэлей за июнь/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(await screen.findByText(/зач[её]т[ае] дуэлей за\s+июнь/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
-    expect(await screen.findByText(/зачет[ае] дуэлей за июль/)).toBeInTheDocument();
-    await waitFor(() => expect(screen.queryByText(/зачет[ае] дуэлей за июнь/)).toBeNull());
+    expect(await screen.findByText(/зач[её]т[ае] дуэлей за\s+июль/)).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(/зач[её]т[ае] дуэлей за\s+июнь/)).toBeNull());
   });
 
   it('keeps the monthly rating modal open after acknowledgement fails', async () => {
@@ -768,13 +796,13 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    expect(await screen.findByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось закрыть. Попробуйте ещё раз.',
     );
-    expect(screen.getByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
+    expect(screen.getByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeInTheDocument();
   });
 
   it('does not refetch or replace the monthly modal after acknowledgement fails', async () => {
@@ -798,18 +826,18 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
+    expect(await screen.findByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeInTheDocument();
     const pendingGetsBeforeAcknowledgement = vi
       .mocked(fetch)
       .mock.calls.filter(([input]) =>
         String(input).includes('/api/duel/amateur/rating/congratulations/pending'),
       ).length;
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Не удалось закрыть. Попробуйте ещё раз.',
     );
-    expect(screen.getByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
+    expect(screen.getByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeInTheDocument();
     expect(
       vi
         .mocked(fetch)
@@ -864,14 +892,14 @@ describe('SectionsScreen', () => {
     renderSections();
 
     expect(await screen.findByText('Кубок впереди очереди')).toBeInTheDocument();
-    expect(screen.queryByText(/зачет[ае] дуэлей за август/)).toBeNull();
+    expect(screen.queryByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeNull();
     expect(screen.queryByText('Отложенный челлендж')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
-    expect(await screen.findByText(/зачет[ае] дуэлей за август/)).toBeInTheDocument();
+    expect(await screen.findByText(/зач[её]т[ае] дуэлей за\s+август/)).toBeInTheDocument();
     expect(screen.queryByText('Отложенный челлендж')).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
     expect(await screen.findByText('Отложенный челлендж')).toBeInTheDocument();
   });
 
