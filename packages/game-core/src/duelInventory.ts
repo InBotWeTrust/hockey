@@ -1,3 +1,4 @@
+import { getPlayerFatigueState } from './playerFatigue.js';
 import { createRng } from './rng.js';
 
 export type DuelInventoryResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
@@ -266,7 +267,7 @@ export function getDuelPlayerCondition(
   const nutritionConsumed = cappedNutritionConsumed(input, rawNutritionCost);
   const puckSpeedDelta = activeStickPuckSpeedDelta(input.loadout.stick);
   const fatigueMs = accumulatedFatigueMs(input, nutritionTiming);
-  const fatigue = fatigueState(fatigueMs, nutritionTiming);
+  const fatigue = getPlayerFatigueState(fatigueMs, nutritionTiming);
 
   const skatesActive =
     input.loadout.skates?.resourceUnit === 'distance' &&
@@ -357,84 +358,6 @@ function accumulatedFatigueMs(
   return Math.ceil(input.elapsedMs);
 }
 
-function fatigueState(
-  rawFatigueMs: number,
-  timing: DuelInventoryTiming,
-): {
-  status: DuelPlayerConditionStatus;
-  level: DuelPlayerFatigueLevel;
-  canShoot: boolean;
-  speedMultiplier: number;
-  normalizedFatigueMs: number;
-} {
-  const fatigueStartAt = Math.max(0, timing.fatigueSlowdownStartMs, timing.fatigueGraceMs);
-  const heavyStartAt = Math.max(fatigueStartAt, timing.fatigueHeavySlowdownStartMs);
-  const stopAt = Math.max(heavyStartAt, timing.fatigueStopStartMs);
-  const stopDuration = Math.max(0, timing.fatigueStopDurationMs);
-  const recoveryDuration = Math.max(0, timing.fatigueAfterRestMs);
-  let fatigueMs = rawFatigueMs;
-  let resting = false;
-  let recovering = false;
-
-  if (stopDuration > 0 && fatigueMs >= stopAt) {
-    const tiredSpan = Math.max(0, stopAt - fatigueStartAt);
-    const cycle = Math.max(1, stopDuration + recoveryDuration + tiredSpan);
-    const phase = (fatigueMs - stopAt) % cycle;
-    if (phase < stopDuration) {
-      resting = true;
-      fatigueMs = stopAt + phase;
-    } else if (phase < stopDuration + recoveryDuration) {
-      recovering = true;
-      fatigueMs = phase - stopDuration;
-    } else {
-      fatigueMs = fatigueStartAt + (phase - stopDuration - recoveryDuration);
-    }
-  }
-
-  if (resting) {
-    return {
-      status: 'exhausted_stop',
-      level: 'resting',
-      canShoot: false,
-      speedMultiplier: 0,
-      normalizedFatigueMs: Math.ceil(fatigueMs),
-    };
-  }
-  if (recovering) {
-    return {
-      status: 'normal',
-      level: 'none',
-      canShoot: true,
-      speedMultiplier: 1,
-      normalizedFatigueMs: Math.ceil(fatigueMs),
-    };
-  }
-  if (fatigueMs >= heavyStartAt) {
-    return {
-      status: 'nutrition_slowdown',
-      level: 'heavy',
-      canShoot: true,
-      speedMultiplier: timing.fatigueHeavyMultiplier,
-      normalizedFatigueMs: Math.ceil(fatigueMs),
-    };
-  }
-  if (fatigueMs >= fatigueStartAt) {
-    return {
-      status: 'tired',
-      level: 'medium',
-      canShoot: true,
-      speedMultiplier: timing.fatigueSlowMultiplier,
-      normalizedFatigueMs: Math.ceil(fatigueMs),
-    };
-  }
-  return {
-    status: 'normal',
-    level: 'none',
-    canShoot: true,
-    speedMultiplier: 1,
-    normalizedFatigueMs: Math.ceil(fatigueMs),
-  };
-}
 
 function condition(
   reusable: DuelPlayerCondition | undefined,

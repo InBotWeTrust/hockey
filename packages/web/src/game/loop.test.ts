@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
 import { getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode, getBonusChallengeShooterMotionTime,
-  type GoalieConfig } from '@hockey/game-core';
+  simulateGoal, simulateGoalie, getSessionPhaseOffsets, type GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
 const stationaryCustomGoalie: GoalieConfig = {
@@ -782,4 +782,20 @@ describe('createGameLoop', () => {
 
     nowSpy.mockRestore();
   });
+});
+
+it('samples goal and goalie independently with court motion clocks', () => {
+  const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+  const goal = vi.fn(); const goalie = vi.fn();
+  const config = { ...stationaryCustomGoalie, amplitude: 160, goalAmplitude: 180 };
+  const clocks = vi.fn((target: 'goal' | 'goalie', _time: number) => target === 'goal' ? 500 : 1000);
+  const loop = makeLoop({ getGoalieConfig: () => config,
+    getInitialClocks: () => ({ sceneElapsedMs: 2000, shooterElapsedMs: 2000 }),
+    getCourtMotionTime: clocks, goalRenderer: {update: goal} as never, goalieRenderer: {update: goalie} as never });
+  const ticker = makeTicker(); loop.attach(ticker);
+  (ticker.add.mock.calls[0]![0] as () => void)();
+  const offsets = getSessionPhaseOffsets('seed');
+  expect(goal.mock.calls.at(-1)![1]).toBeCloseTo(simulateGoal(config, 500, offsets.goal).offsetX);
+  expect(goalie.mock.calls.at(-1)![0]).toEqual(simulateGoalie(config, 'seed', 1, 1000, offsets.goalie));
+  loop.detach(); now.mockRestore();
 });

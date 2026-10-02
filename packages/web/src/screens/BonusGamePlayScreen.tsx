@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  beachCleanupRules, beachWindMotion, beachWindClock, activeWind, sampleBeachPuddles,
   classifyMarksmanshipShot,
   getBonusChallengeCondition,
   createBonusChallengeMotionSampler,
@@ -9,6 +10,7 @@ import {
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
   PUCK_START,
   STICK_NEUTRAL,
+  type BonusChallengeEnvironmentRules,
   type GoalieConfig,
   type MarksmanshipDifficultyCode,
   type MarksmanshipScoringRules,
@@ -36,6 +38,7 @@ import type { GameScoreboardModel } from '../components/ScoreBoard.js';
 import { PlayView, type PlayResultPresentation } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
+  bonusPendingFlightMs,
   deriveBonusGameClockEpoch,
   deriveEnduranceClock,
   futureBonusPeriodDurationMs,
@@ -764,6 +767,8 @@ export function BonusGamePlayScreen(): JSX.Element {
   const abandonRequestRef = useRef(false);
   const loadedRouteRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
+  const beachCleanupCacheRef = useRef<{ source: BonusChallengeEnvironmentRules;
+    events: BonusGameAttempt['current_period_cleanup_events']; environment: BonusChallengeEnvironmentRules } | null>(null);
   const motionSamplerRef = useRef<{
     rules: unknown; history: unknown; frequency: number; period: number; attemptId: string;
     sample: ReturnType<typeof createBonusChallengeMotionSampler>;
@@ -822,7 +827,9 @@ export function BonusGamePlayScreen(): JSX.Element {
     const pendingRule = ruleForPeriod(pendingAttempt, pendingAttempt.current_period);
     if (pendingRule === null) return;
     const puckSpeed = speedOverridesFor(pendingRule, pendingAttempt.current_loadout).puckSpeed;
-    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const dryFlightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const flightMs = pendingAttempt.rules.challenge_environment?.beach
+      ? bonusPendingFlightMs(pendingAttempt, dryFlightMs) : dryFlightMs;
     const applyAtPerformanceMs =
       pendingShot.receivedAtPerformanceMs + flightMs + BONUS_PENDING_SHOT_FALLBACK_PADDING_MS;
     const delayMs = Math.max(
@@ -1104,7 +1111,16 @@ export function BonusGamePlayScreen(): JSX.Element {
     attempt.rules.skill_code === 'speed' ? futureBonusPeriodDurationMs(attempt) : rule.duration_ms;
   const goalieConfig = goalieConfigFor(attempt, rule);
   const speedOverrides = speedOverridesFor(rule, attempt.current_loadout);
-  const challengeEnvironment = attempt.rules.challenge_environment ?? null;
+  const initialEnvironment = attempt.rules.challenge_environment ?? null;
+  const cleanupCache = beachCleanupCacheRef.current;
+  if (initialEnvironment?.beach?.interactive && (cleanupCache?.source !== initialEnvironment ||
+    cleanupCache?.events !== attempt.current_period_cleanup_events)) {
+    beachCleanupCacheRef.current = { source: initialEnvironment, events: attempt.current_period_cleanup_events,
+      environment: { ...initialEnvironment, beach: { ...initialEnvironment.beach,
+        puddles: beachCleanupRules(initialEnvironment.beach.puddles, attempt.current_period_cleanup_events ?? [], Infinity) } } };
+  }
+  const challengeEnvironment = initialEnvironment?.beach?.interactive
+    ? beachCleanupCacheRef.current!.environment : initialEnvironment;
   const useMotionClock = attempt.game_core_version >= 71 && challengeEnvironment !== null;
   if (useMotionClock && (motionSamplerRef.current?.rules !== challengeEnvironment
     || motionSamplerRef.current?.history !== attempt.current_period_shot_pauses
@@ -1114,8 +1130,13 @@ export function BonusGamePlayScreen(): JSX.Element {
     motionSamplerRef.current = {
       rules: challengeEnvironment, history: attempt.current_period_shot_pauses,
       frequency: speedOverrides.shooterFreq, period: periodNumber, attemptId: attempt.id,
-      sample: createBonusChallengeMotionSampler(challengeEnvironment!, speedOverrides.shooterFreq,
-        attempt.current_period_shot_pauses ?? []),
+      sample: challengeEnvironment?.beach?.interactive
+        ? (time, local) => beachWindMotion(challengeEnvironment, time, speedOverrides.shooterFreq,
+            [...(attempt.current_period_shot_pauses ?? []), ...local.filter(pause =>
+              !(attempt.current_period_shot_pauses ?? []).some(accepted => Math.abs(accepted.tapTime - pause.tapTime) < .001))],
+            challengeEnvironment.beach!.interactive!.wind)
+        : createBonusChallengeMotionSampler(challengeEnvironment!, speedOverrides.shooterFreq,
+          attempt.current_period_shot_pauses ?? []),
     };
   }
   const challengeCondition = challengeEnvironment === null
@@ -1245,8 +1266,28 @@ export function BonusGamePlayScreen(): JSX.Element {
         periodNumber={periodNumber}
         periodsTotal={attempt.rules.total_periods}
         speedOverrides={speedOverrides}
+        beachEnvironment={attempt.game_core_version >= 72 && attempt.rules.slug === 'challenge-beach'
+          ? challengeEnvironment?.beach : undefined}
         duelCondition={challengeCondition}
         shooterMotionTime={useMotionClock ? motionSamplerRef.current!.sample : undefined}
+        canStartAction={challengeEnvironment?.beach?.interactive ? () => {
+          const state = useBonusGameStore.getState();
+          return !state.inFlight && !state.needsReconcile && !state.pendingShot;
+        } : undefined}
+        courtMotionTime={challengeEnvironment?.beach?.interactive ? (target, time) =>
+          beachWindClock(challengeEnvironment.beach!.interactive!.wind, target, time) : undefined}
+        beachWindTarget={challengeEnvironment?.beach?.interactive ? time =>
+          activeWind(challengeEnvironment.beach!.interactive!.wind, time)?.target ?? null : undefined}
+        beachCleanupHint={Boolean(challengeEnvironment?.beach?.interactive) && !attempt.current_period_cleanup_events?.length}
+        onBeachWaterTap={challengeEnvironment?.beach?.interactive ? (x, y, time) => {
+          const puddle = sampleBeachPuddles(challengeEnvironment.beach!.puddles, time).reverse().find(p => p.active &&
+            ((x - p.x) / p.radiusX) ** 2 + ((y - p.y) / p.radiusY) ** 2 <= 1);
+          if (!puddle) return false;
+          if (time < (attempt.current_period_cleanup_events?.at(-1)?.tapTime ?? -Infinity) + 180) return true;
+          return useBonusGameStore.getState().cleanupPuddle({eventId: crypto.randomUUID(), period: periodNumber,
+            puddleId: puddle.id, tapTime: time, expectedShots: attempt.current_period_shots_taken,
+            expectedCleanups: attempt.current_period_cleanup_events?.length ?? 0});
+        } : undefined}
         statusNotice={challengeEnvironment?.baseModifiers?.label}
         statusNoticeClassName="bonus-challenge-environment-notice"
         statusNoticeUnderScoreboard={challengeEnvironment?.baseModifiers !== undefined}
@@ -1309,7 +1350,7 @@ export function BonusGamePlayScreen(): JSX.Element {
                     : 'НАЧАТЬ'
                   : undefined
         }
-        primaryActionBlocked={needsReconcile}
+        primaryActionBlocked={needsReconcile || Boolean(challengeEnvironment?.beach?.interactive && inFlight && !pendingShot)}
         inactiveAction={
           isIdle && !isBetweenPeriods && !previewRequired ? requestStartPeriod : undefined
         }

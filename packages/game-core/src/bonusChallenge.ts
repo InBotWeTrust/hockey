@@ -1,3 +1,6 @@
+import { beachFatigueState, beachMeltMultiplier, beachStumbleAllowed, integrateBeachMovement } from './beachCondition.js';
+import type { WindGust } from './beachWind.js';
+import type { BeachPuddleRule } from './beachEnvironment.js';
 import type { DuelPlayerCondition } from './duelInventory.js';
 
 export interface BonusChallengeFatigueRules {
@@ -30,6 +33,13 @@ export interface BonusChallengeBaseModifiers {
 }
 
 export interface BonusChallengeEnvironmentRules {
+  beach?: {
+    version: 1;
+    interactive?: { version: 1; wind: WindGust[] } | undefined;
+    meltDurationMs: number;
+    finalSpeedMultiplier: number;
+    puddles: BeachPuddleRule[];
+  };
   baseModifiers?: BonusChallengeBaseModifiers;
   fatigue?: BonusChallengeFatigueRules;
   stumbleWindows?: BonusChallengeStumbleWindow[];
@@ -94,6 +104,7 @@ export function getBonusChallengeShooterMotionTime(
     }
   }
   for (const window of rules.stumbleWindows ?? []) {
+    if (!beachStumbleAllowed(rules, window)) continue;
     add(window.startMs); add(window.startMs + window.durationMs);
   }
   for (const pause of pauses) { add(pause.tapTime); add(pause.tapTime + pause.flightMs); }
@@ -111,10 +122,11 @@ export function getBonusChallengeShooterMotionTime(
       pauseEnd = Math.max(pauseEnd, pause.tapTime + pause.flightMs);
     }
     if (middle < pauseEnd) continue;
-    if (rules.stumbleWindows?.some((window) => middle >= window.startMs && middle < window.startMs + window.durationMs)) continue;
+    if (rules.stumbleWindows?.some((window) => beachStumbleAllowed(rules, window) && middle >= window.startMs && middle < window.startMs + window.durationMs)) continue;
     const multiplier = (rules.baseModifiers?.shooterMultiplier ?? 1)
       * (phaseAt(rules.speedPhases, middle)?.shooterMultiplier ?? 1);
-    motion += integrate(finish, multiplier) - integrate(start, multiplier);
+    motion += rules.beach ? integrateBeachMovement(rules, start, finish, multiplier, shooterFrequency)
+      : integrate(finish, multiplier) - integrate(start, multiplier);
   }
   return motion;
 }
@@ -219,14 +231,23 @@ export function getBonusChallengeCondition(
   const elapsed = Math.max(0, elapsedMs);
   const base = rules.baseModifiers;
   const phase = phaseAt(rules.speedPhases, elapsed);
-  const phaseShooterMultiplier = phase?.shooterMultiplier ?? 1;
+  const melt = beachMeltMultiplier(rules, elapsed);
+  const phaseShooterMultiplier = (phase?.shooterMultiplier ?? 1) * melt;
   const baseShooterMultiplier = base?.shooterMultiplier ?? 1;
   result.goalSpeedMultiplier = base?.goalMultiplier ?? 1;
   result.goalieSpeedMultiplier = base?.goalieMultiplier ?? 1;
-  result.puckSpeedMultiplier = (base?.puckSpeedMultiplier ?? 1) * (phase?.puckSpeedMultiplier ?? 1);
+  result.puckSpeedMultiplier = (base?.puckSpeedMultiplier ?? 1) * (phase?.puckSpeedMultiplier ?? 1) * melt;
 
   const fatigue = rules.fatigue;
-  if (fatigue) {
+  if (rules.beach && fatigue) {
+    const state = beachFatigueState(fatigue, elapsed);
+    result.status = state.status;
+    result.fatigueLevel = state.level;
+    result.fatigueMs = state.normalizedFatigueMs;
+    result.canShoot = state.canShoot;
+    result.shooterSpeedMultiplier = state.speedMultiplier * baseShooterMultiplier * phaseShooterMultiplier;
+    if (!state.canShoot) return result;
+  } else if (fatigue) {
     const cycleMs = Math.max(
       1,
       fatigue.stopStartMs + fatigue.stopDurationMs + fatigue.recoveryDurationMs,
@@ -260,7 +281,7 @@ export function getBonusChallengeCondition(
   }
 
   const stumbling = rules.stumbleWindows?.some(
-    (window) => elapsed >= window.startMs && elapsed < window.startMs + window.durationMs,
+    (window) => beachStumbleAllowed(rules, window) && elapsed >= window.startMs && elapsed < window.startMs + window.durationMs,
   );
   if (stumbling) {
     result.status = 'stumble';
@@ -269,4 +290,9 @@ export function getBonusChallengeCondition(
     result.canShoot = false;
   }
   return result;
+}
+
+/** Match the established render speed floor/precision for new beach snapshots. */
+export function getBeachPuckSpeed(baseSpeed: number, multiplier: number): number {
+  return Math.min(5, Math.max(.2, Number((baseSpeed * multiplier).toFixed(4))));
 }

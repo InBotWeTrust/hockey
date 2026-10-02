@@ -147,3 +147,19 @@ describe('bonus game rule contracts', () => {
     );
   });
 });
+
+const beachEnvironment = { beach: { version: 1, meltDurationMs: 150000, finalSpeedMultiplier: .85,
+  puddles: [{ id: 'one', x: 200, y: 300, radiusX: 40, radiusY: 30, deepRatio: .5, speedMultiplier: .65,
+    warningMs: 1000, activeMs: 2000, fullMs: 30000, initialScale: .2 }] } };
+it('preserves versioned beach environment in immutable snapshot parsing', () => {
+  expect(parseBonusChallengeEnvironmentRules(beachEnvironment)).toEqual(beachEnvironment);
+});
+it.each([
+  { version: 2 }, { meltDurationMs: 0 }, { finalSpeedMultiplier: 1.1 },
+  { puddles: [{ ...beachEnvironment.beach.puddles[0], radiusX: 0 }] },
+  { puddles: [{ ...beachEnvironment.beach.puddles[0], activeMs: 0 }] },
+  { puddles: [{ ...beachEnvironment.beach.puddles[0], x: Infinity }] },
+  { puddles: [beachEnvironment.beach.puddles[0], beachEnvironment.beach.puddles[0]] },
+])('rejects malformed beach environment %j', patch => {
+  expect(() => parseBonusChallengeEnvironmentRules({ beach: { ...beachEnvironment.beach, ...patch } })).toThrow();
+});

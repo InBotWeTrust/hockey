@@ -47,6 +47,7 @@ export class Puck {
     startedAt: number;
     durationMs: number;
     easing: 'linear' | 'ease-out';
+    sample?: (elapsedMs: number) => Vec2;
     fullVisualOffset: boolean;
     waypoint?: {
       position: Vec2;
@@ -54,6 +55,7 @@ export class Puck {
     };
   } | null = null;
   private held: Vec2 | null = null;
+  private heldSampled = false;
   private destroyed = false;
 
   constructor(grip: 'left' | 'right' = 'right', options: PuckOptions = {}) {
@@ -98,7 +100,7 @@ export class Puck {
     this.draw(this.bladePoint(shooterX), scale);
   }
 
-  playShot(start: Vec2, end: Vec2, now: number, durationMs = 300): void {
+  playShot(start: Vec2, end: Vec2, now: number, durationMs = 300, sample?: (elapsedMs: number) => Vec2): void {
     if (this.destroyed) return;
     this.flight = {
       start,
@@ -107,6 +109,7 @@ export class Puck {
       durationMs,
       easing: 'linear',
       fullVisualOffset: false,
+      ...(sample ? { sample } : {}),
     };
   }
 
@@ -130,9 +133,10 @@ export class Puck {
     };
   }
 
-  holdAt(pos: Vec2): void {
+  holdAt(pos: Vec2, sampledCoordinates = false): void {
     if (this.destroyed) return;
     this.held = pos;
+    this.heldSampled = sampledCoordinates;
     this.flight = null;
     this.clearMotionEffects();
   }
@@ -146,11 +150,11 @@ export class Puck {
   update(now: number, scale: Scale): void {
     if (this.destroyed) return;
     if (this.held) {
-      this.draw(this.held, scale, this.flightVisualYOffset);
+      this.draw(this.held, scale, this.heldSampled ? 0 : this.flightVisualYOffset);
       return;
     }
     if (!this.flight) return;
-    const progress = Math.min(
+    const progress = this.flight.sample && this.flight.durationMs <= 0 ? 1 : Math.min(
       1,
       Math.max(0, (now - this.flight.startedAt) / this.flight.durationMs),
     );
@@ -169,16 +173,18 @@ export class Puck {
         t = 1 - (1 - reboundProgress) ** 2;
       }
     }
-    const x = segmentStart.x + (segmentEnd.x - segmentStart.x) * t;
-    const y = segmentStart.y + (segmentEnd.y - segmentStart.y) * t;
+    const sampled = flight.sample?.(Math.max(0, Math.min(flight.durationMs, now - flight.startedAt)));
+    const x = sampled?.x ?? segmentStart.x + (segmentEnd.x - segmentStart.x) * t;
+    const y = sampled?.y ?? segmentStart.y + (segmentEnd.y - segmentStart.y) * t;
     this.draw(
       { x, y },
       scale,
-      flight.fullVisualOffset ? this.flightVisualYOffset : this.flightVisualYOffset * t,
+      flight.sample ? 0 : flight.fullVisualOffset ? this.flightVisualYOffset : this.flightVisualYOffset * t,
       progress >= 1 ? null : { start: segmentStart, progress },
     );
     if (progress >= 1) {
-      this.held = flight.end;
+      this.held = sampled ?? flight.end;
+      this.heldSampled = sampled !== undefined;
       this.flight = null;
       this.clearMotionEffects();
     }

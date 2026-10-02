@@ -1879,3 +1879,15 @@ describe('BonusGamesScreen', () => {
     expect(screen.queryByText(/Открыть за/)).not.toBeInTheDocument();
   });
 });
+
+it('keeps production challenges closed with a development toast', async () => {
+  vi.stubEnv('DEV', false);
+  localStorage.clear();
+  mockCatalog([card({ title: 'Закрытый Пляж', skill_code: 'challenge' })]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    expect(await screen.findByText('Раздел в разработке')).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Закрытый Пляж' })).not.toBeInTheDocument();
+  } finally { vi.unstubAllEnvs(); }
+});
