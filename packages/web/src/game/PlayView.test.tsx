@@ -1859,4 +1859,21 @@ it('stops a beach shot in deep water without a rebound or a second tap', async (
     } finally {resolver.mockRestore();}
   });
 
+  it.each(['tired', 'exhausted_stop', 'stumble'] as const)(
+    'keeps challenge content-width styling in %s state', async state => {
+      render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+        active seed="challenge-notice-width" goalieId={null} goalieConfig={beachGoalie}
+        periodNumber={1} goals={0} shots={0} statusNotice="Лёд тает"
+        statusNoticeClassName="bonus-challenge-environment-notice" statusNoticeUnderScoreboard
+        duelCondition={() => ({puckSpeedDelta:0,shooterSpeedMultiplier:.765,canShoot:state === 'tired',
+          status:state === 'exhausted_stop' ? 'exhausted_stop' : 'tired',fatigueLevel:'medium',
+          stumbleActive:state === 'stumble',shooterXOffsetPx:0,fatigueMs:31000,
+          nutritionConsumed:0,skatesConsumed:0})}
+        optimisticAddShot={() => undefined} submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}/>);
+      const notice = screen.getByRole('status');
+      expect(notice).toHaveClass('bonus-challenge-environment-notice','fitted-scoreboard-notice');
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
 });

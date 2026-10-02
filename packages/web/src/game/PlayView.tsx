@@ -2261,11 +2261,13 @@ export function PlayView<TState>({
     !rinkLayer &&
     !hideRinkScoreboard &&
     (showDuelStumbleNotice || Boolean(duelFatigueNotice) || (statusNoticeUnderScoreboard && Boolean(effectiveStatusNotice)));
+  const challengeNoticeClass = statusNoticeClassName === 'bonus-challenge-environment-notice'
+    ? ' bonus-challenge-environment-notice' : '';
   const gameNotice = showDuelStumbleNotice ? (
     <FittedNotice fit={noticeInScoreboard}
       role="status"
       aria-live="polite"
-      className={`duel-stumble-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
+      className={`duel-stumble-notice${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
       style={routeGameStyle}
     >
       Споткнулся · бросок недоступен
@@ -2274,7 +2276,7 @@ export function PlayView<TState>({
     <FittedNotice fit={noticeInScoreboard}
       role="status"
       aria-live="polite"
-      className={`duel-fatigue-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+      className={`duel-fatigue-notice${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
         currentDuelCondition?.status === 'exhausted_stop'
           ? ' duel-rest-notice'
           : currentDuelCondition?.status === 'nutrition_slowdown' ||
