@@ -15446,3 +15446,19 @@ button.daily-calendar__day:active {
 .advanced-training-v2-demo-stop__explanation p {
   margin: 0;
 }
+
+.bonus-game-preview-modal__hints {
+  list-style: none;
+  margin: 16px 0 20px;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.bonus-game-preview-modal__hints li {
+  padding-left: 13px;
+  border-left: 2px solid rgba(69, 95, 118, .22);
+  font-size: 14px;
+  line-height: 1.45;
+  color: #475569;
+  font-weight: 500;
+}

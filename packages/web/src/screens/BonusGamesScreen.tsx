@@ -7,6 +7,7 @@ import {
   CircleDollarSign,
   Info,
   Star,
+  Target,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -468,8 +469,17 @@ export function BonusGamesScreen(): JSX.Element {
           />
           <p className="modal-copy bonus-game-preview-modal__story">{previewGame.preview_story}</p>
           <p className="bonus-game-preview-modal__condition">
+            {previewGame.slug === 'challenge-beach' && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
             {qualificationDescription(previewGame.qualification_rules)}
           </p>
+          {previewGame.slug === 'challenge-beach' && previewGame.challenge_environment?.beach?.interactive && (
+            <ul className="bonus-game-preview-modal__hints">
+              <li>Лужи замедляют шайбу. В глубокой воде она застревает.</li>
+              <li>Тапай по лужам, чтобы убрать воду. Большой луже нужно больше тапов, но со временем она появится снова.</li>
+              <li>Ветер периодически сносит игрока, вратаря или ворота назад.</li>
+              <li>На мокром льду игрок спотыкается, устаёт и берёт передышки.</li>
+            </ul>
+          )}
           {startMutation.isError ? (
             <p role="alert" className="bonus-game-abandon-error">
               {safeUiError(startMutation.error)}

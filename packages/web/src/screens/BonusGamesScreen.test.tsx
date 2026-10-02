@@ -1891,3 +1891,20 @@ it('keeps production challenges closed with a development toast', async () => {
     expect(screen.queryByRole('heading', { name: 'Закрытый Пляж' })).not.toBeInTheDocument();
   } finally { vi.unstubAllEnvs(); }
 });
+
+it('renders Beach guidance as separate items with the target icon', async () => {
+  vi.stubEnv('DEV', true);
+  localStorage.clear();
+  mockCatalog([card({slug: 'challenge-beach', skill_code: 'challenge', preview_title: 'Жаркий матч',
+    challenge_environment: {beach: {interactive: {version: 1, wind: []}}}})]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', {name: 'Испытания'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Играть'}));
+    const dialog = screen.getByRole('dialog', {name: 'Описание игры «Пляж»'});
+    expect(within(dialog).getByRole('heading', {name: 'Жаркий матч'})).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(4);
+    expect(dialog).toHaveTextContent('Ветер периодически сносит игрока, вратаря или ворота назад.');
+    expect(dialog.querySelector('.bonus-game-preview-modal__condition svg')).not.toBeNull();
+  } finally {vi.unstubAllEnvs();}
+});
