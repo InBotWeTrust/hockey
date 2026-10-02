@@ -1982,9 +1982,16 @@ export function PlayView<TState>({
             simulateGoalie(activeCfg, seed, shotIndex, courtMotionTimeRef.current?.('goalie', rawGoalCross) ?? rawGoalCross, offsets.goalie),
           )
         : [];
-    const outcomeMotion = beachShot ? null : puckOutcomeMotion(
+    // Sampled Beach points already include the flight offset. Outcome rendering
+    // adds that offset, so convert the contact without moving the visible puck.
+    const outcomeContact = beachShot ? {
+      x: puckShotPath.end.x,
+      y: puckShotPath.end.y - (puckOptionsRef.current?.flightVisualYOffset ?? 0)
+        / (puckOptionsRef.current?.visualYScale ?? 1),
+    } : puckShotPath.end;
+    const outcomeMotion = beachShot?.blockedByWater ? null : puckOutcomeMotion(
       displayKind,
-      puckShotPath.end,
+      outcomeContact,
       reduceMotion,
       puckSpeed,
       reboundObstacles,
@@ -2009,14 +2016,14 @@ export function PlayView<TState>({
       else loop.beginScenePause();
       if (outcomeMotion && visualOutcomeDurationMs > 0) {
         puck.playOutcomeMotion(
-          puckShotPath.end,
+          outcomeContact,
           outcomeMotion.end,
           loop.getRenderNow(),
           visualOutcomeDurationMs,
           outcomeMotion.waypoint,
         );
       } else {
-        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end, beachShot !== null);
+        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end, beachShot !== null && outcomeMotion === null);
       }
       if (freezeRenderingDuringResult && visualOutcomeDurationMs === 0) loop.detach();
       if (result.type === 'save') goalie.setSavePose(true);
