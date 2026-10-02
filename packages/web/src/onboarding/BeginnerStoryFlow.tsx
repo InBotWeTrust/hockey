@@ -169,7 +169,7 @@ export function BeginnerStoryFlow({
     return lines.map((line, index) => {
       const threshold = line === String(unlockGoalsRequired) || line === `0 / ${unlockGoalsRequired}`;
       const playerDialogue = scene === 'name' && index === 2;
-      const dialogue = line.startsWith('–') || (scene === 'finale' && line.startsWith('«'));
+      const dialogue = /^[-–]/.test(line) || (scene === 'finale' && line.startsWith('«'));
       const className = threshold
         ? 'beginner-story__threshold'
         : playerDialogue
