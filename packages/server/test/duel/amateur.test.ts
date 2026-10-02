@@ -799,6 +799,16 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   it('keeps locked invitations visible and decline available while rejecting acceptance', async () => {
     const matchId = (await challenge(await createTemplate())).json().match.id;
     await scheduleTournamentLock(userB);
+    const challengerOverview = await app.inject({
+      method: 'GET',
+      url: '/duel/amateur/matches',
+      headers: auth(tokenA),
+    });
+    expect(challengerOverview.json().matches[0].duel_lock).toMatchObject({
+      blocked: true,
+      reason: 'scheduled_tournament',
+      subject: 'opponent',
+    });
     const overview = await app.inject({
       method: 'GET',
       url: '/duel/amateur/matches',
@@ -809,6 +819,21 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       reason: 'scheduled_tournament',
     });
     expect(overview.json().matches[0]).toMatchObject({ id: matchId, duel_lock: { blocked: true } });
+    expect(overview.json().matches[0].duel_lock.subject).toBeUndefined();
+    const detail = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+    expect(detail.json().match.duel_lock.subject).toBe('opponent');
+    await scheduleTournamentLock(userA);
+    const bothLocked = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/matches/${matchId}`,
+      headers: auth(tokenA),
+    });
+    expect(bothLocked.json().match.duel_lock.blocked).toBe(true);
+    expect(bothLocked.json().match.duel_lock.subject).toBeUndefined();
     expect(
       (
         await app.inject({
