@@ -112,8 +112,8 @@ describe('BeginnerStoryFlow', () => {
   });
 
   it.each([
-    ['Тестовый гол', 'Шайба влетает в ворота.', '- Неплохо. Только один бросок ничего не значит.'],
-    ['Тестовый промах', 'Шайба проходит рядом с воротами.', '- Бывает. Один бросок всё равно ничего не значит.'],
+    ['Тестовый гол', 'Шайба влетает в ворота.', '– Неплохо. Только один бросок ничего не значит.'],
+    ['Тестовый промах', 'Шайба проходит рядом с воротами.', '– Бывает. Один бросок всё равно ничего не значит.'],
   ])('branches after %s and converges without revealing the stranger identity', (shotAction, resultCopy, dialogue) => {
     render(
       <BeginnerStoryFlow
@@ -152,7 +152,7 @@ describe('BeginnerStoryFlow', () => {
     }
     expect(screen.getByTestId('beginner-story')).toHaveTextContent('475');
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(
-      '- Забьёшь 475 - тогда и поговорим.',
+      '– Забьёшь 475 – тогда и поговорим.',
     );
 
     fireEvent.click(screen.getByRole('button', { name: /Столько\?/ }));
