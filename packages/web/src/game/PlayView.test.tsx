@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { type GoalieConfig } from '@hockey/game-core';
+import * as gameCore from '@hockey/game-core';
 import { useState } from 'react';
 import { PlayView, TRAINING_COURSE_GOAL_OPTIONS, type PlayShotResolver } from './PlayView.js';
 import type * as ReactModule from 'react';
@@ -1823,5 +1824,39 @@ it('stops a beach shot in deep water without a rebound or a second tap', async (
   expect(screen.getByText('Шайба застряла в луже')).toBeInTheDocument();
   expect(puckOutcomePaths).toHaveLength(0);
 });
+
+  it.each([
+    {kind: 'save', time: 0, pattern: 8},
+    {kind: 'miss', time: 2000, pattern: 18},
+    {kind: 'post', time: 823, pattern: 35},
+  ])('retains Beach $kind rebound and impact feedback outside water', async ({kind, time, pattern}) => {
+    vi.useFakeTimers();
+    const vibrate = vi.fn(() => true);
+    Object.defineProperty(window.navigator, 'vibrate', {configurable: true, value: vibrate});
+    const flight = gameCore.traceBeachPuckFlight({x:286, startY:580, endY:60, speedPerMs:1.2, puddles:[]});
+    const resolver = vi.spyOn(gameCore, 'resolveBeachCourtShot').mockReturnValue({
+      result: kind === 'save' ? {type:'save', goalieContact:{x:286,y:80}} : {type:'miss',reason:'wide'},
+      blockedByWater:false, flight,
+    });
+    try {
+      render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+        active seed={kind === 'miss' ? 'puck-outcome-miss' : 'shot-haptics'} goalieId={null} goalieConfig={{...beachGoalie,goalAmplitude:0}}
+        speedOverrides={{goalFreq:.45,goalieFreq:.5,shooterFreq:.5,puckSpeed:1.2}}
+        puckOptions={{visualYScale:.9,visualYOffset:8,flightVisualYOffset:6}}
+        initialShooterElapsedMs={time} periodNumber={1} goals={0} shots={0}
+        beachEnvironment={{version:1,meltDurationMs:150000,finalSpeedMultiplier:.85,puddles:[]}}
+        optimisticAddShot={() => undefined} submitShot={() => new Promise(() => undefined)} applyState={() => undefined}/>);
+      fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+      await act(async () => vi.advanceTimersByTimeAsync(700));
+      expect(puckOutcomePaths).toHaveLength(1);
+      // Default perspective options add a flight offset only during outcome motion.
+      const shotEnd = puckShotPaths.at(-1)!.end;
+      const reboundStart = puckOutcomePaths.at(-1)!.start;
+      expect(reboundStart.x).toBe(shotEnd.x);
+      expect(reboundStart.y * .9 + 6).toBeCloseTo(shotEnd.y * .9);
+      if (kind === 'miss') expect(puckOutcomePaths.at(-1)!.waypoint).toBeDefined();
+      expect(vibrate).toHaveBeenCalledWith(pattern);
+    } finally {resolver.mockRestore();}
+  });
 
 });
