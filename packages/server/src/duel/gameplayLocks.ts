@@ -31,6 +31,7 @@ export interface GameplayLockState {
 }
 
 export interface GameplayLockDTO {
+  subject?: 'opponent';
   blocked: boolean;
   reason: GameplayLockReason;
   ends_at: string | null;
