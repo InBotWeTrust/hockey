@@ -129,8 +129,8 @@ describe('BeginnerStoryFlow', () => {
   });
 
   it.each([
-    ['Тестовый гол', 'Шайба влетает в ворота.', '– Неплохо. Только один бросок ничего не значит.'],
-    ['Тестовый промах', 'Шайба проходит рядом с воротами.', '– Бывает. Один бросок всё равно ничего не значит.'],
+    ['Тестовый гол', 'Шайба влетает в ворота.', '– Неплохо. Только один бросок не имеет значения.'],
+    ['Тестовый промах', 'Шайба проходит рядом с воротами.', '– Бывает. Один бросок всё равно не имеет значения.'],
   ])('branches after %s and converges without revealing the stranger identity', (shotAction, resultCopy, dialogue) => {
     render(
       <BeginnerStoryFlow
@@ -146,8 +146,8 @@ describe('BeginnerStoryFlow', () => {
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(resultCopy);
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(dialogue);
 
-    fireEvent.click(screen.getByRole('button', { name: /А что значит\?/ }));
-    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Посмотрим, вернёшься ли ты завтра.');
+    fireEvent.click(screen.getByRole('button', { name: /А что имеет значение\?/ }));
+    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Значение имеет только то, вернёшься ли ты завтра.');
     expect(screen.getByTestId('beginner-story')).toHaveTextContent('Он останавливается и смотрит через плечо.');
   });
 
@@ -164,7 +164,7 @@ describe('BeginnerStoryFlow', () => {
 
     advanceToShot();
     fireEvent.click(screen.getByRole('button', { name: 'Тестовый гол' }));
-    for (const action of ['А что значит?', 'Подождите']) {
+    for (const action of ['А что имеет значение?', 'Подождите']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(action.replace(/[?]/g, '\\?')) }));
     }
     expect(screen.getByTestId('beginner-story')).toHaveTextContent('475');
