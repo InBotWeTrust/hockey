@@ -77,4 +77,14 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative beach interactions', (
     expect(response.attempt.currentPeriodShotPauses![0]!.flightMs).toBeCloseTo(predicted.flight.durationMs);
   });
 
+  it.each([25000,31000])('allows cleanup at blocked shooting time %i without enabling shots', async tapTime => {
+    const now = new Date(NOW.getTime()+tapTime);
+    const before = await reconcileOwnedBonusAttempt(pool, {userId,attemptId,now});
+    expect(getBonusChallengeCondition(before.rules.challengeEnvironment!,tapTime).canShoot).toBe(false);
+    const result = await cleanupBeachPuddle(pool,request({tapTime,now}));
+    expect(result.currentPeriodCleanupEvents).toHaveLength(1);
+    await expect(submitBonusShot(pool,{userId,attemptId,claimedShotIndex:1,
+      input:{tapTime,shooterTapTime:tapTime},claimedResult:'miss',now})).rejects.toMatchObject({code:'bonus_shot_time_invalid'});
+  });
+
 });

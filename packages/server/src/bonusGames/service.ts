@@ -1600,8 +1600,8 @@ export async function cleanupBeachPuddle(pool: Pool, input: {
       (events.length && input.tapTime < events.at(-1)!.tapTime + 180)) {
       throw new AppError('bonus_shot_time_stale', 'cleanup timing is stale', 409);
     }
-    if (!getBonusChallengeCondition(environment, input.tapTime).canShoot ||
-      !sampleBeachPuddles(beachCleanupRules(environment.beach.puddles, events, input.tapTime), input.tapTime)
+    // Clearing water is allowed during rest/stumbles; only shooting is blocked.
+    if (!sampleBeachPuddles(beachCleanupRules(environment.beach.puddles, events, input.tapTime), input.tapTime)
         .some(puddle => puddle.id === input.puddleId && puddle.active)) {
       throw new AppError('bonus_shot_time_invalid', 'puddle is unavailable', 409);
     }
