@@ -1,7 +1,34 @@
 import { describe, expect, it } from 'vitest';
-import { dailyGameplayLockCopy, gameplayLockCopy, tournamentGameDateCopy } from './gameplayLock';
+import {
+  dailyGameplayLockCopy,
+  gameplayLockCopy,
+  ordinaryDuelLockCopy,
+  tournamentGameDateCopy,
+} from './gameplayLock';
 
 describe('gameplayLockCopy', () => {
+  it('identifies the opponent whose tournament game blocks the invitation', () => {
+    expect(
+      ordinaryDuelLockCopy({
+        blocked: true,
+        reason: 'active_classic',
+        ends_at: null,
+        tournament_starts_at: null,
+        subject: 'opponent',
+      }),
+    ).toBe('Соперник играет в турнире. Дождитесь завершения его игры.');
+  });
+
+  it('keeps the instruction to finish the viewer own tournament game', () => {
+    expect(
+      ordinaryDuelLockCopy({
+        blocked: true,
+        reason: 'active_classic',
+        ends_at: null,
+        tournament_starts_at: null,
+      }),
+    ).toBe('Завершите текущую турнирную игру, чтобы играть в обычные дуэли.');
+  });
   it('names training as the recovery source for the daily game', () => {
     expect(
       dailyGameplayLockCopy({

@@ -32,6 +32,8 @@ services:
     restart: unless-stopped
     environment:
       NODE_ENV: ${NODE_ENV}
+      BONUS_DAILY_ATTEMPT_LIMIT: 2
+      BONUS_CHALLENGES_ENABLED: 'false'
       HOST: 0.0.0.0
       PORT: 3000
       LOG_LEVEL: ${LOG_LEVEL}

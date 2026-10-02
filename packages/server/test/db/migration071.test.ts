@@ -172,7 +172,14 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       [userId, paidGame.id, paidGame.unlock_price_stars, purchase.rows[0]!.id],
     );
 
-    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    // Historical migration contract ends before the new city catalog replacement.
+    const historicalDir = await createMigrationsDirBefore('168_bonus_hockey_city_tours.sql');
+    let applied;
+    try {
+      applied = await applyMigrations(pool, historicalDir);
+    } finally {
+      await fs.rm(historicalDir, { recursive: true, force: true });
+    }
     expect(applied.applied).toEqual(expect.arrayContaining([
       '071_bonus_game_accuracy_world_tour.sql',
       '072_tournament_fixture_series_lookup.sql',

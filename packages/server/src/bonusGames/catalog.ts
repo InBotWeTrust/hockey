@@ -9,6 +9,7 @@ import type {
   BonusRulesSnapshot,
   BonusRewardSnapshot,
 } from './types.js';
+import { parseBonusChallengeEnvironmentRules } from './types.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -102,6 +103,7 @@ export interface BonusGameCardDto {
   preview_artwork_url: string;
   preview_revision: number;
   period_rules: BonusPeriodRule[];
+  challenge_environment: ReturnType<typeof parseBonusChallengeEnvironmentRules>;
   reward: BonusRewardSnapshot;
   goalkeeper_ready_url: string;
   goalkeeper_save_url: string;
@@ -139,6 +141,7 @@ interface CatalogRow {
   preview_artwork_url: string;
   preview_revision: number;
   period_rules: BonusPeriodRule[];
+  challenge_environment: unknown | null;
   reward_coins: number;
   reward_stars: number;
   reward_experience: number;
@@ -265,7 +268,7 @@ export async function listBonusGameCards(
             game.qualification_rules, game.total_periods,
             game.break_duration_ms, game.use_inventory, game.preview_title,
             game.preview_story, game.preview_artwork_url, game.preview_revision,
-            game.period_rules,
+            game.period_rules, game.challenge_environment,
             game.reward_coins, game.reward_stars, game.reward_experience,
             game.goalkeeper_ready_url, game.goalkeeper_save_url,
             arena.id as arena_id, arena.slug as arena_slug, arena.title as arena_title,
@@ -342,6 +345,9 @@ export async function listBonusGameCards(
       preview_artwork_url: activeRules?.previewArtworkUrl ?? row.preview_artwork_url,
       preview_revision: activeRules?.previewRevision ?? Number(row.preview_revision),
       period_rules: periodRules,
+      challenge_environment:
+        activeRules?.challengeEnvironment ??
+        parseBonusChallengeEnvironmentRules(row.challenge_environment),
       reward,
       goalkeeper_ready_url: activeRules?.goalkeeperReadyUrl ?? row.goalkeeper_ready_url,
       goalkeeper_save_url: activeRules?.goalkeeperSaveUrl ?? row.goalkeeper_save_url,

@@ -1184,7 +1184,44 @@
 
 .game-scoreboard-stack {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 7px;
+  width: 100%;
+  min-width: 0;
+}
+
+.game-scoreboard.bonus-game-marksmanship-score {
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  overflow: hidden;
+  padding-inline: 0;
+}
+
+.bonus-game-marksmanship-score__inner {
+  display: flex;
+  width: max-content;
+}
+
+.bonus-game-marksmanship-score__part {
+  display: grid;
+  flex: 0 0 auto;
+  gap: var(--marksmanship-part-gap, 4px);
+  min-width: 0;
+  padding: 8px var(--marksmanship-part-padding, 10px);
+  text-align: center;
+}
+
+.bonus-game-marksmanship-score__part + .bonus-game-marksmanship-score__part {
+  border-left: 1px solid rgba(205, 232, 255, 0.28);
+}
+
+.bonus-game-marksmanship-score .game-scoreboard__label {
+  font-size: var(--marksmanship-label-size, 8px);
+}
+
+.bonus-game-marksmanship-score .game-scoreboard__value {
+  font-size: var(--marksmanship-value-size, 18px);
 }
 
 .game-scoreboard {
@@ -1834,10 +1871,23 @@
 
 .bonus-games-skill-tabs {
   width: 100%;
+  min-width: 0;
 }
 
 .bonus-games-skill-tabs .segmented-tabs {
   width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+.bonus-games-skill-tabs .segmented-tabs--scrollable {
+  gap: 4px;
+  padding-inline: 4px;
+}
+
+.bonus-games-skill-tabs .segmented-tabs--scrollable .segmented-tabs__item {
+  padding-inline: 8px;
 }
 
 .bonus-games-attempt-progress {
@@ -2617,6 +2667,15 @@
 
 .bonus-game-result-metrics--endurance {
   grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.bonus-game-result-metrics--shot-stats {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 8px;
+}
+
+.bonus-game-result-metrics--shot-stats-three {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .bonus-game-result-metric {
@@ -4036,6 +4095,37 @@
 .duel-fatigue-notice.initial-training-feedback-notice--scoreboard {
   max-width: min(calc(100% - 40px), 316px);
   font-size: clamp(9px, 2.75vw, 12px);
+  white-space: nowrap;
+}
+
+.bonus-challenge-environment-notice.initial-training-feedback-notice--scoreboard {
+  width: max-content;
+  max-width: min(calc(100% - 40px), 404px);
+  padding-inline: clamp(8px, 2.4cqw, 13px);
+  font-size: clamp(8px, 2.25cqw, 11px);
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  text-wrap: nowrap;
+}
+
+.fitted-scoreboard-notice.initial-training-feedback-notice--scoreboard {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  padding-inline: 13px;
+  font-size: 12px;
+  white-space: nowrap;
+  text-wrap: nowrap;
+  line-height: 1;
+  overflow: hidden;
+}
+
+.fitted-scoreboard-notice > span {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
   white-space: nowrap;
 }
 

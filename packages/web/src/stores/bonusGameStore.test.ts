@@ -1083,6 +1083,17 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState().attempt).toEqual(activeAttempt);
   });
 
+  it('shows a definitive daily limit rejection without pretending to reconcile a shot', async () => {
+    useBonusGameStore.getState().applyState({ ...initialAttempt, state: 'idle', current_period: 0 });
+    vi.mocked(startBonusPeriod).mockRejectedValueOnce(new ApiError(409,
+      'bonus_daily_attempt_limit', 'На сегодня попытки закончились.'));
+    expect(await useBonusGameStore.getState().startPeriod()).toBeNull();
+    expect(useBonusGameStore.getState()).toMatchObject({
+      needsReconcile: false, inFlight: false, error: 'На сегодня попытки закончились.',
+      errorCode: 'bonus_daily_attempt_limit',
+    });
+  });
+
   it('uses the response from abandon as the only terminal attempt state', async () => {
     // This catches inventing an abandoned state without the server confirmation.
     const abandonedAttempt = {

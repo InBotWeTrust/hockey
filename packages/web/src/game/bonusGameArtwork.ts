@@ -1,5 +1,5 @@
-const BONUS_GAME_ARTWORK_VERSION = '20260829-world-tour-user-pngs-v10';
-const BONUS_GAME_GOALKEEPER_VERSION = '20260831-goalkeeper-framing-v1';
+const BONUS_GAME_ARTWORK_VERSION = '20261001-nhl-city-tours-v1';
+const BONUS_GAME_GOALKEEPER_VERSION = '20261001-nhl-city-tours-v1';
 
 type BonusGameCatalogArtworkKind = 'featured' | 'compact';
 

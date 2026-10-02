@@ -5,6 +5,7 @@ export type GameplayLockReason =
   | 'active_daily';
 
 export interface GameplayLockDTO {
+  subject?: 'opponent';
   blocked: boolean;
   reason: GameplayLockReason;
   ends_at: string | null;
@@ -38,6 +39,19 @@ export function dailyGameplayLockCopy(lock: GameplayLockDTO, now = Date.now()): 
 }
 
 export function ordinaryDuelLockCopy(lock: GameplayLockDTO): string {
+  if (lock.subject === 'opponent') {
+    if (lock.reason === 'active_classic')
+      return 'Соперник играет в турнире. Дождитесь завершения его игры.';
+    if (lock.reason === 'active_daily')
+      return 'Соперник играет в ежедневную игру. Дождитесь завершения его игры.';
+    if (lock.reason === 'scheduled_tournament') {
+      const startsAt = lock.tournament_starts_at ? Date.parse(lock.tournament_starts_at) : NaN;
+      return startsAt > Date.now()
+        ? `Сопернику недоступны обычные дуэли перед турнирной игрой. Начало: ${new Date(startsAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}.`
+        : 'Соперник играет в турнире. Дождитесь завершения его игры.';
+    }
+    return 'Сопернику временно недоступны обычные дуэли. Дождитесь окончания восстановления.';
+  }
   if (lock.reason === 'active_daily')
     return 'Завершите ежедневную игру, чтобы играть в обычные дуэли.';
   if (lock.reason === 'active_classic')

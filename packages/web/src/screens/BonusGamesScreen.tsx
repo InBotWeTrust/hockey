@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { AppToast } from '../components/AppToast.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
@@ -7,7 +8,6 @@ import {
   CircleDollarSign,
   Info,
   Star,
-  Target,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -30,7 +30,6 @@ import {
 } from '../amateur/amateurAccess.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { AppToast } from '../components/AppToast.js';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
   enduranceQualificationLines,
@@ -44,7 +43,6 @@ import { useDailyStore } from '../stores/dailyStore.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
-const CLOSED_BONUS_SKILLS = new Set<BonusSkillCode>(['marksmanship', 'endurance']);
 
 function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
@@ -65,6 +63,7 @@ const skillLabels: Record<BonusSkillCode, string> = {
   accuracy: 'Точность',
   marksmanship: 'Меткость',
   endurance: 'Выносливость',
+  challenge: 'Испытания',
 };
 
 function safeUiError(error: unknown): string {
@@ -124,7 +123,9 @@ export function BonusGamesScreen(): JSX.Element {
   const [rulesOpen, setRulesOpen] = useState(false);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    return stored === 'accuracy' ? 'accuracy' : 'speed';
+    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
+      ? stored
+      : 'speed';
   });
   const [allowanceNowMs, setAllowanceNowMs] = useState(() => Date.now());
   const refreshedAllowanceResetRef = useRef<string | null>(null);
@@ -243,8 +244,15 @@ export function BonusGamesScreen(): JSX.Element {
     void catalogQuery.refetch();
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
+  const challengesAvailable = catalogQuery.data?.challenge_available === true;
+  useEffect(() => {
+    if (catalogQuery.data && !challengesAvailable && selectedSkill === 'challenge') {
+      setSelectedSkill('speed');
+      localStorage.setItem(LAST_SKILL_STORAGE_KEY, 'speed');
+    }
+  }, [catalogQuery.data, challengesAvailable, selectedSkill]);
   const selectSkill = (skill: BonusSkillCode): void => {
-    if (CLOSED_BONUS_SKILLS.has(skill)) {
+    if (skill === 'challenge' && !challengesAvailable) {
       setSectionToast('Раздел в разработке');
       return;
     }
@@ -314,6 +322,7 @@ export function BonusGamesScreen(): JSX.Element {
             activeTab={selectedSkill}
             ariaLabel="Навык"
             onChange={selectSkill}
+            scrollable
           />
         </div>
 
@@ -430,13 +439,7 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         )}
       </section>
-      {sectionToast !== null ? (
-        <AppToast
-          message={sectionToast}
-          onDismiss={() => setSectionToast(null)}
-          durationMs={1_500}
-        />
-      ) : null}
+      {sectionToast !== null ? <AppToast message={sectionToast} onDismiss={() => setSectionToast(null)} durationMs={1500} /> : null}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {previewGame !== null ? (
         <AccessibleModal
@@ -445,9 +448,7 @@ export function BonusGamesScreen(): JSX.Element {
           copy={null}
           closeBlocked={startMutation.isPending}
           onRequestClose={() => {
-            if (startMutation.isPending) return;
-            startMutation.reset();
-            setPreviewGame(null);
+            if (!startMutation.isPending) setPreviewGame(null);
           }}
           cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
           headerAction={
@@ -456,10 +457,7 @@ export function BonusGamesScreen(): JSX.Element {
               className="icon-btn"
               aria-label="Закрыть"
               disabled={startMutation.isPending}
-              onClick={() => {
-                startMutation.reset();
-                setPreviewGame(null);
-              }}
+              onClick={() => setPreviewGame(null)}
             >
               <X size={15} aria-hidden="true" />
             </button>
@@ -470,25 +468,9 @@ export function BonusGamesScreen(): JSX.Element {
             src={versionBonusGameArtwork(previewGame.preview_artwork_url)}
             alt={`Локация «${previewGame.arena.title}» и её вратарь`}
           />
-          <p className="modal-copy bonus-game-preview-modal__story">
-            {previewGame.preview_story}
-          </p>
+          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.preview_story}</p>
           <p className="bonus-game-preview-modal__condition">
-            <Target
-              className="bonus-game-preview-modal__condition-icon"
-              size={17}
-              strokeWidth={2.4}
-              aria-hidden="true"
-            />
-            {previewGame.qualification_rules.type === 'survive_goal_windows' ? (
-              <span className="bonus-game-preview-modal__condition-lines">
-                {enduranceQualificationLines(previewGame.qualification_rules).map((line) => (
-                  <span key={line}>{line}</span>
-                ))}
-              </span>
-            ) : (
-              qualificationDescription(previewGame.qualification_rules)
-            )}
+            {qualificationDescription(previewGame.qualification_rules)}
           </p>
           {startMutation.isError ? (
             <p role="alert" className="bonus-game-abandon-error">
@@ -735,7 +717,9 @@ function BonusGameCard({
         </span>
         <div className="bonus-game-card__eyebrow">Игра {numberText(game.sort_order)}</div>
         <h2 className="bonus-game-card__title">{game.title}</h2>
-        {game.description && <p className="bonus-game-card__description">{game.description}</p>}
+        {!featured && game.description ? (
+          <p className="bonus-game-card__description">{game.description}</p>
+        ) : null}
         <p className="bonus-game-card__details">
           <span className="bonus-game-card__details-primary">
             {enduranceDetails?.[0] ?? qualificationDescription(game.qualification_rules)}

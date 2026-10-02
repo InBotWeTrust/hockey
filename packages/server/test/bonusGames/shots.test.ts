@@ -2,8 +2,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   deriveShotSeed,
-  GAME_CORE_VERSION,
+  BONUS_GAME_CORE_VERSION as GAME_CORE_VERSION,
   GOAL_OPENING,
   getSessionPhaseOffsets,
   PUCK_START,
@@ -12,12 +16,7 @@ import {
   type ShotInput,
 } from '@hockey/game-core';
 import type { Pool } from 'pg';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../../src/releaseGates.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/releaseGates.js')>()),
-  isBonusSkillReleased: () => true,
-}));
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import {
   acknowledgeBonusPreview,
@@ -255,7 +254,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     return { id: game.rows[0]!.id, arenaId: defaultArenaId };
   }
 
-  async function createMarksmanshipGame(targetPoints: number): Promise<TestGame> {
+  async function createMarksmanshipGame(targetPoints: number, v3 = false, v4 = false,
+    v5 = false, v6 = false): Promise<TestGame> {
     gameSequence += 1;
     const slug = `shot-game-${gameSequence}`;
     const game = await pool.query<{ id: string }>(
@@ -276,7 +276,10 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
           type: 'points_in_time',
           targetPoints,
           activeTimeMs: MARKSMANSHIP_PERIOD.durationMs,
-          scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+          scoring: v6 ? DEFAULT_MARKSMANSHIP_V6_SCORING_RULES
+            : v5 ? DEFAULT_MARKSMANSHIP_V5_SCORING_RULES
+            : v4 ? DEFAULT_MARKSMANSHIP_V4_SCORING_RULES
+            : v3 ? DEFAULT_MARKSMANSHIP_V3_SCORING_RULES : DEFAULT_MARKSMANSHIP_SCORING_RULES,
         }),
         JSON.stringify([MARKSMANSHIP_PERIOD]),
         defaultArenaId,
@@ -310,6 +313,44 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
           goalWindowMs: 7_000,
         }),
         JSON.stringify([ENDURANCE_PERIOD]),
+        defaultArenaId,
+        `/goalies/${slug}-ready.webp`,
+        `/goalies/${slug}-save.webp`,
+      ],
+    );
+    return { id: game.rows[0]!.id, arenaId: defaultArenaId };
+  }
+
+  async function createFatigueChallengeGame(): Promise<TestGame> {
+    gameSequence += 1;
+    const slug = `shot-game-${gameSequence}`;
+    const game = await pool.query<{ id: string }>(
+      `insert into bonus_game
+         (slug, title, skill_code, description, sort_order, status, access_type, unlock_price_stars,
+          target_goals, qualification_rules, total_periods, break_duration_ms, period_rules,
+          challenge_environment, use_inventory, reward_coins, reward_stars, reward_experience,
+          arena_theme_id, goalkeeper_ready_url, goalkeeper_save_url, revision)
+       values ($1, $2, 'challenge', '', $3, 'active', 'free', 0,
+               25, $4::jsonb, 1, 0, $5::jsonb,
+               $6::jsonb, false, 0, 5, 5, $7, $8, $9, 1)
+       returning id`,
+      [
+        slug,
+        `Испытание ${gameSequence}`,
+        gameSequence,
+        JSON.stringify({ type: 'goals_in_time', targetGoals: 25, activeTimeMs: 150_000 }),
+        JSON.stringify([{ ...PERIODS[0]!, durationMs: 150_000, shotsLimit: null }]),
+        JSON.stringify({
+          fatigue: {
+            slowdownStartMs: 10_000,
+            heavyStartMs: 25_000,
+            stopStartMs: 40_000,
+            stopDurationMs: 4_000,
+            recoveryDurationMs: 10_000,
+            slowMultiplier: 0.85,
+            heavyMultiplier: 0.65,
+          },
+        }),
         defaultArenaId,
         `/goalies/${slug}-ready.webp`,
         `/goalies/${slug}-save.webp`,
@@ -568,6 +609,119 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
         seriesBonus: 0,
       },
     });
+  });
+
+  it('settles one V3 category once and retains the V2 snapshot calculation', async () => {
+    const userId = await createUser();
+    const v3Game = await createMarksmanshipGame(4, true);
+    const v3AttemptId = await createActiveAttempt(userId, v3Game.id);
+    const request = {
+      userId, attemptId: v3AttemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 11_060),
+    };
+    const first = await submitBonusShot(pool, request);
+    expect(first).toMatchObject({
+      serverResult: 'goal', awardedPoints: 4, totalPoints: 4,
+      scoreDetails: { version: 3, category: 4, reason: 'instant' },
+    });
+    expect(await submitBonusShot(pool, request)).toMatchObject({
+      serverResult: 'goal',
+      awardedPoints: 4,
+      totalPoints: 4,
+      rewardGranted: null,
+      scoreDetails: { version: 3, category: 4, reason: 'instant' },
+    });
+    expect(await storedMarksmanshipState(v3AttemptId)).toMatchObject({ total_points: 4, shots: 1 });
+
+    const v2Game = await createMarksmanshipGame(1_000);
+    const v2AttemptId = await createActiveAttempt(userId, v2Game.id);
+    await pool.query('update bonus_game_attempt set game_core_version = 63 where id = $1', [v2AttemptId]);
+    const old = await submitBonusShot(pool, { ...request, attemptId: v2AttemptId });
+    expect(old).toMatchObject({ awardedPoints: 155, scoreDetails: { version: 2 } });
+  });
+
+  it('settles one V4 technique in tenths once and replays the stored answer on retry', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(1_000, false, true);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const request = {
+      userId, attemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 11_060),
+    };
+    const first = await submitBonusShot(pool, request);
+    expect(first.serverResult).toBe('goal');
+    expect([10, 12, 13, 14, 15, 20]).toContain(first.awardedPoints);
+    expect(first.scoreDetails).toMatchObject({
+      version: 4, result: 'goal', pointsTenths: first.awardedPoints,
+      technique: expect.any(String), availableTechniques: expect.any(Array),
+    });
+    expect(await submitBonusShot(pool, request)).toEqual(first);
+    expect(await storedMarksmanshipState(attemptId)).toMatchObject({
+      total_points: first.awardedPoints, shots: 1,
+    });
+  });
+
+  it('persists one V5 technique and awards its tenths only once', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(1_000, false, false, true);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const request = {
+      userId, attemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 11_060),
+    };
+
+    const first = await submitBonusShot(pool, request);
+    expect(first.serverResult).toBe('goal');
+    expect([10, 12, 13, 14, 16, 17, 18, 20]).toContain(first.awardedPoints);
+    expect(first.scoreDetails).toMatchObject({
+      version: 5, result: 'goal', pointsTenths: first.awardedPoints,
+      technique: expect.any(String), availableTechniques: expect.any(Array),
+      measurements: expect.objectContaining({ puckX: expect.any(Number) }),
+    });
+    expect(await submitBonusShot(pool, request)).toEqual(first);
+    expect(await storedMarksmanshipState(attemptId)).toMatchObject({
+      total_points: first.awardedPoints, shots: 1,
+    });
+  });
+
+  it('persists one V6 technique and awards its tenths only once', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(1_000, false, false, false, true);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const request = {
+      userId, attemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal' as const,
+      now: new Date(NOW.getTime() + 11_060),
+    };
+    const first = await submitBonusShot(pool, request);
+    expect(first.serverResult).toBe('goal');
+    expect(first.scoreDetails).toMatchObject({
+      version: 6, result: 'goal', pointsTenths: first.awardedPoints,
+      technique: expect.any(String), availableTechniques: expect.any(Array),
+    });
+    expect(await submitBonusShot(pool, request)).toEqual(first);
+    expect(await storedMarksmanshipState(attemptId)).toMatchObject({
+      total_points: first.awardedPoints, shots: 1,
+    });
+  });
+
+  it('continues a core-65 V5 snapshot with V5 points after the V6 release', async () => {
+    const userId = await createUser();
+    const game = await createMarksmanshipGame(1_000, false, false, true);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    await pool.query('update bonus_game_attempt set game_core_version = 65 where id = $1', [attemptId]);
+    const first = await submitBonusShot(pool, {
+      userId, attemptId, claimedShotIndex: 1,
+      input: marksmanshipInput(11_060), claimedResult: 'goal',
+      now: new Date(NOW.getTime() + 11_060),
+    });
+    expect(first.scoreDetails).toMatchObject({
+      version: 5, result: 'goal', pointsTenths: first.awardedPoints,
+    });
+    expect(first.awardedPoints).toBeGreaterThan(0);
   });
 
   it.each([
@@ -960,6 +1114,65 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
       }),
     ).rejects.toMatchObject({ code: 'bonus_shot_index_mismatch', statusCode: 409 });
     expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
+  });
+
+  it('rejects a challenge shot while the immutable fatigue snapshot is resting', async () => {
+    const userId = await createUser();
+    const game = await createFatigueChallengeGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+
+    await expect(submitBonusShot(pool, {
+      userId,
+      attemptId,
+      claimedShotIndex: 1,
+      input: { ...GOAL_INPUT, tapTime: 40_500, shooterTapTime: 40_500 },
+      claimedResult: 'miss',
+      now: new Date(NOW.getTime() + 40_500),
+    })).rejects.toMatchObject({ code: 'bonus_shot_time_invalid', statusCode: 409 });
+
+    expect(await countRows('shot_session', 'bonus_game_attempt_id = $1', [attemptId])).toBe(0);
+  });
+
+  it('accepts raw clocks after fatigue and derives motion from rules rather than client phase', async () => {
+    const userId = await createUser();
+    const game = await createFatigueChallengeGame();
+    await pool.query(`update bonus_game set challenge_environment = challenge_environment || $2::jsonb where id = $1`,
+      [game.id, JSON.stringify({ speedPhases: [
+        { durationMs: 20_000, shooterMultiplier: 1, puckSpeedMultiplier: 1 },
+        { durationMs: 20_000, shooterMultiplier: 1, puckSpeedMultiplier: 2 },
+      ] })]);
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const motionInput = { ...GOAL_INPUT, tapTime: 15_000, shooterTapTime: 15_000,
+      shooterMotionTime: 14_250, shooterFrequency: 0.65, puckSpeedPerMs: 1.2,
+      goalFrequency: 0.45, goalieFrequency: 0.5 };
+    const result = resolvePerspectiveCourtShot(motionInput,
+      buildBonusGoalieConfig('test', 'test', PERIODS[0]!),
+      deriveShotSeed(ATTEMPT_SEED, 1, 1), 1, STICK_NEUTRAL,
+      getSessionPhaseOffsets(ATTEMPT_SEED)).type;
+    const response = await submitBonusShot(pool, { userId, attemptId, claimedShotIndex: 1,
+      input: { ...motionInput, shooterMotionTime: 999_999 } as SubmitBonusShotInput['input'],
+      claimedResult: result, now: new Date(NOW.getTime() + 15_000) });
+    expect(response.attempt.currentPeriodShotsTaken).toBe(1);
+    const stored = await pool.query('select input_payload from shot_session where bonus_game_attempt_id = $1', [attemptId]);
+    expect(stored.rows[0].input_payload).toMatchObject({ shooterTapTime: 15_000,
+      shooterMotionTime: 14_250, shooterFrequency: 0.65 });
+    expect(response.attempt.currentPeriodShotPauses).toEqual([{ tapTime: 15_000, flightMs: 520 / 1.2 }]);
+    const secondInput = { ...motionInput, tapTime: 26_000, shooterTapTime: 26_000 - 520 / 1.2,
+      shooterMotionTime: 23_031.666666666668, puckSpeedPerMs: 2.4 };
+    const secondResult = resolvePerspectiveCourtShot(secondInput,
+      buildBonusGoalieConfig('test', 'test', PERIODS[0]!), deriveShotSeed(ATTEMPT_SEED, 1, 2),
+      2, STICK_NEUTRAL, getSessionPhaseOffsets(ATTEMPT_SEED)).type;
+    const second = await submitBonusShot(pool, { userId, attemptId, claimedShotIndex: 2,
+      input: secondInput, claimedResult: secondResult, now: new Date(NOW.getTime() + 27_000) });
+    expect(second.attempt.currentPeriodShotsTaken).toBe(2);
+    expect(second.attempt.currentPeriodShotPauses).toEqual([
+      { tapTime: 15_000, flightMs: 520 / 1.2 }, { tapTime: 26_000, flightMs: 520 / 2.4 },
+    ]);
+    await expect(submitBonusShot(pool, { userId, attemptId, claimedShotIndex: 3,
+      input: { ...motionInput, tapTime: 1e12, shooterTapTime: 1e12 },
+      claimedResult: 'miss', now: new Date(NOW.getTime() + 30_000) })).rejects.toMatchObject({
+      code: 'bonus_shot_time_stale',
+    });
   });
 
   it.each([

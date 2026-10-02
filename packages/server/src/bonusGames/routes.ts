@@ -1,4 +1,4 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
+import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { z, type ZodType } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { listBonusGameCards, type BonusGameCardDto } from './catalog.js';
@@ -19,6 +19,8 @@ import type { BonusGameAttemptDTO, BonusPeriodRule } from './types.js';
 
 export interface BonusGameRouteOptions {
   bonusSeedSecret: string;
+  dailyAttemptLimit: number;
+  challengesEnabled: boolean;
 }
 
 const gameParamsSchema = z.object({ gameId: z.string().uuid() }).strict();
@@ -78,10 +80,6 @@ const SAFE_BONUS_ERRORS: Readonly<
   bonus_game_inactive: {
     statusCode: 409,
     message: 'this bonus game is not available',
-  },
-  bonus_game_unreleased: {
-    statusCode: 409,
-    message: 'this bonus game is not released yet',
   },
   bonus_attempt_already_active: {
     statusCode: 409,
@@ -253,6 +251,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     closed_at: attempt.closedAt,
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
+    ...(attempt.currentPeriodShotPauses ? { current_period_shot_pauses: attempt.currentPeriodShotPauses } : {}),
     goals: attempt.goals,
     total_points: attempt.totalPoints,
     current_goal_streak: attempt.currentGoalStreak,
@@ -280,6 +279,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
       preview_artwork_url: attempt.rules.previewArtworkUrl,
       preview_revision: attempt.rules.previewRevision,
       periods: attempt.rules.periods.map(toPeriodRuleDto),
+      challenge_environment: attempt.rules.challengeEnvironment,
     },
     reward: attempt.reward,
     arena: {
@@ -332,13 +332,41 @@ function activeAttemptConflict(reply: FastifyReply, error: BonusAttemptAlreadyAc
 }
 
 export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async (app, opts) => {
-  app.get('/bonus-games', { preHandler: [app.authenticate] }, async (request) =>
+  const assertChallengeAccessible = async (request: FastifyRequest): Promise<void> => {
+    if (opts.challengesEnabled) return;
+    const params = (request.params ?? {}) as { gameId?: string; attemptId?: string };
+    let skill: string | undefined;
+    if (params.gameId) {
+      const { gameId } = parseRequest(gameParamsSchema, params);
+      const result = await app.pg.query<{ skill_code: string }>('select skill_code from bonus_game where id=$1', [gameId]);
+      skill = result.rows[0]?.skill_code;
+    } else if (request.routeOptions.url === '/bonus-games/attempts/current') {
+      const result = await app.pg.query<{ skill_code: string }>(
+        "select rules_snapshot->>'skillCode' as skill_code from bonus_game_attempt where user_id=$1 and status='active'",
+        [request.user.id]);
+      skill = result.rows[0]?.skill_code;
+    } else if (params.attemptId) {
+      const { attemptId } = parseRequest(attemptParamsSchema, params);
+      const result = await app.pg.query<{ skill_code: string }>(
+        "select rules_snapshot->>'skillCode' as skill_code from bonus_game_attempt where id=$1 and user_id=$2",
+        [attemptId, request.user.id]);
+      skill = result.rows[0]?.skill_code;
+    }
+    if (skill === 'challenge') throw new AppError('bonus_section_in_development', 'Раздел в разработке', 403);
+  };
+  app.get('/bonus-games', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
     runBonusRoute(async () => {
       const now = new Date();
       await reconcileCurrentAttempt(app, request.user.id, now);
       const games = await listBonusGameCards(app.pg, request.user.id);
-      const attemptAllowances = await fetchBonusAttemptAllowances(app.pg, request.user.id, now);
+      const attemptAllowances = await fetchBonusAttemptAllowances(
+        app.pg,
+        request.user.id,
+        now,
+        opts.dailyAttemptLimit,
+      );
       return {
+        challenge_available: opts.challengesEnabled,
         games: games.map(toCatalogGameHttpDto),
         active_attempt: games.find((game) => game.active_attempt !== null)?.active_attempt ?? null,
         attempt_allowances: {
@@ -370,12 +398,19 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
             remaining: attemptAllowances.endurance.remaining,
             resets_at: attemptAllowances.endurance.resetsAt,
           },
+          challenge: {
+            skill_code: attemptAllowances.challenge.skillCode,
+            daily_limit: attemptAllowances.challenge.dailyLimit,
+            used: attemptAllowances.challenge.used,
+            remaining: attemptAllowances.challenge.remaining,
+            resets_at: attemptAllowances.challenge.resetsAt,
+          },
         },
       };
     }),
   );
 
-  app.get('/bonus-games/attempts/current', { preHandler: [app.authenticate] }, async (request) =>
+  app.get('/bonus-games/attempts/current', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
     runBonusRoute(async () => {
       const now = new Date();
       const attempt = await reconcileCurrentAttempt(app, request.user.id, now);
@@ -383,7 +418,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     }),
   );
 
-  app.post('/bonus-games/:gameId/unlock', { preHandler: [app.authenticate] }, async (request) =>
+  app.post('/bonus-games/:gameId/unlock', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
     runBonusRoute(async () => {
       const params = parseRequest(gameParamsSchema, request.params);
       const body = parseRequest(unlockBodySchema, request.body);
@@ -399,7 +434,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/:gameId/attempts',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, assertChallengeAccessible] },
     async (request, reply) => {
       try {
         const params = parseRequest(gameParamsSchema, request.params);
@@ -409,6 +444,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
           gameId: params.gameId,
           now,
           seedSecret: opts.bonusSeedSecret,
+          dailyAttemptLimit: opts.dailyAttemptLimit,
         });
         return reply
           .status(result.created ? 201 : 200)
@@ -422,7 +458,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     },
   );
 
-  app.get('/bonus-games/attempts/:attemptId', { preHandler: [app.authenticate] }, async (request) =>
+  app.get('/bonus-games/attempts/:attemptId', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
     runBonusRoute(async () => {
       const params = parseRequest(attemptParamsSchema, request.params);
       const now = new Date();
@@ -433,7 +469,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/preview/acknowledge',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, assertChallengeAccessible] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
@@ -451,7 +487,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/period/start',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, assertChallengeAccessible] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
@@ -461,6 +497,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
           userId: request.user.id,
           attemptId: params.attemptId,
           now,
+          dailyAttemptLimit: opts.dailyAttemptLimit,
           ...(body.loadout !== undefined
             ? {
                 loadout: {
@@ -479,7 +516,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/shot',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, assertChallengeAccessible] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
@@ -509,7 +546,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/abandon',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate, assertChallengeAccessible] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
