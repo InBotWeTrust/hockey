@@ -286,6 +286,12 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       return response.attempt;
     } catch (error) {
       const details = errorDetails(error, 'Не удалось начать период.');
+      if (details.code === 'bonus_daily_attempt_limit') {
+        set({ inFlight: false, loading: false, needsReconcile: false,
+          error: details.message, errorCode: details.code,
+          errorHandledByAmateurToast: details.handledByAmateurToast });
+        return null;
+      }
       recordMutationFailure(set, get, details);
       return null;
     }

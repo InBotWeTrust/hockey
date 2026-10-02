@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
-import type { GoalieConfig } from '@hockey/game-core';
+import { getBonusChallengeShooterMotionTime, type GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
 const stationaryCustomGoalie: GoalieConfig = {
@@ -51,6 +51,56 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('preserves the visible beach position through a fatigue boundary, shot and authoritative rebase', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const player = vi.fn();
+    const rules = { fatigue: { slowdownStartMs: 8000, heavyStartMs: 18000,
+      stopStartMs: 30000, stopDurationMs: 4000, recoveryDurationMs: 8000,
+      slowMultiplier: 0.85, heavyMultiplier: 0.65 } };
+    let accepted: { tapTime: number; flightMs: number }[] = [];
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: 7999, shooterElapsedMs: 7999 }),
+      getSpeedOverrides: () => ({ goalFreq: 1, goalieFreq: 1, shooterFreq: 0.75, puckSpeed: 1 }),
+      playerRenderer: { update: player } as never,
+      getShooterMotionTime: (ms, local) => getBonusChallengeShooterMotionTime(rules, ms, 0.75,
+        [...accepted, ...local]),
+    });
+    const ticker = makeTicker(); loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    tick(); const before = player.mock.calls.at(-1)![1];
+    now.mockReturnValue(1001); tick();
+    expect(Math.abs(player.mock.calls.at(-1)![1] - before)).toBeLessThan(1);
+    const tapX = player.mock.calls.at(-1)![1];
+    loop.beginShooterPause(400);
+    now.mockReturnValue(1201); tick();
+    expect(player.mock.calls.at(-1)![1]).toBeCloseTo(tapX, 8);
+    now.mockReturnValue(1401); tick(); loop.beginScenePause();
+    now.mockReturnValue(2401); tick(); loop.endScenePause(); loop.endShooterPause();
+    accepted = [{ tapTime: 8000, flightMs: 400 }];
+    loop.rebaseTime({ sceneElapsedMs: 8400, shooterElapsedMs: 8000 }); tick();
+    expect(player.mock.calls.at(-1)![1]).toBeCloseTo(tapX, 8);
+    expect(loop.getShooterT()).toBe(8000);
+    now.mockRestore();
+  });
+  it('keeps the submitted clock raw while rendering integrated fatigue movement and resting', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const loop = makeLoop({
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({ goalFreq: 1, goalieFreq: 1, shooterFreq: 1, puckSpeed: 1 }),
+      getShooterMotionTime: (sceneMs) => sceneMs * 0.765,
+      getDuelCondition: () => ({ puckSpeedDelta: 0, shooterSpeedMultiplier: 0,
+        canShoot: false, status: 'exhausted_stop', fatigueLevel: 'resting', stumbleActive: false,
+        shooterXOffsetPx: 0, fatigueMs: 30000, nutritionConsumed: 0, skatesConsumed: 0 }),
+    });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    now.mockReturnValue(2000); tick();
+    now.mockReturnValue(2200); tick();
+    expect(loop.getShooterT()).toBe(1200);
+    expect(loop.getShooterMotionT()).toBe(918);
+    now.mockRestore();
+  });
   it('renders the supplied goalie configuration when no goalie id is available', () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const scale = { factor: 1, offsetX: 0, offsetY: 0 };

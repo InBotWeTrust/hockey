@@ -7,6 +7,8 @@ export interface ShotInput {
   // эффективное время для simulateShooter может отличаться от tapTime.
   // Если не задан — используется tapTime (старое поведение / тесты).
   shooterTapTime?: number;
+  // Integrated movement clock; bonus server derives it from immutable rules and accepted shots.
+  shooterMotionTime?: number;
   puckSpeedPerMs?: number; // override for PUCK_SPEED_PER_MS
   shooterFrequency?: number; // override for SHOOTER_FREQUENCY
   // Override goalie/goal frequency in cfg. Sent in input (rather than baked

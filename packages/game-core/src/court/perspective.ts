@@ -57,12 +57,44 @@ export function getPerspectiveCourtGoalOpening(
   };
 }
 
+
+export function getPerspectiveCourtGoalieHitbox(
+  input: ShotInput,
+  cfg: GoalieConfig,
+  seed: string,
+  shotIndex: number,
+  stick: StickEffects,
+  phaseOffsets?: SessionPhaseOffsets,
+): { xMin: number; xMax: number; centerX: number; timeMs: number } {
+  const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
+  const effectiveCfg = { ...cfg, frequency: input.goalieFrequency ?? cfg.frequency };
+  const timeMs = input.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
+  const goalieState = simulateGoalie(
+    effectiveCfg,
+    seed,
+    shotIndex,
+    timeMs,
+    phaseOffsets?.goalie ?? 0,
+  );
+  const centerX = PERSPECTIVE_COURT_VISUAL_X_CENTER +
+    (goalieState.position.x - PERSPECTIVE_COURT_VISUAL_X_CENTER) *
+      PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE;
+  const shrink = 1 / Math.max(stick.shotZoneMultiplier, 1);
+  const width = Math.max(
+    0,
+    (goalieState.width * shrink + GOALIE_HITBOX_EXPAND) *
+      PERSPECTIVE_COURT_HITBOX_GOALIE_WIDTH_SCALE -
+      PERSPECTIVE_COURT_HITBOX_GOALIE_INSET * 2,
+  );
+  return { xMin: centerX - width / 2, xMax: centerX + width / 2, centerX, timeMs };
+}
+
 export function resolvePerspectiveCourtEmptyGoalShot(
   input: ShotInput,
   cfg: GoalieConfig,
   phaseOffsets?: SessionPhaseOffsets,
 ): Extract<ShotResult, { type: 'goal' | 'miss' }> {
-  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,
@@ -83,7 +115,7 @@ export function resolvePerspectiveCourtShot(
   phaseOffsets?: SessionPhaseOffsets,
 ): ShotResult {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
-  const shooterTime = input.shooterTapTime ?? input.tapTime;
+  const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,

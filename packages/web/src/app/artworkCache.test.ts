@@ -98,8 +98,8 @@ describe('preloadArtwork', () => {
     } as BonusGameCard;
 
     expect(bonusGameArtworkUrls([game], 'speed', 'beach')).toEqual([
-      '/bonus-games/arenas/featured/beach.webp?v=20260829-world-tour-user-pngs-v10',
-      '/bonus-games/previews/beach.webp?v=20260829-world-tour-user-pngs-v10',
+      '/bonus-games/arenas/featured/beach.webp?v=20261001-nhl-city-tours-v1',
+      '/bonus-games/previews/beach.webp?v=20261001-nhl-city-tours-v1',
     ]);
   });
 

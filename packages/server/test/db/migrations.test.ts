@@ -157,14 +157,16 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const seededBonusGames = await pool.query<{
       slug: string;
       title: string;
-      skill_code: 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
+      skill_code: 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
       sort_order: number;
       unlock_price_stars: number;
       reward_stars: number;
+      reward_experience: number;
       qualification_rules: {
         type: string;
         targetGoals?: number;
         targetPoints?: number;
+        scoring?: { version?: number };
         shotsLimit?: number;
         activeTimeMs?: number;
         goalWindowMs?: number;
@@ -177,10 +179,13 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       arena_slug: string;
       arena_artwork_url: string;
       arena_thumbnail_url: string;
+      challenge_environment: Record<string, unknown> | null;
     }>(
       `select game.slug, game.title, game.skill_code, game.sort_order,
-              game.unlock_price_stars, game.reward_stars, game.qualification_rules,
+              game.unlock_price_stars, game.reward_stars, game.reward_experience,
+              game.qualification_rules,
               game.period_rules,
+              game.challenge_environment,
               game.preview_artwork_url, game.goalkeeper_ready_url, game.goalkeeper_save_url,
               arena.slug as arena_slug, arena.artwork_url as arena_artwork_url,
               arena.thumbnail_url as arena_thumbnail_url
@@ -189,73 +194,131 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         where game.status = 'active'
         order by game.skill_code, game.sort_order`,
     );
-    expect(seededBonusGames.rows).toHaveLength(40);
+    expect(seededBonusGames.rows).toHaveLength(50);
     const speedTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'speed');
     const accuracyTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'accuracy');
     const marksmanshipTrack = seededBonusGames.rows.filter(
       (game) => game.skill_code === 'marksmanship',
     );
     const enduranceTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'endurance');
+    const challengeTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'challenge');
     expect(speedTrack).toHaveLength(10);
-    expect(accuracyTrack).toHaveLength(13);
+    expect(accuracyTrack).toHaveLength(10);
     expect(marksmanshipTrack).toHaveLength(10);
-    expect(enduranceTrack).toHaveLength(7);
+    expect(enduranceTrack).toHaveLength(10);
+    expect(challengeTrack).toHaveLength(10);
     expect(speedTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(accuracyTrack.map((game) => game.sort_order)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13,
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
     expect(marksmanshipTrack.map((game) => game.sort_order)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
     ]);
-    expect(enduranceTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(enduranceTrack.map((game) => game.sort_order)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+    ]);
     expect(speedTrack.map((game) => game.slug)).toEqual([
-      'speed-beach',
-      'speed-ski-resort',
-      'speed-cyberpunk-yard',
-      'speed-abandoned-waterpark',
-      'speed-pirate-bay',
-      'speed-north-pole',
-      'speed-desert',
-      'speed-volcanic-ice',
-      'speed-castle',
-      'speed-space',
+      'speed-minsk',
+      'speed-shanghai',
+      'speed-sochi',
+      'speed-tolyatti',
+      'speed-moscow',
+      'speed-nizhny-novgorod',
+      'speed-cherepovets',
+      'speed-yaroslavl',
+      'speed-kazan',
+      'speed-saint-petersburg',
     ]);
     expect(accuracyTrack.map((game) => game.slug)).toEqual([
-      'accuracy-moscow',
-      'accuracy-istanbul',
-      'accuracy-rome',
-      'accuracy-paris',
-      'accuracy-london',
-      'accuracy-new-york',
-      'accuracy-rio-de-janeiro',
-      'accuracy-cape-town',
-      'accuracy-dubai',
-      'accuracy-mumbai',
-      'accuracy-singapore',
-      'accuracy-beijing',
-      'accuracy-tokyo',
+      'accuracy-astana',
+      'accuracy-nizhnekamsk',
+      'accuracy-novosibirsk',
+      'accuracy-vladivostok',
+      'accuracy-khabarovsk',
+      'accuracy-ufa',
+      'accuracy-yekaterinburg',
+      'accuracy-omsk',
+      'accuracy-chelyabinsk',
+      'accuracy-magnitogorsk',
     ]);
     expect(marksmanshipTrack.map((game) => game.slug)).toEqual([
-      'marksmanship-1',
-      'marksmanship-2',
-      'marksmanship-3',
-      'marksmanship-4',
-      'marksmanship-5',
-      'marksmanship-6',
-      'marksmanship-7',
-      'marksmanship-8',
-      'marksmanship-9',
-      'marksmanship-10',
+      'marksmanship-toronto',
+      'marksmanship-montreal',
+      'marksmanship-boston',
+      'marksmanship-new-york-metro',
+      'marksmanship-philadelphia',
+      'marksmanship-washington',
+      'marksmanship-pittsburgh',
+      'marksmanship-detroit',
+      'marksmanship-chicago',
+      'marksmanship-nashville',
     ]);
     expect(enduranceTrack.map((game) => game.slug)).toEqual([
-      'endurance-1',
-      'endurance-2',
-      'endurance-3',
-      'endurance-4',
-      'endurance-5',
-      'endurance-6',
-      'endurance-7',
+      'endurance-dallas',
+      'endurance-denver',
+      'endurance-salt-lake-city',
+      'endurance-winnipeg',
+      'endurance-edmonton',
+      'endurance-calgary',
+      'endurance-vancouver',
+      'endurance-seattle',
+      'endurance-los-angeles',
+      'endurance-las-vegas',
     ]);
+    expect(challengeTrack.map((game) => game.slug)).toEqual([
+      'challenge-beach',
+      'challenge-ski-resort',
+      'challenge-cyberpunk-yard',
+      'challenge-abandoned-waterpark',
+      'challenge-pirate-bay',
+      'challenge-north-pole',
+      'challenge-desert',
+      'challenge-volcanic-ice',
+      'challenge-castle',
+      'challenge-space',
+    ]);
+    expect(challengeTrack.map((game) => game.reward_stars)).toEqual([
+      5, 5, 5, 7, 7, 7, 10, 10, 10, 15,
+    ]);
+    expect(challengeTrack.map((game) => game.reward_experience)).toEqual([
+      5, 5, 5, 7, 7, 7, 10, 10, 10, 15,
+    ]);
+    for (const game of challengeTrack) {
+      const locationSlug = game.slug.replace('challenge-', '');
+      expect(game.preview_artwork_url).toBe(`/bonus-games/location-cards/${locationSlug}.webp`);
+    }
+    expect(challengeTrack[0]?.challenge_environment).toMatchObject({
+      baseModifiers: {
+        shooterMultiplier: 0.9,
+        puckSpeedMultiplier: 0.9,
+        label: 'Лёд тает · игрок −10% · шайба −10%',
+      },
+      fatigue: { slowdownStartMs: 8_000 },
+    });
+    expect(challengeTrack[6]?.challenge_environment).toMatchObject({
+      baseModifiers: { shooterMultiplier: 0.82, puckSpeedMultiplier: 0.85 },
+      fatigue: { slowdownStartMs: 6_000 },
+    });
+    expect(challengeTrack[9]?.challenge_environment).toMatchObject({
+      baseModifiers: {
+        goalMultiplier: 0.65,
+        goalieMultiplier: 0.63,
+        shooterMultiplier: 0.6,
+        puckSpeedMultiplier: 0.62,
+      },
+    });
+    expect(marksmanshipTrack.map((game) => game.reward_stars)).toEqual(
+      speedTrack.map((game) => game.reward_stars),
+    );
+    expect(marksmanshipTrack.map((game) => game.reward_experience)).toEqual(
+      speedTrack.map((game) => game.reward_experience),
+    );
+    expect(enduranceTrack.map((game) => game.reward_stars)).toEqual(
+      accuracyTrack.map((game) => game.reward_stars),
+    );
+    expect(enduranceTrack.map((game) => game.reward_experience)).toEqual(
+      accuracyTrack.map((game) => game.reward_experience),
+    );
     expect(speedTrack.every((game) => game.qualification_rules.type === 'goals_in_time')).toBe(
       true,
     );
@@ -269,21 +332,26 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
       enduranceTrack.every((game) => game.qualification_rules.type === 'survive_goal_windows'),
     ).toBe(true);
     expect(marksmanshipTrack.map((game) => game.qualification_rules.targetPoints)).toEqual([
-      1250, 2200, 3300, 4500, 5800, 7350, 8850, 10500, 12350, 14150,
+      80, 140, 220, 300, 400, 500, 610, 730, 870, 1010,
     ]);
+    expect(marksmanshipTrack.every((game) => game.qualification_rules.scoring?.version === 6))
+      .toBe(true);
     expect(
       enduranceTrack.map((game) => ({
         activeTimeMs: game.qualification_rules.activeTimeMs,
         goalWindowMs: game.qualification_rules.goalWindowMs,
       })),
     ).toEqual([
-      { activeTimeMs: 180_000, goalWindowMs: 7_000 },
-      { activeTimeMs: 190_000, goalWindowMs: 6_500 },
-      { activeTimeMs: 200_000, goalWindowMs: 6_000 },
-      { activeTimeMs: 210_000, goalWindowMs: 5_500 },
-      { activeTimeMs: 220_000, goalWindowMs: 5_000 },
-      { activeTimeMs: 230_000, goalWindowMs: 4_000 },
-      { activeTimeMs: 240_000, goalWindowMs: 3_000 },
+      { activeTimeMs: 180_000, goalWindowMs: 12_000 },
+      { activeTimeMs: 185_000, goalWindowMs: 11_000 },
+      { activeTimeMs: 190_000, goalWindowMs: 10_000 },
+      { activeTimeMs: 200_000, goalWindowMs: 9_000 },
+      { activeTimeMs: 205_000, goalWindowMs: 8_000 },
+      { activeTimeMs: 210_000, goalWindowMs: 7_000 },
+      { activeTimeMs: 220_000, goalWindowMs: 6_000 },
+      { activeTimeMs: 225_000, goalWindowMs: 5_000 },
+      { activeTimeMs: 230_000, goalWindowMs: 4_500 },
+      { activeTimeMs: 240_000, goalWindowMs: 4_000 },
     ]);
     expect(
       accuracyTrack.map((game) => ({
@@ -293,43 +361,41 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         requiredGoalStreak: game.qualification_rules.requiredGoalStreak ?? 0,
       })),
     ).toEqual([
-      { title: 'Москва', targetGoals: 18, shotsLimit: 30, requiredGoalStreak: 0 },
-      { title: 'Стамбул', targetGoals: 21, shotsLimit: 30, requiredGoalStreak: 0 },
-      { title: 'Рим', targetGoals: 23, shotsLimit: 30, requiredGoalStreak: 3 },
-      { title: 'Париж', targetGoals: 30, shotsLimit: 45, requiredGoalStreak: 0 },
-      { title: 'Лондон', targetGoals: 36, shotsLimit: 50, requiredGoalStreak: 3 },
-      { title: 'Нью-Йорк', targetGoals: 40, shotsLimit: 50, requiredGoalStreak: 4 },
-      { title: 'Рио-де-Жанейро', targetGoals: 42, shotsLimit: 50, requiredGoalStreak: 4 },
-      { title: 'Кейптаун', targetGoals: 47, shotsLimit: 55, requiredGoalStreak: 4 },
-      { title: 'Дубай', targetGoals: 49, shotsLimit: 60, requiredGoalStreak: 5 },
-      { title: 'Мумбаи', targetGoals: 52, shotsLimit: 60, requiredGoalStreak: 6 },
-      { title: 'Сингапур', targetGoals: 66, shotsLimit: 80, requiredGoalStreak: 6 },
-      { title: 'Пекин', targetGoals: 76, shotsLimit: 90, requiredGoalStreak: 7 },
-      { title: 'Токио', targetGoals: 90, shotsLimit: 90, requiredGoalStreak: 7 },
+      { title: 'Астана', targetGoals: 18, shotsLimit: 30, requiredGoalStreak: 0 },
+      { title: 'Нижнекамск', targetGoals: 21, shotsLimit: 30, requiredGoalStreak: 0 },
+      { title: 'Новосибирск', targetGoals: 23, shotsLimit: 30, requiredGoalStreak: 3 },
+      { title: 'Владивосток', targetGoals: 30, shotsLimit: 45, requiredGoalStreak: 0 },
+      { title: 'Хабаровск', targetGoals: 36, shotsLimit: 50, requiredGoalStreak: 3 },
+      { title: 'Уфа', targetGoals: 42, shotsLimit: 50, requiredGoalStreak: 4 },
+      { title: 'Екатеринбург', targetGoals: 47, shotsLimit: 55, requiredGoalStreak: 4 },
+      { title: 'Омск', targetGoals: 52, shotsLimit: 60, requiredGoalStreak: 6 },
+      { title: 'Челябинск', targetGoals: 76, shotsLimit: 90, requiredGoalStreak: 7 },
+      { title: 'Магнитогорск', targetGoals: 90, shotsLimit: 90, requiredGoalStreak: 7 },
     ]);
     for (const game of accuracyTrack) {
       const citySlug = game.slug.replace('accuracy-', '');
       expect(game.period_rules.reduce((total, period) => total + (period.shotsLimit ?? 0), 0)).toBe(
         game.qualification_rules.shotsLimit,
       );
-      expect(game.period_rules.every((period) => period.durationMs === 240_000)).toBe(true);
-      expect(game.preview_artwork_url).toBe(`/bonus-games/world-tour/previews/${citySlug}.webp`);
+      expect(game.period_rules.every((period) => period.durationMs === 360_000)).toBe(true);
+      expect(game.preview_artwork_url).toBe(`/bonus-games/hockey-cities/previews/${citySlug}.webp`);
       expect(game.goalkeeper_ready_url).toBe(
-        `/bonus-games/world-tour/goalkeepers/${citySlug}-ready.webp`,
+        `/bonus-games/hockey-cities/goalkeepers/${citySlug}-ready.webp`,
       );
       expect(game.goalkeeper_save_url).toBe(
-        `/bonus-games/world-tour/goalkeepers/${citySlug}-save.webp`,
+        `/bonus-games/hockey-cities/goalkeepers/${citySlug}-save.webp`,
       );
-      expect(game.arena_slug).toBe(`accuracy-world-tour-${citySlug}`);
-      expect(game.arena_artwork_url).toBe(`/bonus-games/world-tour/arenas/${citySlug}.webp`);
-      expect(game.arena_thumbnail_url).toBe(`/bonus-games/world-tour/previews/${citySlug}.webp`);
+      expect(game.arena_slug).toBe(`endurance-hockey-city-${citySlug}`);
+      expect(game.arena_artwork_url).toBe(`/bonus-games/hockey-cities/arenas/${citySlug}.webp`);
+      expect(game.arena_thumbnail_url).toBe(`/bonus-games/hockey-cities/previews/${citySlug}.webp`);
     }
 
     const nonLinearBonusPeriods = await pool.query<{ count: string }>(
       `select count(*)::text as count
          from bonus_game
          cross join lateral jsonb_array_elements(period_rules) as period
-        where period->>'goaliePattern' <> 'linear'`,
+        where skill_code <> 'challenge'
+          and period->>'goaliePattern' <> 'linear'`,
     );
     expect(nonLinearBonusPeriods.rows[0]?.count).toBe('0');
 

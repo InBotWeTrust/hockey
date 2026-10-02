@@ -1,4 +1,6 @@
 export { GAME_CORE_VERSION } from './version.js';
+// Bonus-only releases must not invalidate unrelated production game sessions.
+export const BONUS_GAME_CORE_VERSION = 71 as const;
 export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';
@@ -40,15 +42,24 @@ export {
   PERSPECTIVE_COURT_VISUAL_Y_SCALE,
   PERSPECTIVE_COURT_VISUAL_X_CENTER,
   getPerspectiveCourtGoalOpening,
+  getPerspectiveCourtGoalieHitbox,
   resolvePerspectiveCourtEmptyGoalShot,
   resolvePerspectiveCourtShot,
 } from './court/perspective.js';
 export {
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V5_SCORING_RULES,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
   classifyMarksmanshipGeometry,
+  classifyMarksmanshipV3Geometry,
   classifyMarksmanshipSeries,
   classifyMarksmanshipShot,
+  classifyMarksmanshipV3Score,
+  classifyMarksmanshipV4Score,
   isStrictCounterDirection,
+  marksmanshipV4OpportunityForWindow,
   parseMarksmanshipScoringRules,
   resolveMarksmanshipShotContext,
   scoreMarksmanshipBreakdown,
@@ -63,11 +74,39 @@ export {
   type MarksmanshipScoreBreakdown,
   type MarksmanshipScoreBreakdownInput,
   type MarksmanshipScoringRules,
+  type MarksmanshipV3Reason,
+  type MarksmanshipV3Score,
+  type MarksmanshipV4Technique,
+  type MarksmanshipV4Measurements,
+  type MarksmanshipV4Score,
   type MarksmanshipShotClassification,
   type MarksmanshipShotContext,
   type MarksmanshipShotInput,
   type StrictCounterDirectionInput,
 } from './marksmanship.js';
+export {
+  classifyMarksmanshipV5Score,
+  type MarksmanshipV5Measurements,
+  type MarksmanshipV5Score,
+  type MarksmanshipV5Technique,
+} from './marksmanshipV5.js';
+export {
+  classifyMarksmanshipV6Score,
+  type MarksmanshipV6Measurements,
+  type MarksmanshipV6Score,
+  type MarksmanshipV6Technique,
+} from './marksmanshipV6.js';
+export {
+  getBonusChallengeCondition,
+  createBonusChallengeMotionSampler,
+  getBonusChallengeShooterMotionTime,
+  type BonusChallengeShotPause,
+  type BonusChallengeCondition,
+  type BonusChallengeEnvironmentRules,
+  type BonusChallengeFatigueRules,
+  type BonusChallengeSpeedPhase,
+  type BonusChallengeStumbleWindow,
+} from './bonusChallenge.js';
 export {
   ADVANCED_TRAINING_EXERCISE_KEYS,
   ADVANCED_TRAINING_SCENARIOS,

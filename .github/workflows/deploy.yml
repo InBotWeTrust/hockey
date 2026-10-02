@@ -315,6 +315,18 @@ jobs:
           # consumes the rest of the script and the `up --force-recreate`
           # line silently never executes. Manifests as prod stuck on the
           # previous IMAGE_TAG while Actions reports success.
+          # Keep a private, readable recovery archive before any production migration.
+          BACKUP_DIR="$REMOTE_PATH/backups"
+          BACKUP_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          mkdir -p "$BACKUP_DIR"
+          umask 077
+          BONUS_BACKUP_FILE="$BACKUP_DIR/bonus-release-prod-$BACKUP_STAMP.dump"
+          docker compose exec -T postgres \
+            sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+            > "$BONUS_BACKUP_FILE"
+          test -s "$BONUS_BACKUP_FILE"
+          docker compose exec -T postgres pg_restore --list < "$BONUS_BACKUP_FILE" > /dev/null
+          echo "[deploy] production backup verified: $BONUS_BACKUP_FILE"
           docker compose run --rm -T server node packages/server/dist/db/migrate-cli.js < /dev/null
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ]; then
             docker compose run --rm -T \

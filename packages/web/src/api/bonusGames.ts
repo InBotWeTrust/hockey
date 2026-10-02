@@ -5,7 +5,15 @@ import type {
   MarksmanshipDifficultyCode,
   MarksmanshipGeometry,
   MarksmanshipScoringRules,
+  MarksmanshipV4Measurements,
+  MarksmanshipV4Technique,
+  MarksmanshipV5Measurements,
+  MarksmanshipV5Technique,
+  MarksmanshipV6Measurements,
+  MarksmanshipV6Technique,
   MarksmanshipSeriesClassification,
+  MarksmanshipV3Reason,
+  BonusChallengeEnvironmentRules,
 } from '@hockey/game-core';
 
 export type BonusGameCardState =
@@ -20,7 +28,7 @@ export type BonusGameCardState =
 export type BonusAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusGoaliePattern = 'linear' | 'sine' | 'dash';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
 export type EnduranceQualificationRules = {
   type: 'survive_goal_windows';
   activeTimeMs: number;
@@ -133,6 +141,7 @@ export interface BonusGameCard {
   preview_artwork_url: string;
   preview_revision: number;
   period_rules: BonusPeriodRule[];
+  challenge_environment?: BonusChallengeEnvironmentRules | null;
   reward: BonusReward;
   goalkeeper_ready_url: string;
   goalkeeper_save_url: string;
@@ -145,6 +154,7 @@ export interface BonusGameCard {
 }
 
 export interface BonusCatalogResponse {
+  challenge_available?: boolean;
   games: BonusGameCard[];
   active_attempt: BonusGameCardAttempt | null;
   attempt_allowances?: Record<BonusSkillCode, BonusAttemptAllowance>;
@@ -174,6 +184,7 @@ export interface BonusAttemptRules {
   preview_artwork_url: string;
   preview_revision: number;
   periods: BonusPeriodRule[];
+  challenge_environment?: BonusChallengeEnvironmentRules | null;
 }
 
 export interface BonusGameAttempt {
@@ -202,6 +213,7 @@ export interface BonusGameAttempt {
   reward_granted: boolean;
   attempt_seed: string;
   game_core_version: number;
+  current_period_shot_pauses?: { tapTime: number; flightMs: number }[];
   definition_revision: number;
   server_now: string;
   rules: BonusAttemptRules;
@@ -248,6 +260,59 @@ export type MarksmanshipScoreDetails =
       series: MarksmanshipSeriesClassification;
       situationBonus: number;
       seriesBonus: number;
+    }
+  | {
+      version: 3;
+      windowDurationMs: number | null;
+      difficultyCode: MarksmanshipDifficultyCode | null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      category: 1 | 2 | 3 | 4 | null;
+      reason: MarksmanshipV3Reason | null;
+    }
+  | {
+      version: 4;
+      windowDurationMs: number | null;
+      difficultyCode: null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'too_short' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      measurements: MarksmanshipV4Measurements | null;
+      technique: MarksmanshipV4Technique | null;
+      availableTechniques: readonly MarksmanshipV4Technique[];
+      pointsTenths: number;
+      result: 'goal' | 'save' | 'miss';
+    }
+  | {
+      version: 5;
+      windowDurationMs: number | null;
+      difficultyCode: null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'too_short' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      measurements: MarksmanshipV5Measurements | null;
+      technique: MarksmanshipV5Technique | null;
+      availableTechniques: readonly MarksmanshipV5Technique[];
+      pointsTenths: number;
+      result: 'goal' | 'save' | 'miss';
+    }
+  | {
+      version: 6;
+      windowDurationMs: number | null;
+      difficultyCode: null;
+      counterDirection: boolean;
+      opportunity: 'scored' | 'human_error' | 'too_short' | 'closed';
+      timingErrorMs: number | null;
+      geometry: MarksmanshipGeometry;
+      measurements: MarksmanshipV6Measurements | null;
+      technique: MarksmanshipV6Technique | null;
+      availableTechniques: readonly MarksmanshipV6Technique[];
+      pointsTenths: number;
+      result: 'goal' | 'save' | 'miss';
     };
 
 export interface BonusShotResponse {

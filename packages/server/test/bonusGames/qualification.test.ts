@@ -251,6 +251,36 @@ describe('validateBonusSkillRules', () => {
     ).toThrow('endurance inventory must be disabled');
   });
 
+  it('accepts every existing qualification family for challenges', () => {
+    expect(() => validateBonusSkillRules(
+      'challenge',
+      { type: 'goals_in_time', targetGoals: 25, activeTimeMs: 150_000 },
+      [period(1, 150_000, null)],
+      false,
+    )).not.toThrow();
+    expect(() => validateBonusSkillRules(
+      'challenge',
+      { type: 'goals_from_shots', targetGoals: 26, shotsLimit: 35 },
+      [period(1, 240_000, 35)],
+      false,
+    )).not.toThrow();
+    expect(() => validateBonusSkillRules(
+      'challenge',
+      {
+        type: 'points_in_time', targetPoints: 180, activeTimeMs: 150_000,
+        scoring: DEFAULT_MARKSMANSHIP_SCORING_RULES,
+      },
+      [period(1, 150_000, null)],
+      false,
+    )).not.toThrow();
+    expect(() => validateBonusSkillRules(
+      'challenge',
+      { type: 'survive_goal_windows', activeTimeMs: 210_000, goalWindowMs: 7_000 },
+      [period(1, 210_000, null)],
+      false,
+    )).not.toThrow();
+  });
+
   it('rejects malformed marksmanship scoring snapshots', () => {
     expect(() =>
       normalizeBonusQualificationRules(

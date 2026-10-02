@@ -31,6 +31,8 @@ services:
     environment:
       NODE_ENV: production
       DEPLOYMENT_ENV: dev
+      BONUS_DAILY_ATTEMPT_LIMIT: 100
+      BONUS_CHALLENGES_ENABLED: 'true'
       HOST: 0.0.0.0
       PORT: 3000
       LOG_LEVEL: ${STAGING_LOG_LEVEL:-info}

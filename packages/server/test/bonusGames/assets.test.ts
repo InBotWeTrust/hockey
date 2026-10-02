@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import sharp from 'sharp';
@@ -11,6 +12,41 @@ const WORLD_TOUR_GOALKEEPER_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '../../../web/public/bonus-games/world-tour/goalkeepers',
 );
+const HOCKEY_CITY_MIGRATION = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../db/migrations/168_bonus_hockey_city_tours.sql',
+);
+const BONUS_CHALLENGE_MIGRATION = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../db/migrations/172_bonus_challenges.sql',
+);
+const BONUS_GAME_ADMIN_SOURCE = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '../../src/bonusGames/admin.ts',
+);
+
+const NHL_CITY_SLUGS = [
+  'toronto',
+  'montreal',
+  'boston',
+  'new-york-metro',
+  'philadelphia',
+  'washington',
+  'pittsburgh',
+  'detroit',
+  'chicago',
+  'nashville',
+  'dallas',
+  'denver',
+  'salt-lake-city',
+  'winnipeg',
+  'edmonton',
+  'calgary',
+  'vancouver',
+  'seattle',
+  'los-angeles',
+  'las-vegas',
+] as const;
 
 const SLUGS = [
   'beach',
@@ -27,6 +63,7 @@ const SLUGS = [
 
 const WORLD_TOUR_SLUGS = [
   'moscow',
+  'buenos-aires',
   'istanbul',
   'rome',
   'paris',
@@ -122,6 +159,47 @@ async function visibleAlphaComponentSizes(filePath: string): Promise<number[]> {
 }
 
 describe('bonus goalkeeper asset framing', () => {
+  it('uses the dedicated location-card artwork for every challenge preview', async () => {
+    const sql = await readFile(BONUS_CHALLENGE_MIGRATION, 'utf8');
+
+    expect(sql).toContain(
+      "'/bonus-games/location-cards/' || replace(seed.slug, 'challenge-', '') || '.webp'",
+    );
+    expect(sql).not.toContain(
+      "'/bonus-games/previews/' || replace(seed.slug, 'challenge-', '') || '.webp'",
+    );
+  });
+
+  it('keeps the Moscow marksmanship theme on its dedicated hockey-city assets', async () => {
+    const sql = await readFile(HOCKEY_CITY_MIGRATION, 'utf8');
+
+    expect(sql).not.toContain("then '/bonus-games/world-tour/arenas/moscow.webp'");
+    expect(sql).not.toContain("then '/bonus-games/world-tour/previews/moscow.webp'");
+    expect(sql).not.toContain("then '/bonus-games/world-tour/goalkeepers/moscow-ready.webp'");
+    expect(sql).not.toContain("then '/bonus-games/world-tour/goalkeepers/moscow-save.webp'");
+    expect(sql).toContain("'/bonus-games/hockey-cities/arenas/' || seed.city_slug || '.webp'");
+  });
+
+  it('allows the dedicated Moscow hockey-city assets in admin media fields', async () => {
+    const source = await readFile(BONUS_GAME_ADMIN_SOURCE, 'utf8');
+    const hockeyCitySlugs = source.match(
+      /const approvedHockeyCityMediaSlugs = \[([\s\S]*?)\] as const;/,
+    )?.[1];
+
+    expect(hockeyCitySlugs).toContain("'moscow'");
+  });
+
+  it('allows exactly the approved NHL-city asset slugs in admin media fields', async () => {
+    const source = await readFile(BONUS_GAME_ADMIN_SOURCE, 'utf8');
+    const nhlCitySlugs = source.match(
+      /const approvedNhlCityMediaSlugs = \[([\s\S]*?)\] as const;/,
+    )?.[1];
+
+    expect(nhlCitySlugs).toBeDefined();
+    for (const slug of NHL_CITY_SLUGS) expect(nhlCitySlugs).toContain(`'${slug}'`);
+    expect(nhlCitySlugs?.match(/^\s*'[^']+',?\s*$/gm)).toHaveLength(NHL_CITY_SLUGS.length);
+  });
+
   it.each(SLUGS)(
     'keeps %s ready and save poses proportioned like training sprites',
     async (slug) => {
@@ -150,11 +228,15 @@ describe('bonus goalkeeper asset framing', () => {
       const savePath = path.join(WORLD_TOUR_GOALKEEPER_DIR, `${slug}-save.webp`);
       const trainingReadyPath = path.resolve(
         path.dirname(fileURLToPath(import.meta.url)),
-        '../../../web/public/sprites/training-goalie-amateur.webp',
+        slug === 'buenos-aires'
+          ? '../../../web/public/sprites/test-goalie-black.webp'
+          : '../../../web/public/sprites/training-goalie-amateur.webp',
       );
       const trainingSavePath = path.resolve(
         path.dirname(fileURLToPath(import.meta.url)),
-        '../../../web/public/sprites/training-goalie-amateur-save.webp',
+        slug === 'buenos-aires'
+          ? '../../../web/public/sprites/test-goalie-black-save.webp'
+          : '../../../web/public/sprites/training-goalie-amateur-save.webp',
       );
       const [readyMetadata, saveMetadata] = await Promise.all([
         sharp(readyPath).metadata(),
@@ -163,8 +245,9 @@ describe('bonus goalkeeper asset framing', () => {
 
       expect(readyMetadata.hasAlpha, `${slug} ready alpha`).toBe(true);
       expect(saveMetadata.hasAlpha, `${slug} save alpha`).toBe(true);
-      expect([readyMetadata.width, readyMetadata.height]).toEqual([1_254, 1_254]);
-      expect([saveMetadata.width, saveMetadata.height]).toEqual([1_254, 1_254]);
+      const canvasSize = slug === 'buenos-aires' ? 500 : 1_254;
+      expect([readyMetadata.width, readyMetadata.height]).toEqual([canvasSize, canvasSize]);
+      expect([saveMetadata.width, saveMetadata.height]).toEqual([canvasSize, canvasSize]);
 
       const [ready, save, trainingReady, trainingSave] = await Promise.all([
         visibleFill(readyPath),
