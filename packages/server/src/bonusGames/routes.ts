@@ -473,6 +473,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
           userId: request.user.id,
           attemptId: params.attemptId,
           now,
+          dailyAttemptLimit: opts.dailyAttemptLimit,
           ...(body.loadout !== undefined
             ? {
                 loadout: {

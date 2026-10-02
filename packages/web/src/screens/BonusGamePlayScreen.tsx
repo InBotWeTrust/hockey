@@ -736,6 +736,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const loading = useBonusGameStore((state) => state.loading);
   const error = useBonusGameStore((state) => state.error);
   const errorHandledByAmateurToast = useBonusGameStore((state) => state.errorHandledByAmateurToast);
+  const errorCode = useBonusGameStore((state) => state.errorCode);
   const inFlight = useBonusGameStore((state) => state.inFlight);
   const needsReconcile = useBonusGameStore((state) => state.needsReconcile);
   const receivedAtPerformanceMs = useBonusGameStore((state) => state.receivedAtPerformanceMs);
@@ -1440,6 +1441,10 @@ export function BonusGamePlayScreen(): JSX.Element {
         overlayControls={
           needsReconcile ? (
             <BonusReconcileOverlay loading={loading} onRetry={() => void reconcileAttempt()} />
+          ) : isIdle && errorCode === 'bonus_daily_attempt_limit' && error ? (
+            <div className="bonus-game-reconcile" role="alert">
+              <span>{error}</span>
+            </div>
           ) : undefined
         }
         longCourtBackground={arenaArtworkUrl}

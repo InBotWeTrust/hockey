@@ -1605,6 +1605,14 @@ describe('BonusGamePlayScreen', () => {
     });
   });
 
+  it('renders a daily-limit start rejection without a shot-reconciliation spinner', () => {
+    setStore({ attempt: attempt({ state: 'idle', current_period: 0 }), needsReconcile: false,
+      error: 'На сегодня попытки закончились.', errorCode: 'bonus_daily_attempt_limit' });
+    renderScreen();
+    expect(screen.getByRole('alert')).toHaveTextContent('На сегодня попытки закончились.');
+    expect(screen.queryByText('Проверяем результат броска…')).not.toBeInTheDocument();
+  });
+
   it('blocks play and requests authoritative detail during reconciliation', () => {
     const loadAttempt = vi.fn(async () => attempt());
     setStore({ needsReconcile: true, loadAttempt });
