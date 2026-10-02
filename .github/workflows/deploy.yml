@@ -323,7 +323,7 @@ jobs:
           BONUS_BACKUP_FILE="$BACKUP_DIR/bonus-release-prod-$BACKUP_STAMP.dump"
           docker compose exec -T postgres \
             sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
-            > "$BONUS_BACKUP_FILE"
+            > "$BONUS_BACKUP_FILE" < /dev/null
           test -s "$BONUS_BACKUP_FILE"
           docker compose exec -T postgres pg_restore --list < "$BONUS_BACKUP_FILE" > /dev/null
           echo "[deploy] production backup verified: $BONUS_BACKUP_FILE"
