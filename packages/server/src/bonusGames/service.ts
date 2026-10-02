@@ -732,6 +732,7 @@ export async function startBonusPeriod(
     attemptId: string;
     now: Date;
     loadout?: PeriodLoadoutSelection;
+    dailyAttemptLimit?: number;
   },
 ): Promise<BonusGameAttemptDTO> {
   const client = await begin(pool);
@@ -771,6 +772,7 @@ export async function startBonusPeriod(
           timezone: user.timezone,
           skillCode: attempt.rules_snapshot.skillCode,
           now: input.now,
+          ...(input.dailyAttemptLimit === undefined ? {} : { dailyAttemptLimit: input.dailyAttemptLimit }),
         });
         await client.query(
           `insert into bonus_game_daily_attempt_slot

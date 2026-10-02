@@ -228,7 +228,7 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     periods?: BonusPeriodRule[];
     targetGoals?: number;
     breakDurationMs?: number;
-    skillCode?: 'speed' | 'accuracy' | 'endurance';
+    skillCode?: 'speed' | 'accuracy' | 'endurance' | 'challenge';
   } = {}): Promise<TestGame> {
     gameSequence += 1;
     const slug = `bonus-route-game-${gameSequence}`;
@@ -1489,6 +1489,30 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(response.json().error.message).not.toContain(active.id);
   });
 
+  it.each(['accuracy', 'speed', 'challenge'] as const)('starts a third %s period when the configured daily allowance is 100', async (skillCode) => {
+    const devApp = await buildApp({
+      config: { NODE_ENV: 'test', HOST: '0.0.0.0', PORT: 3000, LOG_LEVEL: 'warn',
+        DATABASE_URL: databaseUrl, REDIS_URL: redisUrl, JWT_SECRET, REFRESH_SECRET,
+        TELEGRAM_BOT_TOKEN: 'test-bot-token', DAILY_SEED_SECRET: BONUS_SEED_SECRET,
+        BONUS_DAILY_ATTEMPT_LIMIT: 100 },
+      pushSchedulerEnabled: false, pushWorkerEnabled: false,
+    });
+    try {
+      const game = await createGame({ skillCode });
+      for (let index = 0; index < 3; index += 1) {
+        const created = await devApp.inject({ method: 'POST', url: `/bonus-games/${game.id}/attempts`, headers });
+        expect(created.statusCode).toBe(201);
+        const id = created.json().attempt.id as string;
+        const preview = await devApp.inject({ method: 'POST', url: `/bonus-games/attempts/${id}/preview/acknowledge`, headers, payload: {} });
+        expect(preview.statusCode).toBe(200);
+        const started = await devApp.inject({ method: 'POST', url: `/bonus-games/attempts/${id}/period/start`, headers, payload: {} });
+        expect(started.statusCode).toBe(200);
+        expect(started.json().attempt.state).toBe('period_active');
+        await abandonAttempt(id);
+      }
+    } finally { await devApp.close(); }
+  });
+
   it('allows two daily attempts per skill, including two on one game, and resets by local date', async () => {
     const accuracy = await createGame({ skillCode: 'accuracy' });
     const speed = await createGame({ skillCode: 'speed', sortOrder: 1 });
@@ -1520,8 +1544,9 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(catalog.json().attempt_allowances).toMatchObject({
       accuracy: { daily_limit: 2, used: 2, remaining: 0 },
       speed: { daily_limit: 2, used: 1, remaining: 1 },
-      marksmanship: { daily_limit: 100, used: 0, remaining: 100 },
-      endurance: { daily_limit: 100, used: 0, remaining: 100 },
+      marksmanship: { daily_limit: 2, used: 0, remaining: 2 },
+      endurance: { daily_limit: 2, used: 0, remaining: 2 },
+      challenge: { daily_limit: 2, used: 0, remaining: 2 },
     });
 
     await pool.query(
