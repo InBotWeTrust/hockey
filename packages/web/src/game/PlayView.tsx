@@ -1772,7 +1772,7 @@ export function PlayView<TState>({
       0.1,
       overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
     );
-    const effectiveGoalFreq = Math.max(
+    const effectiveGoalFreq = overrides.goalFreq === 0 ? 0 : Math.max(
       0.1,
       overrides.goalFreq * (('goalSpeedMultiplier' in (duelShotCondition ?? {}))
         ? Number((duelShotCondition as { goalSpeedMultiplier?: number }).goalSpeedMultiplier ?? 1)
