@@ -93,6 +93,23 @@ describe('BeginnerStoryFlow', () => {
     vi.useRealTimers();
   });
 
+  it('switches headlights on over one unchanged car image after the cue', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(6_000));
+    fireEvent.click(screen.getByRole('button', { name: /Сделать бросок/ }));
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(1);
+    const carImage = story.querySelector('img');
+    expect(story).not.toHaveClass('beginner-story--headlights');
+    act(() => vi.advanceTimersByTime(4_000));
+    expect(story).toHaveClass('beginner-story--headlights');
+    expect(story.querySelector('img')).toBe(carImage);
+    expect(story.querySelector('svg[data-testid="story-headlight-glow"]')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
   it('shows a close action in replay and uses a local shot adapter', () => {
     const onClose = vi.fn();
     render(

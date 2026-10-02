@@ -218,11 +218,25 @@ export function BeginnerStoryFlow({
         ) : scene === 'car' ? (
           <>
             <img className="beginner-story__image" src={activeContent.image} alt="" />
-            <img
-              className={`beginner-story__image beginner-story__headlights${headlights ? ' beginner-story__headlights--visible' : ''}`}
-              src="/onboarding/story/scene-02-car-on.webp"
-              alt=""
-            />
+            <svg
+              className={`beginner-story__headlights${headlights ? ' beginner-story__headlights--visible' : ''}`}
+              data-testid="story-headlight-glow"
+              viewBox="0 0 941 1672"
+              preserveAspectRatio="xMidYMid slice"
+              aria-hidden="true"
+            >
+              <defs>
+                <radialGradient id="story-headlight-halo">
+                  <stop offset="0" stopColor="#fffef0" stopOpacity="1" />
+                  <stop offset="0.18" stopColor="#fff3bd" stopOpacity="0.9" />
+                  <stop offset="1" stopColor="#ffe3a0" stopOpacity="0" />
+                </radialGradient>
+              </defs>
+              <ellipse cx="738" cy="566" rx="58" ry="42" fill="url(#story-headlight-halo)" />
+              <ellipse cx="899" cy="568" rx="43" ry="36" fill="url(#story-headlight-halo)" />
+              <ellipse cx="743" cy="637" rx="92" ry="20" fill="url(#story-headlight-halo)" opacity="0.4" />
+              <ellipse cx="890" cy="646" rx="63" ry="17" fill="url(#story-headlight-halo)" opacity="0.35" />
+            </svg>
           </>
         ) : (
           <img className="beginner-story__image" src={activeContent.image} alt={activeContent.alt} />

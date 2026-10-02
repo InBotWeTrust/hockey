@@ -36,6 +36,12 @@ const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: mo
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const BeginnerOnboardingPreviewScreen = import.meta.env.DEV
+  ? lazy(() => import('../onboarding/BeginnerOnboardingPreviewScreen.js').then((module) => ({
+      default: module.BeginnerOnboardingPreviewScreen,
+    })))
+  : null;
+
 const DailyPeriodPreviewScreen = import.meta.env.DEV
   ? lazy(() =>
       import('../screens/DailyScreen.js').then((module) => ({
@@ -632,6 +638,10 @@ function AppFrame(): JSX.Element {
     (import.meta.env.DEV && location.pathname === '/dev/monthly-rating-reward-preview') ||
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
+
+  if (BeginnerOnboardingPreviewScreen && location.pathname === '/dev/beginner-onboarding') {
+    return <Suspense fallback={<RouteLoading />}><BeginnerOnboardingPreviewScreen /></Suspense>;
+  }
 
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 
