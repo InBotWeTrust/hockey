@@ -78,4 +78,3 @@ export function getPlayerFatigueState(
     normalizedFatigueMs: Math.ceil(fatigueMs),
   };
 }
-
