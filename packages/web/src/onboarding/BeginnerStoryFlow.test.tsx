@@ -51,6 +51,12 @@ describe('BeginnerStoryFlow', () => {
     }
   });
 
+  it('keeps the stranger anonymous in all first-series copy and accessible artwork descriptions', () => {
+    for (const scene of Object.values(beginnerStoryScenes(475))) {
+      expect(`${scene.copy} ${scene.alt} ${scene.action}`).not.toMatch(/Арсенич|Арсений|Ильич/i);
+    }
+  });
+
   it('keeps required onboarding non-dismissible', () => {
     render(
       <BeginnerStoryFlow
@@ -108,7 +114,7 @@ describe('BeginnerStoryFlow', () => {
   it.each([
     ['Тестовый гол', 'Шайба влетает в ворота.', '– Неплохо. Только один бросок ничего не значит.'],
     ['Тестовый промах', 'Шайба проходит рядом с воротами.', '– Бывает. Один бросок всё равно ничего не значит.'],
-  ])('branches after %s and converges on the name scene', (shotAction, resultCopy, dialogue) => {
+  ])('branches after %s and converges without revealing the stranger identity', (shotAction, resultCopy, dialogue) => {
     render(
       <BeginnerStoryFlow
         mode="replay"
@@ -124,7 +130,7 @@ describe('BeginnerStoryFlow', () => {
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(dialogue);
 
     fireEvent.click(screen.getByRole('button', { name: /А что значит\?/ }));
-    expect(screen.getByTestId('beginner-story')).toHaveTextContent('– А как вас зовут?');
+    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Он останавливается и смотрит через плечо.');
   });
 
   it('renders the live threshold and approved final actions', () => {
@@ -140,7 +146,7 @@ describe('BeginnerStoryFlow', () => {
 
     advanceToShot();
     fireEvent.click(screen.getByRole('button', { name: 'Тестовый гол' }));
-    for (const action of ['А что значит?', 'И всё?']) {
+    for (const action of ['А что значит?', 'Подождите']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(action.replace(/[?]/g, '\\?')) }));
     }
     expect(screen.getByTestId('beginner-story')).toHaveTextContent('475');
@@ -148,9 +154,9 @@ describe('BeginnerStoryFlow', () => {
       '– Забьёшь 475 – тогда и поговорим.',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Триста шайб\?/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Столько\?/ }));
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(
-      'И они оба представили себе большую арену где-то над городом.',
+      'И вы оба на мгновение представляете большую арену где-то над городом.',
     );
     fireEvent.click(screen.getByRole('button', { name: /Хм, интересно\.\.\./ }));
     expect(screen.getByRole('button', { name: /^Начать путь$/ })).toBeEnabled();
