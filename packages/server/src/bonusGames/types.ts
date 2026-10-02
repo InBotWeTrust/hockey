@@ -1,4 +1,5 @@
 import type {
+  BeachCleanupEvent,
   BonusChallengeEnvironmentRules,
   GoalieConfig,
   GoaliePatternId,
@@ -95,7 +96,39 @@ const challengeFatigueSchema = z.object({
   }
 });
 
+const beachPuddleSchema = z.object({
+  id: z.string().trim().min(1).max(64),
+  x: z.number().finite().min(0).max(572),
+  y: z.number().finite().min(60).max(580),
+  radiusX: z.number().finite().gt(0).max(286),
+  radiusY: z.number().finite().gt(0).max(260),
+  deepRatio: z.number().finite().min(0).max(1),
+  speedMultiplier: z.number().finite().min(0.1).max(1),
+  warningMs: z.number().int().min(0).max(86_400_000),
+  activeMs: z.number().int().min(0).max(86_400_000),
+  fullMs: z.number().int().min(0).max(86_400_000),
+  initialScale: z.number().finite().gt(0).max(1),
+}).strict().superRefine((value, context) => {
+  if (value.warningMs > value.activeMs || value.activeMs > value.fullMs) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'puddle growth times must be ordered' });
+  }
+});
+const beachEnvironmentSchema = z.object({
+  version: z.literal(1),
+  interactive: z.object({ version: z.literal(1), wind: z.array(z.object({
+    startMs: z.number().int().min(0).max(86400000), target: z.enum(['player', 'goalie', 'goal']),
+  }).strict()).max(10) }).strict().optional(),
+  meltDurationMs: z.number().int().min(1000).max(86_400_000),
+  finalSpeedMultiplier: z.number().finite().min(0.1).max(1),
+  puddles: z.array(beachPuddleSchema).max(10),
+}).strict().superRefine((value, context) => {
+  if (new Set(value.puddles.map(puddle => puddle.id)).size !== value.puddles.length) {
+    context.addIssue({ code: z.ZodIssueCode.custom, message: 'puddle IDs must be unique' });
+  }
+});
+
 const challengeEnvironmentSchema = z.object({
+  beach: beachEnvironmentSchema.optional(),
   baseModifiers: z.object({
     goalMultiplier: z.number().min(0.1).max(3),
     goalieMultiplier: z.number().min(0.1).max(3),
@@ -122,6 +155,7 @@ export function parseBonusChallengeEnvironmentRules(
   const parsed = challengeEnvironmentSchema.safeParse(value);
   if (!parsed.success) throw new Error('invalid bonus challenge environment rules');
   return {
+    ...(parsed.data.beach === undefined ? {} : { beach: parsed.data.beach }),
     ...(parsed.data.baseModifiers === undefined
       ? {}
       : { baseModifiers: parsed.data.baseModifiers }),
@@ -311,6 +345,7 @@ export interface BonusGameAttemptDTO {
   closedAt: string | null;
   shotsTaken: number;
   currentPeriodShotsTaken: number;
+  currentPeriodCleanupEvents?: BeachCleanupEvent[];
   currentPeriodShotPauses?: { tapTime: number; flightMs: number }[];
   goals: number;
   totalPoints: number;

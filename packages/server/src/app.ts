@@ -207,6 +207,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(bonusGameRoutes, {
     bonusSeedSecret: config.DAILY_SEED_SECRET,
     dailyAttemptLimit: resolveBonusDailyAttemptLimit(config),
+    challengesEnabled: config.NODE_ENV !== 'production' || config.DEPLOYMENT_ENV === 'dev',
   });
   await app.register(inventoryRoutes);
   await app.register(

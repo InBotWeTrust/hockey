@@ -25,6 +25,9 @@ import {
   getGoalie,
   getSessionPhaseOffsets,
   resolveShot,
+  getBeachPuckSpeed, type BonusChallengeCondition,
+  resolveBeachCourtShot, sampleBeachPuddles, sampleBeachPuckPosition,
+  type BonusChallengeEnvironmentRules,
   simulateGoal,
   simulateGoalie,
   type DailyPeriodSpeedPreset,
@@ -56,6 +59,10 @@ import { Goalie, type GoalieOptions } from './renderer/Goalie.js';
 import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt, type IceMaintenanceMode } from './renderer/IceCar.js';
 import { Player, type PlayerOptions } from './renderer/Player.js';
+import { BeachWind, type BeachWindTarget } from './renderer/BeachWind.js';
+import { BeachWater } from './renderer/BeachWater.js';
+import { beachNoticeLabel } from './beachNotice.js';
+import { projectBeachWaterY } from './beachWaterVisuals.js';
 import { Puck, type PuckOptions } from './renderer/Puck.js';
 import {
   puckOutcomeMotion,
@@ -375,6 +382,12 @@ export interface PlayViewProps<TState> {
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
   shotResolver?: PlayShotResolver | undefined;
+  courtMotionTime?: ((target: 'goal' | 'goalie', sceneMs: number) => number) | undefined;
+  beachWindTarget?: ((sceneMs: number) => BeachWindTarget | null) | undefined;
+  beachCleanupHint?: boolean | undefined;
+  canStartAction?: (() => boolean) | undefined;
+  onBeachWaterTap?: ((x: number, y: number, time: number) => boolean | Promise<boolean>) | undefined;
+  beachEnvironment?: BonusChallengeEnvironmentRules['beach'] | undefined;
   shooterMotionTime?: ((sceneMs: number, pauses: readonly BonusChallengeShotPause[]) => number) | undefined;
   duelCondition?:
     | ((
@@ -717,6 +730,12 @@ export function PlayView<TState>({
   shotResolver = resolveNewTrainingCourtShot,
   duelCondition,
   shooterMotionTime,
+  beachEnvironment,
+  onBeachWaterTap,
+  canStartAction,
+  beachCleanupHint = false,
+  courtMotionTime,
+  beachWindTarget,
   hudAddon,
   statusNotice,
   statusNoticeTone,
@@ -804,6 +823,23 @@ export function PlayView<TState>({
   const rinkShellRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const loopRef = useRef<GameLoop | null>(null);
+  const beachEnvironmentRef = useRef(beachEnvironment);
+  beachEnvironmentRef.current = beachEnvironment;
+  const waterRulesRef = useRef(beachEnvironment?.puddles);
+  const [hasCleanedBeachWater, setHasCleanedBeachWater] = useState(false);
+  const beachCleanupHintRef = useRef(false);
+  beachCleanupHintRef.current = beachCleanupHint && !hasCleanedBeachWater;
+  const canStartActionRef = useRef(canStartAction);
+  canStartActionRef.current = canStartAction;
+  const courtMotionTimeRef = useRef(courtMotionTime);
+  courtMotionTimeRef.current = courtMotionTime;
+  const beachWindTargetRef = useRef(beachWindTarget);
+  beachWindTargetRef.current = beachWindTarget;
+  const beachWindRef = useRef<BeachWind | null>(null);
+  const [windTarget, setWindTarget] = useState<BeachWindTarget | null>(null);
+  const windTargetRef = useRef<BeachWindTarget | null>(null);
+  const beachWaterRef = useRef<BeachWater | null>(null);
+  const beachReleaseTimeRef = useRef<number | null>(null);
   const puckRef = useRef<Puck | null>(null);
   const playerRef = useRef<Player | null>(null);
   const goalRef = useRef<Goal | null>(null);
@@ -1185,6 +1221,10 @@ export function PlayView<TState>({
       goalieRef.current?.destroy();
       playerRef.current?.destroy();
       puckRef.current?.destroy();
+      beachWindRef.current?.destroy();
+      beachWindRef.current = null;
+      beachWaterRef.current?.destroy();
+      beachWaterRef.current = null;
       hitboxesRef.current?.destroy();
       iceCarRef.current?.destroy();
       loopRef.current = null;
@@ -1448,6 +1488,11 @@ export function PlayView<TState>({
       iceCarRef.current = iceCar;
 
       const layer = new Container();
+      if (beachEnvironmentRef.current) {
+        const water = new BeachWater(beachEnvironmentRef.current.puddles);
+        beachWaterRef.current = water;
+        layer.addChild(water.container);
+      }
       layer.addChild(iceCar.container);
       layer.addChild(goal.container);
       layer.addChild(goalie.container);
@@ -1456,6 +1501,11 @@ export function PlayView<TState>({
       layer.addChild(puck.container);
       layer.addChild(hitboxes.container);
 
+      if (beachWindTargetRef.current) {
+        const wind = new BeachWind();
+        beachWindRef.current = wind;
+        layer.addChild(wind.container);
+      }
       app.stage.addChild(layer);
 
       const refreshScale = (s: Scale): void => {
@@ -1483,6 +1533,8 @@ export function PlayView<TState>({
         getMaxSceneTimeMs: () => queuedPracticeShotRef.current ?? maxSceneTimeRef.current,
         getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
           ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
+        ...(courtMotionTimeRef.current ? { getCourtMotionTime: (target: 'goal' | 'goalie', ms: number) =>
+          courtMotionTimeRef.current!(target, ms) } : {}),
         getEpisodeSample: (sceneMs) => episodeSamplerRef.current?.(sceneMs) ?? null,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
@@ -1492,6 +1544,25 @@ export function PlayView<TState>({
         } : {}),
         onDuelConditionChange: syncCurrentDuelCondition,
         onClockTick: (sceneElapsedMs, shooterElapsedMs) => {
+          if (waterRulesRef.current !== beachEnvironmentRef.current?.puddles && beachEnvironmentRef.current && beachWaterRef.current) {
+            beachWaterRef.current.setRules(beachEnvironmentRef.current.puddles);
+            waterRulesRef.current = beachEnvironmentRef.current.puddles;
+          }
+          beachWaterRef.current?.update(sceneElapsedMs, scaleRef.current, beachReleaseTimeRef.current,
+            beachCleanupHintRef.current);
+          let wind = beachWindTargetRef.current?.(sceneElapsedMs) ?? null;
+          const condition = duelConditionRef.current?.(sceneElapsedMs, speedsRef.current);
+          if (wind === 'player' && (condition?.canShoot === false || puck.isFlying() || puck.isHeld())) wind = null;
+          if (wind !== windTargetRef.current) {
+            windTargetRef.current = wind;
+            setWindTarget(wind);
+          }
+          if (beachWindRef.current) {
+            const entity = wind === 'goal' ? goal.container : wind === 'goalie' ? goalie.container : player.container;
+            const sprite = entity.children[wind === 'goal' ? 1 : 0];
+            beachWindRef.current.update(sceneElapsedMs, wind, entity.x + (sprite?.x ?? 0),
+              entity.y + (sprite?.y ?? 0), scaleRef.current, reduceMotion);
+          }
           onSceneClockRef.current?.(sceneElapsedMs, shooterElapsedMs);
           const target = queuedPracticeShotRef.current;
           if (target !== null && sceneElapsedMs >= target) {
@@ -1737,6 +1808,7 @@ export function PlayView<TState>({
   }, [onBack]);
 
   const handleShotTap = useCallback((): void => {
+    if (canStartActionRef.current?.() === false) return;
     const loop = loopRef.current;
     const puck = puckRef.current;
     const goalie = goalieRef.current;
@@ -1790,7 +1862,9 @@ export function PlayView<TState>({
       computeShooterX((shooterMotionT ?? shooterTapTime) + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
     const sx = episodeSamplerRef.current?.(tapTime).playerX ?? ordinaryShooterX;
-    const puckSpeed = clampPuckSpeed(
+    const puckSpeed = beachEnvironmentRef.current
+      ? getBeachPuckSpeed(overrides.puckSpeed, (duelShotCondition as BonusChallengeCondition | null)?.puckSpeedMultiplier ?? 1)
+      : clampPuckSpeed(
       overrides.puckSpeed + (duelShotCondition?.puckSpeedDelta ?? 0),
     );
 
@@ -1803,7 +1877,10 @@ export function PlayView<TState>({
       goalieFrequency: effectiveGoalieFreq,
       goalFrequency: effectiveGoalFreq,
     };
-    const result: ShotResult =
+    const beachRules = beachEnvironmentRef.current;
+    const beachShot = beachRules ? resolveBeachCourtShot(input, activeCfg, seed, shotIndex,
+      sampleBeachPuddles(beachRules.puddles, tapTime), offsets, courtMotionTimeRef.current) : null;
+    const result: ShotResult = beachShot?.result ??
       shotResolverRef.current?.({
         input,
         goalieConfig: activeCfg,
@@ -1813,7 +1890,7 @@ export function PlayView<TState>({
         phaseOffsets: offsets,
         shooterX: sx,
       }) ?? resolveShot(input, activeCfg, seed, shotIndex, stickEffectsRef.current, offsets);
-    const localResultPresentation =
+    const localResultPresentation = beachShot?.blockedByWater ? { title: 'Шайба застряла в луже' } :
       onShotResolved?.({
         input,
         goalieConfig: activeCfg,
@@ -1827,13 +1904,17 @@ export function PlayView<TState>({
 
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
-    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const flightMs = beachShot?.flight.durationMs ?? (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
     const visualFlightMs = reduceMotion ? 0 : flightMs;
     const visualPauseMs = reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS;
-    const tGoalCross = tapTime + flightMs;
-    const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / puckSpeed;
+    const rawGoalCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOAL_OPENING.y) ?? flightMs);
+    const tGoalCross = courtMotionTimeRef.current?.('goal', rawGoalCross) ?? rawGoalCross;
+    const rawGoalieCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOALIE_Y) ?? (PUCK_START.y - GOALIE_Y) / puckSpeed);
+    const tGoalieCross = courtMotionTimeRef.current?.('goalie', rawGoalieCross) ?? rawGoalieCross;
     const authoredEpisode = episodeSamplerRef.current !== undefined;
-    if (authoredEpisode) {
+    if (beachShot?.blockedByWater) {
+      subText = 'Шайба застряла в луже';
+    } else if (authoredEpisode) {
       subText = result.type === 'goal' ? 'Отличный бросок!'
         : result.type === 'save' ? 'Вратарь на месте!' : 'Мимо ворот';
     } else if (result.type === 'save') {
@@ -1883,19 +1964,25 @@ export function PlayView<TState>({
 
     loop.beginShooterPause(flightMs);
     playerRef.current?.playShot();
-    const targetPoint = puckResultContact(result, sx);
+    const beachRenderPoint = (elapsed: number) => {
+      const point = sampleBeachPuckPosition(beachShot!.flight, elapsed);
+      const options = puckOptionsRef.current;
+      return { x: point.x, y: (projectBeachWaterY(point.y) - (options?.visualYOffset ?? 0))
+        / (options?.visualYScale ?? 1) };
+    };
+    const targetPoint = beachShot ? beachRenderPoint(flightMs) : puckResultContact(result, sx);
     const puckShotPath = {
-      start: puck.bladePoint(sx),
+      start: beachShot ? beachRenderPoint(0) : puck.bladePoint(sx),
       end: targetPoint,
     };
     const reboundObstacles =
       displayKind === 'miss' && !authoredEpisode
         ? puckReboundObstacles(
             simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX,
-            simulateGoalie(activeCfg, seed, shotIndex, tGoalCross, offsets.goalie),
+            simulateGoalie(activeCfg, seed, shotIndex, courtMotionTimeRef.current?.('goalie', rawGoalCross) ?? rawGoalCross, offsets.goalie),
           )
         : [];
-    const outcomeMotion = puckOutcomeMotion(
+    const outcomeMotion = beachShot ? null : puckOutcomeMotion(
       displayKind,
       puckShotPath.end,
       reduceMotion,
@@ -1903,7 +1990,9 @@ export function PlayView<TState>({
       reboundObstacles,
     );
     const visualOutcomeDurationMs = outcomeMotion?.durationMs ?? 0;
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
+    beachReleaseTimeRef.current = beachShot ? tapTime : null;
+    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs,
+      beachShot ? (elapsed) => beachRenderPoint(reduceMotion ? flightMs : elapsed) : undefined);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
       const id = window.setTimeout(() => {
@@ -1915,6 +2004,7 @@ export function PlayView<TState>({
     };
 
     scheduleShotTimeout(() => {
+      beachReleaseTimeRef.current = null;
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
       if (outcomeMotion && visualOutcomeDurationMs > 0) {
@@ -1926,7 +2016,7 @@ export function PlayView<TState>({
           outcomeMotion.waypoint,
         );
       } else {
-        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end);
+        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end, beachShot !== null);
       }
       if (freezeRenderingDuringResult && visualOutcomeDurationMs === 0) loop.detach();
       if (result.type === 'save') goalie.setSavePose(true);
@@ -2139,13 +2229,18 @@ export function PlayView<TState>({
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
   const firstPeriodSpeed = periodSpeedPresetFor(1, periodSpeedPresets).shooterFrequency;
   const periodSpeedRatio = firstPeriodSpeed > 0 ? speeds.shooterFreq / firstPeriodSpeed : 1;
-  const duelFatigueNotice = active
-    ? duelFatigueNoticeLabel(
+  const showBeachCleanupHint = beachCleanupHint && !hasCleanedBeachWater && active &&
+    (loopRef.current?.getSceneT() ?? 0) >= (beachEnvironment?.puddles[0]?.activeMs ?? Infinity) &&
+    currentDuelCondition?.canShoot !== false;
+  const windNotice = windTarget && currentDuelCondition?.canShoot !== false
+    ? `С моря задул ветер · сносит ${windTarget === 'player' ? 'игрока' : windTarget === 'goalie' ? 'вратаря' : 'ворота'}` : null;
+  const duelFatigueNotice = windNotice ?? (showBeachCleanupHint ? 'Тапай по лужам, чтобы уменьшать их' : active
+    ? beachEnvironment ? beachNoticeLabel(currentDuelCondition, speeds.puckSpeed, speeds.shooterFreq) : duelFatigueNoticeLabel(
         currentDuelCondition,
         periodSpeedRatio,
         showPeriodFatigueNotice || duelCondition !== undefined,
       )
-    : null;
+    : null);
   const showDuelStumbleNotice =
     duelStumbleNoticeVisible && currentDuelCondition?.status !== 'exhausted_stop';
   const isRouteCameraZoomed = routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting';
@@ -2327,6 +2422,25 @@ export function PlayView<TState>({
         }}
       >
         <div
+          onPointerDown={async event => {
+            if (canStartActionRef.current?.() === false) return;
+            if (!onBeachWaterTap || !sessionRef.current.active || primaryActionBlocked ||
+              puckRef.current?.isFlying() || puckRef.current?.isHeld() || shotSubmitPendingRef.current) return;
+            const canvas = event.currentTarget.querySelector('canvas');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const scale = scaleRef.current;
+            const x = (event.clientX - rect.left - scale.offsetX) / scale.factor;
+            const visualY = (event.clientY - rect.top - scale.offsetY) / scale.factor;
+            const y = (visualY - projectBeachWaterY(0)) / (projectBeachWaterY(1) - projectBeachWaterY(0));
+            const time = loopRef.current?.getSceneT() ?? 0;
+            const action = onBeachWaterTap(x, y, time);
+            if (action !== false) event.stopPropagation();
+            if (await action) {
+              setHasCleanedBeachWater(true);
+              beachWaterRef.current?.splash(x, y, time);
+            }
+          }}
           ref={rinkShellRef}
           style={{
             position: 'relative',

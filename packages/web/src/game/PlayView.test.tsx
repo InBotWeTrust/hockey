@@ -34,6 +34,8 @@ vi.mock('pixi.js', () => ({
   },
 }));
 
+vi.mock('./renderer/BeachWater.js', () => ({ BeachWater: class { container = { visible: true }; update() {} destroy() {} } }));
+
 vi.mock('./renderer/Goal.js', () => ({
   Goal: class Goal {
     container = { visible: true };
@@ -1804,4 +1806,22 @@ describe('PlayView', () => {
     });
     expect(applyState).not.toHaveBeenCalled();
   });
+
+it('stops a beach shot in deep water without a rebound or a second tap', async () => {
+  vi.useFakeTimers();
+  const submit = vi.fn(() => new Promise<never>(() => undefined));
+  render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+    active seed="beach-water-test" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+    goals={0} shots={0} beachEnvironment={{ version: 1, meltDurationMs: 150000, finalSpeedMultiplier: .85,
+      puddles: [{ id: 'water', x: 286, y: 300, radiusX: 286, radiusY: 50, deepRatio: 1,
+        speedMultiplier: .65, warningMs: 0, activeMs: 0, fullMs: 0, initialScale: 1 }] }}
+    optimisticAddShot={() => undefined} submitShot={submit} applyState={() => undefined} />);
+  fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+  fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+  expect(submit).toHaveBeenCalledTimes(1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+  expect(screen.getByText('Шайба застряла в луже')).toBeInTheDocument();
+  expect(puckOutcomePaths).toHaveLength(0);
+});
+
 });

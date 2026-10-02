@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for deterministic bonus challenge movement clocks', () => {
-    expect(GAME_CORE_VERSION).toBe(71);
+  it('is bumped for independent beach court motion clocks', () => {
+    expect(GAME_CORE_VERSION).toBe(74);
   });
 });

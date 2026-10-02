@@ -100,3 +100,8 @@ export function futureBonusPeriodDurationMs(attempt: BonusGameAttempt): number {
     .filter((period) => period.period_number > attempt.current_period)
     .reduce((total, period) => total + period.duration_ms, 0);
 }
+
+/** New beach flights may be longer than the dry rink or end early in deep water. */
+export function bonusPendingFlightMs(attempt: BonusGameAttempt, dryFlightMs: number): number {
+  return attempt.current_period_shot_pauses?.at(-1)?.flightMs ?? dryFlightMs;
+}

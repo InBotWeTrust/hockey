@@ -119,8 +119,15 @@ export function BonusGamesScreen(): JSX.Element {
   const [previewGame, setPreviewGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [developmentToast, setDevelopmentToast] = useState(false);
+  useEffect(() => {
+    if (!developmentToast) return;
+    const timer = window.setTimeout(() => setDevelopmentToast(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
+    if (stored === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
       ? stored
       : 'speed';
@@ -202,6 +209,7 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const openGame = (game: BonusGameCard): void => {
+    if (game.skill_code === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
     if (game.state === 'level_locked') {
       performGameAction(game);
       return;
@@ -243,6 +251,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
+    if (skill === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
   };
@@ -426,6 +435,9 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         )}
       </section>
+      {developmentToast && <div role="status" style={{ position: 'fixed', bottom: 'calc(100px + var(--app-safe-bottom))',
+        left: '50%', transform: 'translateX(-50%)', padding: '12px 18px', borderRadius: 16,
+        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Раздел в разработке</div>}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {previewGame !== null ? (
         <AccessibleModal

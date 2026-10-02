@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  define: { 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
   plugins: [
     react(),
     VitePWA({

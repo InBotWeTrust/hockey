@@ -34,13 +34,14 @@ export function getPerspectiveCourtGoalOpening(
   input: ShotInput,
   cfg: GoalieConfig,
   phaseOffsets?: SessionPhaseOffsets,
+  crossingTimeMs?: number,
 ): { xMin: number; xMax: number } {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
   const effectiveCfg = {
     ...cfg,
     goalFrequency: input.goalFrequency ?? cfg.goalFrequency,
   };
-  const tGoalCross = input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const tGoalCross = crossingTimeMs ?? input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
   const goalOffsetAtCross =
     simulateGoal(effectiveCfg, tGoalCross, phaseOffsets?.goal ?? 0).offsetX *
     PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE;
@@ -64,10 +65,11 @@ export function getPerspectiveCourtGoalieHitbox(
   shotIndex: number,
   stick: StickEffects,
   phaseOffsets?: SessionPhaseOffsets,
+  crossingTimeMs?: number,
 ): { xMin: number; xMax: number; centerX: number; timeMs: number } {
   const speed = input.puckSpeedPerMs ?? PUCK_SPEED_PER_MS;
   const effectiveCfg = { ...cfg, frequency: input.goalieFrequency ?? cfg.frequency };
-  const timeMs = input.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
+  const timeMs = crossingTimeMs ?? input.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
   const goalieState = simulateGoalie(
     effectiveCfg,
     seed,
@@ -112,18 +114,19 @@ export function resolvePerspectiveCourtShot(
   shotIndex: number,
   stick: StickEffects,
   phaseOffsets?: SessionPhaseOffsets,
+  crossings?: { goalieTimeMs: number; goalTimeMs: number },
 ): ShotResult {
   const shooterTime = input.shooterMotionTime ?? input.shooterTapTime ?? input.tapTime;
   const shooterX = simulateShooter(
     shooterTime + (phaseOffsets?.shooter ?? 0),
     input.shooterFrequency,
   ).x;
-  const goalieHitbox = getPerspectiveCourtGoalieHitbox(input, cfg, seed, shotIndex, stick, phaseOffsets);
+  const goalieHitbox = getPerspectiveCourtGoalieHitbox(input, cfg, seed, shotIndex, stick, phaseOffsets, crossings?.goalieTimeMs);
   if (shooterX >= goalieHitbox.xMin && shooterX <= goalieHitbox.xMax) {
     return { type: 'save', goalieContact: { x: shooterX, y: GOALIE_Y } };
   }
 
-  const opening = getPerspectiveCourtGoalOpening(input, cfg, phaseOffsets);
+  const opening = getPerspectiveCourtGoalOpening(input, cfg, phaseOffsets, crossings?.goalTimeMs);
   if (shooterX < opening.xMin || shooterX > opening.xMax) {
     return { type: 'miss', reason: 'wide' };
   }

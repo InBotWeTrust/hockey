@@ -63,6 +63,7 @@ export interface GameLoopOpts {
   getMaxSceneTimeMs?: () => number | undefined;
   getTimeScale?: (sceneElapsedMs: number) => number;
   getEpisodeSample?: (sceneElapsedMs: number) => AdvancedTrainingEpisodeSample | null;
+  getCourtMotionTime?: (target: 'goal' | 'goalie', sceneMs: number) => number;
   getShooterMotionTime?: (sceneElapsedMs: number, pauses: readonly BonusChallengeShotPause[]) => number;
 }
 
@@ -305,7 +306,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       frozenConditionShooterX = null;
     }
     const episodeSample = opts.getEpisodeSample?.(tScene) ?? null;
-    const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
+    const goalState: GoalState = simulateGoal(activeCfg, opts.getCourtMotionTime?.('goal', tScene) ?? tScene, o.goal);
     const goalieSeed = opts.getSeed();
     const goalieShotIndex = opts.getShotIndex();
     if (
@@ -317,7 +318,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       goalieSimulatorShotIndex = goalieShotIndex;
       goalieSimulator = createGoalieSimulator(activeCfg, goalieSeed, goalieShotIndex);
     }
-    const goalieState: GoalieState = goalieSimulator(tScene, o.goalie);
+    const goalieState: GoalieState = goalieSimulator(opts.getCourtMotionTime?.('goalie', tScene) ?? tScene, o.goalie);
     const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
     const motionTime = opts.getShooterMotionTime?.(tScene, shotPauses);
     const ordinaryShooterX = motionTime !== undefined
