@@ -469,7 +469,7 @@ export function BonusGamesScreen(): JSX.Element {
           />
           <p className="modal-copy bonus-game-preview-modal__story">{previewGame.preview_story}</p>
           <p className="bonus-game-preview-modal__condition">
-            {previewGame.slug === 'challenge-beach' && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
+            {(previewGame.slug === 'challenge-beach' || (previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski)) && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
             {qualificationDescription(previewGame.qualification_rules)}
           </p>
           {previewGame.slug === 'challenge-beach' && previewGame.challenge_environment?.beach?.interactive && (
@@ -478,6 +478,14 @@ export function BonusGamesScreen(): JSX.Element {
               <li>Тапай по лужам, чтобы убрать воду. Большой луже нужно больше тапов, но со временем она появится снова.</li>
               <li>Ветер периодически сносит игрока, вратаря или ворота назад.</li>
               <li>На мокром льду игрок спотыкается, устаёт и берёт передышки.</li>
+            </ul>
+          )}
+          {previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski && (
+            <ul className="bonus-game-preview-modal__hints">
+              <li>На подъёме игрок устаёт и едет всё медленнее. После передышки силы восстановятся.</li>
+              <li>С горы игрок, вратарь и ворота движутся быстрее, чем в гору.</li>
+              <li>На снегу все трое могут поскользнуться и съехать вниз.</li>
+              <li>Во время соскальзывания и передышки игрок не может бросать.</li>
             </ul>
           )}
           {startMutation.isError ? (

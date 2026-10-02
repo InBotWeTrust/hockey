@@ -1,4 +1,4 @@
-import { beachWindMotion, getBonusChallengeCondition, getBeachPuckSpeed, getSessionPhaseOffsets } from '@hockey/game-core';
+import { GAME_CORE_VERSION, beachWindMotion, getBonusChallengeCondition, getBeachPuckSpeed, getSessionPhaseOffsets } from '@hockey/game-core';
 import { deriveShotSeed } from '../../src/duel/seed.js';
 import { buildBonusGoalieConfig } from '../../src/bonusGames/types.js';
 import { resolveVersionedBeachShot } from '../../src/bonusGames/beachShot.js';
@@ -34,7 +34,7 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative beach interactions', (
     const attempt = await reconcileOwnedBonusAttempt(pool, {userId, attemptId, now: NOW});
     expect(attempt.rules.challengeEnvironment!.beach!.interactive!.wind).toHaveLength(10);
     expect(attempt.rules.challengeEnvironment!.beach!.puddles).toHaveLength(7);
-    expect(attempt.gameCoreVersion).toBe(74);
+    expect(attempt.gameCoreVersion).toBe(GAME_CORE_VERSION);
   });
   it('serializes duplicate and concurrent cleanup and preserves the original snapshot', async () => {
     const before = await pool.query('select rules_snapshot from bonus_game_attempt where id=$1', [attemptId]);

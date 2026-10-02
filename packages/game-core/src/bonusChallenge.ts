@@ -1,6 +1,7 @@
 import { beachFatigueState, beachMeltMultiplier, beachStumbleAllowed, integrateBeachMovement } from './beachCondition.js';
 import type { WindGust } from './beachWind.js';
 import type { BeachPuddleRule } from './beachEnvironment.js';
+import type { SkiEnvironmentRules } from './skiEnvironment.js';
 import type { DuelPlayerCondition } from './duelInventory.js';
 
 export interface BonusChallengeFatigueRules {
@@ -33,6 +34,7 @@ export interface BonusChallengeBaseModifiers {
 }
 
 export interface BonusChallengeEnvironmentRules {
+  ski?: SkiEnvironmentRules;
   beach?: {
     version: 1;
     interactive?: { version: 1; wind: WindGust[] } | undefined;

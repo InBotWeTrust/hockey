@@ -39,6 +39,7 @@ vi.mock('../onboarding/OnboardingGate.js', () => ({
 }));
 
 vi.mock('../game/PlayView.js', () => ({
+  LONG_COURT_GAME_LAYER_STYLE: {position:'absolute'},
   PlayView(props: {
     suppressedByModal: boolean;
     showIceCar: boolean;
@@ -2028,4 +2029,21 @@ describe('Bonus Game Amateur access mutation fallback', () => {
       toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
     });
   });
+});
+
+it('activates server-snapshotted ski rendering without changing legacy attempts',()=>{
+  vi.clearAllMocks();
+  const base=attempt(),ski=attempt({game_core_version:75,current_period:1,current_period_shot_pauses:[],rules:{...base.rules,slug:'challenge-ski-resort',skill_code:'challenge',challenge_environment:{ski:{version:1,seed:base.attempt_seed,durationMs:180000}},periods:[{...base.rules.periods[0]!,duration_ms:180000,goal_frequency:.5,goalie_frequency:.6,shooter_frequency:.75,puck_speed_per_ms:1.25}]}});
+  setStore({attempt:ski});renderScreen();
+  const props=playViewProbe.mock.calls.at(-1)![0] as Record<string,unknown>;
+  expect(props.longCourtBackground).toContain('/bonus-games/arenas/ski-resort-slope.webp');
+  expect(props.conditionNoticeOverride).toBe(true);
+  expect(props.statusNoticeTone).toBe('warning');
+  expect(props.shotResolver).toBeTypeOf('function');expect(props.skidVisual).toBeTypeOf('function');
+  const sample=props.shooterMotionTime as (time:number,pauses:{tapTime:number;flightMs:number}[])=>number;
+  expect(sample(2200,[{tapTime:2000,flightMs:400}])).toBe(sample(2000,[{tapTime:2000,flightMs:400}]));
+  const pauses=[{tapTime:2000,flightMs:400}],beforeReply=sample(3000,pauses);
+  act(()=>setStore({attempt:{...ski,current_period_shot_pauses:pauses}}));
+  const latest=playViewProbe.mock.calls.at(-1)![0] as Record<string,unknown>;
+  expect((latest.shooterMotionTime as typeof sample)(3000,pauses)).toBe(beforeReply);
 });

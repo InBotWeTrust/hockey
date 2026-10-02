@@ -128,6 +128,7 @@ const beachEnvironmentSchema = z.object({
 });
 
 const challengeEnvironmentSchema = z.object({
+  ski: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000)}).strict().optional(),
   beach: beachEnvironmentSchema.optional(),
   baseModifiers: z.object({
     goalMultiplier: z.number().min(0.1).max(3),
@@ -155,6 +156,7 @@ export function parseBonusChallengeEnvironmentRules(
   const parsed = challengeEnvironmentSchema.safeParse(value);
   if (!parsed.success) throw new Error('invalid bonus challenge environment rules');
   return {
+    ...(parsed.data.ski === undefined ? {} : {ski:parsed.data.ski}),
     ...(parsed.data.beach === undefined ? {} : { beach: parsed.data.beach }),
     ...(parsed.data.baseModifiers === undefined
       ? {}

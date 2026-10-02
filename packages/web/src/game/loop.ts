@@ -39,6 +39,8 @@ export interface GameLoopClocks {
   shooterElapsedMs: number;
 }
 
+export interface SkidVisual { target: 'goal' | 'goalie' | 'player'; ageMs: number }
+
 export interface GameLoopOpts {
   goalRenderer: Goal;
   goalieRenderer: Goalie;
@@ -59,6 +61,8 @@ export interface GameLoopOpts {
     reusable?: DuelPlayerCondition,
   ) => DuelPlayerCondition | null;
   onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
+  getSkidVisual?: (sceneMs: number) => SkidVisual | null;
+  onEntitiesRendered?: (sceneMs: number) => void;
   onClockTick?: (sceneElapsedMs: number, shooterElapsedMs: number) => void;
   getMaxSceneTimeMs?: () => number | undefined;
   getTimeScale?: (sceneElapsedMs: number) => number;
@@ -347,12 +351,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
           (episodeSample.goalieX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
           PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE },
     } : goalieState;
+    const skid = opts.getSkidVisual?.(tScene) ?? null;
+    if (opts.getSkidVisual) {
+      opts.goalRenderer.setSlipRotation?.(skid?.target === 'goal' ? Math.sin(skid.ageMs / 38) * .14 : 0);
+      opts.goalieRenderer.setSlipPose?.(skid?.target === 'goalie');
+    }
     opts.goalRenderer.update(scale, goalOffsetX);
     opts.goalieRenderer.update(renderedGoalieState, scale);
     opts.playerRenderer.update(scale, sx, undefined, {
-      stumbling: condition?.stumbleActive === true,
+      stumbling: condition?.stumbleActive === true || skid?.target === 'player',
       resting: condition?.status === 'exhausted_stop',
     });
+    opts.onEntitiesRendered?.(tScene);
     opts.hitboxRenderer?.update(scale, goalOffsetX, renderedGoalieState);
 
     if (opts.puckRenderer.isHeld()) {

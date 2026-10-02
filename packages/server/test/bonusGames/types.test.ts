@@ -163,3 +163,8 @@ it.each([
 ])('rejects malformed beach environment %j', patch => {
   expect(() => parseBonusChallengeEnvironmentRules({ beach: { ...beachEnvironment.beach, ...patch } })).toThrow();
 });
+
+ it('parses immutable ski rules and rejects unsupported versions',()=>{
+   expect(parseBonusChallengeEnvironmentRules({ski:{version:1,seed:'test',durationMs:180000}})).toEqual({ski:{version:1,seed:'test',durationMs:180000}});
+   expect(()=>parseBonusChallengeEnvironmentRules({ski:{version:2,seed:'test',durationMs:180000}})).toThrow();
+ });

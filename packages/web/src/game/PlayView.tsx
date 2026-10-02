@@ -1,3 +1,5 @@
+import { SnowBurst } from './renderer/SnowBurst.js';
+import type { SkidVisual } from './loop.js';
 import {
   useCallback,
   useEffect,
@@ -383,6 +385,7 @@ export interface PlayViewProps<TState> {
   hitboxesOptions?: HitboxesOptions | undefined;
   shotResolver?: PlayShotResolver | undefined;
   courtMotionTime?: ((target: 'goal' | 'goalie', sceneMs: number) => number) | undefined;
+  skidVisual?: ((sceneMs: number) => SkidVisual | null) | undefined;
   beachWindTarget?: ((sceneMs: number) => BeachWindTarget | null) | undefined;
   beachCleanupHint?: boolean | undefined;
   canStartAction?: (() => boolean) | undefined;
@@ -398,8 +401,9 @@ export interface PlayViewProps<TState> {
     | undefined;
   hudAddon?: ReactNode;
   statusNotice?: ReactNode;
-  statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
+  statusNoticeTone?: 'success' | 'warning' | 'error' | 'slip' | undefined;
   statusNoticeClassName?: string | undefined;
+  conditionNoticeOverride?: boolean | undefined;
   statusNoticeDelayMs?: number | undefined;
   statusNoticeUnderScoreboard?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
@@ -735,11 +739,13 @@ export function PlayView<TState>({
   canStartAction,
   beachCleanupHint = false,
   courtMotionTime,
+  skidVisual,
   beachWindTarget,
   hudAddon,
   statusNotice,
   statusNoticeTone,
   statusNoticeClassName,
+  conditionNoticeOverride,
   statusNoticeDelayMs = 0,
   statusNoticeUnderScoreboard = false,
   inlineResultNotice = false,
@@ -833,6 +839,9 @@ export function PlayView<TState>({
   canStartActionRef.current = canStartAction;
   const courtMotionTimeRef = useRef(courtMotionTime);
   courtMotionTimeRef.current = courtMotionTime;
+  const skidVisualRef = useRef(skidVisual);
+  skidVisualRef.current = skidVisual;
+  const snowBurstRef = useRef<SnowBurst | null>(null);
   const beachWindTargetRef = useRef(beachWindTarget);
   beachWindTargetRef.current = beachWindTarget;
   const beachWindRef = useRef<BeachWind | null>(null);
@@ -1221,6 +1230,8 @@ export function PlayView<TState>({
       goalieRef.current?.destroy();
       playerRef.current?.destroy();
       puckRef.current?.destroy();
+      snowBurstRef.current?.destroy();
+      snowBurstRef.current = null;
       beachWindRef.current?.destroy();
       beachWindRef.current = null;
       beachWaterRef.current?.destroy();
@@ -1494,10 +1505,14 @@ export function PlayView<TState>({
         layer.addChild(water.container);
       }
       layer.addChild(iceCar.container);
+      if (skidVisualRef.current) {
+        const spray = new SnowBurst(); snowBurstRef.current = spray;
+      }
       layer.addChild(goal.container);
       layer.addChild(goalie.container);
       goalie.container.visible = !hideGoalieRef.current;
       layer.addChild(player.container);
+      if (snowBurstRef.current) layer.addChild(snowBurstRef.current.container);
       layer.addChild(puck.container);
       layer.addChild(hitboxes.container);
 
@@ -1541,6 +1556,16 @@ export function PlayView<TState>({
         ...(shooterMotionTimeRef.current ? {
           getShooterMotionTime: (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
             shooterMotionTimeRef.current!(ms, pauses),
+        } : {}),
+        ...(skidVisualRef.current ? {
+          getSkidVisual: (ms: number) => skidVisualRef.current?.(ms) ?? null,
+          onEntitiesRendered: (ms: number) => {
+            const effect = skidVisualRef.current?.(ms) ?? null;
+            const entity = effect?.target === 'goal' ? goal.container : effect?.target === 'goalie' ? goalie.container : player.container;
+            const sprite = entity.children[effect?.target === 'goal' ? 1 : 0];
+            snowBurstRef.current?.update(effect?.ageMs ?? null, entity.x + (sprite?.x ?? 0),
+              entity.y + (sprite?.y ?? 0) + (sprite?.height ?? 0) * .4, scaleRef.current, reduceMotion, ms);
+          },
         } : {}),
         onDuelConditionChange: syncCurrentDuelCondition,
         onClockTick: (sceneElapsedMs, shooterElapsedMs) => {
@@ -2241,7 +2266,7 @@ export function PlayView<TState>({
     currentDuelCondition?.canShoot !== false;
   const windNotice = windTarget && currentDuelCondition?.canShoot !== false
     ? `С моря задул ветер · сносит ${windTarget === 'player' ? 'игрока' : windTarget === 'goalie' ? 'вратаря' : 'ворота'}` : null;
-  const duelFatigueNotice = windNotice ?? (showBeachCleanupHint ? 'Тапай по лужам, чтобы уменьшать их' : active
+  const duelFatigueNotice = conditionNoticeOverride ? null : windNotice ?? (showBeachCleanupHint ? 'Тапай по лужам, чтобы уменьшать их' : active
     ? beachEnvironment ? beachNoticeLabel(currentDuelCondition, speeds.puckSpeed, speeds.shooterFreq) : duelFatigueNoticeLabel(
         currentDuelCondition,
         periodSpeedRatio,
@@ -2293,7 +2318,9 @@ export function PlayView<TState>({
       role="status"
       aria-live="polite"
       className={`initial-training-feedback-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
-        effectiveStatusNoticeTone === 'warning'
+        effectiveStatusNoticeTone === 'slip'
+          ? ' initial-training-feedback-notice--slip'
+          : effectiveStatusNoticeTone === 'warning'
           ? ' initial-training-feedback-notice--warning'
           : effectiveStatusNoticeTone === 'error'
             ? ' initial-training-feedback-notice--error'

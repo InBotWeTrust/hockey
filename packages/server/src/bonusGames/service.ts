@@ -1,3 +1,5 @@
+import { assertVersionedSkiEnvironment } from './skiShot.js';
+import { createSkiAttemptSampler, resolveSkiCourtShot } from '@hockey/game-core';
 import { assertVersionedBeachEnvironment, resolveVersionedBeachShot } from './beachShot.js';
 import { randomUUID } from 'node:crypto';
 import {
@@ -106,7 +108,7 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73, 74] as const;
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
@@ -659,6 +661,7 @@ export async function startOrResumeBonusAttempt(
         arena,
       };
       assertVersionedBeachEnvironment(rulesSnapshot.challengeEnvironment, rulesSnapshot.slug, GAME_CORE_VERSION);
+      assertVersionedSkiEnvironment(rulesSnapshot.challengeEnvironment, rulesSnapshot.slug, GAME_CORE_VERSION);
       const rewardSnapshot = {
         coins: Number(game.reward_coins),
         stars: Number(game.reward_stars),
@@ -680,6 +683,7 @@ export async function startOrResumeBonusAttempt(
         game.id,
         input.seedSecret,
       );
+      if (rulesSnapshot.challengeEnvironment?.ski) { rulesSnapshot.challengeEnvironment.ski.seed = attemptSeed; }
       if (rulesSnapshot.challengeEnvironment?.beach?.interactive) {
         rulesSnapshot.challengeEnvironment.beach.interactive.wind = createWindSchedule(attemptSeed, periods[0]!.durationMs);
       }
@@ -1300,6 +1304,10 @@ export async function submitBonusShot(
             attempt.rules_snapshot.challengeEnvironment,
             input.input.tapTime,
           );
+          const skiRules=attempt.rules_snapshot.challengeEnvironment?.ski;
+          assertVersionedSkiEnvironment(attempt.rules_snapshot.challengeEnvironment,attempt.rules_snapshot.slug,Number(attempt.game_core_version));
+          const skiSampler=skiRules?createSkiAttemptSampler(skiRules,{goal:rule.goalFrequency,goalie:rule.goalieFrequency,player:rule.shooterFrequency}):null;
+
           if (!challengeCondition.canShoot) {
             deferredError = new AppError(
               'bonus_shot_time_invalid',
@@ -1329,6 +1337,9 @@ export async function submitBonusShot(
             input.now,
             useMotionClock ? periodShotState.shotPauses : undefined,
           );
+          if(skiSampler && !skiSampler.player(input.input.tapTime,periodShotState.shotPauses).canShoot) {
+            throw new AppError('bonus_shot_time_invalid','bonus shot is blocked by ski rest or slip',409);
+          }
           // Check wall-clock bounds before integrating a client-supplied elapsed time.
           if (useMotionClock) {
             shotInput.shooterMotionTime = getBonusChallengeShooterMotionTime(
@@ -1339,6 +1350,7 @@ export async function submitBonusShot(
                 input.input.tapTime, rule.shooterFrequency, periodShotState.shotPauses,
                 attempt.rules_snapshot.challengeEnvironment.beach.interactive.wind);
             }
+            if(skiSampler) shotInput.shooterMotionTime=skiSampler.player(input.input.tapTime,periodShotState.shotPauses).clock;
             shotInput.shooterFrequency = rule.shooterFrequency;
           }
           const shotSeed = deriveShotSeed(
@@ -1376,7 +1388,7 @@ export async function submitBonusShot(
             phaseOffsets: getSessionPhaseOffsets(attempt.attempt_seed),
             cleanupEvents,
           });
-          const serverResult = beachShot?.result.type ??
+          const serverResult = (skiRules ? resolveSkiCourtShot(shotInput,goalie,shotSeed,expectedShotIndex,skiRules,periodShotState.shotPauses).type : null) ?? beachShot?.result.type ??
             classification?.result.type ??
             resolvePerspectiveCourtShot(
               shotInput,

@@ -202,3 +202,7 @@ export { getPlayerFatigueState } from './playerFatigue.js';
 
 export { createWindSchedule, activeWind, windIsActive, beachWindClock, beachWindMotion, type WindGust, type WindTarget } from './beachWind.js';
 export { beachCleanupRules, type BeachCleanupEvent } from './beachCleanup.js';
+
+export { skiSlopeMotionTime } from './skiSlope.js';
+
+export * from './skiEnvironment.js';

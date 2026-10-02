@@ -52,6 +52,16 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('uses an opt-in skid pose without pausing or changing the shot clock', () => {
+    const now=vi.spyOn(performance,'now').mockReturnValue(1000);
+    const player=vi.fn();
+    const loop=makeLoop({getGoalieId:()=> 'rookie',getSkidVisual:()=>({target:'player',ageMs:10}),
+      playerRenderer:{update:player} as never});
+    const ticker=makeTicker();loop.attach(ticker);const tick=ticker.add.mock.calls[0]![0] as ()=>void;
+    tick();expect(player.mock.calls.at(-1)![3].stumbling).toBe(true);
+    now.mockReturnValue(1100);tick();expect(loop.getSceneT()).toBe(100);
+    loop.detach();now.mockRestore();
+  });
   it('preserves the visible beach position through a fatigue boundary, shot and authoritative rebase', () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const player = vi.fn();
@@ -798,4 +808,18 @@ it('samples goal and goalie independently with court motion clocks', () => {
   expect(goal.mock.calls.at(-1)![1]).toBeCloseTo(simulateGoal(config, 500, offsets.goal).offsetX);
   expect(goalie.mock.calls.at(-1)![0]).toEqual(simulateGoalie(config, 'seed', 1, 1000, offsets.goalie));
   loop.detach(); now.mockRestore();
+});
+
+it('rocks slipping goals visibly by about eight degrees and clears rotation at the edge',()=>{
+  const now=vi.spyOn(performance,'now').mockReturnValue(1000);
+  const rotation=vi.fn();let slipping=true;
+  const loop=makeLoop({getGoalieConfig:()=>stationaryCustomGoalie,
+    goalRenderer:{update:vi.fn(),setSlipRotation:rotation} as never,
+    getSkidVisual:()=>slipping?{target:'goal',ageMs:Math.PI*38/2}:null});
+  const ticker=makeTicker();loop.attach(ticker);
+  const tick=ticker.add.mock.calls[0]![0] as ()=>void;tick();
+  expect(rotation.mock.calls.at(-1)![0]).toBeGreaterThan(.13);
+  expect(rotation.mock.calls.at(-1)![0]).toBeLessThan(.15);
+  slipping=false;tick();expect(rotation).toHaveBeenLastCalledWith(0);
+  loop.detach();now.mockRestore();
 });

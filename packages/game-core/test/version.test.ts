@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for independent beach court motion clocks', () => {
-    expect(GAME_CORE_VERSION).toBe(74);
+  it('is bumped for server-validated ski slope clocks', () => {
+    expect(GAME_CORE_VERSION).toBe(75);
   });
 });

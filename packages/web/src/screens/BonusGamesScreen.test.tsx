@@ -1908,3 +1908,14 @@ it('renders Beach guidance as separate items with the target icon', async () => 
     expect(dialog.querySelector('.bonus-game-preview-modal__condition svg')).not.toBeNull();
   } finally {vi.unstubAllEnvs();}
 });
+
+it('renders ski slope rules and the target icon only for the new ski catalog',async()=>{
+  vi.stubEnv('DEV',true);localStorage.clear();
+  mockCatalog([card({slug:'challenge-ski-resort',skill_code:'challenge',title:'Горнолыжный курорт',preview_title:'По склону',preview_story:'С горы надвигается лавина.',challenge_environment:{ski:{version:1,seed:'',durationMs:180000}}})]);
+  try {renderCatalog();fireEvent.click(await screen.findByRole('tab',{name:'Испытания'}));fireEvent.click(await screen.findByRole('button',{name:'Играть'}));
+    const dialog=screen.getByRole('dialog',{name:'Описание игры «Горнолыжный курорт»'});
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(4);
+    expect(dialog).toHaveTextContent('Во время соскальзывания и передышки игрок не может бросать.');
+    expect(dialog.querySelector('.bonus-game-preview-modal__condition svg')).not.toBeNull();
+  } finally {vi.unstubAllEnvs();}
+});

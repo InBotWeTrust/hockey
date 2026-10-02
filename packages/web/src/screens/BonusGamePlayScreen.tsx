@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
+  createSkiAttemptSampler, resolveSkiCourtShot, skiVisualAt, skiNotice, skiSnowStrength,
+  type BonusChallengeShotPause,
   beachCleanupRules, beachWindMotion, beachWindClock, activeWind, sampleBeachPuddles,
   classifyMarksmanshipShot,
   getBonusChallengeCondition,
@@ -35,7 +37,10 @@ import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import type { GameScoreboardModel } from '../components/ScoreBoard.js';
-import { PlayView, type PlayResultPresentation } from '../game/PlayView.js';
+import { SkiSnowfall } from '../game/SkiSnowfall.js';
+import { SKI_ENTITY_SHEAR } from '../game/skiVisualProjection.js';
+import { skiNoticeTone } from '../game/skiNotice.js';
+import { PlayView, LONG_COURT_GAME_LAYER_STYLE, type PlayResultPresentation } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
   bonusPendingFlightMs,
@@ -769,6 +774,14 @@ export function BonusGamePlayScreen(): JSX.Element {
   const mountedRef = useRef(true);
   const beachCleanupCacheRef = useRef<{ source: BonusChallengeEnvironmentRules;
     events: BonusGameAttempt['current_period_cleanup_events']; environment: BonusChallengeEnvironmentRules } | null>(null);
+  const skiRuntimeRef=useRef<{key:string;sampler:ReturnType<typeof createSkiAttemptSampler>;pauses:readonly BonusChallengeShotPause[];time:number}|null>(null);
+  const [skiUi,setSkiUi]=useState<{notice:string|null;heavy:boolean;tone:ReturnType<typeof skiNoticeTone>}>({notice:null,heavy:false,tone:'warning'});
+  useEffect(()=>{const timer=window.setInterval(()=>{
+    const runtime=skiRuntimeRef.current;if(!runtime)return;
+    const sample=runtime.sampler.player(runtime.time,runtime.pauses),events=runtime.sampler.events(runtime.pauses);
+    const next={notice:skiNotice(runtime.time,sample,events),heavy:skiSnowStrength(events,runtime.time)==='heavy',tone:skiNoticeTone({resting:sample.fatigue.level==='resting',slipping:!!skiVisualAt(events,runtime.time),recovering:sample.recovering,slowdownPercent:sample.slowdownPercent})};
+    setSkiUi(old=>old.notice===next.notice&&old.heavy===next.heavy&&old.tone===next.tone?old:next);
+  },100);return()=>window.clearInterval(timer);},[]);
   const motionSamplerRef = useRef<{
     rules: unknown; history: unknown; frequency: number; period: number; attemptId: string;
     sample: ReturnType<typeof createBonusChallengeMotionSampler>;
@@ -1122,6 +1135,13 @@ export function BonusGamePlayScreen(): JSX.Element {
   const challengeEnvironment = initialEnvironment?.beach?.interactive
     ? beachCleanupCacheRef.current!.environment : initialEnvironment;
   const useMotionClock = attempt.game_core_version >= 71 && challengeEnvironment !== null;
+  const skiRules=attempt.game_core_version>=75&&attempt.rules.slug==='challenge-ski-resort'?challengeEnvironment?.ski:undefined;
+  const skiKey=`${attempt.id}:${periodNumber}:${speedOverrides.goalFreq}:${speedOverrides.goalieFreq}:${speedOverrides.shooterFreq}`;
+  if(!skiRules) skiRuntimeRef.current=null;
+  else if(skiRuntimeRef.current?.key!==skiKey) skiRuntimeRef.current={key:skiKey,sampler:createSkiAttemptSampler(skiRules,{goal:speedOverrides.goalFreq,goalie:speedOverrides.goalieFreq,player:speedOverrides.shooterFreq}),pauses:attempt.current_period_shot_pauses??[],time:clockBasis.sceneElapsedMs};
+  const skiRuntime=skiRuntimeRef.current;
+  const skiPauses=(local:readonly BonusChallengeShotPause[])=>[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))];
+
   if (useMotionClock && (motionSamplerRef.current?.rules !== challengeEnvironment
     || motionSamplerRef.current?.history !== attempt.current_period_shot_pauses
     || motionSamplerRef.current?.frequency !== speedOverrides.shooterFreq
@@ -1151,11 +1171,12 @@ export function BonusGamePlayScreen(): JSX.Element {
           elapsedMs,
           reusable,
         );
+        if(skiRuntime) {const sample=skiRuntime.sampler.player(elapsedMs,skiRuntime.pauses);condition.canShoot=sample.canShoot;if(sample.fatigue.level==='resting'){condition.status='exhausted_stop';condition.fatigueLevel='resting';}}
         condition.puckSpeedDelta = speeds.puckSpeed * (condition.puckSpeedMultiplier - 1);
         return condition;
       };
   const stickItem = attempt.current_loadout?.items.find((item) => item.kind === 'stick');
-  const arenaArtworkUrl = versionBonusGameArtwork(attempt.arena.artwork_url);
+  const arenaArtworkUrl = versionBonusGameArtwork(skiRules?'/bonus-games/arenas/ski-resort-slope.webp':attempt.arena.artwork_url);
   const goalieOptions = bonusGoalieOptions(attempt);
   const preloadAssets = [
     arenaArtworkUrl,
@@ -1248,6 +1269,7 @@ export function BonusGamePlayScreen(): JSX.Element {
 
   return (
     <>
+      {skiRuntime && <style>{`img[src*="ski-resort-slope.webp"] {top:-7.5%!important;height:107.5%!important;object-fit:fill!important;}`}</style>}
       <PlayView
         key={attempt.id}
         suppressedByModal={
@@ -1269,12 +1291,12 @@ export function BonusGamePlayScreen(): JSX.Element {
         beachEnvironment={attempt.game_core_version >= 72 && attempt.rules.slug === 'challenge-beach'
           ? challengeEnvironment?.beach : undefined}
         duelCondition={challengeCondition}
-        shooterMotionTime={useMotionClock ? motionSamplerRef.current!.sample : undefined}
+        shooterMotionTime={skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
         canStartAction={challengeEnvironment?.beach?.interactive ? () => {
           const state = useBonusGameStore.getState();
           return !state.inFlight && !state.needsReconcile && !state.pendingShot;
         } : undefined}
-        courtMotionTime={challengeEnvironment?.beach?.interactive ? (target, time) =>
+        courtMotionTime={skiRuntime ? (target,time)=>skiRuntime.sampler.court(target,time,skiRuntime.pauses) : challengeEnvironment?.beach?.interactive ? (target, time) =>
           beachWindClock(challengeEnvironment.beach!.interactive!.wind, target, time) : undefined}
         beachWindTarget={challengeEnvironment?.beach?.interactive ? time =>
           activeWind(challengeEnvironment.beach!.interactive!.wind, time)?.target ?? null : undefined}
@@ -1288,9 +1310,15 @@ export function BonusGamePlayScreen(): JSX.Element {
             puddleId: puddle.id, tapTime: time, expectedShots: attempt.current_period_shots_taken,
             expectedCleanups: attempt.current_period_cleanup_events?.length ?? 0});
         } : undefined}
-        statusNotice={challengeEnvironment?.baseModifiers?.label}
+        skidVisual={skiRuntime ? time=>{const e=skiVisualAt(skiRuntime.sampler.events(skiRuntime.pauses),time);return e?.target?{target:e.target,ageMs:time-e.startMs}:null;} : undefined}
+        conditionNoticeOverride={!!skiRuntime}
+        rinkOverlay={skiRuntime ? <SkiSnowfall heavy={skiUi.heavy}/> : undefined}
+        {...(skiRuntime ? {gameLayerStyle:{...LONG_COURT_GAME_LAYER_STYLE,transform:`matrix(1, ${SKI_ENTITY_SHEAR}, 0, 1, 0, 0)`,transformOrigin:'50% 50%'}} : {})}
+        shotResolver={skiRules && skiRuntime ? ({input,goalieConfig,seed,shotIndex,stickEffects})=>resolveSkiCourtShot(input,goalieConfig,seed,shotIndex,skiRules,skiRuntime.pauses,stickEffects) : undefined}
+        statusNotice={skiRuntime ? skiUi.notice??skiRuntime.sampler.player(0,[]).notice : challengeEnvironment?.baseModifiers?.label}
+        statusNoticeTone={skiRuntime ? skiUi.tone : undefined}
         statusNoticeClassName="bonus-challenge-environment-notice"
-        statusNoticeUnderScoreboard={challengeEnvironment?.baseModifiers !== undefined}
+        statusNoticeUnderScoreboard={!!skiRuntime || challengeEnvironment?.baseModifiers !== undefined}
         stickEffects={{
           ...STICK_NEUTRAL,
           shotZoneMultiplier: stickItem?.effects.shotZoneMultiplier ?? 1,

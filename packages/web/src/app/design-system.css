@@ -15467,3 +15467,5 @@ button.daily-calendar__day:active {
   width: max-content;
   max-width: 100%;
 }
+
+.initial-training-feedback-notice--slip::before { background: #fb923c; }
