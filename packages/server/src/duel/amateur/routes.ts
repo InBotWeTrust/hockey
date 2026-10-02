@@ -3769,7 +3769,10 @@ async function buildMatchDto(
         : makeRulesSnapshot(template, await getGameSettings(client));
     const duration = duelAdmissionDurationMs(admissionRules);
     duelLock ??= await duelLockDto(client, currentUserId, now, duration);
-    duelLock ??= await duelLockDto(client, opponent.user_id, now, duration);
+    if (duelLock === null) {
+      const opponentLock = await duelLockDto(client, opponent.user_id, now, duration);
+      if (opponentLock !== null) duelLock = { ...opponentLock, subject: 'opponent' };
+    }
   } else if (
     match.source !== 'tournament' &&
     match.status === 'active' &&
