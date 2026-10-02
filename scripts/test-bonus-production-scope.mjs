@@ -23,3 +23,11 @@ const deploy = readFileSync('.github/workflows/deploy.yml', 'utf8');
 const backup = deploy.indexOf('bonus-release-prod-');
 assert(backup >= 0 && backup < deploy.indexOf('server node packages/server/dist/db/migrate-cli.js'), 'A verified production backup must precede migrations');
 assert(deploy.includes('pg_restore --list'), 'Check backup archive readability before migrations');
+// Model Compose attaching stdin inside the SSH heredoc: it must not eat later commands.
+const dumpCommand = deploy.match(/docker compose exec -T postgres \\\n\s+sh -c 'pg_dump[^\n]+\\\n\s+> "\$BONUS_BACKUP_FILE"[^\n]*/)?.[0];
+assert(dumpCommand, 'Production dump command must be present');
+const shell = "docker() { cat > /dev/null; printf archive; }\n"
+  + dumpCommand.replace('> "$BONUS_BACKUP_FILE"', '> /dev/null')
+  + "\nprintf 'AFTER_BACKUP\\n'\n";
+assert.equal(execFileSync('bash', [], { input: shell, encoding: 'utf8' }), 'AFTER_BACKUP\n',
+  'Backup must leave the remaining SSH migration/recreation script unread');
