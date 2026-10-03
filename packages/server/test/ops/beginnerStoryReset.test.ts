@@ -1,13 +1,16 @@
 import type { Pool } from 'pg';
+import { onboardingStepInputSchema } from '../../src/onboarding/types.js';
 import { describe, expect, it, vi } from 'vitest';
-import { RESET_KEY, resetBeginnerStory } from '../../src/ops/beginnerStoryReset.js';
+import { BEGINNER_STORY_TUTORIAL_STEP, RESET_KEY, resetBeginnerStory } from '../../src/ops/beginnerStoryReset.js';
 
-function fakePool(previous = false, published = true) {
+function fakePool(previous = false, published = true, failPublication = false) {
   const statements: string[] = [];
   const query = vi.fn(async (sql: string) => {
     statements.push(sql);
+    if (failPublication && sql.includes('insert into onboarding_step')) throw new Error('publication failure');
     if (sql.includes('select payload')) return { rows: previous ? [{ payload: { usersReset: 12 } }] : [] };
     if (sql.includes('select chain.key')) return { rows: published ? [{ id: 'chain' }] : [] };
+    if (sql.includes('insert into onboarding_version')) return { rows: [{ id: 'new-version' }] };
     if (sql.includes('update users')) return { rows: [], rowCount: 12 };
     return { rows: [] };
   });
@@ -39,10 +42,27 @@ describe('one-time beginner story reset', () => {
     expect((await resetBeginnerStory(f.pool, { apply: true })).alreadyApplied).toBe(true);
     expect(f.statements.some((s) => s.includes('update users'))).toBe(false);
   });
-  it('fails without a published beginner version and rolls back', async () => {
+  it('publishes the cinematic tutorial contract when production has no beginner version', async () => {
     const f = fakePool(false, false);
-    await expect(resetBeginnerStory(f.pool, { apply: true })).rejects.toThrow('published beginner');
+    expect((await resetBeginnerStory(f.pool, { apply: true })).publishedVersionCreated).toBe(true);
+    expect(onboardingStepInputSchema.parse(BEGINNER_STORY_TUTORIAL_STEP)).toEqual(BEGINNER_STORY_TUTORIAL_STEP);
+    expect(f.statements.some((s) => s.includes('insert into onboarding_version'))).toBe(true);
+    expect(f.statements.some((s) => s.includes('insert into onboarding_step'))).toBe(true);
+    expect(f.statements.findIndex((s) => s.includes('insert into onboarding_step'))).toBeLessThan(
+      f.statements.findIndex((s) => s.includes('update users')),
+    );
+    expect(f.statements.join(' ')).not.toMatch(/delete|truncate|status = 'draft'|amateur/);
+    expect(f.statements.at(-1)).toBe('commit');
+  });
+  it('rolls back publication failures before touching users', async () => {
+    const f = fakePool(false, false, true);
+    await expect(resetBeginnerStory(f.pool, { apply: true })).rejects.toThrow('publication failure');
     expect(f.statements.at(-1)).toBe('rollback');
     expect(f.statements.some((s) => s.includes('update users'))).toBe(false);
+  });
+  it('preserves an existing published version and all drafts', async () => {
+    const f = fakePool();
+    await resetBeginnerStory(f.pool, { apply: true });
+    expect(f.statements.some((s) => s.includes('insert into onboarding_version'))).toBe(false);
   });
 });
