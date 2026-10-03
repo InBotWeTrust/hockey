@@ -12,6 +12,14 @@
 
 ## Implementation record (2026-10-03)
 
+### Follow-up local scenario audit
+
+On local branch `feature/playoff-pair-start-times`, the post-label audit passed 112 distinct server tests: the complete fixture-attempt suite (55 tests at collection), 41 scheduling/communication/bracket units, three additional shared-calendar/admission-concurrency integrations, and 13 service/calendar/reminder regressions. All five new integration scenarios passed together after the final assertions were added. Web passed 138 tests covering the admin editor, bracket/calendar, API and gameplay-lock refresh. Server/web typechecks, targeted ESLint and diff checks passed.
+
+The new checks cover changed starts in the active-game board/cube DTO, participant-specific prelocks and T-30 push queues/system messages, duplicate requests, admission at the old/new time, concurrent admission versus rescheduling, foreign/cancelled/completed/ready-day guards, and preserving independent times across shared-calendar edits before/after materialization and whole-calendar shifts. Existing integrations cover same-day breaks, next-day capacity/overrides, replays, no-shows, delayed rounds, and inherited-time reset/revision history.
+
+At 390x844, the real React editor with an isolated synthetic API retained saved values, reset to inherited time, kept other series unchanged, disabled a started-day field and had no horizontal overflow (390px document width). Screenshot: `output/playwright/pair-audit-mobile.png`. This is component browser acceptance plus real isolated-DB integration evidence, not a full authenticated browser tournament or device push-delivery test. No application runtime code was changed during this audit; no CI, merge or deployment was performed. Temporary harness files were removed.
+
 The feature is implemented on `feature/playoff-pair-start-times`, based on dev `9b1dd5c4`. Pre-materialization configuration uses slot keys; the materialized admin API uses series/day UUIDs and accepts `{localTime: HH:mm | null}`. Null schedule rows retain notification revision history while inheriting shared start times. Both decisions are documented in the implementation ledger/spec.
 
 Verified locally: affected web suites (90 tests); schedule/normalization units (24 tests); full fixture-attempt integration file and selected shared-calendar/reminder regressions on disposable PostgreSQL/Redis. Regressions observed RED then GREEN cover the bracket DTO, overlapping configured blocks, retained overrides during shared-calendar edits, round bounds, reset revisions, nonexistent DST times and legacy reminder duplication. Readiness and schedule updates share the same tournament gate; the review's alleged race was withdrawn after checking the lock implementation.
