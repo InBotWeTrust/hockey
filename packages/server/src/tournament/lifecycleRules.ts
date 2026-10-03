@@ -1,10 +1,13 @@
 import {
   allocateSeriesGamesByDay,
+  parsePairStartTimes,
+  resolvePairDayStart,
   validateRoundGameDays,
   validateRoundGameTiming,
   type RoundGameDay,
 } from './playoffScheduling.js';
 import { AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION } from './automaticLifecycle.js';
+import { buildPlayoffSeriesPlan } from './playoffs.js';
 
 export {
   AUTOMATIC_TOURNAMENT_LIFECYCLE_VERSION,
@@ -84,7 +87,32 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
           : undefined;
         const scheduleDays: RoundGameDay[] = round.scheduleDays.map((dayValue, index) => {
           const day = record(dayValue);
+          const pairStartTimes = parsePairStartTimes(day.pairStartTimes);
+          if (pairStartTimes !== undefined) {
+            const size = typeof config.playoffSize === 'number' ? config.playoffSize : 2;
+            const allowed = new Set(
+              buildPlayoffSeriesPlan(Array.from({ length: size }, (_, i) => String(i)))
+                .filter((slot) => slot.roundNumber === round.roundNumber)
+                .map((slot) => slot.key),
+            );
+            if (Object.keys(pairStartTimes).some((key) => !allowed.has(key)))
+              throw new Error('pair start slot does not belong to this playoff round');
+            for (const key of Object.keys(pairStartTimes)) {
+              resolvePairDayStart(
+                {
+                  localDate: typeof day.localDate === 'string' ? day.localDate : '',
+                  firstWaveLocalTime:
+                    typeof day.firstWaveLocalTime === 'string' ? day.firstWaveLocalTime : '',
+                  maxResultGames: 1,
+                  pairStartTimes,
+                },
+                key,
+                typeof config.timezone === 'string' ? config.timezone : 'Europe/Moscow',
+              );
+            }
+          }
           return {
+            ...(pairStartTimes === undefined ? {} : { pairStartTimes }),
             localDate: typeof day.localDate === 'string' ? day.localDate : '',
             firstWaveLocalTime:
               typeof day.firstWaveLocalTime === 'string' ? day.firstWaveLocalTime : '',
@@ -95,6 +123,7 @@ export function normalizePublishedTournamentLifecycleRules<T extends UnknownReco
           };
         });
         validateRoundGameDays({
+          timezone: typeof config.timezone === 'string' ? config.timezone : 'Europe/Moscow',
           winsRequired,
           readinessMinutes,
           gameDurationMinutes,

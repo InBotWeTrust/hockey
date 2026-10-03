@@ -30,6 +30,8 @@ General schedule shifts move override timestamps by the same offset as the round
 
 Existing closed series and completed days remain unchanged. No production backfill or live-data repair is part of this feature. No change to best-of rules, daily quotas, rewards, equipment or normal duel limits.
 
+Implementation ruling: restoring inheritance retains a nullable schedule row as a revision tombstone. A null start inherits the shared day exactly like an absent row, while preserving monotonic notification revisions across resets and shared-calendar replacements.
+
 ## Communication and locks
 
 Starting and reminder messages use the effective pair/day start and a revision that changes only for affected recipients. Updating one pair must neither notify other pairs nor suppress their reminders. Ordinary-game prelocks use the affected pair's effective start, retaining the current recovery/admission policy. A game already admitted continues under the existing rules.

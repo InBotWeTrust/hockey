@@ -71,6 +71,7 @@ interface PlayoffScheduleDayDraft {
   localDate: string;
   firstWaveLocalTime: string;
   maxResultGames: NumericDraftValue;
+  pairStartTimes?: Record<string, string>;
 }
 
 interface PlayoffRoundDraft {
@@ -682,7 +683,12 @@ function draftFromTournament(tournament: AdminTournament): TournamentDraft {
             : '';
       const winsRequired = numberValue(configured.winsRequired, fallback.winsRequired);
       const totalGames = Math.max(1, winsRequired * 2 - 1);
-      const scheduleDayDrafts = scheduleDays.map((day) => ({
+      const scheduleDayDrafts: PlayoffScheduleDayDraft[] = scheduleDays.map((day) => ({
+        pairStartTimes: Object.fromEntries(
+          Object.entries(objectValue(day.pairStartTimes)).filter(
+            (entry): entry is [string, string] => typeof entry[1] === 'string',
+          ),
+        ),
         localDate: stringValue(day.localDate),
         firstWaveLocalTime: stringValue(day.firstWaveLocalTime),
         maxResultGames: numberValue(day.maxResultGames, 1),
@@ -1044,7 +1050,12 @@ function serializePlayoffScheduleDays(
   days: PlayoffScheduleDayDraft[],
   winsRequired: number,
   prefix: string,
-): Array<{ localDate: string; firstWaveLocalTime: string; maxResultGames: number }> {
+): Array<{
+  localDate: string;
+  firstWaveLocalTime: string;
+  maxResultGames: number;
+  pairStartTimes?: Record<string, string>;
+}> {
   const serialized = days.map((day, index) => {
     const dayPrefix = `${prefix}, день ${index + 1}`;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(day.localDate)) {
@@ -1057,6 +1068,9 @@ function serializePlayoffScheduleDays(
       throw new Error(`${prefix}: даты дней должны идти по возрастанию`);
     }
     return {
+      ...(Object.keys(day.pairStartTimes ?? {}).length === 0
+        ? {}
+        : { pairStartTimes: day.pairStartTimes }),
       localDate: day.localDate,
       firstWaveLocalTime: day.firstWaveLocalTime,
       maxResultGames: requiredInteger(
@@ -1155,6 +1169,7 @@ function HomeSequenceEditor({
 function PlayoffScheduleDaysEditor(props: {
   roundNumber: number;
   winsRequired: number;
+  playoffSize: number;
   days: PlayoffScheduleDayDraft[];
   onChange: (dayIndex: number, patch: Partial<PlayoffScheduleDayDraft>) => void;
   onAdd: () => void;
@@ -1222,6 +1237,39 @@ function PlayoffScheduleDaysEditor(props: {
                 }
               />
             </TournamentAdminField>
+            <div>
+              <strong>Начало дневной нормы для пар</strong>
+              <p>
+                Пустое поле использует общее время раунда. Участники появятся после определения пар.
+              </p>
+              {[
+                ...Array.from({ length: props.playoffSize / 2 ** props.roundNumber }, (_, i) => ({
+                  key: `R${props.roundNumber}S${i + 1}`,
+                  label: `Пара ${i + 1}`,
+                })),
+                ...(props.playoffSize >= 4 && props.roundNumber === Math.log2(props.playoffSize)
+                  ? [{ key: 'BRONZE', label: 'Матч за третье место' }]
+                  : []),
+              ].map((slot) => (
+                <TournamentAdminField
+                  key={slot.key}
+                  label={slot.label}
+                  help="Время по часовому поясу турнира. Пустое поле использует время раунда."
+                >
+                  <input
+                    type="time"
+                    aria-label={`Раунд ${props.roundNumber}, день ${dayIndex + 1}: ${slot.label}`}
+                    value={day.pairStartTimes?.[slot.key] ?? ''}
+                    onChange={(event) => {
+                      const times = { ...day.pairStartTimes };
+                      if (event.target.value) times[slot.key] = event.target.value;
+                      else delete times[slot.key];
+                      props.onChange(dayIndex, { pairStartTimes: times });
+                    }}
+                  />
+                </TournamentAdminField>
+              ))}
+            </div>
           </div>
         ))}
       </div>
@@ -3048,6 +3096,7 @@ export function TournamentAdmin(): JSX.Element {
                           )}
                           {playoffScheduleOnly ? (
                             <PlayoffScheduleDaysEditor
+                              playoffSize={draft.playoffSize}
                               roundNumber={index + 1}
                               winsRequired={round.winsRequired === '' ? 1 : round.winsRequired}
                               days={round.scheduleDays}

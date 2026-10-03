@@ -3053,6 +3053,25 @@
   gap: 8px;
 }
 
+.tournament-pair-schedule__day {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(79, 101, 130, 0.16);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.34);
+}
+
+.tournament-pair-schedule__day > p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.tournament-pair-schedule__day > button {
+  justify-self: start;
+}
+
 .tournament-playoff-day {
   display: grid;
   grid-template-columns: minmax(132px, 1.2fr) minmax(118px, 0.9fr) minmax(118px, 0.8fr);
