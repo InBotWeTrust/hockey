@@ -158,6 +158,8 @@ export function BeginnerStoryFlow({
     if (isShot) return;
     const next = nextScene(scene);
     if (next) {
+      setTypingDone(false);
+      setTypedText('');
       if (next !== 'car') setHeadlights(false);
       setScene(next);
       return;
@@ -175,6 +177,8 @@ export function BeginnerStoryFlow({
         : dialogue
           ? 'beginner-story__dialogue'
           : undefined;
+      const narrationStart = line.indexOf('говорит незнакомец');
+      const lineStart = characterIndex;
       const words = line.split(/(\s+)/);
       // Keep the last two words together so the final line cannot contain a lone word.
       if (!threshold && words.length >= 3) words.splice(-3, 3, words.slice(-3).join(''));
@@ -187,7 +191,9 @@ export function BeginnerStoryFlow({
               characterIndex += word.length;
               if (wordIndex === words.length - 1) characterIndex += 1;
               return (
-                <span key={wordIndex} className={/\S/.test(word) ? 'beginner-story__word' : undefined}>
+                <span key={wordIndex} className={/\S/.test(word)
+                  ? `beginner-story__word${scene === 'mentor' && narrationStart >= 0 && start - lineStart >= narrationStart ? ' beginner-story__narration' : ''}`
+                  : undefined}>
                   {word.split('').map((character, offset) => (
                     <span key={offset} style={{ visibility: start + offset < typedText.length ? 'visible' : 'hidden' }}>
                       {character}
@@ -268,6 +274,7 @@ export function BeginnerStoryFlow({
             </p>
           </section>
           <button
+            key={scene}
             className={`beginner-story__cta${typingDone ? ' beginner-story__cta--visible' : ''}`}
             type="button"
             onClick={advance}

@@ -110,6 +110,33 @@ describe('BeginnerStoryFlow', () => {
     vi.useRealTimers();
   });
 
+  it('mounts a hidden fresh action when advancing to the next scene', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    act(() => vi.advanceTimersByTime(10_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Подобрать шайбу' }));
+    act(() => vi.advanceTimersByTime(15_000));
+    const previousAction = screen.getByRole('button', { name: 'Интересно, кто это?' });
+    expect(previousAction).toBeEnabled();
+    fireEvent.click(previousAction);
+    const nextAction = screen.getByRole('button', { name: 'Что?' });
+    expect(nextAction).not.toBe(previousAction);
+    expect(nextAction).toBeDisabled();
+    expect(nextAction).not.toHaveClass('beginner-story__cta--visible');
+    vi.useRealTimers();
+  });
+
+  it('styles the mentor action attribution as narration rather than dialogue', () => {
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const action of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?']) {
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    const words = Array.from(screen.getByTestId('beginner-story').querySelectorAll('.beginner-story__word'));
+    expect(words.find(word => word.textContent === 'говорит')).toHaveClass('beginner-story__narration');
+    expect(words.find(word => word.textContent === 'Только')).not.toHaveClass('beginner-story__narration');
+  });
+
   it('lays out complete words before revealing their characters', () => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));

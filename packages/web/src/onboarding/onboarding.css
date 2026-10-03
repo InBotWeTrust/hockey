@@ -123,6 +123,11 @@
   font-weight: 650;
 }
 
+.beginner-story__narration {
+  color: rgba(248, 250, 253, 0.94);
+  font-weight: 540;
+}
+
 .beginner-story__dialogue--player {
   color: rgba(248, 250, 253, 0.94);
 }
