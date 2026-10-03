@@ -14,7 +14,7 @@ Changing pair A–B never changes pair C–D, the shared round day, or the start
 
 ## Persistence and scheduling
 
-Add an additive table keyed by playoff series ID and round game-day ID, containing the override start timestamp and schedule revision. Validate that the series and day belong to the same tournament and round. No override row means inheritance. Store absolute timestamps and display dates/times in the tournament timezone, using the existing timezone conversion utilities.
+Before playoff materialization, overrides belong to bracket slots (`R1S1`, `R1S2`, subsequent-round slots and `BRONZE`) and scheduled day numbers in the tournament rules snapshot. This allows setup before participants are known. After materialization, add an additive table keyed by playoff series ID and round game-day ID, containing the override start timestamp and schedule revision. Materialization copies the configured slot/day overrides into this table. Validate that the series and day belong to the same tournament and round. No override row means inheritance. Store absolute timestamps and display dates/times in the tournament timezone, using the existing timezone conversion utilities.
 
 Centralize effective day start resolution: pair override, otherwise the shared day's rescheduled start, otherwise its first-game start. Use the same resolution for initial attempts, next-day activation, public/admin schedule DTOs, reminders and gameplay locks. For later games of an already-started daily block, the actual attempt start remains authoritative.
 
