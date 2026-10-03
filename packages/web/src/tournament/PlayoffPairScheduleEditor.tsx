@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchPlayoffPairSchedule, updatePlayoffPairDay, type PlayoffPairDay } from './adminApi.js';
 import { TournamentAdminField } from './TournamentAdminField.js';
+import { playoffSlotLabel } from './playoffSeriesLabels.js';
 
 function localTime(iso: string, timezone: string) {
   return new Intl.DateTimeFormat('ru-RU', {
@@ -12,7 +13,15 @@ function localTime(iso: string, timezone: string) {
   }).format(new Date(iso));
 }
 
-function PairDayEditor({ tournamentId, day }: { tournamentId: string; day: PlayoffPairDay }) {
+function PairDayEditor({
+  tournamentId,
+  day,
+  playoffSize,
+}: {
+  tournamentId: string;
+  day: PlayoffPairDay;
+  playoffSize: number;
+}) {
   const [time, setTime] = useState(
     day.overrideStartsAt === null ? '' : localTime(day.overrideStartsAt, day.timezone),
   );
@@ -26,7 +35,11 @@ function PairDayEditor({ tournamentId, day }: { tournamentId: string; day: Playo
       });
     },
   });
-  const label = `${day.homeName ?? day.seriesKey} — ${day.awayName ?? 'участник определится'}, день ${day.dayNumber}`;
+  const participants =
+    day.homeName !== null || day.awayName !== null
+      ? `: ${day.homeName ?? 'участник определится'} — ${day.awayName ?? 'участник определится'}`
+      : '';
+  const label = `${playoffSlotLabel(playoffSize, day.seriesKey)}${participants}, день ${day.dayNumber}`;
   return (
     <div className="tournament-pair-schedule__day">
       <TournamentAdminField
@@ -75,9 +88,15 @@ export function PlayoffPairScheduleEditor({ tournamentId }: { tournamentId: stri
   if (schedule.isPending) return <p>Загружаем расписание пар…</p>;
   if (schedule.isError) return <p role="alert">Не удалось загрузить расписание пар</p>;
   if (!schedule.data.days.length) return null;
+  const playoffSize =
+    new Set(
+      schedule.data.days
+        .filter((day) => /^R1S\d+$/.test(day.seriesKey))
+        .map((day) => day.seriesKey),
+    ).size * 2;
   return (
     <section className="tournament-playoff-days" aria-label="Время дневной нормы пар">
-      <h3>Время дневной нормы пар</h3>
+      <h3>Время дневной нормы серий</h3>
       <p>
         Будущие дни можно менять отдельно для каждой пары. Пустое время означает расписание раунда.
       </p>
@@ -86,6 +105,7 @@ export function PlayoffPairScheduleEditor({ tournamentId }: { tournamentId: stri
           key={`${day.seriesId}:${day.dayId}:${day.effectiveStartsAt}`}
           tournamentId={tournamentId}
           day={day}
+          playoffSize={playoffSize}
         />
       ))}
     </section>
