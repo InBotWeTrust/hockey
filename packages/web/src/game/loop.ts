@@ -232,7 +232,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
         ?.goalieSpeedMultiplier ?? 1,
     );
     const effectiveGoalFrequency = overrides
-      ? Math.max(0.1, overrides.goalFreq * goalSpeedMultiplier)
+      ? overrides.goalFreq === 0 ? 0 : Math.max(0.1, overrides.goalFreq * goalSpeedMultiplier)
       : null;
     const effectiveGoalieFrequency = overrides
       ? Math.max(0.1, overrides.goalieFreq * goalieSpeedMultiplier)

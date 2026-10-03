@@ -81,6 +81,7 @@ describe('TutorialShotStep', () => {
     await screen.findByRole('button', { name: 'Бросок' });
     expect(playProps).toEqual(
       expect.objectContaining({
+        resultCopy: { miss: 'МИМО', post: 'МИМО', goal: 'ГОЛ!' },
         hideGoalie: true,
         shotsTotal: 1,
         hideScoreboard: true,

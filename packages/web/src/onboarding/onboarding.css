@@ -50,22 +50,39 @@
   user-select: none;
 }
 
-.beginner-story--car .beginner-story__media {
-  filter: brightness(0.78);
-  transition: filter 320ms ease-out;
+.beginner-story--car .beginner-story__image {
+  filter: brightness(0.52);
 }
 
-.beginner-story--car.beginner-story--headlights .beginner-story__media {
+.beginner-story--car.beginner-story--headlights .beginner-story__image {
   filter: brightness(1);
+  transition: filter 240ms ease-out;
 }
 
 .beginner-story__headlights {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
   opacity: 0;
   transition: opacity 280ms ease-out;
 }
 
 .beginner-story__headlights--visible {
   opacity: 1;
+  filter: brightness(1.6) drop-shadow(0 0 8px rgba(255, 244, 194, 0.8));
+  animation: beginner-story-headlight-flash 750ms ease-out both;
+}
+
+@keyframes beginner-story-headlight-flash {
+  0% { opacity: 0; filter: brightness(1); }
+  18% { opacity: 1; filter: brightness(3.2) drop-shadow(0 0 18px rgba(255, 250, 221, 1)); }
+  100% { opacity: 1; filter: brightness(1.6) drop-shadow(0 0 8px rgba(255, 244, 194, 0.8)); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__headlights--visible { animation: none; }
 }
 
 .beginner-story__shade {
@@ -96,14 +113,19 @@
   white-space: pre-line;
 }
 
-.beginner-story__copy-reserve {
-  visibility: hidden;
-  pointer-events: none;
+.beginner-story__word {
+  display: inline-block;
+  white-space: nowrap;
 }
 
 .beginner-story__dialogue {
   color: #86aeda;
   font-weight: 650;
+}
+
+.beginner-story__narration {
+  color: rgba(248, 250, 253, 0.94);
+  font-weight: 540;
 }
 
 .beginner-story__dialogue--player {
@@ -117,17 +139,6 @@
   font-weight: 800;
   letter-spacing: 0.03em;
   line-height: 1;
-}
-
-.beginner-story__copy p.is-typing::after {
-  display: inline-block;
-  width: 2px;
-  height: 1.05em;
-  margin-left: 3px;
-  vertical-align: -0.12em;
-  content: '';
-  background: rgba(255, 255, 255, 0.78);
-  animation: beginner-story-caret 620ms steps(1, end) infinite;
 }
 
 .beginner-story__cta {
@@ -478,4 +489,88 @@
     background: #eaf6ff;
     border-color: #ffffff;
   }
+}
+
+
+.beginner-story__snow {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.beginner-story__snow i {
+  position: absolute;
+  top: -8px;
+  border-radius: 50%;
+  background: rgba(240, 247, 255, 0.65);
+  animation: beginner-story-snowfall linear infinite;
+}
+
+@keyframes beginner-story-snowfall {
+  from { transform: translate3d(0, -12px, 0); }
+  to { transform: translate3d(-36px, 100vh, 0); }
+}
+
+.beginner-story--finale .beginner-story__image {
+  filter: brightness(1);
+  transition: filter 1800ms ease-out;
+}
+
+.beginner-story--finale.beginner-story--dark .beginner-story__image {
+  filter: brightness(0.48);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__snow { display: none; }
+  .beginner-story--finale .beginner-story__image { transition: none; }
+}
+
+.beginner-story__stranger-reveal {
+  opacity: 0;
+  transition: opacity 900ms ease-out;
+}
+
+.beginner-story--stranger-visible .beginner-story__stranger-reveal {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__stranger-reveal { transition: none; }
+}
+
+.beginner-story__mentor-gesture { opacity: 0; transition: opacity 420ms ease-out; }
+.beginner-story--mentor-gesture .beginner-story__mentor-gesture { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__mentor-gesture { transition: none; }
+}
+
+.beginner-story__puck-reveal { opacity: 0; transition: opacity 650ms ease-out; }
+.beginner-story--puck-visible .beginner-story__puck-reveal { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__puck-reveal { transition: none; }
+}
+
+.beginner-story__turn-reveal { opacity: 0; transition: opacity 550ms ease-out; }
+.beginner-story--turned .beginner-story__turn-reveal { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__turn-reveal { transition: none; }
+}
+
+.beginner-story__threshold-reveal { opacity: 0; transition: opacity 600ms ease-out; }
+.beginner-story__arena-reveal { opacity: 0; transition: opacity 1400ms ease-out; }
+.beginner-story--number-visible .beginner-story__threshold-reveal,
+.beginner-story--arena-visible .beginner-story__arena-reveal { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__threshold-reveal,
+  .beginner-story__arena-reveal { transition: none; }
+}
+
+.beginner-story--court .beginner-story__media { transition: filter 650ms ease-out; }
+.beginner-story--court-dim .beginner-story__media { filter: brightness(0.82); }
+.beginner-story__court-empty { opacity: 0; transition: opacity 850ms ease-out; }
+.beginner-story--court-empty .beginner-story__court-empty { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story--court .beginner-story__media,
+  .beginner-story__court-empty { transition: none; }
 }

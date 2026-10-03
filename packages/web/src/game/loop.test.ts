@@ -52,6 +52,21 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('keeps zero-frequency tutorial goals centered across time', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const goal = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      goalRenderer: { update: goal } as never,
+      getSpeedOverrides: () => ({ goalFreq: 0, goalieFreq: 0.65, shooterFreq: 0.8, puckSpeed: 1 }),
+    });
+    const ticker = makeTicker(); loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    tick();
+    now.mockReturnValue(7000); tick();
+    expect(goal.mock.calls.map((call) => call[1])).toEqual([0, 0]);
+    loop.detach(); now.mockRestore();
+  });
+
   it('uses an opt-in skid pose without pausing or changing the shot clock', () => {
     const now=vi.spyOn(performance,'now').mockReturnValue(1000);
     const player=vi.fn();

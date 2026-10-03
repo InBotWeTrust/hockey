@@ -206,7 +206,7 @@ export function TutorialShotStep({
           }}
           hideScoreboard
           hideRinkScoreboard
-          resultCopy={{ miss: 'Мимо', post: 'Мимо', goal: 'Гол!' }}
+          resultCopy={{ miss: 'МИМО', post: 'МИМО', goal: 'ГОЛ!' }}
         />
       </div>
       {shotError && (
