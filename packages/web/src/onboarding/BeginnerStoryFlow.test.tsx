@@ -35,7 +35,7 @@ const beginnerRequired = {
 };
 
 function advanceToShot(): void {
-  for (const action of ['Сделать бросок', 'Кто там?', 'Что?', 'Я готов']) {
+  for (const action of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?', 'Перейти к броску']) {
     fireEvent.click(screen.getByRole('button', { name: new RegExp(action.replace(/[?]/g, '\\?')) }));
   }
 }
@@ -72,7 +72,7 @@ describe('BeginnerStoryFlow', () => {
     expect(screen.queryByRole('button', { name: 'Закрыть серию' })).not.toBeInTheDocument();
   });
 
-  it('keeps the first scene typing for roughly four seconds before revealing its action', () => {
+  it('keeps the first scene typing for until the longer opening copy is complete before revealing its action', () => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
     render(
@@ -86,10 +86,10 @@ describe('BeginnerStoryFlow', () => {
     );
 
     act(() => vi.advanceTimersByTime(3_900));
-    expect(screen.getByRole('button', { name: '– Сделать бросок' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Подобрать шайбу' })).toBeDisabled();
 
-    act(() => vi.advanceTimersByTime(1_100));
-    expect(screen.getByRole('button', { name: '– Сделать бросок' })).toBeEnabled();
+    act(() => vi.advanceTimersByTime(6_100));
+    expect(screen.getByRole('button', { name: 'Подобрать шайбу' })).toBeEnabled();
     vi.useRealTimers();
   });
 
@@ -97,16 +97,29 @@ describe('BeginnerStoryFlow', () => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
     render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
-    act(() => vi.advanceTimersByTime(6_000));
-    fireEvent.click(screen.getByRole('button', { name: /Сделать бросок/ }));
+    act(() => vi.advanceTimersByTime(10_000));
+    fireEvent.click(screen.getByRole('button', { name: /Подобрать шайбу/ }));
     const story = screen.getByTestId('beginner-story');
     expect(story.querySelectorAll('img')).toHaveLength(1);
     const carImage = story.querySelector('img');
     expect(story).not.toHaveClass('beginner-story--headlights');
-    act(() => vi.advanceTimersByTime(4_000));
+    act(() => vi.advanceTimersByTime(12_000));
     expect(story).toHaveClass('beginner-story--headlights');
     expect(story.querySelector('img')).toBe(carImage);
     expect(story.querySelector('svg[data-testid="story-headlight-glow"]')).toBeInTheDocument();
+    vi.useRealTimers();
+  });
+
+  it('lays out complete words before revealing their characters', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    const paragraph = screen.getByTestId('beginner-story').querySelector('.beginner-story__copy p')!;
+    expect(paragraph.textContent).toBe(beginnerStoryScenes(100).court.copy);
+    expect(paragraph.querySelectorAll('.beginner-story__word').length).toBeGreaterThan(0);
+    expect(paragraph.querySelector('[style*="visibility: hidden"]')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(1_000));
+    expect(paragraph.textContent).toBe(beginnerStoryScenes(100).court.copy);
     vi.useRealTimers();
   });
 
@@ -129,8 +142,8 @@ describe('BeginnerStoryFlow', () => {
   });
 
   it.each([
-    ['Тестовый гол', 'Шайба влетает в ворота.', '– Неплохо. Только один бросок не имеет значения.'],
-    ['Тестовый промах', 'Шайба проходит рядом с воротами.', '– Бывает. Один бросок всё равно не имеет значения.'],
+    ['Тестовый гол', 'Шайба влетает в ворота.', '– Неплохо. Но один бросок не имеет значения. Ведь важно совсем другое.'],
+    ['Тестовый промах', 'Шайба проходит рядом с воротами.', '– Бывает. Один бросок всё равно не имеет значения. Важно другое.'],
   ])('branches after %s and converges without revealing the stranger identity', (shotAction, resultCopy, dialogue) => {
     render(
       <BeginnerStoryFlow
@@ -146,9 +159,9 @@ describe('BeginnerStoryFlow', () => {
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(resultCopy);
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(dialogue);
 
-    fireEvent.click(screen.getByRole('button', { name: /А что имеет значение\?/ }));
-    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Значение имеет только то, вернёшься ли ты завтра.');
-    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Он останавливается и смотрит через плечо.');
+    fireEvent.click(screen.getByRole('button', { name: /Узнать, что важно/ }));
+    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Важно только то, вернёшься ли ты завтра.');
+    expect(screen.getByTestId('beginner-story')).toHaveTextContent('Затем останавливается и смотрит через плечо.');
   });
 
   it('renders the live threshold and approved final actions', () => {
@@ -164,19 +177,19 @@ describe('BeginnerStoryFlow', () => {
 
     advanceToShot();
     fireEvent.click(screen.getByRole('button', { name: 'Тестовый гол' }));
-    for (const action of ['А что имеет значение?', 'Подождите']) {
+    for (const action of ['Узнать, что важно', 'И это всё?']) {
       fireEvent.click(screen.getByRole('button', { name: new RegExp(action.replace(/[?]/g, '\\?')) }));
     }
     expect(screen.getByTestId('beginner-story')).toHaveTextContent('475');
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(
-      '– Забьёшь 475 – тогда и поговорим.',
+      '– Забьёшь 475 шайб, тогда и поговорим.',
     );
 
-    fireEvent.click(screen.getByRole('button', { name: /Столько\?/ }));
+    fireEvent.click(screen.getByRole('button', { name: /А потом\?/ }));
     expect(screen.getByTestId('beginner-story')).toHaveTextContent(
-      'Ты представляешь большую арену где-то над городом.',
+      'Вместе вы смотрите куда-то далеко за площадку и представляете большую хоккейную арену...',
     );
-    fireEvent.click(screen.getByRole('button', { name: /Хм, интересно\.\.\./ }));
+    fireEvent.click(screen.getByRole('button', { name: /Хм, интересно/ }));
     expect(screen.getByRole('button', { name: /^Начать путь$/ })).toBeEnabled();
     fireEvent.click(screen.getByRole('button', { name: /^Начать путь$/ }));
     expect(onCompleted).toHaveBeenCalledTimes(1);

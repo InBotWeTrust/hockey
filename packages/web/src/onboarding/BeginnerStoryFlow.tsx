@@ -121,7 +121,7 @@ export function BeginnerStoryFlow({
       index += 1;
       const nextText = content.copy.slice(0, index);
       setTypedText(nextText);
-      if (scene === 'car' && nextText.endsWith('За бортом вспыхивает свет фар.')) {
+      if (scene === 'car' && nextText.endsWith('На льду стало светлее')) {
         setHeadlights(true);
       }
       if (index >= content.copy.length) {
@@ -130,7 +130,7 @@ export function BeginnerStoryFlow({
       }
       const printed = content.copy[index - 1] ?? '';
       const resultPause =
-        (scene === 'goal' && nextText.endsWith('Незнакомец едва заметно кивает.')) ||
+        (scene === 'goal' && nextText.endsWith('Мужчина едва заметно кивает.')) ||
         (scene === 'miss' && nextText.endsWith('Незнакомец даже не меняется в лице.'));
       const delay = resultPause
         ? STORY_RESULT_PAUSE_MS
@@ -165,22 +165,38 @@ export function BeginnerStoryFlow({
     onCompleted();
   }
 
-  function renderLines(lines: string[], reserve = false) {
+  function renderLines(lines: string[]) {
+    let characterIndex = 0;
     return lines.map((line, index) => {
       const threshold = line === String(unlockGoalsRequired) || line === `0 / ${unlockGoalsRequired}`;
-      const playerDialogue = scene === 'name' && index === 2;
       const dialogue = /^[-–]/.test(line) || (scene === 'finale' && line.startsWith('«'));
       const className = threshold
         ? 'beginner-story__threshold'
-        : playerDialogue
-          ? 'beginner-story__dialogue beginner-story__dialogue--player'
-          : dialogue
-            ? 'beginner-story__dialogue'
-            : undefined;
+        : dialogue
+          ? 'beginner-story__dialogue'
+          : undefined;
+      const words = line.split(/(\s+)/);
+      // Keep the last two words together so the final line cannot contain a lone word.
+      if (!threshold && words.length >= 3) words.splice(-3, 3, words.slice(-3).join(''));
       return (
-        <Fragment key={`${reserve ? 'reserve' : 'copy'}-${index}-${line}`}>
+        <Fragment key={`copy-${index}`}>
           {index > 0 ? '\n' : null}
-          <span className={className}>{line}</span>
+          <span className={className}>
+            {words.map((word, wordIndex) => {
+              const start = characterIndex;
+              characterIndex += word.length;
+              if (wordIndex === words.length - 1) characterIndex += 1;
+              return (
+                <span key={wordIndex} className={/\S/.test(word) ? 'beginner-story__word' : undefined}>
+                  {word.split('').map((character, offset) => (
+                    <span key={offset} style={{ visibility: start + offset < typedText.length ? 'visible' : 'hidden' }}>
+                      {character}
+                    </span>
+                  ))}
+                </span>
+              );
+            })}
+          </span>
         </Fragment>
       );
     });
@@ -248,10 +264,7 @@ export function BeginnerStoryFlow({
           <div className="beginner-story__shade" aria-hidden="true" />
           <section className="beginner-story__copy" aria-label={content.copy}>
             <p className={typingDone ? undefined : 'is-typing'}>
-              {renderLines(typedText.split('\n'))}
-            </p>
-            <p className="beginner-story__copy-reserve" aria-hidden="true">
-              {renderLines(content.copy.split('\n'), true)}
+              {renderLines(content.copy.split('\n'))}
             </p>
           </section>
           <button
@@ -263,9 +276,7 @@ export function BeginnerStoryFlow({
             <span>
               {scene === 'finale' && completing
                 ? 'Завершаем…'
-                : scene === 'finale'
-                  ? content.action
-                  : `– ${content.action}`}
+                : content.action}
             </span>
             <ArrowRight size={20} aria-hidden="true" />
           </button>
