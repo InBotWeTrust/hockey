@@ -1209,6 +1209,7 @@ export function AdminScreen(): JSX.Element {
           settings={settings.data?.settings ?? []}
           onSaved={() => {
             void queryClient.invalidateQueries({ queryKey: ['admin', 'game-settings'] });
+            void queryClient.invalidateQueries({ queryKey: ['profile'] });
           }}
         />
       )}

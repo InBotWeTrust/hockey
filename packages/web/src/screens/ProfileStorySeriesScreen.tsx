@@ -9,9 +9,12 @@ export function ProfileStorySeriesScreen(): JSX.Element {
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me', { cache: 'no-store' }),
+    staleTime: 0,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 
-  if (profileQuery.isLoading) {
+  if (!profileQuery.isFetchedAfterMount && !profileQuery.isError) {
     return <main className="onboarding-flow onboarding-flow--status">Загружаем серию…</main>;
   }
   if (profileQuery.isError || profileQuery.data === undefined) {

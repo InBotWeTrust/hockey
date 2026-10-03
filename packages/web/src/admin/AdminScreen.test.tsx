@@ -843,6 +843,28 @@ describe('AdminScreen', () => {
     expect(screen.queryByText('0 получателей')).not.toBeInTheDocument();
   });
 
+  it('invalidates the cached story profile after saving the amateur unlock threshold', async () => {
+    useAuthStore.getState().setSession({ accessToken: 'a', refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' } });
+    const setting = { key: 'amateur.unlock_goals_required', label: 'Голов для любителей',
+      description: '', type: 'number', defaultValue: 300, min: 0, max: 10000, step: 1,
+      value: 300, updatedAt: null, updatedBy: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).includes('/admin/game-settings')) {
+        return new Response(JSON.stringify(init?.method === 'PATCH' ? { ...setting, value: 100 }
+          : { gameCoreVersion: 76, settings: [setting], balance: { goalies: [], sticks: [], dailyPeriodSpeedPresets: [] } }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    });
+    const client = renderAdmin();
+    client.setQueryData(['profile'], { amateurUnlockGoalsRequired: 300 });
+    selectAdminSection('Параметры');
+    fireEvent.click(await screen.findByRole('button', { name: /Любительская лига/ }));
+    fireEvent.change(await screen.findByRole('spinbutton'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить Голов для любителей' }));
+    await waitFor(() => expect(client.getQueryState(['profile'])?.isInvalidated).toBe(true));
+  });
+
   it('starts with dashboard and renders game settings for admins', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',
