@@ -52,7 +52,7 @@ async function materializeNextSeriesGame(
             extract(epoch from next_day.inter_game_break_duration)::int / 60
               as inter_game_break_minutes,
             next_day.id as next_round_game_day_id,
-            next_day.first_game_starts_at as next_day_starts_at,
+            next_day.effective_starts_at as next_day_starts_at,
             exists(
               select 1 from tournament_round_game_day day where day.round_id = next_fixture.round_id
             ) as has_round_game_days,
@@ -73,8 +73,11 @@ async function materializeNextSeriesGame(
        left join tournament_round_game_day settled_day
          on settled_day.id = settled_attempt.round_game_day_id
        left join lateral (
-         select day.id, day.first_game_starts_at, day.inter_game_break_duration
+         select day.id, coalesce(pair_day.starts_at, day.rescheduled_starts_at, day.first_game_starts_at) as effective_starts_at,
+                day.inter_game_break_duration
            from tournament_round_game_day day
+           left join tournament_series_game_day_schedule pair_day
+             on pair_day.series_id = series.id and pair_day.round_game_day_id = day.id
           where day.round_id = next_fixture.round_id
             and (
               settled_day.id is null
@@ -351,6 +354,14 @@ async function delayPastPlayoffRoundStart(
             local_date = ((first_game_starts_at + $2 * interval '1 millisecond') at time zone $3)::date
       where round_id = $1`,
     [input.roundId, deltaMs, timezone],
+  );
+  await client.query(
+    `update tournament_series_game_day_schedule pair_day
+        set starts_at=pair_day.starts_at+$2*interval '1 millisecond',
+            schedule_revision=pair_day.schedule_revision+1
+       from tournament_playoff_series series
+      where series.id=pair_day.series_id and series.round_id=$1`,
+    [input.roundId, deltaMs],
   );
   await client.query(
     `update tournament_fixture

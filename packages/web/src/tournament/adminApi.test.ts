@@ -10,6 +10,8 @@ import {
   generateAdminTournamentManualSchedule,
   rejectAdminTournamentApplication,
   startAdminTournamentRegularSeason,
+  fetchPlayoffPairSchedule,
+  updatePlayoffPairDay,
   type AdminTournament,
 } from './adminApi.js';
 
@@ -31,6 +33,41 @@ describe('tournament admin API', () => {
   it('exposes only server-supported regular-season sources', () => {
     expectTypeOf<AdminTournament['regularSource']>().toEqualTypeOf<'head_to_head' | 'classic'>();
     expectTypeOf<TournamentSummary['regularSource']>().toEqualTypeOf<'head_to_head' | 'classic'>();
+  });
+
+  it('scopes pair schedule edits to one series and day and sends null for inheritance', async () => {
+    const day = {
+      seriesId: 'series-1',
+      dayId: 'day-2',
+      seriesKey: 'R1S1',
+      dayNumber: 2,
+      localDate: '2030-10-27',
+      timezone: 'Europe/Moscow',
+      homeName: null,
+      awayName: null,
+      editable: true,
+      defaultStartsAt: '2030-10-27T15:00:00Z',
+      overrideStartsAt: null,
+      effectiveStartsAt: '2030-10-27T15:00:00Z',
+    };
+    await fetchPlayoffPairSchedule('tournament-1');
+    await updatePlayoffPairDay('tournament-1', day, '18:00');
+    await updatePlayoffPairDay('tournament-1', day, null);
+    expect(fetch).toHaveBeenNthCalledWith(
+      1,
+      '/api/admin/tournaments/tournament-1/playoff-pair-schedule',
+      expect.anything(),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      2,
+      '/api/admin/tournaments/tournament-1/playoff-pair-schedule/series-1/days/day-2',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ localTime: '18:00' }) }),
+    );
+    expect(fetch).toHaveBeenNthCalledWith(
+      3,
+      '/api/admin/tournaments/tournament-1/playoff-pair-schedule/series-1/days/day-2',
+      expect.objectContaining({ method: 'PATCH', body: JSON.stringify({ localTime: null }) }),
+    );
   });
 
   it('uses participant operations scoped to the selected tournament', async () => {

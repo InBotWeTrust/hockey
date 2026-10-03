@@ -146,7 +146,21 @@ export function configuredPlayoffStartAt(rules: TournamentRulesSnapshot): Date |
     const parts = parseLocalDateTime(localDate, localTime);
     if (parts === null) return null;
     try {
-      return zonedDateTimeToUtc(parts, rules.config.timezone);
+      const times = [
+        localTime,
+        ...Object.values(objectRecord(firstDay.pairStartTimes)).filter(
+          (value): value is string => typeof value === 'string',
+        ),
+      ];
+      return new Date(
+        Math.min(
+          ...times.map((time) => {
+            const pairParts = parseLocalDateTime(localDate, time);
+            if (pairParts === null) throw new Error('invalid pair start');
+            return zonedDateTimeToUtc(pairParts, rules.config.timezone).getTime();
+          }),
+        ),
+      );
     } catch {
       return null;
     }

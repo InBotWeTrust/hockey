@@ -10,24 +10,32 @@ import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { createTournamentDuelMatch } from '../../src/duel/amateur/routes.js';
 import { cancelTournamentDuel } from '../../src/duel/amateur/lifecycle.js';
+import { getNearestScheduledTournamentBlock } from '../../src/duel/gameplayLocks.js';
 import { parseTournamentConfig } from '../../src/tournament/config.js';
 import {
   applyToTournament,
   createTournamentDraft,
   generateRegularSchedule,
+  getTournamentBracket,
   publishRegularSchedule,
   publishTournament,
   rescheduleTournamentFixture,
   startTournamentPlayoffs,
+  updateTournamentDraft,
   type TournamentRulesSnapshot,
 } from '../../src/tournament/service.js';
 import { openTournamentFixtureSegment } from '../../src/tournament/fixtureLifecycle.js';
+import { listActiveClassicGames } from '../../src/tournament/classicGame.js';
 import {
   advanceTournamentPlayoffSeries,
   forceTournamentPlayoffSeriesWinner,
   reconcileMissingPlayoffSeriesGames,
 } from '../../src/tournament/playoffSeriesLifecycle.js';
 import { reconcilePlayoffDayStartingCommunications } from '../../src/tournament/communications.js';
+import {
+  getPlayoffPairSchedule,
+  updatePlayoffPairDay,
+} from '../../src/tournament/pairScheduling.js';
 import {
   createTestPool,
   getTestUrls,
@@ -477,6 +485,574 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
 
   afterAll(async () => {
     await app?.close();
+  });
+
+  it('keeps playoff pair starts independent before and after materialization', async () => {
+    const rules = lifecycleRules();
+    const rounds = rules.playoffRounds as Array<{ scheduleDays: Array<Record<string, unknown>> }>;
+    rounds[0]!.scheduleDays[0]!.pairStartTimes = { R1S1: '18:00', R1S2: '21:00' };
+    const tournament = await createPublished(pool, 'pair-starts', rules);
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const schedule = await getPlayoffPairSchedule(pool, tournament.id);
+    const first = schedule.days.find((day) => day.seriesKey === 'R1S1' && day.dayNumber === 1)!;
+    const second = schedule.days.find((day) => day.seriesKey === 'R1S2' && day.dayNumber === 1)!;
+    expect(first.effectiveStartsAt).toBe('2030-10-26T15:00:00.000Z');
+    expect(second.effectiveStartsAt).toBe('2030-10-26T18:00:00.000Z');
+    const bracket = await getTournamentBracket(pool, tournament.id);
+    const firstBracket = bracket.find((series) => series.id === first.seriesId)!;
+    expect(new Date(firstBracket.fixtures[0].gameDay.startsAt).toISOString()).toBe(
+      first.effectiveStartsAt,
+    );
+    const secondBracket = bracket.find((series) => series.id === second.seriesId)!;
+    const lockClient = await pool.connect();
+    try {
+      const now = new Date('2030-10-26T14:55:00Z');
+      const firstLock = await getNearestScheduledTournamentBlock(
+        lockClient,
+        firstBracket.higher_user_id,
+        now,
+      );
+      const secondLock = await getNearestScheduledTournamentBlock(
+        lockClient,
+        secondBracket.higher_user_id,
+        now,
+      );
+      expect(firstLock.tournamentStartsAt?.toISOString()).toBe(first.effectiveStartsAt);
+      expect(secondLock.tournamentStartsAt?.toISOString()).toBe(second.effectiveStartsAt);
+      expect(firstLock.blocked).toBe(true);
+      expect(secondLock.blocked).toBe(false);
+    } finally {
+      lockClient.release();
+    }
+    const input = {
+      tournamentId: tournament.id,
+      seriesId: first.seriesId,
+      dayId: first.dayId,
+      startsAt: new Date('2030-10-26T16:00:00.000Z'),
+      adminUserId: ADMIN_ID,
+    };
+    await expect(
+      updatePlayoffPairDay(pool, { ...input, localTime: '25:00' }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    expect(await updatePlayoffPairDay(pool, input)).toEqual({ changed: true });
+    expect(await updatePlayoffPairDay(pool, input)).toEqual({ changed: false });
+    const updated = await getPlayoffPairSchedule(pool, tournament.id);
+    expect(
+      updated.days.find((day) => day.dayId === second.dayId && day.seriesId === second.seriesId)!
+        .effectiveStartsAt,
+    ).toBe(second.effectiveStartsAt);
+    expect(
+      updated.days.find((day) => day.dayId === first.dayId && day.seriesId === first.seriesId)!
+        .defaultStartsAt,
+    ).toBe('2030-10-26T17:00:00.000Z');
+    await pool.query(
+      `update tournament_fixture_attempt set status='ready_check'
+      where round_game_day_id=$1 and fixture_id in (select id from tournament_fixture where series_id=$2)`,
+      [first.dayId, first.seriesId],
+    );
+    await expect(
+      updatePlayoffPairDay(pool, { ...input, startsAt: new Date('2030-10-26T17:00:00.000Z') }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+    const future = updated.days.find(
+      (day) => day.seriesId === first.seriesId && day.dayNumber === 2,
+    )!;
+    expect(
+      await updatePlayoffPairDay(pool, {
+        ...input,
+        dayId: future.dayId,
+        startsAt: new Date('2030-10-27T18:00:00.000Z'),
+      }),
+    ).toEqual({ changed: true });
+  });
+
+  it('uses changed pair times for reminders, gameplay prelocks and admission without affecting opponents in another series', async () => {
+    const rules = lifecycleRules();
+    const rounds = rules.playoffRounds as Array<{ scheduleDays: Array<Record<string, unknown>> }>;
+    rounds[0]!.scheduleDays[0]!.pairStartTimes = { R1S1: '18:00', R1S2: '21:00' };
+    const tournament = await createPublished(pool, 'pair-consumer-audit', rules);
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00Z'));
+    const days = (await getPlayoffPairSchedule(pool, tournament.id)).days;
+    const first = days.find((day) => day.seriesKey === 'R1S1' && day.dayNumber === 1)!;
+    const second = days.find((day) => day.seriesKey === 'R1S2' && day.dayNumber === 1)!;
+    const bracket = await getTournamentBracket(pool, tournament.id);
+    const firstSeries = bracket.find((series) => series.id === first.seriesId)!;
+    const secondSeries = bracket.find((series) => series.id === second.seriesId)!;
+    const users = [firstSeries.higher_user_id, firstSeries.lower_user_id].sort();
+    for (const userId of PLAYER_IDS) {
+      await pool.query(
+        `insert into push_subscriptions (user_id, endpoint, p256dh, auth)
+         values ($1,$2,'test-p256dh','test-auth')`,
+        [userId, `https://push.example.test/pair-audit/${userId}`],
+      );
+    }
+    const remind = async (iso: string) => {
+      const options = {
+        now: new Date(iso),
+        systemUserId: OFFICIAL_ID,
+        publisher: { publish: async () => undefined },
+      };
+      await reconcilePlayoffDayStartingCommunications(pool, options);
+      await reconcilePlayoffDayStartingCommunications(pool, options);
+    };
+    const deliveries = async () =>
+      (
+        await pool.query<{ user_id: string }>(
+          `select user_id from push_delivery_log where event_type='tournament.series_next_game' order by user_id`,
+        )
+      ).rows.map((row) => row.user_id);
+    await remind('2030-10-26T14:30:00Z');
+    expect(await deliveries()).toEqual(users);
+    const change = {
+      tournamentId: tournament.id,
+      seriesId: first.seriesId,
+      dayId: first.dayId,
+      startsAt: new Date('2030-10-26T16:00:00Z'),
+      adminUserId: ADMIN_ID,
+    };
+    await updatePlayoffPairDay(pool, change);
+    await updatePlayoffPairDay(pool, change);
+    expect(
+      await listActiveClassicGames(pool, {
+        userId: users[0]!,
+        now: new Date('2030-10-26T15:30:00Z'),
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        kind: 'playoff',
+        tournament_id: tournament.id,
+        state: 'scheduled',
+        starts_at: change.startsAt.toISOString(),
+        break_ends_at: change.startsAt.toISOString(),
+      }),
+    );
+    expect(
+      await listActiveClassicGames(pool, {
+        userId: secondSeries.higher_user_id,
+        now: new Date('2030-10-26T15:30:00Z'),
+      }),
+    ).toContainEqual(
+      expect.objectContaining({
+        kind: 'playoff',
+        tournament_id: tournament.id,
+        state: 'scheduled',
+        starts_at: second.effectiveStartsAt,
+      }),
+    );
+    const client = await pool.connect();
+    try {
+      expect(
+        (
+          await getNearestScheduledTournamentBlock(
+            client,
+            users[0]!,
+            new Date('2030-10-26T14:55:00Z'),
+          )
+        ).blocked,
+      ).toBe(false);
+      const lock = await getNearestScheduledTournamentBlock(
+        client,
+        users[0]!,
+        new Date('2030-10-26T15:55:00Z'),
+      );
+      expect(lock.blocked).toBe(true);
+      expect(lock.tournamentStartsAt).toEqual(change.startsAt);
+      expect(
+        (
+          await getNearestScheduledTournamentBlock(
+            client,
+            secondSeries.higher_user_id,
+            new Date('2030-10-26T15:55:00Z'),
+          )
+        ).blocked,
+      ).toBe(false);
+    } finally {
+      client.release();
+    }
+    await remind('2030-10-26T14:30:00Z');
+    expect(await deliveries()).toEqual(users);
+    await remind('2030-10-26T15:30:00Z');
+    expect(await deliveries()).toEqual(users.flatMap((id) => [id, id]));
+    const messages = await pool.query<{ user_id: string; content: string }>(
+      `select metadata->>'recipientUserId' as user_id, content from messages
+       where metadata->>'tournamentId'=$1 and metadata->>'type'='tournament_playoff_day_starting'`,
+      [tournament.id],
+    );
+    expect(messages.rows).toHaveLength(4);
+    expect(
+      messages.rows
+        .filter((row) => row.content.includes('19:00'))
+        .map((row) => row.user_id)
+        .sort(),
+    ).toEqual(users);
+    const changedBracket = await getTournamentBracket(pool, tournament.id);
+    expect(
+      new Date(
+        changedBracket.find((series) => series.id === first.seriesId)!.fixtures[0].gameDay.startsAt,
+      ).toISOString(),
+    ).toBe(change.startsAt.toISOString());
+    expect(
+      (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+        (day) => day.seriesId === second.seriesId && day.dayId === second.dayId,
+      )!.effectiveStartsAt,
+    ).toBe(second.effectiveStartsAt);
+    const fixture = (
+      await pool.query<{ id: string }>(
+        `select id from tournament_fixture where series_id=$1 and (result_snapshot->>'gameNumber')::int=1`,
+        [first.seriesId],
+      )
+    ).rows[0]!;
+    await expect(
+      openTournamentFixtureSegment(
+        pool,
+        {
+          fixtureId: fixture.id,
+          tournamentId: tournament.id,
+          userId: users[0]!,
+          now: new Date('2030-10-26T15:00:00Z'),
+        },
+        createTournamentDuelMatch,
+      ),
+    ).rejects.toThrow('fixture window is closed');
+    await expect(
+      openTournamentFixtureSegment(
+        pool,
+        {
+          fixtureId: fixture.id,
+          tournamentId: tournament.id,
+          userId: users[0]!,
+          now: new Date('2030-10-26T16:01:00Z'),
+        },
+        createTournamentDuelMatch,
+      ),
+    ).resolves.toMatchObject({ duelMatchId: expect.any(String) });
+    await expect(
+      updatePlayoffPairDay(pool, { ...change, startsAt: new Date('2030-10-26T17:00:00Z') }),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('rejects foreign, cancelled, completed and already admitted pair-day edits without partial writes', async () => {
+    const tournament = await createPublished(pool, 'pair-edit-guards-audit', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00Z'));
+    const first = (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+      (day) => day.seriesKey === 'R1S1' && day.dayNumber === 1,
+    )!;
+    const input = {
+      tournamentId: tournament.id,
+      seriesId: first.seriesId,
+      dayId: first.dayId,
+      startsAt: new Date('2030-10-26T18:00:00Z'),
+      adminUserId: ADMIN_ID,
+    };
+    await expect(
+      updatePlayoffPairDay(pool, { ...input, tournamentId: TEMPLATE_ID }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      updatePlayoffPairDay(pool, { ...input, dayId: TEMPLATE_ID }),
+    ).rejects.toMatchObject({ statusCode: 404 });
+    await expect(
+      updatePlayoffPairDay(pool, { ...input, startsAt: new Date('2020-10-26T18:00:00Z') }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await expect(
+      updatePlayoffPairDay(pool, { ...input, startsAt: new Date('2030-10-27T18:00:00Z') }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+    await pool.query(`update tournament_round_game_day set status='cancelled' where id=$1`, [
+      first.dayId,
+    ]);
+    await expect(updatePlayoffPairDay(pool, input)).rejects.toMatchObject({ statusCode: 404 });
+    await pool.query(`update tournament_round_game_day set status='scheduled' where id=$1`, [
+      first.dayId,
+    ]);
+    await pool.query(`update tournament_playoff_series set status='completed' where id=$1`, [
+      first.seriesId,
+    ]);
+    await expect(updatePlayoffPairDay(pool, input)).rejects.toMatchObject({ statusCode: 404 });
+    await pool.query(`update tournament_playoff_series set status='scheduled' where id=$1`, [
+      first.seriesId,
+    ]);
+    await pool.query(
+      `update tournament_fixture_attempt set home_ready_at=now() where round_game_day_id=$1 and fixture_id in (select id from tournament_fixture where series_id=$2)`,
+      [first.dayId, first.seriesId],
+    );
+    await expect(updatePlayoffPairDay(pool, input)).rejects.toMatchObject({ statusCode: 409 });
+    expect(
+      (
+        await pool.query(`select 1 from tournament_series_game_day_schedule where series_id=$1`, [
+          first.seriesId,
+        ])
+      ).rowCount,
+    ).toBe(0);
+    expect(
+      (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+        (day) => day.seriesId === first.seriesId && day.dayId === first.dayId,
+      )!.effectiveStartsAt,
+    ).toBe(first.effectiveStartsAt);
+  });
+
+  it('serializes a pair time edit against simultaneous player admission', async () => {
+    const tournament = await createPublished(pool, 'pair-readiness-race-audit', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00Z'));
+    const day = (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+      (day) => day.seriesKey === 'R1S1' && day.dayNumber === 1,
+    )!;
+    const fixture = (
+      await pool.query<{ id: string; user_id: string }>(
+        `select fixture.id, participant.user_id from tournament_fixture fixture
+       join tournament_participant participant on participant.id=fixture.home_participant_id
+       where fixture.series_id=$1 and (fixture.result_snapshot->>'gameNumber')::int=1`,
+        [day.seriesId],
+      )
+    ).rows[0]!;
+    const results = await Promise.allSettled([
+      openTournamentFixtureSegment(
+        pool,
+        {
+          fixtureId: fixture.id,
+          tournamentId: tournament.id,
+          userId: fixture.user_id,
+          now: new Date(new Date(day.effectiveStartsAt).getTime() + 60_000),
+        },
+        createTournamentDuelMatch,
+      ),
+      updatePlayoffPairDay(pool, {
+        tournamentId: tournament.id,
+        seriesId: day.seriesId,
+        dayId: day.dayId,
+        startsAt: new Date('2030-10-26T18:00:00Z'),
+        adminUserId: ADMIN_ID,
+      }),
+    ]);
+    expect(results.filter((result) => result.status === 'fulfilled')).toHaveLength(1);
+    const state = (
+      await pool.query<{ status: string; scheduled_starts_at: Date }>(
+        `select status, scheduled_starts_at from tournament_fixture_attempt where fixture_id=$1`,
+        [fixture.id],
+      )
+    ).rows[0]!;
+    expect(state).toEqual(
+      results[0]!.status === 'fulfilled'
+        ? { status: 'ready_check', scheduled_starts_at: new Date(day.effectiveStartsAt) }
+        : { status: 'pending', scheduled_starts_at: new Date('2030-10-26T18:00:00Z') },
+    );
+  });
+
+  it.each(['regular', 'playoff'])(
+    'preserves independent times when the shared calendar is edited during %s',
+    async (status) => {
+      const rules = lifecycleRules();
+      const rounds = rules.playoffRounds as Array<{ scheduleDays: Array<Record<string, unknown>> }>;
+      rounds[0]!.scheduleDays[0]!.pairStartTimes = { R1S1: '18:00', R1S2: '21:00' };
+      const tournament = await createPublished(pool, `pair-shared-${status}-audit`, rules);
+      await preparePlayoffs(pool, tournament.id);
+      if (status === 'playoff')
+        await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00Z'));
+      const nextRules = structuredClone(rules);
+      (nextRules.playoffRounds as typeof rounds)[0]!.scheduleDays[0]!.firstWaveLocalTime = '19:00';
+      await updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Attempt tournament',
+        description: '',
+        rules: nextRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00Z'),
+        registrationClosesAt: new Date('2030-09-01T00:00:00Z'),
+        startsAt: new Date('2030-09-02T07:00:00Z'),
+      });
+      if (status === 'regular')
+        await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00Z'));
+      const days = (await getPlayoffPairSchedule(pool, tournament.id)).days.filter(
+        (day) => day.dayNumber === 1 && day.seriesKey.startsWith('R1'),
+      );
+      expect(days.map((day) => day.effectiveStartsAt)).toEqual([
+        '2030-10-26T15:00:00.000Z',
+        '2030-10-26T18:00:00.000Z',
+      ]);
+      expect(days.map((day) => day.defaultStartsAt)).toEqual([
+        '2030-10-26T16:00:00.000Z',
+        '2030-10-26T16:00:00.000Z',
+      ]);
+    },
+  );
+
+  it('rejects replacement calendars whose late pair block overlaps the next round', async () => {
+    const rules = lifecycleRules();
+    const tournament = await createPublished(pool, 'pair-round-bounds', rules);
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const nextRules = structuredClone(rules);
+    const rounds = nextRules.playoffRounds as Array<{
+      scheduleDays: Array<Record<string, unknown>>;
+    }>;
+    rounds[0]!.scheduleDays[1] = {
+      localDate: '2030-11-01',
+      firstWaveLocalTime: '18:00',
+      maxResultGames: 1,
+      pairStartTimes: { R1S1: '23:50' },
+    };
+    rounds[1]!.scheduleDays[0] = {
+      localDate: '2030-11-02',
+      firstWaveLocalTime: '00:00',
+      maxResultGames: 1,
+    };
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Attempt tournament',
+        description: '',
+        rules: nextRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-09-01T00:00:00.000Z'),
+        startsAt: new Date('2030-09-02T07:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({ code: 'playoff_round_schedule_order' });
+  });
+
+  it('revalidates retained individual times when the shared calendar changes', async () => {
+    const rules = lifecycleRules();
+    const tournament = await createPublished(pool, 'pair-retained-windows', rules);
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const day = (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+      (value) => value.seriesKey === 'R1S1' && value.dayNumber === 1,
+    )!;
+    await updatePlayoffPairDay(pool, {
+      tournamentId: tournament.id,
+      seriesId: day.seriesId,
+      dayId: day.dayId,
+      startsAt: null,
+      localTime: '23:50',
+      adminUserId: ADMIN_ID,
+    });
+    const nextRules = structuredClone(rules);
+    const rounds = nextRules.playoffRounds as Array<{
+      scheduleDays: Array<Record<string, unknown>>;
+    }>;
+    rounds[0]!.scheduleDays[1]!.firstWaveLocalTime = '00:00';
+    await expect(
+      updateTournamentDraft(pool, {
+        tournamentId: tournament.id,
+        expectedRevision: tournament.revision,
+        title: 'Attempt tournament',
+        description: '',
+        rules: nextRules,
+        updatedBy: ADMIN_ID,
+        registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+        registrationClosesAt: new Date('2030-09-01T00:00:00.000Z'),
+        startsAt: new Date('2030-09-02T07:00:00.000Z'),
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejects an individual late block that overlaps the next round', async () => {
+    const tournament = await createPublished(pool, 'pair-next-round', lifecycleRules());
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const day = (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+      (value) => value.seriesKey === 'R1S1' && value.dayNumber === 2,
+    )!;
+    await pool.query(
+      `update tournament_round set starts_at=$2 where tournament_id=$1 and number=2`,
+      [tournament.id, new Date('2030-10-27T21:00:00Z')],
+    );
+    await expect(
+      updatePlayoffPairDay(pool, {
+        tournamentId: tournament.id,
+        seriesId: day.seriesId,
+        dayId: day.dayId,
+        startsAt: null,
+        localTime: '23:50',
+        adminUserId: ADMIN_ID,
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('rejects nonexistent pair local times with a readable client error', async () => {
+    const rules = lifecycleRules();
+    rules.config.timezone = 'Europe/Berlin';
+    const rounds = rules.playoffRounds as Array<{ scheduleDays: Array<Record<string, unknown>> }>;
+    rounds[0]!.scheduleDays[0]!.localDate = '2031-03-30';
+    rounds[0]!.scheduleDays[1]!.localDate = '2031-03-31';
+    rounds[1]!.scheduleDays[0]!.localDate = '2031-04-02';
+    const tournament = await createPublished(pool, 'pair-api-dst', rules);
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const first = (await getPlayoffPairSchedule(pool, tournament.id)).days.find(
+      (day) => day.seriesKey === 'R1S1' && day.dayNumber === 1,
+    )!;
+    await expect(
+      updatePlayoffPairDay(pool, {
+        tournamentId: tournament.id,
+        seriesId: first.seriesId,
+        dayId: first.dayId,
+        startsAt: null,
+        localTime: '02:30',
+        adminUserId: ADMIN_ID,
+      }),
+    ).rejects.toMatchObject({ statusCode: 400 });
+  });
+
+  it('guards pair scheduling APIs and restores inheritance without changing another pair', async () => {
+    const rules = lifecycleRules();
+    const tournament = await createPublished(pool, 'pair-starts-api', rules);
+    await preparePlayoffs(pool, tournament.id);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-03T00:00:00.000Z'));
+    const schedule = await getPlayoffPairSchedule(pool, tournament.id);
+    const first = schedule.days.find((day) => day.seriesKey === 'R1S1' && day.dayNumber === 1)!;
+    const baseUrl = `/admin/tournaments/${tournament.id}/playoff-pair-schedule`;
+    const url = `${baseUrl}/${first.seriesId}/days/${first.dayId}`;
+    expect((await app.inject({ method: 'GET', url: baseUrl })).statusCode).toBe(401);
+    const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
+    const headers = { authorization: `Bearer ${await jwt.issueAccessToken({ sub: ADMIN_ID })}` };
+    expect((await app.inject({ method: 'GET', url: baseUrl, headers })).statusCode).toBe(200);
+    const saved = await app.inject({
+      method: 'PATCH',
+      url,
+      headers,
+      payload: { localTime: '21:00' },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toEqual({ changed: true });
+    expect(
+      (await app.inject({ method: 'PATCH', url, headers, payload: { localTime: '25:00' } }))
+        .statusCode,
+    ).toBe(400);
+    expect(
+      (await app.inject({ method: 'PATCH', url, headers, payload: { localTime: null } })).json(),
+    ).toEqual({ changed: true });
+    expect(
+      (await app.inject({ method: 'PATCH', url, headers, payload: { localTime: null } })).json(),
+    ).toEqual({ changed: false });
+    const reset = await getPlayoffPairSchedule(pool, tournament.id);
+    expect(reset.days.map((day) => day.effectiveStartsAt)).toEqual(
+      schedule.days.map((day) => day.effectiveStartsAt),
+    );
+    const nextRules = structuredClone(rules);
+    const rounds = nextRules.playoffRounds as Array<{
+      scheduleDays: Array<Record<string, unknown>>;
+    }>;
+    rounds[0]!.scheduleDays[0]!.firstWaveLocalTime = '19:00';
+    await updateTournamentDraft(pool, {
+      tournamentId: tournament.id,
+      expectedRevision: tournament.revision,
+      title: 'Attempt tournament',
+      description: '',
+      rules: nextRules,
+      updatedBy: ADMIN_ID,
+      registrationOpensAt: new Date('2020-01-01T00:00:00.000Z'),
+      registrationClosesAt: new Date('2030-09-01T00:00:00.000Z'),
+      startsAt: new Date('2030-09-02T07:00:00.000Z'),
+    });
+    const revision = await pool.query<{ schedule_revision: number; starts_at: Date | null }>(
+      `select schedule_revision, starts_at from tournament_series_game_day_schedule where series_id=$1`,
+      [first.seriesId],
+    );
+    expect(revision.rows[0]).toMatchObject({ starts_at: null, schedule_revision: 3 });
   });
 
   it('materializes DST-safe playoff game days and one initial attempt per series', async () => {
@@ -3794,6 +4370,13 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
 
   it('assigns each materialized series game to the configured game day capacity', async () => {
     const context = await openFirstPlayoffAttempt(pool, 'attempt-series-game-day-capacity');
+    await pool.query(
+      `insert into tournament_series_game_day_schedule (series_id,round_game_day_id,starts_at)
+      select $1,day.id,$2 from tournament_round_game_day day
+      join tournament_playoff_series series on series.round_id=day.round_id and series.id=$1
+      where day.day_number=2`,
+      [context.fixture.series_id, new Date('2030-10-27T18:00:00.000Z')],
+    );
     const settledAt = new Date('2030-10-26T18:00:00.000Z');
     await pool.query(
       `update tournament_fixture_attempt
@@ -3878,7 +4461,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     );
     expect(thirdGame.rows[0]).toEqual({
       day_number: 2,
-      starts_at: new Date('2030-10-27T17:00:00.000Z'),
+      starts_at: new Date('2030-10-27T18:00:00.000Z'),
     });
   });
 
