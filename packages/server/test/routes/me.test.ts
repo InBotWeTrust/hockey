@@ -186,6 +186,8 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     expect(body.displayName).toBe('Alice');
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(res.json()).toMatchObject({
+      beginnerOnboardingCompleted: false,
+      amateurUnlockGoalsRequired: 300,
       competitionLevel: 'beginner',
       stats: {
         shots: 0,

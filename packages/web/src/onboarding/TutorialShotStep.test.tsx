@@ -81,11 +81,15 @@ describe('TutorialShotStep', () => {
     await screen.findByRole('button', { name: 'Бросок' });
     expect(playProps).toEqual(
       expect.objectContaining({
+        resultCopy: { miss: 'МИМО', post: 'МИМО', goal: 'ГОЛ!' },
         hideGoalie: true,
         shotsTotal: 1,
         hideScoreboard: true,
         hideRinkScoreboard: true,
         hideSoundAction: true,
+        speedOverrides: expect.objectContaining({
+          goalFreq: 0,
+        }),
         playerOptions: expect.objectContaining({
           spriteUrls: {
             left: '/sprites/street-player-left.webp',
