@@ -39,6 +39,8 @@ export interface GameLoopClocks {
   shooterElapsedMs: number;
 }
 
+export interface SkidVisual { target: 'goal' | 'goalie' | 'player'; ageMs: number }
+
 export interface GameLoopOpts {
   goalRenderer: Goal;
   goalieRenderer: Goalie;
@@ -59,10 +61,13 @@ export interface GameLoopOpts {
     reusable?: DuelPlayerCondition,
   ) => DuelPlayerCondition | null;
   onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
+  getSkidVisual?: (sceneMs: number) => SkidVisual | null;
+  onEntitiesRendered?: (sceneMs: number) => void;
   onClockTick?: (sceneElapsedMs: number, shooterElapsedMs: number) => void;
   getMaxSceneTimeMs?: () => number | undefined;
   getTimeScale?: (sceneElapsedMs: number) => number;
   getEpisodeSample?: (sceneElapsedMs: number) => AdvancedTrainingEpisodeSample | null;
+  getCourtMotionTime?: (target: 'goal' | 'goalie', sceneMs: number) => number;
   getShooterMotionTime?: (sceneElapsedMs: number, pauses: readonly BonusChallengeShotPause[]) => number;
 }
 
@@ -305,7 +310,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       frozenConditionShooterX = null;
     }
     const episodeSample = opts.getEpisodeSample?.(tScene) ?? null;
-    const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
+    const goalState: GoalState = simulateGoal(activeCfg, opts.getCourtMotionTime?.('goal', tScene) ?? tScene, o.goal);
     const goalieSeed = opts.getSeed();
     const goalieShotIndex = opts.getShotIndex();
     if (
@@ -317,7 +322,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       goalieSimulatorShotIndex = goalieShotIndex;
       goalieSimulator = createGoalieSimulator(activeCfg, goalieSeed, goalieShotIndex);
     }
-    const goalieState: GoalieState = goalieSimulator(tScene, o.goalie);
+    const goalieState: GoalieState = goalieSimulator(opts.getCourtMotionTime?.('goalie', tScene) ?? tScene, o.goalie);
     const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
     const motionTime = opts.getShooterMotionTime?.(tScene, shotPauses);
     const ordinaryShooterX = motionTime !== undefined
@@ -346,12 +351,18 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
           (episodeSample.goalieX - PERSPECTIVE_COURT_VISUAL_X_CENTER) /
           PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE },
     } : goalieState;
+    const skid = opts.getSkidVisual?.(tScene) ?? null;
+    if (opts.getSkidVisual) {
+      opts.goalRenderer.setSlipRotation?.(skid?.target === 'goal' ? Math.sin(skid.ageMs / 38) * .14 : 0);
+      opts.goalieRenderer.setSlipPose?.(skid?.target === 'goalie');
+    }
     opts.goalRenderer.update(scale, goalOffsetX);
     opts.goalieRenderer.update(renderedGoalieState, scale);
     opts.playerRenderer.update(scale, sx, undefined, {
-      stumbling: condition?.stumbleActive === true,
+      stumbling: condition?.stumbleActive === true || skid?.target === 'player',
       resting: condition?.status === 'exhausted_stop',
     });
+    opts.onEntitiesRendered?.(tScene);
     opts.hitboxRenderer?.update(scale, goalOffsetX, renderedGoalieState);
 
     if (opts.puckRenderer.isHeld()) {

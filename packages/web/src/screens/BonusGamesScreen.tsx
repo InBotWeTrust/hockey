@@ -1,3 +1,4 @@
+import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -7,6 +8,7 @@ import {
   CircleDollarSign,
   Info,
   Star,
+  Target,
   TrendingUp,
   X,
 } from 'lucide-react';
@@ -119,8 +121,15 @@ export function BonusGamesScreen(): JSX.Element {
   const [previewGame, setPreviewGame] = useState<BonusGameCard | null>(null);
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
+  const [developmentToast, setDevelopmentToast] = useState(false);
+  useEffect(() => {
+    if (!developmentToast) return;
+    const timer = window.setTimeout(() => setDevelopmentToast(false), 2000);
+    return () => window.clearTimeout(timer);
+  }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
+    if (stored === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
       ? stored
       : 'speed';
@@ -202,6 +211,7 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const openGame = (game: BonusGameCard): void => {
+    if (game.skill_code === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
     if (game.state === 'level_locked') {
       performGameAction(game);
       return;
@@ -243,6 +253,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
+    if (skill === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
   };
@@ -426,6 +437,9 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         )}
       </section>
+      {developmentToast && <div role="status" style={{ position: 'fixed', bottom: 'calc(100px + var(--app-safe-bottom))',
+        left: '50%', transform: 'translateX(-50%)', padding: '12px 18px', borderRadius: 16,
+        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Раздел в разработке</div>}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {previewGame !== null ? (
         <AccessibleModal
@@ -454,10 +468,28 @@ export function BonusGamesScreen(): JSX.Element {
             src={versionBonusGameArtwork(previewGame.preview_artwork_url)}
             alt={`Локация «${previewGame.arena.title}» и её вратарь`}
           />
-          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.preview_story}</p>
+          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.challenge_environment?.cyberpunk ? CYBERPUNK_STORY : previewGame.preview_story}</p>
           <p className="bonus-game-preview-modal__condition">
+            {(previewGame.challenge_environment?.cyberpunk || previewGame.slug === 'challenge-beach' || (previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski)) && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
             {qualificationDescription(previewGame.qualification_rules)}
           </p>
+          {previewGame.slug === 'challenge-beach' && previewGame.challenge_environment?.beach?.interactive && (
+            <ul className="bonus-game-preview-modal__hints">
+              <li>Лужи замедляют шайбу. В глубокой воде она застревает.</li>
+              <li>Тапай по лужам, чтобы убрать воду. Большой луже нужно больше тапов, но со временем она появится снова.</li>
+              <li>Ветер периодически сносит игрока, вратаря или ворота назад.</li>
+              <li>На мокром льду игрок спотыкается, устаёт и берёт передышки.</li>
+            </ul>
+          )}
+          {previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski && (
+            <ul className="bonus-game-preview-modal__hints">
+              <li>На подъёме игрок устаёт и едет всё медленнее. После передышки силы восстановятся.</li>
+              <li>С горы игрок, вратарь и ворота движутся быстрее, чем в гору.</li>
+              <li>На снегу все трое могут поскользнуться и съехать вниз.</li>
+              <li>Во время соскальзывания и передышки игрок не может бросать.</li>
+            </ul>
+          )}
+          {previewGame.slug==='challenge-cyberpunk-yard' && previewGame.challenge_environment?.cyberpunk && <CyberpunkHints/>}
           {startMutation.isError ? (
             <p role="alert" className="bonus-game-abandon-error">
               {safeUiError(startMutation.error)}

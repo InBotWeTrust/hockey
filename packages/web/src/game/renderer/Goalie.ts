@@ -40,6 +40,7 @@ export class Goalie {
   private idleTex: Texture = Texture.EMPTY;
   private saveTex: Texture = Texture.EMPTY;
   private isSaving = false;
+  private isSlipping = false;
   private destroyed = false;
 
   constructor(options: GoalieOptions = {}) {
@@ -60,14 +61,14 @@ export class Goalie {
       .then((tex) => {
         if (this.destroyed) return;
         this.idleTex = tex;
-        if (!this.isSaving) this.sprite.texture = tex;
+        if (!this.isSaving && !this.isSlipping) this.sprite.texture = tex;
       })
       .catch(() => undefined);
     Assets.load<Texture>(options.saveSpriteUrl ?? '/sprites/save.webp')
       .then((tex) => {
         if (this.destroyed) return;
         this.saveTex = tex;
-        if (this.isSaving) this.sprite.texture = tex;
+        if (this.isSaving || this.isSlipping) this.sprite.texture = tex;
       })
       .catch(() => undefined);
   }
@@ -75,15 +76,21 @@ export class Goalie {
   setSavePose(saving: boolean): void {
     if (this.destroyed) return;
     this.isSaving = saving;
-    const tex = saving ? this.saveTex : this.idleTex;
+    const tex = (saving || this.isSlipping) ? this.saveTex : this.idleTex;
     if (tex !== Texture.EMPTY) this.sprite.texture = tex;
+  }
+
+  setSlipPose(slipping: boolean): void {
+    if (this.isSlipping === slipping) return;
+    this.isSlipping = slipping;
+    this.setSavePose(this.isSaving);
   }
 
   update(state: GoalieState, scale: Scale): void {
     if (this.destroyed) return;
     const s = scale.factor;
     const size =
-      (this.isSaving ? SAVE_SIZE * this.saveSizeScale : IDLE_SIZE * this.idleSizeScale) *
+      ((this.isSaving || this.isSlipping) ? SAVE_SIZE * this.saveSizeScale : IDLE_SIZE * this.idleSizeScale) *
       this.sizeScale *
       s;
     this.sprite.width = size;
@@ -96,7 +103,7 @@ export class Goalie {
       this.visualMinX ?? -Infinity,
       Math.min(this.visualMaxX ?? Infinity, scaledX),
     );
-    const poseYOffset = this.isSaving ? this.saveVisualYOffset : 0;
+    const poseYOffset = (this.isSaving || this.isSlipping) ? this.saveVisualYOffset : 0;
     this.sprite.position.set(
       x * s,
       (state.position.y * this.visualYScale + this.visualYOffset + poseYOffset) * s,

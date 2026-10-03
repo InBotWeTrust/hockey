@@ -1,10 +1,17 @@
+import {cyberpunkEarliestTap,cyberpunkEnvironmentForHistory,cyberpunkShooterMotion} from '@hockey/game-core';
+import {sampleCyberpunkEnvironment,cyberpunkCrossings,resolveCyberpunkCourtShot,type CyberpunkPanelEvent} from '@hockey/game-core';
+import { assertVersionedSkiEnvironment } from './skiShot.js';
+import { createSkiAttemptSampler, resolveSkiCourtShot } from '@hockey/game-core';
+import { assertVersionedBeachEnvironment, resolveVersionedBeachShot } from './beachShot.js';
 import { randomUUID } from 'node:crypto';
 import {
   GAME_CORE_VERSION,
+  createWindSchedule, beachWindMotion, beachCleanupRules, sampleBeachPuddles, type BeachCleanupEvent,
   GOAL_OPENING,
   PUCK_START,
   classifyMarksmanshipShot,
   getBonusChallengeCondition,
+  getBeachPuckSpeed,
   getBonusChallengeShooterMotionTime,
   type BonusChallengeShotPause,
   getSessionPhaseOffsets,
@@ -103,7 +110,7 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73, 74, 75] as const;
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
@@ -254,6 +261,12 @@ export async function loadBonusAttemptDto(
   });
   if (Number(attempt.game_core_version) >= 71 && attempt.rules_snapshot.challengeEnvironment) {
     dto.currentPeriodShotPauses = (await fetchBonusPeriodShotState(client, attempt.id, Number(attempt.current_period))).shotPauses;
+  }
+  if (attempt.rules_snapshot.challengeEnvironment?.beach?.interactive) {
+    dto.currentPeriodCleanupEvents = await loadBeachCleanupEvents(client, attempt.id, Number(attempt.current_period));
+  }
+  if (attempt.rules_snapshot.challengeEnvironment?.cyberpunk) {
+    dto.currentPeriodPanelEvents=(await loadCyberpunkPanelEvents(client,attempt.id,Number(attempt.current_period))).map(({id,eventId,tapTime})=>({id,eventId,tapTime}));
   }
   return dto;
 }
@@ -652,6 +665,8 @@ export async function startOrResumeBonusAttempt(
         goalkeeperSaveUrl: game.goalkeeper_save_url,
         arena,
       };
+      assertVersionedBeachEnvironment(rulesSnapshot.challengeEnvironment, rulesSnapshot.slug, GAME_CORE_VERSION);
+      assertVersionedSkiEnvironment(rulesSnapshot.challengeEnvironment, rulesSnapshot.slug, GAME_CORE_VERSION);
       const rewardSnapshot = {
         coins: Number(game.reward_coins),
         stars: Number(game.reward_stars),
@@ -673,6 +688,14 @@ export async function startOrResumeBonusAttempt(
         game.id,
         input.seedSecret,
       );
+      if (rulesSnapshot.challengeEnvironment?.cyberpunk) {
+        if (game.slug !== 'challenge-cyberpunk-yard') throw new Error('cyberpunk requires cyberpunk catalog');
+        rulesSnapshot.challengeEnvironment.cyberpunk.seed=attemptSeed;
+      }
+      if (rulesSnapshot.challengeEnvironment?.ski) { rulesSnapshot.challengeEnvironment.ski.seed = attemptSeed; }
+      if (rulesSnapshot.challengeEnvironment?.beach?.interactive) {
+        rulesSnapshot.challengeEnvironment.beach.interactive.wind = createWindSchedule(attemptSeed, periods[0]!.durationMs);
+      }
       const { rows } = await client.query<BonusGameAttemptRow>(
         `insert into bonus_game_attempt
            (id, user_id, bonus_game_id, status, state, current_period,
@@ -977,7 +1000,8 @@ async function fetchBonusPeriodShotState(
             ) as goal_inputs,
             coalesce(jsonb_agg(jsonb_build_object(
               'tapTime', (input_payload->>'tapTime')::double precision,
-              'flightMs', ($3::double precision / (input_payload->>'puckSpeedPerMs')::double precision)
+              'flightMs', coalesce((input_payload->>'flightMs')::double precision,
+                ($3::double precision / (input_payload->>'puckSpeedPerMs')::double precision))
             ) order by shot_index), '[]'::jsonb) as shot_pauses
        from shot_session
       where mode = 'bonus'
@@ -1055,7 +1079,9 @@ function authoritativeShotInput(
   return {
     tapTime: input.tapTime,
     shooterTapTime: input.shooterTapTime,
-    puckSpeedPerMs: rule.puckSpeedPerMs * condition.puckSpeedMultiplier,
+    puckSpeedPerMs: challengeEnvironment?.beach
+      ? getBeachPuckSpeed(rule.puckSpeedPerMs, condition.puckSpeedMultiplier)
+      : rule.puckSpeedPerMs * condition.puckSpeedMultiplier,
     shooterFrequency: rule.shooterFrequency * condition.shooterSpeedMultiplier,
     goalieFrequency: rule.goalieFrequency * condition.goalieSpeedMultiplier,
     goalFrequency: rule.goalFrequency * condition.goalSpeedMultiplier,
@@ -1271,6 +1297,15 @@ export async function submitBonusShot(
             409,
           );
         } else {
+          const cyberRules=attempt.rules_snapshot.challengeEnvironment?.cyberpunk;
+          if(cyberRules && (attempt.rules_snapshot.slug!=='challenge-cyberpunk-yard' || Number(attempt.game_core_version)<76)) throw new Error('invalid cyberpunk snapshot version');
+          const panelEvents=cyberRules?await loadCyberpunkPanelEvents(client,attempt.id,attempt.current_period):[];
+          if(panelEvents.length && input.input.tapTime<panelEvents.at(-1)!.tapTime) throw new AppError('bonus_shot_time_stale','shot predates panel',409);
+          const cleanupEvents = attempt.rules_snapshot.challengeEnvironment?.beach?.interactive
+            ? await loadBeachCleanupEvents(client, attempt.id, attempt.current_period) : [];
+          if (cleanupEvents.length && input.input.tapTime < cleanupEvents.at(-1)!.tapTime) {
+            throw new AppError('bonus_shot_time_stale', 'shot predates accepted cleanup', 409);
+          }
           const previousInput =
             periodShotState.lastTapTime === null || periodShotState.lastShooterTapTime === null
               ? null
@@ -1278,10 +1313,15 @@ export async function submitBonusShot(
                   tapTime: periodShotState.lastTapTime,
                   shooterTapTime: periodShotState.lastShooterTapTime,
                 };
+          const effectiveEnvironment=cyberpunkEnvironmentForHistory(attempt.rules_snapshot.challengeEnvironment??{},periodShotState.shotPauses);
           const challengeCondition = getBonusChallengeCondition(
-            attempt.rules_snapshot.challengeEnvironment,
+            effectiveEnvironment,
             input.input.tapTime,
           );
+          const skiRules=attempt.rules_snapshot.challengeEnvironment?.ski;
+          assertVersionedSkiEnvironment(attempt.rules_snapshot.challengeEnvironment,attempt.rules_snapshot.slug,Number(attempt.game_core_version));
+          const skiSampler=skiRules?createSkiAttemptSampler(skiRules,{goal:rule.goalFrequency,goalie:rule.goalieFrequency,player:rule.shooterFrequency}):null;
+
           if (!challengeCondition.canShoot) {
             deferredError = new AppError(
               'bonus_shot_time_invalid',
@@ -1311,11 +1351,21 @@ export async function submitBonusShot(
             input.now,
             useMotionClock ? periodShotState.shotPauses : undefined,
           );
+          if(skiSampler && !skiSampler.player(input.input.tapTime,periodShotState.shotPauses).canShoot) {
+            throw new AppError('bonus_shot_time_invalid','bonus shot is blocked by ski rest or slip',409);
+          }
           // Check wall-clock bounds before integrating a client-supplied elapsed time.
           if (useMotionClock) {
             shotInput.shooterMotionTime = getBonusChallengeShooterMotionTime(
               attempt.rules_snapshot.challengeEnvironment!, input.input.tapTime,
               rule.shooterFrequency, periodShotState.shotPauses);
+            if (attempt.rules_snapshot.challengeEnvironment?.beach?.interactive) {
+              shotInput.shooterMotionTime = beachWindMotion(attempt.rules_snapshot.challengeEnvironment,
+                input.input.tapTime, rule.shooterFrequency, periodShotState.shotPauses,
+                attempt.rules_snapshot.challengeEnvironment.beach.interactive.wind);
+            }
+            if(cyberRules) shotInput.shooterMotionTime=cyberpunkShooterMotion(effectiveEnvironment,input.input.tapTime,rule.shooterFrequency,periodShotState.shotPauses);
+            if(skiSampler) shotInput.shooterMotionTime=skiSampler.player(input.input.tapTime,periodShotState.shotPauses).clock;
             shotInput.shooterFrequency = rule.shooterFrequency;
           }
           const shotSeed = deriveShotSeed(
@@ -1338,15 +1388,25 @@ export async function submitBonusShot(
                   shotIndex: expectedShotIndex,
                   phaseOffsets: getSessionPhaseOffsets(attempt.attempt_seed),
                   earliestTapTime:
-                    previousInput === null
+                    cyberRules ? cyberpunkEarliestTap(periodShotState.shotPauses) : previousInput === null
                       ? 0
                       : previousInput.tapTime +
                         (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
+                  shooterMotionAt:cyberRules?time=>cyberpunkShooterMotion(effectiveEnvironment,time,rule.shooterFrequency,periodShotState.shotPauses):undefined,
+                  courtCrossings:cyberRules?(shot)=>cyberpunkCrossings(shot,cyberRules,panelEvents,getSessionPhaseOffsets(attempt.attempt_seed)):undefined,
                   scoring: qualificationRules.scoring,
                   previousGoals: periodShotState.goalInputs,
                 })
               : null;
-          const serverResult =
+          const cyberShot=cyberRules?resolveCyberpunkCourtShot(shotInput,goalie,shotSeed,expectedShotIndex,cyberRules,panelEvents,getSessionPhaseOffsets(attempt.attempt_seed)):null;
+          const beachShot = cyberShot ?? resolveVersionedBeachShot({
+            input: shotInput, goalie, seed: shotSeed, shotIndex: expectedShotIndex,
+            environment: attempt.rules_snapshot.challengeEnvironment,
+            slug: attempt.rules_snapshot.slug, coreVersion: Number(attempt.game_core_version),
+            phaseOffsets: getSessionPhaseOffsets(attempt.attempt_seed),
+            cleanupEvents,
+          });
+          const serverResult = (skiRules ? resolveSkiCourtShot(shotInput,goalie,shotSeed,expectedShotIndex,skiRules,periodShotState.shotPauses).type : null) ?? beachShot?.result.type ??
             classification?.result.type ??
             resolvePerspectiveCourtShot(
               shotInput,
@@ -1395,7 +1455,8 @@ export async function submitBonusShot(
                 attempt.current_period,
                 expectedShotIndex,
                 shotSeed,
-                JSON.stringify(shotInput),
+                JSON.stringify(beachShot ? { ...shotInput, flightMs: beachShot.flight.durationMs,
+                  blockedByWater: beachShot.blockedByWater } : shotInput),
                 serverResult,
                 attempt.game_core_version,
                 awardedPoints,
@@ -1524,4 +1585,117 @@ export async function submitBonusShot(
   }
   if (deferredError !== null) throw deferredError;
   return response!;
+}
+
+export async function loadBeachCleanupEvents(client: PoolClient, attemptId: string, period: number): Promise<BeachCleanupEvent[]> {
+  const { rows } = await client.query<{ id: string; puddle_id: string; tap_time: number }>(
+    'select id, puddle_id, tap_time from bonus_beach_cleanup_event where attempt_id = $1 and period_number = $2 order by tap_time, id',
+    [attemptId, period]);
+  return rows.map(row => ({ id: row.id, puddleId: row.puddle_id, tapTime: Number(row.tap_time) }));
+}
+
+export async function cleanupBeachPuddle(pool: Pool, input: {
+  userId: string; attemptId: string; eventId: string; period: number; puddleId: string;
+  tapTime: number; expectedShots: number; expectedCleanups: number; now: Date;
+}): Promise<BonusGameAttemptDTO> {
+  const client = await begin(pool);
+  try {
+    await lockBonusEconomyBalances(client, input.userId, input.now);
+    const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
+    const events = await loadBeachCleanupEvents(client, owned.id, input.period);
+    const existing = events.find(event => event.id === input.eventId);
+    if (existing) {
+      if (existing.puddleId !== input.puddleId || existing.tapTime !== input.tapTime) throw new AppError('bad_request', 'cleanup retry differs', 400);
+      const result = await loadBonusAttemptDto(client, owned);
+      await client.query('commit'); return result;
+    }
+    const attempt = await reconcileBonusAttempt(client, owned, input.now);
+    const environment = attempt.rules_snapshot.challengeEnvironment;
+    if (attempt.status !== 'active' || attempt.state !== 'period_active' || attempt.current_period !== input.period || !attempt.period_started_at) {
+      throw new AppError('bonus_period_not_ready', 'period is not active', 409);
+    }
+    if (attempt.rules_snapshot.slug !== 'challenge-beach' || !environment?.beach?.interactive || Number(attempt.game_core_version) < 74) {
+      throw new AppError('bad_request', 'cleanup is unavailable for this attempt', 400);
+    }
+    const shots = await fetchBonusPeriodShotState(client, attempt.id, input.period);
+    if (shots.count !== input.expectedShots || events.length !== input.expectedCleanups || events.length >= 1000) {
+      throw new AppError('bonus_shot_index_mismatch', 'scene history changed', 409);
+    }
+    const elapsed = input.now.getTime() - attempt.period_started_at.getTime() - shots.count * BONUS_SHOT_RESULT_PAUSE_MS;
+    const lastPause = shots.shotPauses.at(-1);
+    if (!Number.isFinite(input.tapTime) || input.tapTime < 0 || input.tapTime > elapsed + BONUS_SHOT_FUTURE_TOLERANCE_MS ||
+      input.tapTime < elapsed - BONUS_SHOT_STALE_TOLERANCE_MS - shots.count * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS ||
+      (lastPause && input.tapTime < lastPause.tapTime + lastPause.flightMs) ||
+      (events.length && input.tapTime < events.at(-1)!.tapTime + 180)) {
+      throw new AppError('bonus_shot_time_stale', 'cleanup timing is stale', 409);
+    }
+    // Clearing water is allowed during rest/stumbles; only shooting is blocked.
+    if (!sampleBeachPuddles(beachCleanupRules(environment.beach.puddles, events, input.tapTime), input.tapTime)
+        .some(puddle => puddle.id === input.puddleId && puddle.active)) {
+      throw new AppError('bonus_shot_time_invalid', 'puddle is unavailable', 409);
+    }
+    const inserted = await client.query(
+      'insert into bonus_beach_cleanup_event(id, attempt_id, period_number, puddle_id, tap_time, created_at) values ($1,$2,$3,$4,$5,$6) on conflict (id) do nothing returning id',
+      [input.eventId, attempt.id, input.period, input.puddleId, input.tapTime, input.now]);
+    if (!inserted.rowCount) throw new AppError('bad_request', 'cleanup id is already used', 400);
+    const result = await loadBonusAttemptDto(client, attempt);
+    await client.query('commit'); return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined); throw error;
+  } finally { client.release(); }
+}
+
+async function loadCyberpunkPanelEvents(client:PoolClient,attemptId:string,period:number):Promise<(CyberpunkPanelEvent & {expectedShots:number;expectedPanels:number})[]> {
+ const {rows}=await client.query('select id,strip_event_id,tap_time,expected_shots,expected_panels from bonus_cyberpunk_panel_event where attempt_id=$1 and period_number=$2 order by tap_time,id',[attemptId,period]);
+ return rows.map(row=>({id:row.id,eventId:row.strip_event_id,tapTime:Number(row.tap_time),expectedShots:Number(row.expected_shots),expectedPanels:Number(row.expected_panels)}));
+}
+export async function tapCyberpunkPanel(pool: Pool, input: {
+  userId: string; attemptId: string; eventId: string; period: number; stripEventId: string;
+  tapTime: number; expectedShots: number; expectedPanels: number; now: Date;
+}): Promise<BonusGameAttemptDTO> {
+  const client = await begin(pool);
+  try {
+    await lockBonusEconomyBalances(client, input.userId, input.now);
+    const owned = await fetchOwnedAttempt(client, input.userId, input.attemptId);
+    await assertBonusGameAccessibleToUser(client, input.userId, owned.bonus_game_id);
+    const events = await loadCyberpunkPanelEvents(client, owned.id, input.period);
+    const existing = events.find(event => event.id === input.eventId);
+    if (existing) {
+      if (existing.eventId !== input.stripEventId || existing.tapTime !== input.tapTime || existing.expectedShots !== input.expectedShots || existing.expectedPanels !== input.expectedPanels) throw new AppError('bad_request', 'cleanup retry differs', 400);
+      const result = await loadBonusAttemptDto(client, owned);
+      await client.query('commit'); return result;
+    }
+    const attempt = await reconcileBonusAttempt(client, owned, input.now);
+    const environment = attempt.rules_snapshot.challengeEnvironment;
+    if (attempt.status !== 'active' || attempt.state !== 'period_active' || attempt.current_period !== input.period || !attempt.period_started_at) {
+      throw new AppError('bonus_period_not_ready', 'period is not active', 409);
+    }
+    if (attempt.rules_snapshot.slug !== 'challenge-cyberpunk-yard' || !environment?.cyberpunk || Number(attempt.game_core_version) < 76) {
+      throw new AppError('bad_request', 'cleanup is unavailable for this attempt', 400);
+    }
+    const shots = await fetchBonusPeriodShotState(client, attempt.id, input.period);
+    if (shots.count !== input.expectedShots || events.length !== input.expectedPanels || events.length >= 1000) {
+      throw new AppError('bonus_shot_index_mismatch', 'scene history changed', 409);
+    }
+    const elapsed = input.now.getTime() - attempt.period_started_at.getTime() - shots.count * BONUS_SHOT_RESULT_PAUSE_MS;
+    const lastPause = shots.shotPauses.at(-1);
+    if (!Number.isFinite(input.tapTime) || input.tapTime < 0 || input.tapTime > elapsed + BONUS_SHOT_FUTURE_TOLERANCE_MS ||
+      input.tapTime < elapsed - BONUS_SHOT_STALE_TOLERANCE_MS - shots.count * BONUS_SHOT_TIMER_DRIFT_ALLOWANCE_PER_SHOT_MS ||
+      (lastPause && input.tapTime < lastPause.tapTime + lastPause.flightMs) ||
+      (events.length && input.tapTime < events.at(-1)!.tapTime + 180)) {
+      throw new AppError('bonus_shot_time_stale', 'cleanup timing is stale', 409);
+    }
+    // Clearing water is allowed during rest/stumbles; only shooting is blocked.
+    const scene=sampleCyberpunkEnvironment(environment.cyberpunk!,input.tapTime,events);
+    if(scene.activeStrip?.id!==input.stripEventId) throw new AppError('bonus_shot_time_invalid','magnetic event unavailable',409);
+    const inserted = await client.query(
+      'insert into bonus_cyberpunk_panel_event(id, attempt_id, period_number, strip_event_id, tap_time, created_at, expected_shots, expected_panels) values ($1,$2,$3,$4,$5,$6,$7,$8) on conflict (id) do nothing returning id',
+      [input.eventId, attempt.id, input.period, input.stripEventId, input.tapTime, input.now,input.expectedShots,input.expectedPanels]);
+    if (!inserted.rowCount) throw new AppError('bad_request', 'cleanup id is already used', 400);
+    const result = await loadBonusAttemptDto(client, attempt);
+    await client.query('commit'); return result;
+  } catch (error) {
+    await client.query('rollback').catch(() => undefined); throw error;
+  } finally { client.release(); }
 }

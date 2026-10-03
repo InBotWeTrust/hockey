@@ -26,6 +26,7 @@ const fcmKeys = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as con
 
 const schema = z
   .object({
+    DEPLOYMENT_ENV: z.enum(['dev', 'production']).default('production'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     HOST: z.string().default('0.0.0.0'),
     PORT: z.coerce.number().default(3000),
