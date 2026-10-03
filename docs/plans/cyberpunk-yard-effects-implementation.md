@@ -38,7 +38,7 @@
 
 ## Task 2: Authoritative attempts, panel and migration
 
-**Create:** `packages/server/db/migrations/177_cyberpunk_yard_effects.sql`, `src/bonusGames/cyberpunkShot.ts`, `test/bonusGames/cyberpunkInteractions.test.ts`, `cyberpunkShot.test.ts`.
+**Create:** `packages/server/db/migrations/178_cyberpunk_yard_effects.sql`, `src/bonusGames/cyberpunkShot.ts`, `test/bonusGames/cyberpunkInteractions.test.ts`, `cyberpunkShot.test.ts`.
 **Modify:** `src/bonusGames/types.ts`, `service.ts`, `routes.ts`.
 **Consumes:** Task 1 schedule, condition and shot resolver. **Produces:** attempt DTO with confirmed panel event history and `POST /bonus-games/attempts/:attemptId/cyberpunk/panel` accepting event UUID, schedule event ID, period, tap time and expected shot/panel counts.
 
@@ -71,3 +71,5 @@ Local tuning approved: 20 strip events per 150 seconds across six zones, 1-secon
 Follow-up tuning: independently seeded strip and outage schedules can overlap; random strip zones; outages include 1-second warning and 5-second darkness. Strip visuals use tapered polygons with stronger active edges. Local synthetic fixture checked; authenticated browser acceptance and deployment remain pending.
 
 Release QA 2026-10-03: core marksmanship/cyberpunk 84 tests pass; web screen/store/effects 108 pass; server beach/ski/cyberpunk 13 pass; all package typechecks and builds pass. ESLint passes through existing workspace executable (worktree root lacks its bin link). Full core/web suites have stale recorded open-window banks; do not count those suites as green. Local fixture preview, dark entities/scoreboard and breaker placement were inspected; authenticated actual attempt browser acceptance remains pending. Reviewer flight-window and UUID fingerprint issues observed RED and fixed GREEN. Production guards unchanged.
+
+Full isolated server bonus suite: 294/294 passed. Synced current origin/dev (playoff scheduling) before release; renamed unreleased cyberpunk migration to 178 to follow existing 177.
