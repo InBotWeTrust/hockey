@@ -32,6 +32,26 @@ function show() {
 }
 
 describe('pair day editor', () => {
+  it('shows seed places and feeder series before participant names are known', async () => {
+    vi.spyOn(api, 'fetchPlayoffPairSchedule').mockResolvedValue({
+      days: ['R1S1', 'R1S2', 'R1S3', 'R1S4', 'R2S1', 'BRONZE'].map((seriesKey) => ({
+        ...day,
+        seriesId: seriesKey,
+        seriesKey,
+        homeName: null,
+        awayName: null,
+      })),
+    });
+    show();
+    expect(await screen.findByLabelText('Серия 1 (1–8), день 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Серия 2 (4–5), день 1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Серия 1 (победители серий 1 и 2), день 1')).toBeInTheDocument();
+    expect(
+      screen.getByLabelText('За третье место (проигравшие полуфиналов), день 1'),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/R1S1|BRONZE/)).not.toBeInTheDocument();
+  });
+
   it('saves only the selected pair time in tournament local time', async () => {
     vi.spyOn(api, 'fetchPlayoffPairSchedule').mockResolvedValue({ days: [day] });
     const update = vi.spyOn(api, 'updatePlayoffPairDay').mockResolvedValue({ changed: true });

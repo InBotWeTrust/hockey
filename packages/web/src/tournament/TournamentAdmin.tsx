@@ -18,6 +18,7 @@ import {
   type TournamentEconomyPreset,
 } from './adminApi.js';
 import { tournamentTimezoneLabel, tournamentTimezoneOptionLabel } from './timezoneLabel.js';
+import { playoffSeriesLabel } from './playoffSeriesLabels.js';
 import { TournamentOperations } from './TournamentOperations.js';
 import { participantsCountLabel, tournamentStatusLabel } from './labels.js';
 import type { TournamentRegularSource } from '../api/tournament.js';
@@ -1238,17 +1239,18 @@ function PlayoffScheduleDaysEditor(props: {
               />
             </TournamentAdminField>
             <div>
-              <strong>Начало дневной нормы для пар</strong>
+              <strong>Начало дневной нормы для серий</strong>
               <p>
-                Пустое поле использует общее время раунда. Участники появятся после определения пар.
+                Пустое поле использует общее время раунда. В скобках указаны места в регулярке или
+                серии, из которых определятся участники.
               </p>
               {[
                 ...Array.from({ length: props.playoffSize / 2 ** props.roundNumber }, (_, i) => ({
                   key: `R${props.roundNumber}S${i + 1}`,
-                  label: `Пара ${i + 1}`,
+                  label: playoffSeriesLabel(props.playoffSize, props.roundNumber, i + 1),
                 })),
                 ...(props.playoffSize >= 4 && props.roundNumber === Math.log2(props.playoffSize)
-                  ? [{ key: 'BRONZE', label: 'Матч за третье место' }]
+                  ? [{ key: 'BRONZE', label: 'За третье место (проигравшие полуфиналов)' }]
                   : []),
               ].map((slot) => (
                 <TournamentAdminField

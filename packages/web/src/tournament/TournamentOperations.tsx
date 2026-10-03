@@ -958,7 +958,7 @@ export function TournamentOperations({
     (tab === 'standings' && standings.data?.standings.length === 0) ||
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
-  const canEditPlayoffSchedule = status === 'playoff';
+  const canEditPlayoffSchedule = ['regular', 'playoff'].includes(status);
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
   const minimumScheduleShiftDate = currentTournamentLocalDate(tournamentTimezone);
   const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
