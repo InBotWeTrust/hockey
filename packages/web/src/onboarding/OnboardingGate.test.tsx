@@ -10,6 +10,11 @@ import {
 } from '../api/onboarding.js';
 import type * as OnboardingApi from '../api/onboarding.js';
 import { OnboardingGate, OnboardingGateContext } from './OnboardingGate.js';
+import { focusManager } from '@tanstack/react-query';
+
+vi.mock('./BeginnerStoryFlow.js', () => ({
+  BeginnerStoryFlow: ({ unlockGoalsRequired }: { unlockGoalsRequired: number }) => <div>Порог: {unlockGoalsRequired}</div>,
+}));
 
 vi.mock('../api/onboarding.js', async (importOriginal) => ({
   ...(await importOriginal<typeof OnboardingApi>()),
@@ -41,7 +46,7 @@ function renderGate(
   preparePlayer?: () => Promise<void>,
 ) {
   const client = new QueryClient({
-    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    defaultOptions: { queries: { retry: false, refetchOnWindowFocus: false }, mutations: { retry: false } },
   });
   const tree = (
     <QueryClientProvider client={client}>
@@ -57,6 +62,27 @@ describe('OnboardingGate', () => {
     vi.mocked(startOnboarding).mockReset();
     vi.mocked(completeOnboarding).mockReset();
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
+  });
+
+  it('refreshes the beginner threshold after returning from changed admin settings', async () => {
+    const beginner = { ...required, chain: 'beginner' as const };
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required: beginner });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required: beginner });
+    let threshold = 300;
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(
+      JSON.stringify({ beginnerOnboardingCompleted: false, amateurUnlockGoalsRequired: threshold }),
+      { status: 200 },
+    ));
+    renderGate();
+    expect(await screen.findByText('Порог: 300')).toBeInTheDocument();
+    threshold = 100;
+    act(() => { focusManager.setFocused(false); focusManager.setFocused(true); });
+    try {
+      expect(await screen.findByText('Порог: 100')).toBeInTheDocument();
+    } finally {
+      fetchMock.mockRestore();
+      focusManager.setFocused(undefined);
+    }
   });
 
   it('shows loading, then passes through only when no onboarding is required', async () => {

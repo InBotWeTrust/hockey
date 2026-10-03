@@ -56,6 +56,7 @@ export function OnboardingGate({
     queryFn: () => apiFetch<ProfileData>('/me', { cache: 'no-store' }),
     enabled: query.data?.required?.chain === 'beginner' || run?.required.chain === 'beginner',
     staleTime: 0,
+    refetchOnWindowFocus: true,
   });
   const [startError, setStartError] = useState(false);
   const [playerReady, setPlayerReady] = useState(preparePlayer === undefined);

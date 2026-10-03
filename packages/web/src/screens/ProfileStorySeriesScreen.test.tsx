@@ -22,7 +22,7 @@ vi.mock('../onboarding/BeginnerStoryFlow.js', () => ({
   ),
 }));
 
-function renderSeries(completed: boolean) {
+function renderSeries(completed: boolean, cachedThreshold?: number) {
   vi.spyOn(globalThis, 'fetch').mockResolvedValue(
     new Response(
       JSON.stringify({
@@ -33,7 +33,12 @@ function renderSeries(completed: boolean) {
       { status: 200 },
     ),
   );
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+  if (cachedThreshold !== undefined) {
+    client.setQueryData(['profile'], {
+      id: 'u1', beginnerOnboardingCompleted: completed, amateurUnlockGoalsRequired: cachedThreshold,
+    });
+  }
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/profile/story/series-1']}>
@@ -49,6 +54,12 @@ function renderSeries(completed: boolean) {
 describe('ProfileStorySeriesScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('refreshes the story threshold even when the profile cache never expires', async () => {
+    renderSeries(true, 300);
+    expect(await screen.findByText('Порог: 475')).toBeInTheDocument();
+    expect(screen.queryByText('Порог: 300')).not.toBeInTheDocument();
   });
 
   it('redirects an incomplete player back to the story catalog', async () => {
