@@ -5,6 +5,41 @@ import type {
   TournamentRegularSource,
 } from '../api/tournament.js';
 
+export interface PlayoffPairDay {
+  seriesId: string;
+  seriesKey: string;
+  dayId: string;
+  dayNumber: number;
+  localDate: string;
+  timezone: string;
+  homeName: string | null;
+  awayName: string | null;
+  editable: boolean;
+  defaultStartsAt: string;
+  overrideStartsAt: string | null;
+  effectiveStartsAt: string;
+}
+
+export function fetchPlayoffPairSchedule(
+  tournamentId: string,
+): Promise<{ days: PlayoffPairDay[] }> {
+  return apiFetch(`/admin/tournaments/${tournamentId}/playoff-pair-schedule`);
+}
+
+export function updatePlayoffPairDay(
+  tournamentId: string,
+  day: PlayoffPairDay,
+  localTime: string | null,
+) {
+  return apiFetch(
+    `/admin/tournaments/${tournamentId}/playoff-pair-schedule/${day.seriesId}/days/${day.dayId}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ localTime }),
+    },
+  );
+}
+
 export interface AdminTournament {
   id: string;
   slug: string;

@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import sharp, { type Metadata } from 'sharp';
 import { z } from 'zod';
+import { getPlayoffPairSchedule, updatePlayoffPairDay } from './pairScheduling.js';
 import { AppError } from '../plugins/errors.js';
 import { createTournamentDuelMatch } from '../duel/amateur/routes.js';
 import { assertFullAmateurAccess } from '../profile/amateurAccess.js';
@@ -1018,6 +1019,35 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       .parse(req.params);
     return grantTournamentStageRewards(app.pg, params.tournamentId, params.stage);
   });
+
+  app.get('/admin/tournaments/:tournamentId/playoff-pair-schedule', admin, async (req) => {
+    const params = z.object({ tournamentId: uuid }).parse(req.params);
+    return getPlayoffPairSchedule(app.pg, params.tournamentId);
+  });
+
+  app.patch(
+    '/admin/tournaments/:tournamentId/playoff-pair-schedule/:seriesId/days/:dayId',
+    admin,
+    async (req) => {
+      const params = z
+        .object({ tournamentId: uuid, seriesId: uuid, dayId: uuid })
+        .parse(req.params);
+      const body = z
+        .object({
+          localTime: z
+            .string()
+            .regex(/^([01]\d|2[0-3]):[0-5]\d$/)
+            .nullable(),
+        })
+        .parse(req.body);
+      return updatePlayoffPairDay(app.pg, {
+        ...params,
+        startsAt: null,
+        ...(body.localTime === null ? {} : { localTime: body.localTime }),
+        adminUserId: req.user.id,
+      });
+    },
+  );
 
   app.patch('/admin/tournaments/:tournamentId/fixtures/:fixtureId/schedule', admin, async (req) => {
     const params = z.object({ tournamentId: uuid, fixtureId: uuid }).parse(req.params);

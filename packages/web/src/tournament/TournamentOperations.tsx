@@ -42,6 +42,7 @@ import {
   type AdminTournamentSeriesDecision,
 } from './adminApi.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
+import { PlayoffPairScheduleEditor } from './PlayoffPairScheduleEditor.js';
 import {
   participantStateLabel,
   paymentStateLabel,
@@ -957,7 +958,7 @@ export function TournamentOperations({
     (tab === 'standings' && standings.data?.standings.length === 0) ||
     (tab === 'bracket' && bracket.data?.series.length === 0);
   const canEditRules = ['draft', 'registration', 'registration_blocked'].includes(status);
-  const canEditPlayoffSchedule = status === 'playoff';
+  const canEditPlayoffSchedule = ['regular', 'playoff'].includes(status);
   const tournamentTimezone = String(tournament.rules?.config?.timezone ?? 'Europe/Moscow');
   const minimumScheduleShiftDate = currentTournamentLocalDate(tournamentTimezone);
   const currentLifecycleMessage = lifecycleMessage(tournament, tournamentTimezone);
@@ -1189,6 +1190,7 @@ export function TournamentOperations({
         )}
         {tab === 'schedule' && (
           <>
+            {status === 'playoff' && <PlayoffPairScheduleEditor tournamentId={tournament.id} />}
             <dl className="tournament-operation-dates">
               <div>
                 <dt>Открытие регистрации</dt>
