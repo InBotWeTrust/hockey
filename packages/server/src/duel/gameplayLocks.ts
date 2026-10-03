@@ -161,8 +161,10 @@ async function getNearestScheduledTournamentBlocks(
             and fixture.status in ('scheduled', 'open', 'active', 'paused')
          union all
          select participant.user_id,
-                least(coalesce(pair_day.starts_at, game_day.rescheduled_starts_at, game_day.first_game_starts_at),
-                      attempt.scheduled_starts_at) as starts_at
+                case when fixture.rescheduled_reason is not null then attempt.scheduled_starts_at
+                     else least(coalesce(pair_day.starts_at, game_day.rescheduled_starts_at, game_day.first_game_starts_at),
+                                attempt.scheduled_starts_at)
+                end as starts_at
            from tournament_fixture_attempt attempt
            join tournament_round_game_day game_day on game_day.id = attempt.round_game_day_id
            join tournament_fixture fixture on fixture.id = attempt.fixture_id
