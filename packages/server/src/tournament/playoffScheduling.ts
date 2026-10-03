@@ -4,6 +4,26 @@ export interface RoundGameDay {
   localDate: string;
   firstWaveLocalTime: string;
   maxResultGames: number;
+  pairStartTimes?: Record<string, string>;
+}
+
+export function resolvePairDayStart(day: RoundGameDay, seriesKey: string, timezone: string): Date {
+  const localTime = day.pairStartTimes?.[seriesKey] ?? day.firstWaveLocalTime;
+  if (!isValidLocalTime(localTime)) throw new Error('pair start must be a valid HH:mm time');
+  return zonedDateTimeToUtc(localDateParts(day.localDate, localTime), timezone);
+}
+
+export function parsePairStartTimes(value: unknown): Record<string, string> | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'object' || value === null || Array.isArray(value))
+    throw new Error('pair start times must be an object');
+  const result: Record<string, string> = {};
+  for (const [key, time] of Object.entries(value)) {
+    if (!/^(R[1-4]S[1-8]|BRONZE)$/.test(key) || typeof time !== 'string' || !isValidLocalTime(time))
+      throw new Error('pair start times require a valid bracket slot and HH:mm time');
+    result[key] = time;
+  }
+  return result;
 }
 
 export interface RebasingRoundGameDay extends RoundGameDay {
@@ -64,7 +84,14 @@ export function rebaseRoundGameDaysAtOrAfter(
           ),
         };
       });
-      if (rebased[0]!.firstGameStartsAt.getTime() > notBefore.getTime()) return rebased;
+      const first = rebased[0]!;
+      const earliest = Math.min(
+        first.firstGameStartsAt.getTime(),
+        ...Object.keys(first.pairStartTimes ?? {}).map((key) =>
+          resolvePairDayStart(first, key, timezone).getTime(),
+        ),
+      );
+      if (earliest > notBefore.getTime()) return rebased;
     } catch {
       // A spring DST gap invalidates the whole shared offset. Move all game
       // days together so their configured local relationship stays intact.
@@ -75,6 +102,7 @@ export function rebaseRoundGameDaysAtOrAfter(
 }
 
 export interface RoundGameDayValidationInput {
+  timezone?: string;
   winsRequired: number;
   readinessMinutes: number;
   gameDurationMinutes?: number;
@@ -167,6 +195,22 @@ export function validateRoundGameDays(input: RoundGameDayValidationInput): void 
   }
   if (scheduledGames !== input.winsRequired * 2 - 1) {
     throw new Error('game day limits must equal the maximum possible series games');
+  }
+  const slots = new Set(input.days.flatMap((day) => Object.keys(day.pairStartTimes ?? {})));
+  for (const slot of slots) {
+    for (let index = 0; index < input.days.length - 1; index++) {
+      const day = input.days[index]!;
+      const next = input.days[index + 1]!;
+      const minutes =
+        day.maxResultGames * (input.readinessMinutes + (input.gameDurationMinutes ?? 20)) +
+        (day.maxResultGames - 1) * (input.interGameBreakMinutes ?? 5);
+      if (
+        resolvePairDayStart(day, slot, input.timezone ?? 'UTC').getTime() + minutes * 60_000 >
+        resolvePairDayStart(next, slot, input.timezone ?? 'UTC').getTime()
+      ) {
+        throw new Error('pair daily blocks overlap');
+      }
+    }
   }
 }
 

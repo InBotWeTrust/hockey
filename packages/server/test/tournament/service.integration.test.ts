@@ -1543,7 +1543,12 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           roundBreakMs: 0,
           firstGameStartsAt: '2030-09-10T08:00:00.000Z',
           scheduleDays: [
-            { localDate: '2030-09-10', firstWaveLocalTime: '11:00', maxResultGames: 2 },
+            {
+              localDate: '2030-09-10',
+              firstWaveLocalTime: '11:00',
+              maxResultGames: 2,
+              pairStartTimes: { R1S1: '13:00' },
+            },
             { localDate: '2030-09-11', firstWaveLocalTime: '11:00', maxResultGames: 1 },
           ],
         },
@@ -1655,7 +1660,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
       expect.objectContaining({
         firstGameStartsAt: '2030-09-14T08:00:00.000Z',
         scheduleDays: [
-          expect.objectContaining({ localDate: '2030-09-14' }),
+          expect.objectContaining({ localDate: '2030-09-14', pairStartTimes: { R1S1: '13:00' } }),
           expect.objectContaining({ localDate: '2030-09-15' }),
         ],
       }),
