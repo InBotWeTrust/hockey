@@ -164,7 +164,7 @@ describe('App routing + auth', () => {
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByTestId('chat-realtime')).not.toBeInTheDocument();
     expect(screen.queryByTestId('duel-invite-toast')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('update-prompt')).not.toBeInTheDocument();
+    expect(screen.getAllByTestId('update-prompt')).toHaveLength(1);
     expect(screen.queryByText('Профиль')).not.toBeInTheDocument();
   });
 

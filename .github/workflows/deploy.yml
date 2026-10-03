@@ -5,6 +5,10 @@ on:
     branches: [main]
   workflow_dispatch:
     inputs:
+      reset_beginner_onboarding:
+        description: One-time beginner story reset for all production users (backup required)
+        type: boolean
+        default: false
       grant_existing_inventory:
         description: 'Grant one starter inventory package set to users currently in production'
         required: false
@@ -155,6 +159,7 @@ jobs:
           PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}
           PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
+          RESET_BEGINNER_ONBOARDING: ${{ github.event_name == 'workflow_dispatch' && inputs.reset_beginner_onboarding || 'false' }}
           GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
           CORRECT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.correct_existing_inventory || 'false' }}
         run: |
@@ -191,6 +196,7 @@ jobs:
             ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$ANDROID_MANIFEST_PUBLIC_KEYS_BASE64" \
             PRODUCTION_YOOKASSA_SHOP_ID_B64="$PRODUCTION_YOOKASSA_SHOP_ID_B64" \
             PRODUCTION_YOOKASSA_SECRET_KEY_B64="$PRODUCTION_YOOKASSA_SECRET_KEY_B64" \
+            RESET_BEGINNER_ONBOARDING="$RESET_BEGINNER_ONBOARDING" \
             GRANT_EXISTING_INVENTORY="$GRANT_EXISTING_INVENTORY" \
             CORRECT_EXISTING_INVENTORY="$CORRECT_EXISTING_INVENTORY" \
             bash -s <<'ENDSSH'
@@ -328,6 +334,18 @@ jobs:
           docker compose exec -T postgres pg_restore --list < "$BONUS_BACKUP_FILE" > /dev/null
           echo "[deploy] production backup verified: $BONUS_BACKUP_FILE"
           docker compose run --rm -T server node packages/server/dist/db/migrate-cli.js < /dev/null
+          if [ "$RESET_BEGINNER_ONBOARDING" = "true" ]; then
+            BEGINNER_BACKUP_FILE="$BACKUP_DIR/beginner-story-reset-prod-$BACKUP_STAMP.dump"
+            docker compose exec -T postgres \
+              sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' \
+              > "$BEGINNER_BACKUP_FILE" < /dev/null
+            test -s "$BEGINNER_BACKUP_FILE"
+            docker compose exec -T postgres pg_restore --list < "$BEGINNER_BACKUP_FILE" > /dev/null
+            echo "[beginner-story-reset] backup verified: $BEGINNER_BACKUP_FILE"
+            docker compose run --rm -T \
+              -e BEGINNER_STORY_RESET_CONFIRM=2026-10-03-beginner-story-production-reset-v1 \
+              server node packages/server/dist/ops/beginnerStoryResetCli.js --apply < /dev/null
+          fi
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ]; then
             docker compose run --rm -T \
               server node packages/server/dist/ops/existingUserInventoryGrantCli.js < /dev/null

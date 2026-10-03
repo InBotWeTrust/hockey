@@ -39,9 +39,11 @@ function renderDestination(path: string, element: JSX.Element): RenderResult {
   );
 }
 
+let storyCompleted = false;
 let inventoryResponse: InventoryState;
 
 beforeEach(() => {
+  storyCompleted = false;
   inventoryResponse = {
     balances: { tokens: 1, stars: 2, experience: 3 },
     equipped: { stickItemId: 'stick-1', skatesItemId: null, nutritionItemId: null },
@@ -71,7 +73,7 @@ beforeEach(() => {
   triggerHaptic.mockClear();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
-    if (url.endsWith('/api/me')) return new Response(JSON.stringify(profile), { status: 200 });
+    if (url.endsWith('/api/me')) return new Response(JSON.stringify({ ...profile, beginnerOnboardingCompleted: storyCompleted }), { status: 200 });
     if (url.endsWith('/api/inventory/me')) {
       return new Response(JSON.stringify(inventoryResponse), { status: 200 });
     }
@@ -116,7 +118,7 @@ describe('profile destination screens', () => {
   it('renders the story placeholder and returns to profile', async () => {
     renderDestination('/profile/story', <ProfileStoryScreen />);
 
-    expect(screen.getByRole('heading', { name: 'Сюжет' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Сюжет' })).toBeInTheDocument();
     expect(screen.getAllByRole('article', { name: /Серия \d+: закрыто/ })).toHaveLength(10);
     for (let series = 1; series <= 10; series += 1) {
       const card = screen.getByRole('article', { name: `Серия ${series}: закрыто` });
@@ -129,6 +131,15 @@ describe('profile destination screens', () => {
     expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(10);
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(screen.getByText('profile screen')).toBeInTheDocument();
+  });
+
+  it('opens the completed first story series', async () => {
+    storyCompleted = true;
+    renderDestination('/profile/story', <ProfileStoryScreen />);
+    const card = await screen.findByRole('button', { name: 'Открыть серию «Путь со двора»' });
+    expect(card).toHaveTextContent('Просмотрено');
+    expect(card.querySelector('img')).toHaveAttribute('src', '/onboarding/story/scene-01-court.webp');
+    expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(9);
   });
 
   it('shows aggregate statistics without inventing mode totals', async () => {

@@ -108,6 +108,11 @@ const ProfileStoryScreen = lazy(() =>
     default: module.ProfileStoryScreen,
   })),
 );
+const ProfileStorySeriesScreen = lazy(() =>
+  import('../screens/ProfileStorySeriesScreen.js').then((module) => ({
+    default: module.ProfileStorySeriesScreen,
+  })),
+);
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
 );
@@ -495,6 +500,14 @@ function AppExperience(): JSX.Element {
                 }
               />
               <Route
+                path="/profile/story/series-1"
+                element={
+                  <PrivateRoute>
+                    <ProfileStorySeriesScreen />
+                  </PrivateRoute>
+                }
+              />
+              <Route
                 path="/profile/achievements"
                 element={
                   <PrivateRoute>
@@ -565,7 +578,6 @@ function AppExperience(): JSX.Element {
         </div>
         <BottomNav />
       </div>
-      {!isNativeAndroid() && <UpdatePrompt />}
     </>
   );
 }
@@ -605,6 +617,7 @@ export function App(): JSX.Element {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppFrame />
+        {!isNativeAndroid() && <UpdatePrompt />}
       </BrowserRouter>
     </QueryClientProvider>
   );
