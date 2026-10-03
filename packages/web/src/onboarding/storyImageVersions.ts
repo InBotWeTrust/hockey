@@ -1,5 +1,6 @@
 // Content versions invalidate browser and service-worker image caches.
 export const storyImageVersions: Record<string, string> = {
+  "scene-01-court-players.webp": "cb02f9676535",
   "scene-01-court.webp": "cad389e0699c",
   "scene-02-car-off.webp": "fec25be24d09",
   "scene-02-car-on.webp": "0d58823f0ec2",

@@ -186,6 +186,22 @@ describe('BeginnerStoryFlow', () => {
     vi.mocked(storyImagesReady).mockReturnValue(true);
   });
 
+  it('dims the populated court then reveals the lone player at separate text cues', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--court-dim');
+    expect(story).not.toHaveClass('beginner-story--court-empty');
+    act(() => vi.advanceTimersByTime(800));
+    expect(story).toHaveClass('beginner-story--court-dim');
+    expect(story).not.toHaveClass('beginner-story--court-empty');
+    act(() => vi.advanceTimersByTime(2_000));
+    expect(story).toHaveClass('beginner-story--court-empty');
+    vi.useRealTimers();
+  });
+
   it('uses compressed WebP artwork for every narrative scene', () => {
     for (const scene of Object.values(beginnerStoryScenes(300))) {
       expect(scene.image).toMatch(/\.webp$/);

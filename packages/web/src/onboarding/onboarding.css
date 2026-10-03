@@ -565,3 +565,12 @@
   .beginner-story__threshold-reveal,
   .beginner-story__arena-reveal { transition: none; }
 }
+
+.beginner-story--court .beginner-story__media { transition: filter 650ms ease-out; }
+.beginner-story--court-dim .beginner-story__media { filter: brightness(0.82); }
+.beginner-story__court-empty { opacity: 0; transition: opacity 850ms ease-out; }
+.beginner-story--court-empty .beginner-story__court-empty { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story--court .beginner-story__media,
+  .beginner-story__court-empty { transition: none; }
+}

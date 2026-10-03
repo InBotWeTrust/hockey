@@ -139,7 +139,10 @@ export function BeginnerStoryFlow({
       const resultPause =
         (scene === 'goal' && nextText.endsWith('Мужчина едва заметно кивает.')) ||
         (scene === 'miss' && nextText.endsWith('Незнакомец даже не меняется в лице.'));
-      const delay = resultPause
+      const courtPause = scene === 'court' && nextText.endsWith('Коробка давно опустела.');
+      const delay = courtPause
+        ? 1_200
+        : resultPause
         ? STORY_RESULT_PAUSE_MS
         : printed === ','
           ? STORY_COMMA_PAUSE_MS
@@ -155,6 +158,8 @@ export function BeginnerStoryFlow({
     };
   }, [content, reduceMotion, scene]);
 
+  const courtDim = scene === 'court' && (reduceMotion || typedText.includes('Стемнело.'));
+  const courtEmpty = scene === 'court' && (reduceMotion || typedText.includes('Коробка давно опустела.'));
   const numberVisible = scene === 'threshold' && (reduceMotion || typedText.includes(`\n\n${unlockGoalsRequired}\n`));
   const arenaVisible = scene === 'arena' && (reduceMotion || typedText.includes('представляете'));
   const turned = scene === 'name' && (reduceMotion || typedText.includes('смотрит через плечо.'));
@@ -172,7 +177,7 @@ export function BeginnerStoryFlow({
   function imagesFor(target: BeginnerStoryScene): string[] {
     if (target === 'shot') return [];
     const extra: Partial<Record<BeginnerStoryNarrativeScene, string>> = {
-      stranger: 'scene-03-stranger-empty.webp', mentor: 'scene-04-mentor-gesture-v2.webp',
+      court: 'scene-01-court-players.webp', stranger: 'scene-03-stranger-empty.webp', mentor: 'scene-04-mentor-gesture-v2.webp',
       goal: 'scene-06-goal-empty.webp', miss: 'scene-06-miss-empty.webp',
       name: 'scene-07-back.webp', threshold: 'scene-08-threshold-empty.webp', arena: 'scene-09-arena-empty.webp',
     };
@@ -235,7 +240,10 @@ export function BeginnerStoryFlow({
       const lineStart = characterIndex;
       const words = line.split(/(\s+)/);
       // Keep the last two words together so the final line cannot contain a lone word.
-      if (!threshold && words.length >= 3) words.splice(-3, 3, words.slice(-3).join(''));
+      const endingTokens = scene === 'finale' && line.endsWith('темно и тихо.') ? 5 : 3;
+      if (!threshold && words.length >= endingTokens) {
+        words.splice(-endingTokens, endingTokens, words.slice(-endingTokens).join(''));
+      }
       return (
         <Fragment key={`copy-${index}`}>
           {index > 0 ? '\n' : null}
@@ -264,7 +272,7 @@ export function BeginnerStoryFlow({
 
   return (
     <main
-      className={`beginner-story beginner-story--${scene}${headlights ? ' beginner-story--headlights' : ''}${finaleDark ? ' beginner-story--dark' : ''}${strangerVisible ? ' beginner-story--stranger-visible' : ''}${mentorGesture ? ' beginner-story--mentor-gesture' : ''}${puckVisible ? ' beginner-story--puck-visible' : ''}${turned ? ' beginner-story--turned' : ''}${numberVisible ? ' beginner-story--number-visible' : ''}${arenaVisible ? ' beginner-story--arena-visible' : ''}`}
+      className={`beginner-story beginner-story--${scene}${headlights ? ' beginner-story--headlights' : ''}${finaleDark ? ' beginner-story--dark' : ''}${strangerVisible ? ' beginner-story--stranger-visible' : ''}${mentorGesture ? ' beginner-story--mentor-gesture' : ''}${puckVisible ? ' beginner-story--puck-visible' : ''}${turned ? ' beginner-story--turned' : ''}${numberVisible ? ' beginner-story--number-visible' : ''}${arenaVisible ? ' beginner-story--arena-visible' : ''}${courtDim ? ' beginner-story--court-dim' : ''}${courtEmpty ? ' beginner-story--court-empty' : ''}`}
       aria-label={mode === 'required' ? 'Обязательный онбординг' : 'Путь со двора'}
       data-testid="beginner-story"
     >
@@ -291,6 +299,11 @@ export function BeginnerStoryFlow({
             showResultCard={false}
             {...(mode === 'replay' ? { tutorialApi: replayTutorialApi } : {})}
           />
+        ) : scene === 'court' ? (
+          <>
+            <img className="beginner-story__image" decoding="async" src={storyImageUrl('/onboarding/story/scene-01-court-players.webp')} alt="" />
+            <img className="beginner-story__image beginner-story__court-empty" decoding="async" src={storyImageUrl(activeContent.image)} alt={activeContent.alt} />
+          </>
         ) : scene === 'threshold' || scene === 'arena' ? (
           <>
             <img className="beginner-story__image" decoding="async" src={storyImageUrl(scene === 'threshold' ? '/onboarding/story/scene-08-threshold-empty.webp' : '/onboarding/story/scene-09-arena-empty.webp')} alt="" />
