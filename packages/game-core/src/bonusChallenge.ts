@@ -1,6 +1,7 @@
 import { beachFatigueState, beachMeltMultiplier, beachStumbleAllowed, integrateBeachMovement } from './beachCondition.js';
 import type { WindGust } from './beachWind.js';
 import type { BeachPuddleRule } from './beachEnvironment.js';
+import type { CyberpunkRules } from './cyberpunkEnvironment.js';
 import type { SkiEnvironmentRules } from './skiEnvironment.js';
 import type { DuelPlayerCondition } from './duelInventory.js';
 
@@ -34,6 +35,7 @@ export interface BonusChallengeBaseModifiers {
 }
 
 export interface BonusChallengeEnvironmentRules {
+  cyberpunk?: CyberpunkRules;
   ski?: SkiEnvironmentRules;
   beach?: {
     version: 1;

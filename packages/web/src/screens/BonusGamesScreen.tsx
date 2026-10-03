@@ -1,3 +1,4 @@
+import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -467,9 +468,9 @@ export function BonusGamesScreen(): JSX.Element {
             src={versionBonusGameArtwork(previewGame.preview_artwork_url)}
             alt={`Локация «${previewGame.arena.title}» и её вратарь`}
           />
-          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.preview_story}</p>
+          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.challenge_environment?.cyberpunk ? CYBERPUNK_STORY : previewGame.preview_story}</p>
           <p className="bonus-game-preview-modal__condition">
-            {(previewGame.slug === 'challenge-beach' || (previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski)) && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
+            {(previewGame.challenge_environment?.cyberpunk || previewGame.slug === 'challenge-beach' || (previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski)) && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
             {qualificationDescription(previewGame.qualification_rules)}
           </p>
           {previewGame.slug === 'challenge-beach' && previewGame.challenge_environment?.beach?.interactive && (
@@ -488,6 +489,7 @@ export function BonusGamesScreen(): JSX.Element {
               <li>Во время соскальзывания и передышки игрок не может бросать.</li>
             </ul>
           )}
+          {previewGame.slug==='challenge-cyberpunk-yard' && previewGame.challenge_environment?.cyberpunk && <CyberpunkHints/>}
           {startMutation.isError ? (
             <p role="alert" className="bonus-game-abandon-error">
               {safeUiError(startMutation.error)}

@@ -1,3 +1,6 @@
+import {CyberpunkEffects} from '../game/CyberpunkEffects';
+import {cyberpunkNotice} from '../game/cyberpunkNotice';
+import {cyberpunkEarliestTap,sampleCyberpunkEnvironment,cyberpunkCrossings,cyberpunkShooterMotion,cyberpunkEnvironmentForHistory,type CyberpunkPanelEvent} from '@hockey/game-core';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   createSkiAttemptSampler, resolveSkiCourtShot, skiVisualAt, skiNotice, skiSnowStrength,
@@ -774,6 +777,9 @@ export function BonusGamePlayScreen(): JSX.Element {
   const mountedRef = useRef(true);
   const beachCleanupCacheRef = useRef<{ source: BonusChallengeEnvironmentRules;
     events: BonusGameAttempt['current_period_cleanup_events']; environment: BonusChallengeEnvironmentRules } | null>(null);
+  const cyberRuntimeRef=useRef<{key:string;env:BonusChallengeEnvironmentRules;time:number;taps:readonly CyberpunkPanelEvent[];pauses:readonly BonusChallengeShotPause[]}|null>(null);
+  const [cyberUi,setCyberUi]=useState<ReturnType<typeof cyberpunkNotice>|null>(null);
+  useEffect(()=>{const timer=window.setInterval(()=>{const r=cyberRuntimeRef.current;if(!r)return;const next=cyberpunkNotice(r.env,r.time,r.taps,r.pauses);setCyberUi(old=>JSON.stringify(old)===JSON.stringify(next)?old:next);},100);return()=>window.clearInterval(timer);},[]);
   const skiRuntimeRef=useRef<{key:string;sampler:ReturnType<typeof createSkiAttemptSampler>;pauses:readonly BonusChallengeShotPause[];time:number}|null>(null);
   const [skiUi,setSkiUi]=useState<{notice:string|null;heavy:boolean;tone:ReturnType<typeof skiNoticeTone>}>({notice:null,heavy:false,tone:'warning'});
   useEffect(()=>{const timer=window.setInterval(()=>{
@@ -1134,6 +1140,9 @@ export function BonusGamePlayScreen(): JSX.Element {
   }
   const challengeEnvironment = initialEnvironment?.beach?.interactive
     ? beachCleanupCacheRef.current!.environment : initialEnvironment;
+  const cyberRules=attempt.game_core_version>=76&&attempt.rules.slug==='challenge-cyberpunk-yard'?challengeEnvironment?.cyberpunk:undefined;
+  cyberRuntimeRef.current=cyberRules?{key:`${attempt.id}:${periodNumber}`,env:challengeEnvironment!,time:cyberRuntimeRef.current?.key===`${attempt.id}:${periodNumber}`?cyberRuntimeRef.current.time:clockBasis.sceneElapsedMs,taps:attempt.current_period_panel_events??[],pauses:attempt.current_period_shot_pauses??[]}:null;
+  const cyberUiNow=cyberUi??(cyberRules?cyberpunkNotice(challengeEnvironment!,clockBasis.sceneElapsedMs,attempt.current_period_panel_events??[]):null);
   const useMotionClock = attempt.game_core_version >= 71 && challengeEnvironment !== null;
   const skiRules=attempt.game_core_version>=75&&attempt.rules.slug==='challenge-ski-resort'?challengeEnvironment?.ski:undefined;
   const skiKey=`${attempt.id}:${periodNumber}:${speedOverrides.goalFreq}:${speedOverrides.goalieFreq}:${speedOverrides.shooterFreq}`;
@@ -1167,7 +1176,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         reusable?: DuelPlayerCondition,
       ) => {
         const condition = getBonusChallengeCondition(
-          challengeEnvironment,
+          cyberRules?cyberpunkEnvironmentForHistory(challengeEnvironment,cyberRuntimeRef.current?.pauses??[]):challengeEnvironment,
           elapsedMs,
           reusable,
         );
@@ -1291,8 +1300,11 @@ export function BonusGamePlayScreen(): JSX.Element {
         beachEnvironment={attempt.game_core_version >= 72 && attempt.rules.slug === 'challenge-beach'
           ? challengeEnvironment?.beach : undefined}
         duelCondition={challengeCondition}
-        shooterMotionTime={skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
-        canStartAction={challengeEnvironment?.beach?.interactive ? () => {
+        cyberpunkEnvironment={cyberRules?{rules:cyberRules,taps:attempt.current_period_panel_events??[]}:undefined}
+        scoreboardDimmed={Boolean(cyberRules && cyberUiNow?.scene.outage)}
+        rinkUnderlay={cyberRules&&cyberUiNow?<CyberpunkEffects scene={cyberUiNow.scene} layer="ice"/>:undefined}
+        shooterMotionTime={cyberRules ? (time,local)=>{const r=cyberRuntimeRef.current!;r.time=time;r.pauses=[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))];return cyberpunkShooterMotion(challengeEnvironment!,time,speedOverrides.shooterFreq,r.pauses);} : skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
+        canStartAction={cyberRules || challengeEnvironment?.beach?.interactive ? () => {
           const state = useBonusGameStore.getState();
           return !state.inFlight && !state.needsReconcile && !state.pendingShot;
         } : undefined}
@@ -1311,14 +1323,17 @@ export function BonusGamePlayScreen(): JSX.Element {
             expectedCleanups: attempt.current_period_cleanup_events?.length ?? 0});
         } : undefined}
         skidVisual={skiRuntime ? time=>{const e=skiVisualAt(skiRuntime.sampler.events(skiRuntime.pauses),time);return e?.target?{target:e.target,ageMs:time-e.startMs}:null;} : undefined}
-        conditionNoticeOverride={!!skiRuntime}
-        rinkOverlay={skiRuntime ? <SkiSnowfall heavy={skiUi.heavy}/> : undefined}
+        conditionNoticeOverride={!!skiRuntime || !!cyberRules}
+        rinkOverlay={cyberRules&&cyberUiNow?<CyberpunkEffects scene={cyberUiNow.scene} layer="panel" busy={inFlight || needsReconcile || !!pendingShot} onTap={()=>{
+ const r=cyberRuntimeRef.current!;const scene=sampleCyberpunkEnvironment(cyberRules,r.time,r.taps);if(!scene.activeStrip)return;
+ void useBonusGameStore.getState().tapPanel({eventId:crypto.randomUUID(),stripEventId:scene.activeStrip.id,period:periodNumber,tapTime:r.time,expectedShots:attempt.current_period_shots_taken,expectedPanels:r.taps.length});
+}}/>:skiRuntime ? <SkiSnowfall heavy={skiUi.heavy}/> : undefined}
         {...(skiRuntime ? {gameLayerStyle:{...LONG_COURT_GAME_LAYER_STYLE,transform:`matrix(1, ${SKI_ENTITY_SHEAR}, 0, 1, 0, 0)`,transformOrigin:'50% 50%'}} : {})}
         shotResolver={skiRules && skiRuntime ? ({input,goalieConfig,seed,shotIndex,stickEffects})=>resolveSkiCourtShot(input,goalieConfig,seed,shotIndex,skiRules,skiRuntime.pauses,stickEffects) : undefined}
-        statusNotice={skiRuntime ? skiUi.notice??skiRuntime.sampler.player(0,[]).notice : challengeEnvironment?.baseModifiers?.label}
-        statusNoticeTone={skiRuntime ? skiUi.tone : undefined}
+        statusNotice={cyberRules?cyberUiNow?.notice:skiRuntime ? skiUi.notice??skiRuntime.sampler.player(0,[]).notice : challengeEnvironment?.baseModifiers?.label}
+        statusNoticeTone={cyberRules?cyberUiNow?.tone:skiRuntime ? skiUi.tone : undefined}
         statusNoticeClassName="bonus-challenge-environment-notice"
-        statusNoticeUnderScoreboard={!!skiRuntime || challengeEnvironment?.baseModifiers !== undefined}
+        statusNoticeUnderScoreboard={!!cyberRules || !!skiRuntime || challengeEnvironment?.baseModifiers !== undefined}
         stickEffects={{
           ...STICK_NEUTRAL,
           shotZoneMultiplier: stickItem?.effects.shotZoneMultiplier ?? 1,
@@ -1470,7 +1485,9 @@ export function BonusGamePlayScreen(): JSX.Element {
                   seed: context.seed,
                   shotIndex: context.shotIndex,
                   phaseOffsets: context.phaseOffsets,
-                  earliestTapTime: earliestMarksmanshipTapRef.current,
+                  earliestTapTime: cyberRules ? Math.max(earliestMarksmanshipTapRef.current,cyberpunkEarliestTap(attempt.current_period_shot_pauses??[])) : earliestMarksmanshipTapRef.current,
+                  shooterMotionAt:cyberRules?time=>cyberpunkShooterMotion(challengeEnvironment!,time,speedOverrides.shooterFreq,cyberRuntimeRef.current?.pauses??[]):undefined,
+                  courtCrossings:cyberRules?shot=>cyberpunkCrossings(shot,cyberRules,attempt.current_period_panel_events??[],context.phaseOffsets):undefined,
                   scoring: marksmanshipRules!.scoring,
                   previousGoals: marksmanshipGoalInputsRef.current,
                 });
@@ -1480,8 +1497,8 @@ export function BonusGamePlayScreen(): JSX.Element {
                 };
                 earliestMarksmanshipTapRef.current =
                   context.input.tapTime +
-                  (PUCK_START.y - GOAL_OPENING.y) /
-                    (context.input.puckSpeedPerMs ?? speedOverrides.puckSpeed);
+                  (cyberRules && context.flightMs !== undefined ? context.flightMs : (PUCK_START.y - GOAL_OPENING.y) /
+                    (context.input.puckSpeedPerMs ?? speedOverrides.puckSpeed));
                 if (classification.result.type === 'goal') {
                   marksmanshipGoalInputsRef.current = [
                     ...marksmanshipGoalInputsRef.current,

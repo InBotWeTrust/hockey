@@ -1,3 +1,4 @@
+import type {CyberpunkPanelEvent} from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
@@ -213,6 +214,7 @@ export interface BonusGameAttempt {
   reward_granted: boolean;
   attempt_seed: string;
   game_core_version: number;
+  current_period_panel_events?: CyberpunkPanelEvent[];
   current_period_cleanup_events?: BeachCleanupEvent[];
   current_period_shot_pauses?: { tapTime: number; flightMs: number }[];
   definition_revision: number;
@@ -504,3 +506,6 @@ export const cleanupBonusBeachPuddle = (attemptId: string, body: BeachCleanupReq
   bonusMutation(apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/beach/cleanup`, {
     method: 'POST', body: JSON.stringify(body), ...(options?.signal ? {signal: options.signal} : {}),
   }).then(normalizeAttemptResponse));
+
+export interface CyberpunkPanelRequest {eventId:string;stripEventId:string;period:number;tapTime:number;expectedShots:number;expectedPanels:number}
+export const tapBonusCyberpunkPanel=(attemptId:string,body:CyberpunkPanelRequest,options?:BonusRequestOptions):Promise<BonusAttemptResponse>=>bonusMutation(apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/cyberpunk/panel`,{method:'POST',body:JSON.stringify(body),...(options?.signal?{signal:options.signal}:{})}));

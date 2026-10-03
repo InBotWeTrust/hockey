@@ -1,3 +1,4 @@
+import {tapBonusCyberpunkPanel,type CyberpunkPanelRequest} from '../api/bonusGames';
 import { create } from 'zustand';
 import {
   cleanupBonusBeachPuddle, type BeachCleanupRequest,
@@ -49,6 +50,7 @@ interface BonusGameStoreState {
   receivedAtPerformanceMs: number | null;
   loadCurrent: () => Promise<BonusGameAttempt | null>;
   loadAttempt: (attemptId: string) => Promise<BonusGameAttempt | null>;
+  tapPanel: (body:CyberpunkPanelRequest)=>Promise<boolean>;
   cleanupPuddle: (body: BeachCleanupRequest) => Promise<boolean>;
   applyState: (next: BonusGameAttempt | null) => void;
   applyPendingShot: (fallback?: BonusGameAttempt) => BonusGameAttempt | null;
@@ -167,7 +169,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   receivedAtPerformanceMs: null,
 
   loadCurrent: async () => {
-    if (get().pendingShot !== null || (get().inFlight && get().attempt?.rules.challenge_environment?.beach?.interactive)) return get().attempt;
+    if (get().pendingShot !== null || (get().inFlight && (get().attempt?.rules.challenge_environment?.beach?.interactive || get().attempt?.rules.challenge_environment?.cyberpunk))) return get().attempt;
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {
@@ -194,7 +196,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   },
 
   loadAttempt: async (attemptId) => {
-    if (get().pendingShot !== null || (get().inFlight && get().attempt?.rules.challenge_environment?.beach?.interactive)) return get().attempt;
+    if (get().pendingShot !== null || (get().inFlight && (get().attempt?.rules.challenge_environment?.beach?.interactive || get().attempt?.rules.challenge_environment?.cyberpunk))) return get().attempt;
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {
@@ -240,6 +242,30 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
       return accepted;
     } catch (error) {
       if (current()) recordMutationFailure(set, get, errorDetails(error, 'Не удалось убрать воду.'));
+      return false;
+    } finally { if (current() || get().attempt?.id === attempt.id) set({inFlight: false}); }
+  },
+
+  tapPanel: async body => {
+    const attempt = get().attempt;
+    if (!attempt || get().inFlight || get().pendingShot || get().needsReconcile) return false;
+    beginMutation(set, get);
+    const current = () => get().attempt === attempt;
+    try {
+      const outcome = await withGameRequestReconciliation({
+        request: signal => tapBonusCyberpunkPanel(attempt.id, body, {signal}),
+        reconcile: async signal => (await fetchBonusAttempt(attempt.id, {signal})).attempt,
+        isReconciled: candidate => candidate.id === attempt.id &&
+          (candidate.current_period_panel_events?.some(event => event.id === body.eventId) ?? false),
+        isRequestErrorDefinitive: isDefinitiveGameRequestError,
+      });
+      if (!current()) return false;
+      const candidate = outcome.kind === 'request' ? outcome.value.attempt : outcome.value;
+      const accepted = candidate.current_period_panel_events?.some(event => event.id === body.eventId) ?? false;
+      applyServerAttempt(set, get, candidate);
+      return accepted;
+    } catch (error) {
+      if (current()) recordMutationFailure(set, get, errorDetails(error, 'Не удалось отключить полосу.'));
       return false;
     } finally { if (current() || get().attempt?.id === attempt.id) set({inFlight: false}); }
   },

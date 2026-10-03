@@ -1,4 +1,4 @@
-import { createSkiAttemptSampler, resolveSkiCourtShot, deriveShotSeed } from '@hockey/game-core';
+import { GAME_CORE_VERSION, createSkiAttemptSampler, resolveSkiCourtShot, deriveShotSeed } from '@hockey/game-core';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
@@ -72,7 +72,7 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative ski attempts', () => {
     expect(rule.durationMs).toBe(180000);
     expect(rule.shotsLimit).toBe(35);
     expect(a.rules.qualificationRules).toMatchObject({ targetGoals: 26, shotsLimit: 35 });
-    expect(a.gameCoreVersion).toBe(75);
+    expect(a.gameCoreVersion).toBe(GAME_CORE_VERSION);
     const env = a.rules.challengeEnvironment!.ski!;
     expect(env.seed).toBe(a.attemptSeed);
     const sampler = createSkiAttemptSampler(env, {

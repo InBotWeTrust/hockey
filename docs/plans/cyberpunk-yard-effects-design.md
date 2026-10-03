@@ -8,7 +8,7 @@ Base: `origin/dev`, `9b1dd5c494eb08fb06e838ed69fe654ac062e59b`.
 
 Keep the tap-to-shoot game and give the yard three readable difficulties: player fatigue, magnetic strips, and power outages. Use the existing arena, preview and goalkeeper. Do not change rink geometry.
 
-The current challenge is **18 accuracy points in 150 seconds**, with unlimited shots. Preserve that objective, qualification, IDs, rewards, progress, base speeds and goalkeeper dash pattern. The earlier suggested story about a required number of goals must instead describe accuracy points. The objective is not 18 goals.
+The current challenge is **18 accuracy points in 150 seconds**, with unlimited shots. Preserve that objective, qualification, IDs, rewards, progress, base speeds. Change the goalkeeper pattern to linear with amplitude 1 for full board-to-board travel, leaving the existing sprite-safe board margins. Preserve the configured frequency until rendered acceptance establishes whether it needs adjustment. The earlier suggested story about a required number of goals must instead describe accuracy points. The objective is not 18 goals.
 
 Local implementation and acceptance first. No push, merge, deployment or dev/prod data writes in this task until separately authorized. Production Challenges remain closed through both the tab and direct launch guards. Existing attempts keep their immutable snapshots and original behavior.
 
@@ -26,10 +26,10 @@ Reuse `BonusChallengeFatigueRules`, integrated movement clocks and existing play
 
 ### Magnetic strips and panel
 
-- Three fixed strips inside the playable ice, positioned in shared normalized rink coordinates. Use those same coordinates for rendering and flight intersections.
-- A seeded event in each 15 s window; first window starts after 5 s. One strip at a time. Each event warns for 1 s and is active for 5 s. At least 4 s of inactive time between events.
+- Six strip zones inside the playable ice, positioned in shared normalized rink coordinates. Use those same coordinates for rendering and flight intersections.
+- Twenty seeded events in 7.5 s windows, choosing random zones. One strip at a time. Each event warns for 1 s and is active for 3 s; at least 3 s of inactive time between events. Each strip spans 50% of rink width, with edges converging toward the far center.
 - Warning: subdued violet pulse. Active: brighter narrow strip, travelling light and small sparks. Markings and puck stay visible.
-- Inside an active strip the puck travels at 50% of its ordinary configured speed. It does not change horizontal direction, stop permanently or disappear.
+- Inside an active strip the puck travels at 10% of its ordinary configured speed. It does not change horizontal direction, stop permanently or disappear.
 - Flight is integrated across strip boundaries and activation/deactivation times, so a strip switching during a flight affects only that portion. Goalkeeper/goal collision time follows the actual arrival time.
 - An accessible panel button is available while a strip is active. Three accepted taps shut down the current event until its scheduled end. Next event begins normally.
 - The panel shows remaining taps. Taps do not shoot and remain available during player rest/stumbles. Disable them during shot flight/result reconciliation to avoid conflicting histories.
@@ -38,9 +38,9 @@ Reuse `BonusChallengeFatigueRules`, integrated movement clocks and existing play
 
 ### Power outages
 
-- Four seeded outages spread over the match. Two brief lamp flickers warn for 1 s, then emergency light lasts 3 s.
-- Prefer nonoverlapping magnetic event intervals, so effects are readable individually. This is visibility only: it never changes motion, score, collision or shooting availability.
-- Dark overlay is clipped to the ice scene. Player, goalkeeper, goal and puck receive restrained luminous outlines above it. Menu, notices, panel and controls remain readable.
+- Ten independently seeded outages spread over the match. Two brief lamp flickers warn for 1 s, then darkness lasts 5 s.
+- Outages and strips may overlap, as explicitly requested in the latest design feedback. This is visibility only: it never changes motion, score, collision or shooting availability.
+- Dark overlay is clipped to the ice scene. Player, goalkeeper, goal, puck and scoreboard dim to 16% brightness. The breaker and controls remain readable.
 - Avoid full-screen white flashes. Reduced-motion mode uses a steady warning and dimming.
 
 ### One notice
@@ -65,6 +65,7 @@ Preview story draft: «Во дворе перегревается электро
 
 ## Acceptance checklist
 
+- [ ] RED then GREEN: cyberpunk goalkeeper moves continuously between both sprite-safe board limits; no stationary dash intervals. Client and server use the same linear config. Existing attempt snapshots retain their dash config.
 - [ ] RED then GREEN: seeded schedule, gaps, end-of-period boundaries and strip switching mid-flight.
 - [ ] RED then GREEN: three panel taps, duplicate UUID, changed retry payload, rapid taps and wrong ownership.
 - [ ] RED then GREEN: shared client/server collision result with delayed puck arrival and accepted shot pauses.
@@ -73,4 +74,10 @@ Preview story draft: «Во дворе перегревается электро
 - [ ] Old snapshots and other modes retain existing paths; production launch stays forbidden.
 - [ ] Local package tests/typechecks/builds and diff review; report baseline failures separately.
 - [ ] Local browser actual attempt: preview, start, three panel taps, blocked/accepted shots, outage visibility, rebound, rest and tab return.
-- [ ] Dev deployment and real dev acceptance are separate, pending authorization.
+- [ ] Dev deployment authorized on 2026-10-03; real dev acceptance is separate.
+
+Local tuning approved: 20 strip events per 150 seconds across six zones, 1-second warning and 3-second activity; ten light outages. Entity brightness 16%; goalkeeper speed reduced by 10%.
+
+Follow-up tuning: independently seeded strip and outage schedules can overlap; random strip zones; outages include 1-second warning and 5-second darkness. Strip visuals use tapered polygons with stronger active edges. Local synthetic fixture checked; authenticated browser acceptance and deployment remain pending.
+
+Breaker prop: generated transparent cabinet sprite replaces the text button. It enters from a deterministically chosen left/right edge at 46%, 53%, or 60% of rink height, between entity travel lanes. Warning starts entry; active strip permits three taps; strip disappearance starts 280 ms exit. Reduced-motion disables transitions.

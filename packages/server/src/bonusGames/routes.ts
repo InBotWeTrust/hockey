@@ -5,6 +5,7 @@ import { AppError } from '../plugins/errors.js';
 import { listBonusGameCards, type BonusGameCardDto } from './catalog.js';
 import { purchaseBonusGame } from './economy.js';
 import {
+  tapCyberpunkPanel,
   cleanupBeachPuddle,
   abandonBonusAttempt,
   acknowledgeBonusPreview,
@@ -253,6 +254,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     closed_at: attempt.closedAt,
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
+    ...(attempt.currentPeriodPanelEvents ? {current_period_panel_events:attempt.currentPeriodPanelEvents}:{}),
     ...(attempt.currentPeriodCleanupEvents ? { current_period_cleanup_events: attempt.currentPeriodCleanupEvents } : {}),
     ...(attempt.currentPeriodShotPauses ? { current_period_shot_pauses: attempt.currentPeriodShotPauses } : {}),
     goals: attempt.goals,
@@ -511,6 +513,19 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
       }).strict(), request.body);
       const now = new Date();
       const attempt = await cleanupBeachPuddle(app.pg, { ...body, userId: request.user.id, attemptId: params.attemptId, now });
+      return { attempt: toAttemptHttpDto(attempt, now) };
+    }));
+
+  app.post('/bonus-games/attempts/:attemptId/cyberpunk/panel',
+    { preHandler: [app.authenticate, challengeAccessGuard] }, async request => runBonusRoute(async () => {
+      const params = parseRequest(attemptParamsSchema, request.params);
+      const body = parseRequest(z.object({
+        eventId: z.string().uuid(), period: z.number().int().min(1).max(10),
+        stripEventId: z.string().min(1).max(64), tapTime: z.number().finite().min(0).max(86400000),
+        expectedShots: z.number().int().min(0).max(10000), expectedPanels: z.number().int().min(0).max(1000),
+      }).strict(), request.body);
+      const now = new Date();
+      const attempt = await tapCyberpunkPanel(app.pg, { ...body, userId: request.user.id, attemptId: params.attemptId, now });
       return { attempt: toAttemptHttpDto(attempt, now) };
     }));
 
