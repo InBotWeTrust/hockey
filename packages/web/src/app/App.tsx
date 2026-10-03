@@ -613,7 +613,6 @@ function AppExperience(): JSX.Element {
         </div>
         {bottomNavVisible && <BottomNav />}
       </div>
-      {!isNativeAndroid() && <UpdatePrompt />}
     </>
   );
 }
@@ -657,6 +656,7 @@ export function App(): JSX.Element {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppFrame />
+        {!isNativeAndroid() && <UpdatePrompt />}
       </BrowserRouter>
     </QueryClientProvider>
   );
