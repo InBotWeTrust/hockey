@@ -1,6 +1,8 @@
+vi.mock('./storyImages.js', () => ({ prepareStoryImages: vi.fn().mockResolvedValue(undefined), storyImagesReady: vi.fn().mockReturnValue(true), storyImageUrl: (url: string) => url }));
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BeginnerStoryFlow } from './BeginnerStoryFlow.js';
+import { prepareStoryImages, storyImagesReady } from './storyImages.js';
 import { beginnerStoryScenes } from './beginnerStory.js';
 
 vi.mock('./TutorialShotStep.js', () => ({
@@ -43,6 +45,145 @@ function advanceToShot(): void {
 describe('BeginnerStoryFlow', () => {
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
+  });
+
+  it('adds decorative snowfall only to the court and arena', () => {
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    expect(screen.getByTestId('story-snow')).toHaveAttribute('aria-hidden', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Подобрать шайбу' }));
+    expect(screen.queryByTestId('story-snow')).not.toBeInTheDocument();
+  });
+
+  it('darkens the finale only after the narration cue and keeps snow in the arena', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const action of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?', 'Перейти к броску']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый гол' }));
+    for (const action of ['Узнать, что важно', 'И это всё?', 'А потом?']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    expect(screen.getByTestId('story-snow')).toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(30_000));
+    fireEvent.click(screen.getByRole('button', { name: 'Хм, интересно' }));
+    expect(screen.getByTestId('beginner-story')).not.toHaveClass('beginner-story--dark');
+    expect(screen.queryByTestId('story-snow')).not.toBeInTheDocument();
+    act(() => vi.advanceTimersByTime(5_000));
+    expect(screen.getByTestId('beginner-story')).toHaveClass('beginner-story--dark');
+    vi.useRealTimers();
+  });
+
+  it('starts the stranger scene with a background plate and reveals the accepted frame at the cue', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const action of ['Подобрать шайбу', 'Интересно, кто это?']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--stranger-visible');
+    act(() => vi.advanceTimersByTime(4_000));
+    expect(story).toHaveClass('beginner-story--stranger-visible');
+    vi.useRealTimers();
+  });
+
+  it('reveals the raised-finger mentor frame at the final advice', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const action of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--mentor-gesture');
+    act(() => vi.advanceTimersByTime(10_000));
+    expect(story).toHaveClass('beginner-story--mentor-gesture');
+    vi.useRealTimers();
+  });
+
+  it.each(['Тестовый гол', 'Тестовый промах'])('reveals the puck after the first result sentence for %s', action => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const label of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?', 'Перейти к броску']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: label }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--puck-visible');
+    act(() => vi.advanceTimersByTime(3_000));
+    expect(story).toHaveClass('beginner-story--puck-visible');
+    vi.useRealTimers();
+  });
+
+  it('reveals the over-shoulder frame only at the turn cue', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const action of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?', 'Перейти к броску']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый гол' }));
+    act(() => vi.advanceTimersByTime(30_000));
+    const previousMedia = screen.getByTestId('beginner-story').querySelector('.beginner-story__media');
+    fireEvent.click(screen.getByRole('button', { name: 'Узнать, что важно' }));
+    expect(screen.getByTestId('beginner-story').querySelector('.beginner-story__media')).not.toBe(previousMedia);
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--turned');
+    act(() => vi.advanceTimersByTime(6_000));
+    expect(story).toHaveClass('beginner-story--turned');
+    vi.useRealTimers();
+  });
+
+  it('reveals the board number and arena at their narration cues', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    for (const action of ['Подобрать шайбу', 'Интересно, кто это?', 'Что?', 'Перейти к броску']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Тестовый гол' }));
+    for (const action of ['Узнать, что важно', 'И это всё?']) {
+      act(() => vi.advanceTimersByTime(30_000));
+      fireEvent.click(screen.getByRole('button', { name: action }));
+    }
+    const story = screen.getByTestId('beginner-story');
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--number-visible');
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(story).toHaveClass('beginner-story--number-visible');
+    fireEvent.click(screen.getByRole('button', { name: 'А потом?' }));
+    expect(story.querySelectorAll('img')).toHaveLength(2);
+    expect(story).not.toHaveClass('beginner-story--arena-visible');
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(story).toHaveClass('beginner-story--arena-visible');
+    vi.useRealTimers();
+  });
+
+  it('keeps the current scene while loading and supports retry after failure', async () => {
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    vi.mocked(storyImagesReady).mockReturnValue(false);
+    vi.mocked(prepareStoryImages).mockRejectedValueOnce(new Error('offline'));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Подобрать шайбу' })));
+    expect(screen.getByTestId('beginner-story')).toHaveClass('beginner-story--court');
+    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось загрузить');
+    vi.mocked(prepareStoryImages).mockResolvedValue(undefined);
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку' })));
+    expect(screen.getByTestId('beginner-story')).toHaveClass('beginner-story--car');
+    vi.mocked(storyImagesReady).mockReturnValue(true);
   });
 
   it('uses compressed WebP artwork for every narrative scene', () => {

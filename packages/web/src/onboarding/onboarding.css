@@ -490,3 +490,78 @@
     border-color: #ffffff;
   }
 }
+
+
+.beginner-story__snow {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.beginner-story__snow i {
+  position: absolute;
+  top: -8px;
+  border-radius: 50%;
+  background: rgba(240, 247, 255, 0.65);
+  animation: beginner-story-snowfall linear infinite;
+}
+
+@keyframes beginner-story-snowfall {
+  from { transform: translate3d(0, -12px, 0); }
+  to { transform: translate3d(-36px, 100vh, 0); }
+}
+
+.beginner-story--finale .beginner-story__image {
+  filter: brightness(1);
+  transition: filter 1800ms ease-out;
+}
+
+.beginner-story--finale.beginner-story--dark .beginner-story__image {
+  filter: brightness(0.48);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__snow { display: none; }
+  .beginner-story--finale .beginner-story__image { transition: none; }
+}
+
+.beginner-story__stranger-reveal {
+  opacity: 0;
+  transition: opacity 900ms ease-out;
+}
+
+.beginner-story--stranger-visible .beginner-story__stranger-reveal {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__stranger-reveal { transition: none; }
+}
+
+.beginner-story__mentor-gesture { opacity: 0; transition: opacity 420ms ease-out; }
+.beginner-story--mentor-gesture .beginner-story__mentor-gesture { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__mentor-gesture { transition: none; }
+}
+
+.beginner-story__puck-reveal { opacity: 0; transition: opacity 650ms ease-out; }
+.beginner-story--puck-visible .beginner-story__puck-reveal { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__puck-reveal { transition: none; }
+}
+
+.beginner-story__turn-reveal { opacity: 0; transition: opacity 550ms ease-out; }
+.beginner-story--turned .beginner-story__turn-reveal { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__turn-reveal { transition: none; }
+}
+
+.beginner-story__threshold-reveal { opacity: 0; transition: opacity 600ms ease-out; }
+.beginner-story__arena-reveal { opacity: 0; transition: opacity 1400ms ease-out; }
+.beginner-story--number-visible .beginner-story__threshold-reveal,
+.beginner-story--arena-visible .beginner-story__arena-reveal { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .beginner-story__threshold-reveal,
+  .beginner-story__arena-reveal { transition: none; }
+}
