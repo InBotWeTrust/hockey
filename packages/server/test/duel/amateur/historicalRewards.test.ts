@@ -42,6 +42,11 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
     const pool = createTestPool();
     await resetDatabase(pool);
     await applyMigrations(pool, previous);
+    // Current gameplay-lock readers require this additive relation. It is empty
+    // and does not migrate or normalize the historical reward snapshots below.
+    await pool.query(
+      await fs.readFile(path.join(migrations, '177_playoff_pair_day_schedule.sql'), 'utf8'),
+    );
     await pool.end();
     const { databaseUrl, redisUrl } = getTestUrls();
     app = await buildApp({
@@ -86,14 +91,17 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
       const templateId = template.rows[0]!.id;
       // The current challenge route requires post-121 admission tables. Seed the
       // pre-121 fixture directly so this test stays focused on migration 121.
-      const templateRow = (await app.pg.query('select * from amateur_duel_template where id=$1', [templateId])).rows[0];
+      const templateRow = (
+        await app.pg.query('select * from amateur_duel_template where id=$1', [templateId])
+      ).rows[0];
       const rules = makeRulesSnapshot(templateRow, await getGameSettings(app.pg));
       const seeded = await app.pg.query<{ id: string }>(
         `insert into amateur_duel_match
          (template_id, challenger_user_id, opponent_user_id, status, season_key,
           rules_snapshot, reward_rules, match_seed, starts_at, ends_at, game_core_version)
          values ($1,$2,$3,'invited','2026-08',$4,$5,'history',now(),now() + interval '1 hour',1)
-         returning id`, [templateId, userId, opponentId, rules, rules.rewardRules],
+         returning id`,
+        [templateId, userId, opponentId, rules, rules.rewardRules],
       );
       const matchId = seeded.rows[0]!.id;
       await app.pg.query(

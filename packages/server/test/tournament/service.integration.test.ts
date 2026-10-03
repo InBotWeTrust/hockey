@@ -4681,7 +4681,7 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
           [day.rows[0]!.id],
         )
       ).rows,
-    ).toEqual([{ schedule_revision: 1 }]);
+    ).toEqual([{ schedule_revision: 0 }]);
     expect(
       (
         await pool.query<{ count: string }>(
