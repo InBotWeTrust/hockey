@@ -1,3 +1,4 @@
+import type {CyberpunkPanelEvent} from '@hockey/game-core';
 import type {
   BeachCleanupEvent,
   BonusChallengeEnvironmentRules,
@@ -128,6 +129,7 @@ const beachEnvironmentSchema = z.object({
 });
 
 const challengeEnvironmentSchema = z.object({
+  cyberpunk: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000)}).strict().optional(),
   ski: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000)}).strict().optional(),
   beach: beachEnvironmentSchema.optional(),
   baseModifiers: z.object({
@@ -156,6 +158,7 @@ export function parseBonusChallengeEnvironmentRules(
   const parsed = challengeEnvironmentSchema.safeParse(value);
   if (!parsed.success) throw new Error('invalid bonus challenge environment rules');
   return {
+    ...(parsed.data.cyberpunk === undefined ? {} : {cyberpunk:parsed.data.cyberpunk}),
     ...(parsed.data.ski === undefined ? {} : {ski:parsed.data.ski}),
     ...(parsed.data.beach === undefined ? {} : { beach: parsed.data.beach }),
     ...(parsed.data.baseModifiers === undefined
@@ -347,6 +350,7 @@ export interface BonusGameAttemptDTO {
   closedAt: string | null;
   shotsTaken: number;
   currentPeriodShotsTaken: number;
+  currentPeriodPanelEvents?: CyberpunkPanelEvent[];
   currentPeriodCleanupEvents?: BeachCleanupEvent[];
   currentPeriodShotPauses?: { tapTime: number; flightMs: number }[];
   goals: number;

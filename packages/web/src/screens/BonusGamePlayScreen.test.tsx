@@ -2047,3 +2047,20 @@ it('activates server-snapshotted ski rendering without changing legacy attempts'
   const latest=playViewProbe.mock.calls.at(-1)![0] as Record<string,unknown>;
   expect((latest.shooterMotionTime as typeof sample)(3000,pauses)).toBe(beforeReply);
 });
+
+it('activates server-snapshotted cyberpunk rendering without changing legacy attempts',()=>{
+  vi.clearAllMocks();
+  const base=attempt(),ski=attempt({game_core_version:76,current_period:1,current_period_shot_pauses:[],rules:{...base.rules,slug:'challenge-cyberpunk-yard',skill_code:'challenge',challenge_environment:{cyberpunk:{version:1,seed:base.attempt_seed,durationMs:150000}},periods:[{...base.rules.periods[0]!,duration_ms:150000,goal_frequency:.5,goalie_frequency:.6,shooter_frequency:.75,puck_speed_per_ms:1.25}]}});
+  setStore({attempt:ski});renderScreen();
+  const props=playViewProbe.mock.calls.at(-1)![0] as Record<string,unknown>;
+  expect(props.cyberpunkEnvironment).toBeDefined();expect(props.rinkUnderlay).toBeDefined();
+  expect(props.conditionNoticeOverride).toBe(true);
+  expect(props.statusNoticeTone).toBe('warning');
+  expect(props.skidVisual).toBeUndefined();
+  const sample=props.shooterMotionTime as (time:number,pauses:{tapTime:number;flightMs:number}[])=>number;
+  expect(sample(2200,[{tapTime:2000,flightMs:400}])).toBe(sample(2000,[{tapTime:2000,flightMs:400}]));
+  const pauses=[{tapTime:2000,flightMs:400}],beforeReply=sample(3000,pauses);
+  act(()=>setStore({attempt:{...ski,current_period_shot_pauses:pauses}}));
+  const latest=playViewProbe.mock.calls.at(-1)![0] as Record<string,unknown>;
+  expect((latest.shooterMotionTime as typeof sample)(3000,pauses)).toBe(beforeReply);
+});

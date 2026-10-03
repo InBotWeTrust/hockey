@@ -1,3 +1,4 @@
+import {resolveCyberpunkCourtShot,type CyberpunkRules,type CyberpunkPanelEvent} from '@hockey/game-core';
 import { SnowBurst } from './renderer/SnowBurst.js';
 import type { SkidVisual } from './loop.js';
 import {
@@ -368,6 +369,7 @@ export interface PlayViewProps<TState> {
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
   hideScoreboard?: boolean | undefined;
+  scoreboardDimmed?: boolean | undefined;
   overlayControls?: ReactNode;
   rinkOverlay?: ReactNode;
   rinkCover?: ReactNode;
@@ -383,6 +385,7 @@ export interface PlayViewProps<TState> {
   puckOptions?: PuckOptions | undefined;
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
+  cyberpunkEnvironment?: {rules:CyberpunkRules;taps:readonly CyberpunkPanelEvent[]} | undefined;
   shotResolver?: PlayShotResolver | undefined;
   courtMotionTime?: ((target: 'goal' | 'goalie', sceneMs: number) => number) | undefined;
   skidVisual?: ((sceneMs: number) => SkidVisual | null) | undefined;
@@ -401,7 +404,7 @@ export interface PlayViewProps<TState> {
     | undefined;
   hudAddon?: ReactNode;
   statusNotice?: ReactNode;
-  statusNoticeTone?: 'success' | 'warning' | 'error' | 'slip' | undefined;
+  statusNoticeTone?: 'success' | 'warning' | 'error' | 'slip' | 'magnetic' | undefined;
   statusNoticeClassName?: string | undefined;
   conditionNoticeOverride?: boolean | undefined;
   statusNoticeDelayMs?: number | undefined;
@@ -418,7 +421,7 @@ export interface PlayViewProps<TState> {
   onResultComplete?: (() => void) | undefined;
   onResultVisibilityChange?: ((visible: boolean) => void) | undefined;
   onShotResolved?:
-    | ((context: PlayShotContext & { result: ShotResult }) => PlayResultPresentation | null)
+    | ((context: PlayShotContext & { result: ShotResult; flightMs?: number }) => PlayResultPresentation | null)
     | undefined;
   reduceMotion?: boolean | undefined;
 }
@@ -716,6 +719,7 @@ export function PlayView<TState>({
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
   hideScoreboard = true,
+  scoreboardDimmed = false,
   overlayControls,
   rinkOverlay,
   rinkCover,
@@ -731,6 +735,7 @@ export function PlayView<TState>({
   puckOptions = PERSPECTIVE_PUCK_OPTIONS,
   hitboxesVisible = false,
   hitboxesOptions = PERSPECTIVE_HITBOX_OPTIONS,
+  cyberpunkEnvironment,
   shotResolver = resolveNewTrainingCourtShot,
   duelCondition,
   shooterMotionTime,
@@ -982,6 +987,7 @@ export function PlayView<TState>({
   hitboxesVisibleRef.current = hitboxesVisible;
   const hitboxesOptionsRef = useRef(hitboxesOptions);
   hitboxesOptionsRef.current = hitboxesOptions;
+  const cyberpunkRef=useRef(cyberpunkEnvironment);cyberpunkRef.current=cyberpunkEnvironment;
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
   const duelConditionRef = useRef(duelCondition);
@@ -1903,7 +1909,8 @@ export function PlayView<TState>({
       goalFrequency: effectiveGoalFreq,
     };
     const beachRules = beachEnvironmentRef.current;
-    const beachShot = beachRules ? resolveBeachCourtShot(input, activeCfg, seed, shotIndex,
+    const cyberpunk=cyberpunkRef.current;
+    const beachShot = cyberpunk?resolveCyberpunkCourtShot(input,activeCfg,seed,shotIndex,cyberpunk.rules,cyberpunk.taps,offsets): beachRules ? resolveBeachCourtShot(input, activeCfg, seed, shotIndex,
       sampleBeachPuddles(beachRules.puddles, tapTime), offsets, courtMotionTimeRef.current) : null;
     const result: ShotResult = beachShot?.result ??
       shotResolverRef.current?.({
@@ -1925,6 +1932,7 @@ export function PlayView<TState>({
         phaseOffsets: offsets,
         shooterX: sx,
         result,
+        flightMs:beachShot?.flight.durationMs ?? (PUCK_START.y-GOAL_OPENING.y)/puckSpeed,
       }) ?? null;
 
     let subText: string | null = null;
@@ -2318,7 +2326,9 @@ export function PlayView<TState>({
       role="status"
       aria-live="polite"
       className={`initial-training-feedback-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
-        effectiveStatusNoticeTone === 'slip'
+        effectiveStatusNoticeTone === 'magnetic'
+          ? ' initial-training-feedback-notice--magnetic'
+          : effectiveStatusNoticeTone === 'slip'
           ? ' initial-training-feedback-notice--slip'
           : effectiveStatusNoticeTone === 'warning'
           ? ' initial-training-feedback-notice--warning'
@@ -2353,7 +2363,7 @@ export function PlayView<TState>({
       longBackground={longCourtBackground}
       scoreboard={
         hideRinkScoreboard ? undefined : (
-          <div className="game-scoreboard-stack">
+          <div className={`game-scoreboard-stack${scoreboardDimmed ? ' cyberpunk-scoreboard--dark' : ''}`}>
             <GameScoreboard
               {...(visibleCustomScoreboardModel ??
                 buildGameScoreboardModel({
@@ -2418,6 +2428,7 @@ export function PlayView<TState>({
     >
       <div
         ref={scoreboardShellRef}
+        className={scoreboardDimmed ? 'cyberpunk-scoreboard--dark' : undefined}
         style={{
           display: hideScoreboard ? 'none' : 'grid',
           gap: 8,
