@@ -42,6 +42,7 @@ import {
   type AdminTournamentSeriesDecision,
 } from './adminApi.js';
 import { tournamentTimezoneLabel } from './timezoneLabel.js';
+import { PlayoffPairScheduleEditor } from './PlayoffPairScheduleEditor.js';
 import {
   participantStateLabel,
   paymentStateLabel,
@@ -1189,6 +1190,7 @@ export function TournamentOperations({
         )}
         {tab === 'schedule' && (
           <>
+            {status === 'playoff' && <PlayoffPairScheduleEditor tournamentId={tournament.id} />}
             <dl className="tournament-operation-dates">
               <div>
                 <dt>Открытие регистрации</dt>

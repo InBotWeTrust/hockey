@@ -44,6 +44,19 @@ function validHeadToHeadRules(automaticLifecycleVersion?: number) {
 }
 
 describe('normalizePublishedTournamentLifecycleRules', () => {
+  it('rejects a pair clock that falls inside a daylight-saving gap', () => {
+    const rules = validHeadToHeadRules();
+    rules.config.timezone = 'Europe/Berlin';
+    rules.playoffRounds[0]!.scheduleDays = [
+      {
+        localDate: '2030-03-31',
+        firstWaveLocalTime: '20:00',
+        pairStartTimes: { R1S1: '02:30' },
+      },
+    ] as (typeof rules.playoffRounds)[0]['scheduleDays'];
+    expect(() => normalizePublishedTournamentLifecycleRules(rules)).toThrow();
+  });
+
   it('marks an explicitly new tournament revision for automatic lifecycle v1', () => {
     const normalized = normalizePublishedTournamentLifecycleRules(
       {

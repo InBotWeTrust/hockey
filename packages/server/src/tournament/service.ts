@@ -32,6 +32,8 @@ import {
 } from './automaticLifecycle.js';
 import {
   rebaseRoundGameDaysAtOrAfter,
+  parsePairStartTimes,
+  resolvePairDayStart,
   validateRoundGameDays,
   type RoundGameDay,
 } from './playoffScheduling.js';
@@ -278,7 +280,50 @@ async function reschedulePublishedPlayoffRounds(
         : { plannedStartIntervalMinutes: rules.plannedStartIntervalMinutes }),
       days: rules.scheduleDays,
     });
-    const days = resolveRoundGameDays(input.nextRules.config.timezone, rules.scheduleDays);
+    const previousOverrides = await client.query<{
+      series_id: string;
+      series_key: string;
+      day_number: number;
+      local_time: string | null;
+      schedule_revision: number;
+    }>(
+      `select series.id as series_id, series.depends_on->>'key' as series_key, day.day_number,
+              to_char(pair_day.starts_at at time zone $2,'HH24:MI') as local_time, pair_day.schedule_revision
+         from tournament_series_game_day_schedule pair_day
+         join tournament_playoff_series series on series.id=pair_day.series_id
+         join tournament_round_game_day day on day.id=pair_day.round_game_day_id
+        where day.round_id=$1`,
+      [round.id, input.nextRules.config.timezone],
+    );
+    const previousDays = playoffRoundRules(input.currentRules, roundNumber).scheduleDays ?? [];
+    const mergedDays = rules.scheduleDays.map((day, index) => {
+      const times = { ...day.pairStartTimes };
+      for (const previous of previousOverrides.rows.filter((row) => row.day_number === index + 1)) {
+        if (
+          day.pairStartTimes?.[previous.series_key] ===
+          previousDays[index]?.pairStartTimes?.[previous.series_key]
+        ) {
+          if (previous.local_time === null) delete times[previous.series_key];
+          else times[previous.series_key] = previous.local_time;
+        }
+      }
+      return { ...day, pairStartTimes: times };
+    });
+    if (previousOverrides.rows.some((row) => row.day_number > mergedDays.length))
+      throw new AppError('conflict', 'Нельзя удалить день с отдельным расписанием пары', 409);
+    try {
+      validateRoundGameDays({
+        timezone: input.nextRules.config.timezone,
+        winsRequired: rules.winsRequired,
+        readinessMinutes: rules.readinessMinutes,
+        gameDurationMinutes: rules.gameDurationMinutes,
+        interGameBreakMinutes: rules.interGameBreakMinutes,
+        days: mergedDays,
+      });
+    } catch {
+      throw new AppError('bad_request', 'Расписание пересекается с отдельным временем пары', 400);
+    }
+    const days = resolveRoundGameDays(input.nextRules.config.timezone, mergedDays);
     const template = await loadDuelTemplateLifecycleSnapshot(client, rules.duelTemplateId);
     await client.query(
       `select id from tournament_fixture
@@ -299,6 +344,8 @@ async function reschedulePublishedPlayoffRounds(
     const fixtures = await client.query<{
       id: string;
       status: string;
+      series_id: string;
+      series_key: string;
       game_number: number | null;
       attempt_id: string | null;
       attempt_status: string | null;
@@ -313,7 +360,7 @@ async function reschedulePublishedPlayoffRounds(
       duel_settled_reason: string | null;
       duel_shot_count: number;
     }>(
-      `select fixture.id, fixture.status,
+      `select fixture.id, fixture.status, fixture.series_id, series.depends_on->>'key' as series_key,
               (fixture.result_snapshot->>'gameNumber')::int as game_number,
               attempt.id as attempt_id, attempt.status as attempt_status,
               attempt.amateur_duel_match_id as duel_id,
@@ -327,6 +374,7 @@ async function reschedulePublishedPlayoffRounds(
                  where shot.amateur_duel_match_id = attempt.amateur_duel_match_id
               ), 0) as duel_shot_count
          from tournament_fixture fixture
+         join tournament_playoff_series series on series.id=fixture.series_id
          left join lateral (
            select candidate.*
              from tournament_fixture_attempt candidate
@@ -381,7 +429,16 @@ async function reschedulePublishedPlayoffRounds(
         throw new AppError('configuration_error', 'У игры не указан номер в серии', 409);
       }
       const slot =
-        fixture.game_number === 1 ? { day: days[0]!, startsAt: days[0]!.firstGameStartsAt } : null;
+        fixture.game_number === 1
+          ? {
+              day: days[0]!,
+              startsAt: resolvePairDayStart(
+                days[0]!,
+                fixture.series_key,
+                input.nextRules.config.timezone,
+              ),
+            }
+          : null;
       if (slot !== null && slot.startsAt <= input.now) {
         throw new AppError('bad_request', 'Новое время игр должно быть в будущем', 400);
       }
@@ -415,12 +472,44 @@ async function reschedulePublishedPlayoffRounds(
       interGameBreakMinutes: rules.interGameBreakMinutes,
     });
     const dayByNumber = new Map(persistedDays.map((day) => [day.dayNumber, day]));
+    const seriesRows = (
+      await client.query<{ id: string; key: string }>(
+        `select id,depends_on->>'key' as key from tournament_playoff_series where round_id=$1`,
+        [round.id],
+      )
+    ).rows;
+    for (const series of seriesRows)
+      for (const day of persistedDays) {
+        const previousOverride = previousOverrides.rows.find(
+          (row) => row.series_id === series.id && row.day_number === day.dayNumber,
+        );
+        if (day.pairStartTimes?.[series.key] === undefined && previousOverride === undefined)
+          continue;
+        const revision = previousOverride?.schedule_revision ?? 0;
+        await client.query(
+          `insert into tournament_series_game_day_schedule (series_id,round_game_day_id,starts_at,schedule_revision)
+        values ($1,$2,$3,$4)`,
+          [
+            series.id,
+            day.id,
+            day.pairStartTimes?.[series.key] === undefined
+              ? null
+              : resolvePairDayStart(day, series.key, input.nextRules.config.timezone),
+            revision + 1,
+          ],
+        );
+      }
     let roundEnd = new Date(
       Math.max(
         ...persistedDays.map((day) =>
           attemptDeadline(
             new Date(
-              day.firstGameStartsAt.getTime() +
+              Math.max(
+                day.firstGameStartsAt.getTime(),
+                ...Object.keys(day.pairStartTimes ?? {}).map((key) =>
+                  resolvePairDayStart(day, key, input.nextRules.config.timezone).getTime(),
+                ),
+              ) +
                 (day.maxResultGames - 1) *
                   (rules.gameDurationMinutes + rules.interGameBreakMinutes) *
                   60_000,
@@ -535,7 +624,18 @@ async function reschedulePublishedPlayoffRounds(
         where id = $1`,
       [
         round.id,
-        persistedDays[0]!.firstGameStartsAt,
+        new Date(
+          Math.min(
+            persistedDays[0]!.firstGameStartsAt.getTime(),
+            ...Object.keys(persistedDays[0]!.pairStartTimes ?? {}).map((key) =>
+              resolvePairDayStart(
+                persistedDays[0]!,
+                key,
+                input.nextRules.config.timezone,
+              ).getTime(),
+            ),
+          ),
+        ),
         roundEnd,
         JSON.stringify({
           firstGameStartsAt: persistedDays[0]!.firstGameStartsAt.toISOString(),
@@ -2892,6 +2992,7 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
            coalesce(game_day.day_number, planned_game_day.day_number) as game_day_number,
            coalesce(game_day.local_date, planned_game_day.local_date)::text as game_day_local_date,
            coalesce(
+             pair_day.starts_at,
              (to_jsonb(game_day)->>'rescheduled_starts_at')::timestamptz,
              game_day.first_game_starts_at,
              planned_game_day.rescheduled_starts_at,
@@ -2966,6 +3067,9 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
           order by planned_day.day_number
           limit 1
        ) planned_game_day on true
+       left join tournament_series_game_day_schedule pair_day
+         on pair_day.series_id = f.series_id
+        and pair_day.round_game_day_id = coalesce(game_day.id, planned_game_day.id)
        left join amateur_duel_match duel on duel.id = latest_attempt.amateur_duel_match_id
      where f.tournament_id = $1
        and not (
@@ -3767,7 +3871,9 @@ export function playoffRoundRules(
   const scheduleDays = Array.isArray(record.scheduleDays)
     ? record.scheduleDays.map((value) => {
         const day = objectRecord(value);
+        const pairStartTimes = parsePairStartTimes(day.pairStartTimes);
         return {
+          ...(pairStartTimes === undefined ? {} : { pairStartTimes }),
           localDate: typeof day.localDate === 'string' ? day.localDate : '',
           firstWaveLocalTime:
             typeof day.firstWaveLocalTime === 'string' ? day.firstWaveLocalTime : '',
@@ -4364,7 +4470,16 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             ...days.map((day) =>
               attemptDeadline(
                 new Date(
-                  day.firstGameStartsAt.getTime() +
+                  Math.max(
+                    day.firstGameStartsAt.getTime(),
+                    ...Object.keys(day.pairStartTimes ?? {}).map((key) =>
+                      resolvePairDayStart(
+                        day,
+                        key,
+                        tournament.rules_snapshot.config.timezone,
+                      ).getTime(),
+                    ),
+                  ) +
                     (day.maxResultGames - 1) *
                       (rules.gameDurationMinutes + rules.interGameBreakMinutes) *
                       60_000,
@@ -4378,7 +4493,18 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         );
         schedules.set(roundNumber, {
           rules,
-          startsAt: days[0]!.firstGameStartsAt,
+          startsAt: new Date(
+            Math.min(
+              days[0]!.firstGameStartsAt.getTime(),
+              ...Object.keys(days[0]!.pairStartTimes ?? {}).map((key) =>
+                resolvePairDayStart(
+                  days[0]!,
+                  key,
+                  tournament.rules_snapshot.config.timezone,
+                ).getTime(),
+              ),
+            ),
+          ),
           endsAt,
           windows: null,
           days,
@@ -4484,6 +4610,18 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
         ],
       );
       seriesIds.set(item.key, series.rows[0]!.id);
+      for (const day of roundGameDays.get(`${stage}:${item.roundNumber}`) ?? []) {
+        if (day.pairStartTimes?.[item.key] === undefined) continue;
+        await client.query(
+          `insert into tournament_series_game_day_schedule (series_id, round_game_day_id, starts_at)
+           values ($1, $2, $3)`,
+          [
+            series.rows[0]!.id,
+            day.id,
+            resolvePairDayStart(day, item.key, tournament.rules_snapshot.config.timezone),
+          ],
+        );
+      }
       const schedule = expandSeriesSchedule(rules.winsRequired, rules.homeSequence);
       for (const game of schedule) {
         const higherIsHome = game.higherSeedIsHome;
@@ -4492,7 +4630,11 @@ export async function startTournamentPlayoffs(pool: Pool, tournamentId: string, 
             ? null
             : {
                 day: roundGameDays.get(`${stage}:${item.roundNumber}`)![0]!,
-                startsAt: scheduleWindows.days[0]!.firstGameStartsAt,
+                startsAt: resolvePairDayStart(
+                  scheduleWindows.days[0]!,
+                  item.key,
+                  tournament.rules_snapshot.config.timezone,
+                ),
               };
         const legacyWindow =
           scheduleWindows.windows === null ? null : scheduleWindows.windows[game.gameNumber - 1]!;
@@ -4623,6 +4765,7 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
                    'dayNumber', coalesce(game_day.day_number, planned_game_day.day_number),
                    'localDate', coalesce(game_day.local_date, planned_game_day.local_date),
                    'startsAt', coalesce(
+                     pair_day.starts_at,
                      (to_jsonb(game_day)->>'rescheduled_starts_at')::timestamptz,
                      game_day.first_game_starts_at,
                      planned_game_day.starts_at
@@ -4685,6 +4828,9 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
               order by day.day_number
               limit 1
            ) planned_game_day on true
+           left join tournament_series_game_day_schedule pair_day
+             on pair_day.series_id = s.id
+            and pair_day.round_game_day_id = coalesce(game_day.id, planned_game_day.id)
           where fixture.series_id = s.id
        ) fixture_schedule on true
       where s.tournament_id = $1
@@ -4870,14 +5016,7 @@ export async function rescheduleTournamentFixture(
         [input.fixtureId],
       )
     ).rows[0]?.round_game_day_id;
-    if (assignedGameDay !== undefined) {
-      await client.query(
-        `update tournament_round_game_day
-            set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2
-          where id = $1`,
-        [assignedGameDay, input.startsAt],
-      );
-    } else {
+    if (assignedGameDay === undefined) {
       await client.query(
         `update tournament_round round
             set schedule_revision = schedule_revision + 1, rescheduled_starts_at = $2

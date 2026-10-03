@@ -2812,6 +2812,9 @@ describe('TournamentAdmin', () => {
     fireEvent.change(screen.getByLabelText('Раунд 1, день 2: время начала'), {
       target: { value: '21:15' },
     });
+    fireEvent.change(screen.getByLabelText('Раунд 1, день 1: Пара 1'), {
+      target: { value: '19:00' },
+    });
     fireEvent.change(screen.getByRole('spinbutton', { name: 'Раунд 1, день 1: количество игр' }), {
       target: { value: '1' },
     });
@@ -2835,7 +2838,12 @@ describe('TournamentAdmin', () => {
       };
     };
     expect(savedBody.rules?.playoffRounds?.[0]?.scheduleDays).toEqual([
-      { localDate: '2030-01-05', firstWaveLocalTime: '18:00', maxResultGames: 1 },
+      {
+        localDate: '2030-01-05',
+        firstWaveLocalTime: '18:00',
+        maxResultGames: 1,
+        pairStartTimes: { R1S1: '19:00' },
+      },
       { localDate: '2030-01-08', firstWaveLocalTime: '21:15', maxResultGames: 2 },
     ]);
     expect(savedBody.rules?.playoffRounds?.[0]?.roundBreakMs).toBe(0);

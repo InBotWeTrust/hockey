@@ -10,6 +10,16 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-03-playoff-pair-start-times-design.md`
 
+## Implementation record (2026-10-03)
+
+The feature is implemented on `feature/playoff-pair-start-times`, based on dev `9b1dd5c4`. Pre-materialization configuration uses slot keys; the materialized admin API uses series/day UUIDs and accepts `{localTime: HH:mm | null}`. Null schedule rows retain notification revision history while inheriting shared start times. Both decisions are documented in the implementation ledger/spec.
+
+Verified locally: affected web suites (90 tests); schedule/normalization units (24 tests); full fixture-attempt integration file and selected shared-calendar/reminder regressions on disposable PostgreSQL/Redis. Regressions observed RED then GREEN cover the bracket DTO, overlapping configured blocks, retained overrides during shared-calendar edits, round bounds, reset revisions, nonexistent DST times and legacy reminder duplication. Readiness and schedule updates share the same tournament gate; the review's alleged race was withdrawn after checking the lock implementation.
+
+Mobile browser verification used the real named-pair editor at 390x844 with a synthetic API: current-day fields are disabled, future fields editable, saving one pair leaves the other unchanged. This is not authenticated end-to-end tournament acceptance. Full monorepo tests, CI and deployed runtime acceptance are not claimed. Builds/typechecks and scoped lint passed; Vite reported bundle-size and outdated Browserslist-data warnings.
+
+No merge/deployment is authorized for this feature. Production release must remain selective; the dev base contains excluded bonus/onboarding work and must not be merged wholesale into main. Temporary browser harness files were removed; the screenshot is retained locally under `output/playwright/pair-schedule-mobile.png`.
+
 ## Global Constraints
 
 - Use tournament timezone; override local dates must match their scheduled day.

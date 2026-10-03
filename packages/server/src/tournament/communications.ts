@@ -71,10 +71,7 @@ export function formatTournamentNotificationDateTime(date: Date, timezone: strin
   return `${value('day')} ${value('month')} в ${value('hour')}:${value('minute')}`;
 }
 
-export function playoffDayStartingEventPhrase(
-  winsRequired: number,
-  immediate: boolean,
-): string {
+export function playoffDayStartingEventPhrase(winsRequired: number, immediate: boolean): string {
   const eventLabel = winsRequired > 1 ? 'серия игр' : 'игра';
   return immediate ? `новая ${eventLabel}` : eventLabel;
 }
@@ -181,13 +178,18 @@ export async function reconcilePlayoffDayStartingCommunications(
             participant.user_id, coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
               as scheduled_starts_at,
             coalesce(
+              case when fixture.rescheduled_reason is not null and round_game_day.id is not null then attempt.scheduled_starts_at end,
+              pair_day.starts_at,
               round_game_day.first_game_starts_at,
               round.starts_at,
               attempt.scheduled_starts_at,
               fixture.scheduled_starts_at
             ) as day_starts_at,
-            coalesce(round_game_day.schedule_revision, round.schedule_revision) as schedule_revision,
+            coalesce(pair_day.schedule_revision, round_game_day.schedule_revision, round.schedule_revision)
+              + case when fixture.rescheduled_reason is not null and round_game_day.id is not null then extract(epoch from attempt.scheduled_starts_at)::bigint else 0 end as schedule_revision,
             coalesce(
+              case when fixture.rescheduled_reason is not null and round_game_day.id is not null then attempt.scheduled_starts_at end,
+              pair_day.starts_at,
               round_game_day.rescheduled_starts_at,
               round.rescheduled_starts_at
             ) as rescheduled_starts_at,
@@ -211,6 +213,8 @@ export async function reconcilePlayoffDayStartingCommunications(
        ) fixture_game_day on true
        left join tournament_round_game_day round_game_day
          on round_game_day.id = coalesce(attempt.round_game_day_id, fixture_game_day.round_game_day_id)
+       left join tournament_series_game_day_schedule pair_day
+         on pair_day.series_id = fixture.series_id and pair_day.round_game_day_id = round_game_day.id
        join tournament_participant participant
          on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
         and participant.state = 'approved'
