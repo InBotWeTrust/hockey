@@ -319,6 +319,11 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
       },
       remove,
     );
+    await insert(
+      'tournament_series_game_day_schedule',
+      { series_id: series.id, round_game_day_id: gameDay.id, starts_at: startsAt },
+      remove,
+    );
     const attemptDuel = await seedDuel('tournament', remove);
     const attempt = await insert(
       'tournament_fixture_attempt',
@@ -711,6 +716,11 @@ describe.skipIf(!hasIntegrationEnv)('migration 108 removes daily aggregate tourn
   beforeEach(async () => {
     await resetDatabase(pool);
     await applyMigrations(pool, priorMigrationsDir);
+    // Current readers also join the additive pair/day override relation. Keep it
+    // empty so the historical writer race still uses the original day schedule.
+    await pool.query(
+      await readFile(path.join(migrationsDir, '177_playoff_pair_day_schedule.sql'), 'utf8'),
+    );
     // The current writer checks FCM installations (migration 118), while this
     // historical test intentionally starts from the schema immediately before 108.
     // An empty relation keeps that later read from masking the writer race below.
