@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { statSync } from 'node:fs';
 import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 
@@ -47,5 +48,17 @@ describe('approved onboarding reference assets', () => {
     expect(metadata.height).toBe(800);
     expect(decoded.info).toMatchObject({ width: 800, height: 800 });
     expect(decoded.data.byteLength).toBeGreaterThan(0);
+  });
+});
+
+describe('amateur story frame pairs', () => {
+  it.each(Array.from({ length: 6 }, (_, i) => String(i + 1).padStart(2, '0')))('scene %s has two optimized portrait WebP frames', async (scene) => {
+    for (const frame of ['a', 'b']) {
+      const path = resolve(process.cwd(), `public/onboarding/amateur/scene-${scene}-${frame}.webp`);
+      const metadata = await sharp(path).metadata();
+      expect(metadata).toMatchObject({ format: 'webp', width: 941, height: 1672 });
+      expect(statSync(path).size).toBeLessThan(400 * 1024);
+      expect((await sharp(path).raw().toBuffer()).byteLength).toBeGreaterThan(0);
+    }
   });
 });

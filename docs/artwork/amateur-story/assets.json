@@ -1,0 +1,110 @@
+[
+  {
+    "frame": "01a",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-9abe596a-965f-4701-adcd-294ad80356c9.png",
+    "file": "packages/web/public/onboarding/amateur/scene-01-a.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 219292,
+    "hash": "3d9f6ca20b6f"
+  },
+  {
+    "frame": "02a",
+    "source": "/Users/egorgumenyuk/.codex/worktrees/amateur-onboarding-story/Ultimate Hockey/packages/web/public/onboarding/story/scene-04-mentor.webp",
+    "file": "packages/web/public/onboarding/amateur/scene-02-a.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 173476,
+    "hash": "12c19afd148d"
+  },
+  {
+    "frame": "03a",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-3602215c-d303-42e1-a2b0-211af4a93b66.png",
+    "file": "packages/web/public/onboarding/amateur/scene-03-a.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 176346,
+    "hash": "6923703aa50a"
+  },
+  {
+    "frame": "04a",
+    "source": "/Users/egorgumenyuk/.codex/worktrees/amateur-onboarding-story/Ultimate Hockey/packages/web/public/onboarding/story/scene-09-arena-empty.webp",
+    "file": "packages/web/public/onboarding/amateur/scene-04-a.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 246980,
+    "hash": "093b9d7c8075"
+  },
+  {
+    "frame": "04b",
+    "source": "/Users/egorgumenyuk/.codex/worktrees/amateur-onboarding-story/Ultimate Hockey/packages/web/public/onboarding/story/scene-09-arena.webp",
+    "file": "packages/web/public/onboarding/amateur/scene-04-b.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 283004,
+    "hash": "192da831d625"
+  },
+  {
+    "frame": "01b",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-a6e3a5af-08d9-4da9-a334-822a906d25f9.png",
+    "file": "packages/web/public/onboarding/amateur/scene-01-b.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 240072,
+    "hash": "09864797dba4"
+  },
+  {
+    "frame": "02b",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-3931e8d1-87e1-485f-9518-bdd5d5093c64.png",
+    "file": "packages/web/public/onboarding/amateur/scene-02-b.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 168774,
+    "hash": "45b7b0ed09ae"
+  },
+  {
+    "frame": "03b",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-666e9d6d-4e3e-4618-9541-403d36ef315b.png",
+    "file": "packages/web/public/onboarding/amateur/scene-03-b.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 185294,
+    "hash": "a569fc436637"
+  },
+  {
+    "frame": "05a",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-20b7801a-d3ca-439a-93c7-5c32a596624d.png",
+    "file": "packages/web/public/onboarding/amateur/scene-05-a.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 325920,
+    "hash": "26e5f340ba8e"
+  },
+  {
+    "frame": "05b",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-dfb65f2b-2cad-4774-a043-b7f4a50223d4.png",
+    "file": "packages/web/public/onboarding/amateur/scene-05-b.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 318834,
+    "hash": "036e1d4fee8f"
+  },
+  {
+    "frame": "06a",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-6c10bf1f-6f51-4541-afce-0a49ba19d73b.png",
+    "file": "packages/web/public/onboarding/amateur/scene-06-a.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 312964,
+    "hash": "7b1bd39846eb"
+  },
+  {
+    "frame": "06b",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-1aa4b490-f44a-4b48-b62c-9cde2ae17345.png",
+    "file": "packages/web/public/onboarding/amateur/scene-06-b.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 321136,
+    "hash": "b0bfe548dd8c"
+  }
+]

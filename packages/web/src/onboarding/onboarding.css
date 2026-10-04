@@ -574,3 +574,18 @@
   .beginner-story--court .beginner-story__media,
   .beginner-story__court-empty { transition: none; }
 }
+
+.amateur-story__frame-b {
+  opacity: 0;
+  transition: opacity 700ms ease-in-out;
+}
+.amateur-story__frame-b--visible { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .amateur-story__frame-b { transition: none; }
+}
+@media (max-height: 650px) {
+  .amateur-story .beginner-story__copy p { font-size: 18px; line-height: 1.4; }
+  .amateur-story .beginner-story__shade {
+    background: linear-gradient(to bottom, transparent 12%, rgba(3, 9, 18, 0.55) 36%, rgba(3, 9, 18, 0.86) 66%, rgba(3, 9, 18, 0.97));
+  }
+}

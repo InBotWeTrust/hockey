@@ -2,6 +2,14 @@ import { describe, expect, it, vi } from 'vitest';
 import { prepareStoryImages, storyImagesReady, storyImageUrl } from './storyImages.js';
 
 describe('story image preparation', () => {
+  it('prioritizes the first amateur frame without eagerly fetching the whole series', async () => {
+    const instances: { fetchPriority?: string }[] = [];
+    vi.stubGlobal('Image', class { fetchPriority = ''; decode() { return Promise.resolve(); } constructor() { instances.push(this); } set src(_value: string) {} });
+    await prepareStoryImages(['/onboarding/amateur/scene-01-a.webp']);
+    expect(instances).toHaveLength(1);
+    expect(instances[0]?.fetchPriority).toBe('high');
+    vi.unstubAllGlobals();
+  });
   it('versions image URLs and deduplicates loading until decoding completes', async () => {
     let finish!: () => void;
     const decode = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));

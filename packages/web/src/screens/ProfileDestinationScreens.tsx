@@ -45,6 +45,8 @@ export function ProfileStoryScreen(): JSX.Element {
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
+    staleTime: 0,
+    refetchOnMount: 'always',
   });
 
   if (profileQuery.isLoading) {
@@ -73,7 +75,10 @@ export function ProfileStoryScreen(): JSX.Element {
       <div className="profile-story-series-list">
         {Array.from({ length: 10 }, (_, index) => {
           const series = index + 1;
-          const firstSeriesUnlocked = series === 1 && profileQuery.data.beginnerOnboardingCompleted;
+          const unlocked =
+            (series === 1 && profileQuery.data.beginnerOnboardingCompleted) ||
+            (series === 2 && profileQuery.data.amateurOnboardingCompleted);
+          const title = series === 2 ? 'Обещанный разговор' : 'Путь со двора';
           return (
             <section
               className="profile-story-series"
@@ -86,19 +91,30 @@ export function ProfileStoryScreen(): JSX.Element {
               >
                 Серия {series}
               </h2>
-              {firstSeriesUnlocked ? (
+              {unlocked ? (
                 <button
                   type="button"
                   className="profile-story-series-card profile-story-series-card--unlocked glass"
-                  aria-label="Открыть серию «Путь со двора»"
-                  onClick={() => navigate('/profile/story/series-1')}
+                  aria-label={`Открыть серию «${title}»`}
+                  onClick={() => navigate(`/profile/story/series-${series}`)}
                 >
                   <span className="profile-story-series-card__visual" aria-hidden="true">
-                    <img src="/onboarding/story/scene-01-court.webp" alt="" />
+                    <img
+                      src={
+                        series === 2
+                          ? '/onboarding/amateur/scene-03-b.webp'
+                          : '/onboarding/story/scene-01-court.webp'
+                      }
+                      alt=""
+                    />
                   </span>
                   <span className="profile-story-series-card__copy">
-                    <strong>Путь со двора</strong>
-                    <span>Последняя шайба и случайная встреча.</span>
+                    <strong>{title}</strong>
+                    <span>
+                      {series === 2
+                        ? 'Обещанный разговор и выход в любители.'
+                        : 'Последняя шайба и случайная встреча.'}
+                    </span>
                     <small>Просмотрено</small>
                   </span>
                 </button>

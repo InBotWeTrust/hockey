@@ -19,5 +19,17 @@ export const storyImageVersions: Record<string, string> = {
   "scene-08-threshold.webp": "0d61d203390c",
   "scene-09-arena-empty.webp": "f67bc5c1eb8f",
   "scene-09-arena.webp": "775685dcb2d5",
-  "scene-10-finale.webp": "14b99963fe69"
+  "scene-10-finale.webp": "14b99963fe69",
+  "scene-01-a.webp": "3d9f6ca20b6f",
+  "scene-02-a.webp": "12c19afd148d",
+  "scene-03-a.webp": "6923703aa50a",
+  "scene-04-a.webp": "093b9d7c8075",
+  "scene-04-b.webp": "192da831d625",
+  "scene-01-b.webp": "09864797dba4",
+  "scene-02-b.webp": "45b7b0ed09ae",
+  "scene-03-b.webp": "a569fc436637",
+  "scene-05-a.webp": "26e5f340ba8e",
+  "scene-05-b.webp": "036e1d4fee8f",
+  "scene-06-a.webp": "7b1bd39846eb",
+  "scene-06-b.webp": "b0bfe548dd8c",
 };

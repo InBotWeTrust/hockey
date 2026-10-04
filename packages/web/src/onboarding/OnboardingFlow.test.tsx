@@ -189,7 +189,7 @@ describe('OnboardingFlow', () => {
   });
 
   it('shows semantic progress, navigation and records each reached step only once', async () => {
-    render(<OnboardingFlow runId="run-1" required={required} onCompleted={vi.fn()} />);
+    render(<OnboardingFlow presentation="published" runId="run-1" required={required} onCompleted={vi.fn()} />);
 
     expect(screen.getByText('1 из 3')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Назад' })).not.toBeInTheDocument();
@@ -203,7 +203,7 @@ describe('OnboardingFlow', () => {
   });
 
   it('replaces a broken informational image with an accessible fallback', () => {
-    render(<OnboardingFlow runId="run-1" required={required} onCompleted={vi.fn()} />);
+    render(<OnboardingFlow presentation="published" runId="run-1" required={required} onCompleted={vi.fn()} />);
     fireEvent.error(screen.getByRole('img', { name: 'Первый шаг' }));
     expect(
       screen.getByRole('img', { name: 'Изображение временно недоступно' }),
@@ -217,7 +217,7 @@ describe('OnboardingFlow', () => {
       .mockReturnValueOnce(pending.promise)
       .mockResolvedValueOnce({ required: null });
     render(
-      <OnboardingFlow
+      <OnboardingFlow presentation="published"
         runId="run-1"
         required={{ ...required, steps: [required.steps[2]!] }}
         onCompleted={onCompleted}
@@ -242,7 +242,7 @@ describe('OnboardingFlow', () => {
       .mockResolvedValueOnce({ viewed: true });
     vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
     render(
-      <OnboardingFlow
+      <OnboardingFlow presentation="published"
         runId="run-1"
         required={{ ...required, steps: [required.steps[2]!] }}
         onCompleted={onCompleted}
@@ -265,7 +265,7 @@ describe('OnboardingFlow', () => {
     vi.mocked(recordStepView).mockReturnValue(pendingView.promise);
     vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
     render(
-      <OnboardingFlow
+      <OnboardingFlow presentation="published"
         runId="run-1"
         required={{ ...required, steps: [required.steps[2]!] }}
         onCompleted={vi.fn()}
@@ -287,7 +287,7 @@ describe('OnboardingFlow', () => {
     vi.mocked(recordStepView).mockReturnValue(pendingView.promise);
     const view = render(
       <StrictMode>
-        <OnboardingFlow runId="run-1" required={required} onCompleted={vi.fn()} />
+        <OnboardingFlow presentation="published" runId="run-1" required={required} onCompleted={vi.fn()} />
       </StrictMode>,
     );
     await waitFor(() => expect(recordStepView).toHaveBeenCalledTimes(1));
@@ -296,7 +296,7 @@ describe('OnboardingFlow', () => {
 
     view.rerender(
       <StrictMode>
-        <OnboardingFlow runId="run-1" required={required} onCompleted={vi.fn()} />
+        <OnboardingFlow presentation="published" runId="run-1" required={required} onCompleted={vi.fn()} />
       </StrictMode>,
     );
     expect(recordStepView).toHaveBeenCalledTimes(1);
@@ -351,7 +351,7 @@ describe('OnboardingFlow', () => {
         required.steps[2]!,
       ],
     };
-    render(<OnboardingFlow runId="run-1" required={tutorialRequired} onCompleted={vi.fn()} />);
+    render(<OnboardingFlow presentation="published" runId="run-1" required={tutorialRequired} onCompleted={vi.fn()} />);
     fireEvent.click(screen.getByRole('button', { name: 'Далее' }));
     await screen.findByTestId('tutorial-step');
     fireEvent.click(screen.getByRole('button', { name: 'Confirm goal' }));
@@ -374,7 +374,7 @@ describe('OnboardingFlow', () => {
         },
       ],
     };
-    render(<OnboardingFlow runId="run-1" required={tutorialOnly} onCompleted={vi.fn()} />);
+    render(<OnboardingFlow presentation="published" runId="run-1" required={tutorialOnly} onCompleted={vi.fn()} />);
 
     expect(await screen.findByTestId('tutorial-step')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Tutorial Back' })).not.toBeInTheDocument();
@@ -384,7 +384,7 @@ describe('OnboardingFlow', () => {
   it('finishes preview locally without public view or completion requests', async () => {
     const onCompleted = vi.fn();
     render(
-      <OnboardingFlow
+      <OnboardingFlow presentation="published"
         mode="preview"
         runId="preview-pending"
         required={required}
