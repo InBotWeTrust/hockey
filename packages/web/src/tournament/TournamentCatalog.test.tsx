@@ -219,6 +219,43 @@ describe('TournamentCatalog', () => {
     expect(screen.queryByText(/internal policy|amateur_level_required/)).toBeNull();
   });
 
+  it('shows independent final and bronze times for both scheduled days', () => {
+    const tournament = {
+      rules: {
+        config: { playoffSize: 8, timezone: 'Europe/Moscow' },
+        playoffRounds: [
+          {
+            roundNumber: 3,
+            scheduleDays: [
+              {
+                localDate: '2030-10-10',
+                firstWaveLocalTime: '18:00',
+                pairStartTimes: { R3S1: '19:00', BRONZE: '18:00' },
+              },
+              {
+                localDate: '2030-10-11',
+                firstWaveLocalTime: '18:00',
+                pairStartTimes: { R3S1: '20:00', BRONZE: '19:00' },
+              },
+            ],
+          },
+        ],
+      },
+    } as unknown as api.TournamentSummary;
+    expect(
+      tournamentPlayoffScheduleBlocks(tournament).map(({ localDate, stage, startTime }) => ({
+        localDate,
+        stage,
+        startTime,
+      })),
+    ).toEqual([
+      { localDate: '2030-10-10', stage: 'third_place', startTime: '18:00' },
+      { localDate: '2030-10-10', stage: 'playoff', startTime: '19:00' },
+      { localDate: '2030-10-11', stage: 'third_place', startTime: '19:00' },
+      { localDate: '2030-10-11', stage: 'playoff', startTime: '20:00' },
+    ]);
+  });
+
   it('builds future playoff blocks from the published admin schedule', () => {
     const tournament = {
       playoffFormats: [

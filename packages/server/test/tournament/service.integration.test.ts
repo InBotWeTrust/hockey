@@ -2770,6 +2770,85 @@ describe.skipIf(!hasIntegrationEnv)('tournament service integration', () => {
     );
   });
 
+  it('returns effective pair times to editors without changing the published snapshot', async () => {
+    await seedUsers(pool, 0);
+    const template = await pool.query<{ id: string }>(
+      `select id from amateur_duel_template where deleted_at is null and is_active order by created_at limit 1`,
+    );
+    const initialRules = playoffTournamentRules(2, {
+      playoffRounds: [
+        {
+          roundNumber: 1,
+          winsRequired: 2,
+          duelTemplateId: template.rows[0]!.id,
+          scheduleDays: [
+            {
+              localDate: '2030-09-05',
+              firstWaveLocalTime: '18:00',
+              maxResultGames: 2,
+              pairStartTimes: { R1S1: '18:00' },
+            },
+            {
+              localDate: '2030-09-06',
+              firstWaveLocalTime: '18:00',
+              maxResultGames: 1,
+              pairStartTimes: { R1S1: '18:00' },
+            },
+          ],
+        },
+      ],
+    });
+    const tournament = await createPublishedTournament(
+      pool,
+      'effective-pair-display',
+      0,
+      initialRules,
+    );
+    await prepareTournamentForPlayoffs(pool, tournament.id, [4, 3, 2, 1]);
+    await startTournamentPlayoffs(pool, tournament.id, new Date('2030-09-01T08:00:00Z'));
+    await pool.query(
+      `update tournament_series_game_day_schedule p set starts_at='2030-09-06T16:00:00Z'
+      from tournament_round_game_day d, tournament_round r
+      where p.round_game_day_id=d.id and d.round_id=r.id and r.tournament_id=$1 and d.day_number=2`,
+      [tournament.id],
+    );
+    const detail = await tournamentService.getTournament(pool, tournament.id);
+    const admin = (await listAdminTournaments(pool)).find((item) => item.id === tournament.id)!;
+    for (const response of [detail, admin]) {
+      expect(response.rules.playoffRounds).toEqual([
+        expect.objectContaining({
+          scheduleDays: [
+            expect.objectContaining({ pairStartTimes: { R1S1: '18:00' } }),
+            expect.objectContaining({ pairStartTimes: { R1S1: '19:00' } }),
+          ],
+        }),
+      ]);
+    }
+    const stored = await pool.query(
+      `select v.rules_snapshot from tournament t join tournament_revision v
+      on v.id=t.published_revision_id where t.id=$1`,
+      [tournament.id],
+    );
+    expect(stored.rows[0].rules_snapshot.playoffRounds[0].scheduleDays[1].pairStartTimes.R1S1).toBe(
+      '18:00',
+    );
+    await pool.query(
+      `delete from tournament_series_game_day_schedule p using tournament_round_game_day d,
+       tournament_round r where p.round_game_day_id=d.id and d.round_id=r.id
+       and r.tournament_id=$1 and d.day_number=2`,
+      [tournament.id],
+    );
+    const inherited = await tournamentService.getTournament(pool, tournament.id);
+    expect(inherited.rules.playoffRounds).toEqual([
+      expect.objectContaining({
+        scheduleDays: [
+          expect.objectContaining({ pairStartTimes: { R1S1: '18:00' } }),
+          expect.objectContaining({ firstWaveLocalTime: '18:00', pairStartTimes: {} }),
+        ],
+      }),
+    ]);
+  });
+
   it('reschedules only the first playoff game from a legacy rules snapshot', async () => {
     await seedUsers(pool, 0);
     const template = await pool.query<{ id: string }>(

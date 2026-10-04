@@ -1190,7 +1190,12 @@ export function TournamentOperations({
         )}
         {tab === 'schedule' && (
           <>
-            {status === 'playoff' && <PlayoffPairScheduleEditor tournamentId={tournament.id} />}
+            {status === 'playoff' && (
+              <PlayoffPairScheduleEditor
+                tournamentId={tournament.id}
+                onSaved={onTournamentUpdated}
+              />
+            )}
             <dl className="tournament-operation-dates">
               <div>
                 <dt>Открытие регистрации</dt>
