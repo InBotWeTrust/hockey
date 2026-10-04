@@ -18,7 +18,7 @@ export function destinationForLocation(
       if (section === 'course') return 'training-course';
       if (section === 'advanced') return 'training-advanced';
       if (section === 'open') return 'training-open';
-      return null;
+      return 'training';
     }
     if (view === 'amateur') return 'amateur';
     if (view === 'pro') return null;

@@ -4,6 +4,7 @@ export const ARSENICH_DESTINATIONS = [
   'main',
   'daily',
   'sections',
+  'training',
   'training-course',
   'training-advanced',
   'training-open',

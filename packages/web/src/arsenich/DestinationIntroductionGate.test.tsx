@@ -33,7 +33,7 @@ describe('destinationForLocation', () => {
     ['/', '', 'main'],
     ['/daily', '', 'daily'],
     ['/sections', '', 'sections'],
-    ['/', '?view=training', null],
+    ['/', '?view=training', 'training'],
     ['/', '?view=training&section=course', 'training-course'],
     ['/', '?view=training&section=advanced', 'training-advanced'],
     ['/', '?view=training&section=open', 'training-open'],
