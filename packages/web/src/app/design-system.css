@@ -3462,6 +3462,171 @@
   letter-spacing: 0;
 }
 
+.arsenich-introduction-shell {
+  position: fixed;
+  isolation: isolate;
+  z-index: 200;
+  right: 0;
+  bottom: calc(var(--bottom-nav-height, 76px) + var(--bottom-nav-bottom-gap, 8px) + 10px);
+  left: 0;
+  padding: 40px 24px 0;
+  pointer-events: none;
+}
+
+.arsenich-introduction-shell::before {
+  content: '';
+  position: absolute;
+  z-index: 0;
+  inset: -160px 0 -120px;
+  pointer-events: none;
+  background: rgba(201, 220, 240, 0.08);
+  backdrop-filter: blur(14px) saturate(92%);
+  -webkit-backdrop-filter: blur(14px) saturate(92%);
+  mask-image: radial-gradient(
+    ellipse min(72vw, 520px) 36% at 50% 58%,
+    #000 0%,
+    rgba(0, 0, 0, 0.92) 42%,
+    rgba(0, 0, 0, 0.48) 70%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse min(72vw, 520px) 36% at 50% 58%,
+    #000 0%,
+    rgba(0, 0, 0, 0.92) 42%,
+    rgba(0, 0, 0, 0.48) 70%,
+    transparent 100%
+  );
+}
+
+.arsenich-introduction-shell:has(.arsenich-introduction--expanded)::before {
+  inset: -280px 0 -180px;
+  mask-image: radial-gradient(
+    ellipse min(72vw, 520px) 40% at 50% 56%,
+    #000 0%,
+    rgba(0, 0, 0, 0.92) 42%,
+    rgba(0, 0, 0, 0.48) 70%,
+    transparent 100%
+  );
+  -webkit-mask-image: radial-gradient(
+    ellipse min(72vw, 520px) 40% at 50% 56%,
+    #000 0%,
+    rgba(0, 0, 0, 0.92) 42%,
+    rgba(0, 0, 0, 0.48) 70%,
+    transparent 100%
+  );
+}
+
+.arsenich-introduction__blocker {
+  position: fixed;
+  z-index: 0;
+  inset: 0;
+  pointer-events: auto;
+  touch-action: none;
+}
+
+.arsenich-introduction {
+  position: relative;
+  z-index: 1;
+  width: min(calc(100vw - 48px), 380px);
+  margin: 0 auto;
+  padding: 14px;
+  border-radius: 22px;
+  box-shadow: 0 20px 46px rgba(2, 8, 23, 0.38);
+  pointer-events: auto;
+}
+
+.arsenich-introduction__header {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.arsenich-introduction__avatar {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  object-fit: cover;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  border-radius: 50%;
+  background: linear-gradient(145deg, #dff0ff, #95bee0);
+  box-shadow: 0 8px 18px rgba(15, 43, 68, 0.18);
+}
+
+.arsenich-introduction__copy {
+  min-width: 0;
+}
+
+.arsenich-introduction__copy strong {
+  display: block;
+  color: rgba(255, 255, 255, 0.98);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.18;
+  text-wrap: balance;
+}
+
+.arsenich-introduction__word {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.arsenich-introduction__description {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+  color: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.45;
+}
+
+.arsenich-introduction__description p,
+.arsenich-introduction__hints {
+  margin: 0;
+}
+
+.arsenich-introduction__hints {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  padding: 0;
+}
+
+.arsenich-introduction__hints li {
+  padding-left: 13px;
+  border-left: 2px solid rgba(255, 255, 255, 0.24);
+}
+
+.arsenich-introduction__actions {
+  display: grid;
+  margin-top: 14px;
+  animation: arsenich-introduction-action-in 180ms ease-out both;
+}
+
+@keyframes arsenich-introduction-action-in {
+  from {
+    opacity: 0;
+    transform: translateY(5px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.arsenich-introduction__actions .btn--cta {
+  border-color: rgba(255, 255, 255, 0.22);
+  background: rgba(15, 23, 42, 0.78);
+  color: #ffffff;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arsenich-introduction__actions {
+    animation-duration: 1ms;
+  }
+}
+
 .modal-actions {
   display: grid;
   gap: 10px;

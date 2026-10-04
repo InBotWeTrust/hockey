@@ -1532,7 +1532,8 @@ describe('AdminScreen', () => {
     const adminNavigation = within(adminMenu).getByRole('navigation', {
       name: 'Разделы администратора',
     });
-    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(16);
+    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(17);
+    expect(within(adminNavigation).getByRole('button', { name: 'Арсенич' })).toBeInTheDocument();
     expect(within(adminNavigation).getByRole('button', { name: 'Обзор' })).toHaveAttribute(
       'aria-current',
       'page',

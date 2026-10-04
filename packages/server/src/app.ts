@@ -44,6 +44,8 @@ import { mobileReleaseRoutes } from './mobileRelease/routes.js';
 import { referralRoutes } from './referrals/routes.js';
 import { referralAdminRoutes } from './referrals/adminRoutes.js';
 import { referralRiskCleanupPlugin } from './referrals/riskCleanup.js';
+import { arsenichRoutes } from './arsenich/routes.js';
+import { arsenichAdminRoutes } from './arsenich/adminRoutes.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -195,6 +197,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
     tutorialSeedSecret: config.DAILY_SEED_SECRET,
     mediaAccessSecret: config.JWT_SECRET,
   });
+  await app.register(arsenichRoutes);
+  await app.register(arsenichAdminRoutes);
   await app.register(achievementRoutes);
   await app.register(feedbackRoutes, {
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),

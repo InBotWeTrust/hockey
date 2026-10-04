@@ -27,6 +27,7 @@ import { preloadCriticalArtwork } from './artworkCache.js';
 import { prepareInitialPlayerExperience } from './playerStartup.js';
 import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from './devOnlyFeatures.js';
 import { InviteScreen } from '../screens/InviteScreen.js';
+import { DestinationIntroductionGate } from '../arsenich/DestinationIntroductionGate.js';
 
 function loadDailyScreen() {
   return import('../screens/DailyScreen.js');
@@ -40,6 +41,13 @@ const BeginnerOnboardingPreviewScreen = import.meta.env.DEV
   ? lazy(() => import('../onboarding/BeginnerOnboardingPreviewScreen.js').then((module) => ({
       default: module.BeginnerOnboardingPreviewScreen,
     })))
+  : null;
+const DestinationIntroductionPreviewScreen = import.meta.env.DEV
+  ? lazy(() =>
+      import('../arsenich/DestinationIntroductionPreviewScreen.js').then((module) => ({
+        default: module.DestinationIntroductionPreviewScreen,
+      })),
+    )
   : null;
 
 const DailyPeriodPreviewScreen = import.meta.env.DEV
@@ -341,6 +349,7 @@ function AppExperience(): JSX.Element {
       <DuelInviteToast suppressed={isOpenRinkRoute(location)} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
+      {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
         className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
@@ -640,6 +649,9 @@ function AppFrame(): JSX.Element {
 
   if (BeginnerOnboardingPreviewScreen && location.pathname === '/dev/beginner-onboarding') {
     return <Suspense fallback={<RouteLoading />}><BeginnerOnboardingPreviewScreen /></Suspense>;
+  }
+  if (DestinationIntroductionPreviewScreen && location.pathname === '/dev/arsenich-introductions') {
+    return <Suspense fallback={<RouteLoading />}><DestinationIntroductionPreviewScreen /></Suspense>;
   }
 
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
