@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { useDragControls } from 'motion/react';
 import { AccessibleModal, type DismissReason } from './AccessibleModal.js';
 
 const DISTANCE_THRESHOLD_PX = 120;
@@ -20,6 +21,7 @@ export interface SheetProps {
   backdropTestId?: string;
   headerAction?: ReactNode;
   grabberPlacement?: 'top' | 'content';
+  dragHandleOnly?: boolean;
 }
 
 export function Sheet({
@@ -33,7 +35,25 @@ export function Sheet({
   backdropTestId,
   headerAction,
   grabberPlacement = 'content',
+  dragHandleOnly = false,
 }: SheetProps): JSX.Element {
+  const dragControls = useDragControls();
+  const grabber = dragHandleOnly ? (
+    <div
+      className="sheet-drag-handle"
+      aria-hidden="true"
+      onPointerDown={(event) => {
+        if (dismissible) dragControls.start(event);
+      }}
+    >
+      <div className="sheet-grabber" />
+    </div>
+  ) : (
+    <div
+      className={`sheet-grabber${grabberPlacement === 'top' ? ' sheet-grabber--top' : ''}`}
+      aria-hidden="true"
+    />
+  );
   return (
     <AccessibleModal
       open={open}
@@ -41,18 +61,17 @@ export function Sheet({
       presentation="sheet"
       {...(backdropTestId === undefined ? {} : { backdropTestId })}
       {...(headerAction === undefined ? {} : { headerAction })}
-      {...(grabberPlacement === 'top'
-        ? { beforeHeader: <div className="sheet-grabber sheet-grabber--top" aria-hidden="true" /> }
-        : {})}
+      {...(grabberPlacement === 'top' ? { beforeHeader: grabber } : {})}
       onRequestClose={onRequestClose}
       closeBlocked={!dismissible}
       cardClassName="sheet-card"
-      cardStyle={{ maxHeight }}
+      cardStyle={{ maxHeight, ...(dragHandleOnly ? { touchAction: 'pan-y' } : {}) }}
+      {...(dragHandleOnly ? { dragControls, dragListener: false } : {})}
       onDragEnd={(offsetY, velocityY) => {
         if (dismissible && shouldDismissSheet(offsetY, velocityY)) onRequestClose('drag');
       }}
     >
-      {grabberPlacement === 'content' && <div className="sheet-grabber" aria-hidden="true" />}
+      {grabberPlacement === 'content' && grabber}
       <div className="sheet-content" data-dirty={dirty ? 'true' : undefined}>
         {children}
       </div>

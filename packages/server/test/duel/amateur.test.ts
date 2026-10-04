@@ -18,6 +18,8 @@ import {
 } from '../helpers/testDb.js';
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { reconcileCompletedMonthlyRating } from '../../src/duel/amateur/monthlyRewards.js';
+import { getBlockedPlayoffOpponentIds } from '../../src/duel/amateur/playoffOpponentLock.js';
+import { rescheduleTournamentFixture } from '../../src/tournament/service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -657,10 +659,387 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
        returning id`,
       [tournament.rows[0]!.id, round.rows[0]!.id, firstParticipantId, secondParticipantId, status],
     );
+    await pool.query(
+      `insert into tournament_round_game_day
+       (round_id,day_number,local_date,first_game_local_time,first_game_starts_at,
+        max_result_bearing_games,readiness_duration,planned_start_interval)
+       values ($1,1,(now() at time zone 'Europe/Moscow')::date,'18:00',
+        (((now() at time zone 'Europe/Moscow')::date + time '18:00') at time zone 'Europe/Moscow'),
+        4,interval '5 minutes',interval '30 minutes')`,
+      [round.rows[0]!.id],
+    );
     return series.rows[0]!.id;
   }
 
-  it('hides a future playoff opponent from ordinary duel search until the series ends', async () => {
+  it('blocks playoff opponents only on their scheduled local game days', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z'
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    await pool.query(
+      `insert into tournament_round_game_day
+       (round_id,day_number,local_date,first_game_local_time,first_game_starts_at,
+        max_result_bearing_games,readiness_duration,planned_start_interval)
+       select round_id,2,'2030-10-08','18:00','2030-10-08T15:00:00Z',
+        3,interval '5 minutes',interval '30 minutes'
+       from tournament_playoff_series where id=$1`,
+      [seriesId],
+    );
+    const client = await pool.connect();
+    try {
+      for (const [instant, blocked] of [
+        ['2030-10-06T12:00:00Z', false],
+        ['2030-10-06T20:59:59Z', false],
+        ['2030-10-06T21:00:00Z', true],
+        ['2030-10-07T20:59:59Z', true],
+        ['2030-10-07T21:00:00Z', true],
+        ['2030-10-08T20:59:59Z', true],
+        ['2030-10-08T21:00:00Z', false],
+      ] as const) {
+        expect(
+          (await getBlockedPlayoffOpponentIds(client, userA, [userB], new Date(instant))).has(
+            userB,
+          ),
+          instant,
+        ).toBe(blocked);
+      }
+    } finally {
+      client.release();
+    }
+  });
+
+  it.each(['round', 'pair'] as const)(
+    'follows a %s day reschedule instead of the old date',
+    async (source) => {
+      const seriesId = await createPlayoffSeriesPair();
+      await pool.query(
+        `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z',
+       rescheduled_starts_at=case when $2='round' then '2030-10-08T15:00:00Z'::timestamptz else null end
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+        [seriesId, source],
+      );
+      if (source === 'pair') {
+        await pool.query(
+          `insert into tournament_series_game_day_schedule (series_id,round_game_day_id,starts_at)
+         select $1,d.id,'2030-10-08T15:00:00Z' from tournament_round_game_day d
+         join tournament_playoff_series s on s.round_id=d.round_id where s.id=$1`,
+          [seriesId],
+        );
+        // A planned fixture can still carry its original timestamp before an attempt exists.
+        await pool.query(
+          `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+           scheduled_starts_at,status)
+           select tournament_id,round_id,id,1,'2030-10-07T15:00:00Z','scheduled'
+           from tournament_playoff_series where id=$1`,
+          [seriesId],
+        );
+      }
+      const client = await pool.connect();
+      try {
+        expect(
+          (
+            await getBlockedPlayoffOpponentIds(
+              client,
+              userA,
+              [userB],
+              new Date('2030-10-07T12:00:00Z'),
+            )
+          ).size,
+        ).toBe(0);
+        expect(
+          (
+            await getBlockedPlayoffOpponentIds(
+              client,
+              userA,
+              [userB],
+              new Date('2030-10-08T12:00:00Z'),
+            )
+          ).has(userB),
+        ).toBe(true);
+      } finally {
+        client.release();
+      }
+    },
+  );
+
+  it('follows a fixture rescheduled before its first attempt without moving other game days', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z'
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    await pool.query(
+      `insert into tournament_round_game_day
+       (round_id,day_number,local_date,first_game_local_time,first_game_starts_at,
+        max_result_bearing_games,readiness_duration,planned_start_interval)
+       select round_id,2,'2030-10-09','18:00','2030-10-09T15:00:00Z',
+       3,interval '5 minutes',interval '30 minutes'
+       from tournament_playoff_series where id=$1`,
+      [seriesId],
+    );
+    const fixture = (
+      await pool.query<{ id: string; tournament_id: string }>(
+        `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       scheduled_starts_at,status)
+       select tournament_id,round_id,id,1,'2030-10-07T15:00:00Z','scheduled'
+       from tournament_playoff_series where id=$1 returning id,tournament_id`,
+        [seriesId],
+      )
+    ).rows[0]!;
+    await rescheduleTournamentFixture(pool, {
+      tournamentId: fixture.tournament_id,
+      fixtureId: fixture.id,
+      startsAt: new Date('2030-10-08T15:00:00Z'),
+      endsAt: new Date('2030-10-08T16:00:00Z'),
+      reason: 'Move first game before attempt creation',
+      adminUserId: userA,
+    });
+    const client = await pool.connect();
+    try {
+      for (const [instant, blocked] of [
+        ['2030-10-07T12:00:00Z', false],
+        ['2030-10-08T12:00:00Z', true],
+        ['2030-10-09T12:00:00Z', true],
+      ] as const) {
+        expect(
+          (await getBlockedPlayoffOpponentIds(client, userA, [userB], new Date(instant))).has(
+            userB,
+          ),
+          instant,
+        ).toBe(blocked);
+      }
+    } finally {
+      client.release();
+    }
+  });
+
+  it('keeps every game date when multiple no-attempt fixtures in one day are individually moved', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z'
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    const fixtures = (
+      await pool.query<{ id: string; tournament_id: string; fixture_number: number }>(
+        `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       scheduled_starts_at,status,result_snapshot)
+       select tournament_id,round_id,id,game_number,'2030-10-07T15:00:00Z','conditional',
+       jsonb_build_object('gameNumber',game_number)
+       from tournament_playoff_series cross join generate_series(1,3) game_number
+       where id=$1 returning id,tournament_id,fixture_number`,
+        [seriesId],
+      )
+    ).rows;
+    for (const [gameNumber, startsAt, endsAt] of [
+      [2, '2030-10-08T15:00:00Z', '2030-10-08T16:00:00Z'],
+      [3, '2030-10-10T15:00:00Z', '2030-10-10T16:00:00Z'],
+    ] as const) {
+      const fixture = fixtures.find((row) => row.fixture_number === gameNumber)!;
+      await rescheduleTournamentFixture(pool, {
+        tournamentId: fixture.tournament_id,
+        fixtureId: fixture.id,
+        startsAt: new Date(startsAt),
+        endsAt: new Date(endsAt),
+        reason: 'Individual conditional game move',
+        adminUserId: userA,
+      });
+    }
+    const client = await pool.connect();
+    try {
+      for (const [instant, blocked] of [
+        ['2030-10-07T12:00:00Z', true],
+        ['2030-10-08T12:00:00Z', true],
+        ['2030-10-09T12:00:00Z', false],
+        ['2030-10-10T12:00:00Z', true],
+      ] as const) {
+        expect(
+          (await getBlockedPlayoffOpponentIds(client, userA, [userB], new Date(instant))).has(
+            userB,
+          ),
+          instant,
+        ).toBe(blocked);
+      }
+    } finally {
+      client.release();
+    }
+  });
+
+  it('does not retain a planned day lock after all of its fixtures are cancelled', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       scheduled_starts_at,status)
+       select tournament_id,round_id,id,1,now(),'cancelled'
+       from tournament_playoff_series where id=$1`,
+      [seriesId],
+    );
+    const client = await pool.connect();
+    try {
+      expect((await getBlockedPlayoffOpponentIds(client, userA, [userB])).size).toBe(0);
+    } finally {
+      client.release();
+    }
+  });
+
+  it('uses tournament timezone rather than the user timezone or Moscow default', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    const revision = await pool.query<{ id: string }>(
+      `insert into tournament_revision (tournament_id,revision,rules_snapshot,created_by)
+       select tournament_id,1,'{"config":{"timezone":"Asia/Vladivostok"}}'::jsonb,$2
+       from tournament_playoff_series where id=$1 returning id`,
+      [seriesId, userA],
+    );
+    await pool.query(
+      `update tournament t set published_revision_id=$2 from tournament_playoff_series s where s.tournament_id=t.id and s.id=$1`,
+      [seriesId, revision.rows[0]!.id],
+    );
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07', first_game_starts_at='2030-10-07T08:00:00Z' from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    const client = await pool.connect();
+    try {
+      expect(
+        (
+          await getBlockedPlayoffOpponentIds(
+            client,
+            userA,
+            [userB],
+            new Date('2030-10-06T13:59:59Z'),
+          )
+        ).size,
+      ).toBe(0);
+      expect(
+        (
+          await getBlockedPlayoffOpponentIds(
+            client,
+            userA,
+            [userB],
+            new Date('2030-10-06T14:00:00Z'),
+          )
+        ).has(userB),
+      ).toBe(true);
+    } finally {
+      client.release();
+    }
+  });
+
+  it('keeps the whole game day blocked after its daily quota closes but releases a finished series', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set status='closed' from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    const client = await pool.connect();
+    try {
+      expect((await getBlockedPlayoffOpponentIds(client, userA, [userB])).has(userB)).toBe(true);
+      await pool.query(`update tournament_playoff_series set status='completed' where id=$1`, [
+        seriesId,
+      ]);
+      expect((await getBlockedPlayoffOpponentIds(client, userA, [userB])).size).toBe(0);
+    } finally {
+      client.release();
+    }
+  });
+
+  it('allows an ordinary invitation and acceptance on a playoff rest day', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date=local_date+1, first_game_starts_at=first_game_starts_at+interval '1 day' from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    const availability = await app.inject({
+      method: 'GET',
+      url: `/duel/amateur/challenge/availability?opponent_user_id=${userB}`,
+      headers: auth(tokenA),
+    });
+    expect(availability.statusCode).toBe(200);
+    const invitation = await challenge(await createTemplate());
+    expect(invitation.statusCode).toBe(200);
+    const accepted = await app.inject({
+      method: 'POST',
+      url: `/duel/amateur/matches/${invitation.json().match.id}/accept`,
+      headers: auth(tokenB),
+    });
+    expect(accepted.statusCode).toBe(200);
+  });
+
+  it('follows an individually rescheduled playoff game and ignores the stale day date', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z'
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    const fixture = await pool.query<{ id: string }>(
+      `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       home_participant_id,away_participant_id,scheduled_starts_at,status)
+       select tournament_id,round_id,id,1,higher_seed_participant_id,lower_seed_participant_id,
+       '2030-10-07T15:00:00Z','scheduled' from tournament_playoff_series where id=$1 returning id`,
+      [seriesId],
+    );
+    await pool.query(
+      `insert into tournament_fixture_attempt (fixture_id,round_game_day_id,attempt_number,kind,
+       status,scheduled_starts_at,readiness_expires_at,hard_deadline_at,is_result_bearing)
+       select $2,d.id,1,'initial','pending','2030-10-08T15:00:00Z','2030-10-08T15:05:00Z',
+       '2030-10-08T15:25:00Z',true from tournament_round_game_day d
+       join tournament_playoff_series s on s.round_id=d.round_id where s.id=$1`,
+      [seriesId, fixture.rows[0]!.id],
+    );
+    await pool.query(
+      `update tournament_fixture set rescheduled_reason='Moved to tomorrow' where id=$1`,
+      [fixture.rows[0]!.id],
+    );
+    const client = await pool.connect();
+    try {
+      expect(
+        (
+          await getBlockedPlayoffOpponentIds(
+            client,
+            userA,
+            [userB],
+            new Date('2030-10-07T12:00:00Z'),
+          )
+        ).size,
+      ).toBe(0);
+      expect(
+        (
+          await getBlockedPlayoffOpponentIds(
+            client,
+            userA,
+            [userB],
+            new Date('2030-10-08T12:00:00Z'),
+          )
+        ).has(userB),
+      ).toBe(true);
+      await pool.query(`update tournament_fixture set status='cancelled' where id=$1`, [
+        fixture.rows[0]!.id,
+      ]);
+      expect(
+        (
+          await getBlockedPlayoffOpponentIds(
+            client,
+            userA,
+            [userB],
+            new Date('2030-10-08T12:00:00Z'),
+          )
+        ).size,
+      ).toBe(0);
+    } finally {
+      client.release();
+    }
+  });
+
+  it('hides a playoff opponent on a game day until the series ends', async () => {
     await createTemplate();
     const seriesId = await createPlayoffSeriesPair();
 
