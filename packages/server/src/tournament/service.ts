@@ -1085,6 +1085,7 @@ interface TournamentRow {
   updated_at: Date;
   rules_snapshot: TournamentRulesSnapshot;
   participant_count: number;
+  display_rules?: TournamentRulesSnapshot;
   pending_application_count?: number;
   regular_rewards_paid?: boolean;
   playoff_rewards_paid?: boolean;
@@ -1190,7 +1191,7 @@ function mapTournament(row: TournamentRow, lifecycle?: TournamentLifecycleDTO) {
     participantCount: Number(row.participant_count),
     pendingApplicationCount: Number(row.pending_application_count ?? 0),
     lifecycle: resolvedLifecycle,
-    rules: row.rules_snapshot,
+    rules: row.display_rules ?? row.rules_snapshot,
     ...(row.my_participant_state !== undefined
       ? { myParticipantState: row.my_participant_state }
       : {}),
@@ -1204,6 +1205,7 @@ async function lifecycleByTournament(
   pool: Pool | PoolClient,
   rows: TournamentRow[],
 ): Promise<Map<string, TournamentLifecycleDTO>> {
+  await loadEffectiveDisplayRules(pool, rows);
   const lifecycle = await loadTournamentLifecycleDTOs(
     pool,
     rows.filter((row) => row.published_revision_id !== null).map((row) => row.id),
@@ -1213,6 +1215,62 @@ async function lifecycleByTournament(
     if (!lifecycle.has(row.id)) lifecycle.set(row.id, fallbackTournamentLifecycle(row));
   }
   return lifecycle;
+}
+
+// Response-only projection: separate pair edits must be visible to readers
+// without writing a revision or changing the authoritative game schedule.
+async function loadEffectiveDisplayRules(pool: Pool | PoolClient, rows: TournamentRow[]) {
+  const ids = rows
+    .filter(
+      (row) =>
+        Array.isArray(row.rules_snapshot.playoffRounds) &&
+        row.rules_snapshot.playoffRounds.length > 0,
+    )
+    .map((row) => row.id);
+  if (ids.length === 0) return;
+  const result = await pool.query<{
+    tournament_id: string;
+    round_number: number;
+    day_number: number;
+    series_key: string;
+    default_time: string;
+    override_time: string | null;
+  }>(
+    `select series.tournament_id, round.number as round_number, day.day_number,
+          series.depends_on->>'key' as series_key,
+          to_char(coalesce(day.rescheduled_starts_at,day.first_game_starts_at) at time zone
+            coalesce(revision.rules_snapshot->'config'->>'timezone','Europe/Moscow'),'HH24:MI') as default_time,
+          to_char(pair.starts_at at time zone
+            coalesce(revision.rules_snapshot->'config'->>'timezone','Europe/Moscow'),'HH24:MI') as override_time
+        from tournament_playoff_series series
+        join tournament_round round on round.id=series.round_id
+        join tournament_round_game_day day on day.round_id=round.id
+        join tournament tournament on tournament.id=series.tournament_id
+        join tournament_revision revision on revision.id=tournament.published_revision_id
+        left join tournament_series_game_day_schedule pair
+          on pair.series_id=series.id and pair.round_game_day_id=day.id
+       where series.tournament_id=any($1::uuid[])`,
+    [ids],
+  );
+  for (const row of rows) {
+    const actual = result.rows.filter((day) => day.tournament_id === row.id);
+    if (actual.length === 0) continue;
+    const rules = structuredClone(row.rules_snapshot);
+    for (const value of Array.isArray(rules.playoffRounds) ? rules.playoffRounds : []) {
+      const round = objectRecord(value);
+      if (!Array.isArray(round.scheduleDays)) continue;
+      for (const actualDay of actual.filter((day) => day.round_number === round.roundNumber)) {
+        const day = objectRecord(round.scheduleDays[actualDay.day_number - 1]);
+        if (Object.keys(day).length === 0) continue;
+        day.firstWaveLocalTime = actualDay.default_time;
+        const times = { ...objectRecord(day.pairStartTimes) };
+        if (actualDay.override_time === null) delete times[actualDay.series_key];
+        else times[actualDay.series_key] = actualDay.override_time;
+        day.pairStartTimes = times;
+      }
+    }
+    row.display_rules = rules;
+  }
 }
 
 async function mapTournamentWithLifecycle(pool: Pool | PoolClient, row: TournamentRow) {
