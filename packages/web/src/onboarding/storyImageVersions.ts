@@ -29,7 +29,7 @@ export const storyImageVersions: Record<string, string> = {
   "scene-02-b.webp": "45b7b0ed09ae",
   "scene-03-b.webp": "a569fc436637",
   "scene-05-a.webp": "26e5f340ba8e",
-  "scene-05-b.webp": "036e1d4fee8f",
+  "scene-05-b.webp": "5e738e4b2ebe",
   "scene-06-a.webp": "7b1bd39846eb",
   "scene-06-b.webp": "b0bfe548dd8c",
 };

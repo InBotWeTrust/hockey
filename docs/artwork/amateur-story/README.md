@@ -12,3 +12,5 @@ User corrections:
 - Invitation candidate still showed face rather than turning to entrance. Regenerated from accepted stadium base; final back/head and inviting palm gesture.
 
 Public assets: packages/web/public/onboarding/amateur/. Narrative and precise text cues: packages/web/src/onboarding/amateurStory.ts. Deployment not authorized for this task.
+
+- Pointing stadium frame rejected for elongated arm. Regenerated from accepted scene-05-a only, with bent elbow close to torso and proportional glove; original rejected frame was not used as input.
