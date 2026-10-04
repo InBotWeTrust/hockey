@@ -13,6 +13,7 @@ const labels: Record<ArsenichDestinationKey, string> = {
   main: 'Главный экран',
   daily: 'Ежедневная игра',
   sections: 'Разделы',
+  training: 'Тренировки: общая страница',
   'training-course': 'Тренировки: начальный уровень',
   'training-advanced': 'Тренировки: продвинутый уровень',
   'training-open': 'Тренировки: открытая тренировка',
