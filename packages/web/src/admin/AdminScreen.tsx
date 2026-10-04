@@ -39,6 +39,7 @@ import {
   Trophy,
   Upload,
   UserCheck,
+  UserRound,
   Users,
   Wallet,
   X,
@@ -61,6 +62,7 @@ import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSect
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import { OnboardingAdmin } from './OnboardingAdmin.js';
+import { ArsenichAdmin } from './ArsenichAdmin.js';
 import { ReferralsAdmin } from './ReferralsAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
@@ -181,6 +183,7 @@ type AdminTab =
   | 'tournaments'
   | 'feedback'
   | 'onboarding'
+  | 'arsenich'
   | 'settings';
 type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
@@ -206,6 +209,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
+  { id: 'arsenich', label: 'Арсенич', icon: <UserRound size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
 
@@ -1203,6 +1207,7 @@ export function AdminScreen(): JSX.Element {
         />
       )}
       {tab === 'onboarding' && <OnboardingAdmin />}
+      {tab === 'arsenich' && <ArsenichAdmin />}
       {tab === 'settings' && (
         <SettingsPanel
           loading={settings.isLoading}
