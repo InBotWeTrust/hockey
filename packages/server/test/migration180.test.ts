@@ -14,7 +14,7 @@ describe('migration 180 Arsenich training section introductions', () => {
     expect(sql).toContain("'training-course'");
     expect(sql).toContain("'training-advanced'");
     expect(sql).toContain("'training-open'");
-    expect(sql).toContain('Я тут за деталями для Логана заехал. Могу кое-что подсказать');
+    expect(sql).toContain('Я тут за деталями для Логана мимо ехал. Могу кое-что подсказать');
     expect(sql).toContain('С основами разобрался. Теперь можно усложнить');
     expect(sql).toContain('Ну что, решил потренить?');
     expect(sql).not.toContain('не только');
