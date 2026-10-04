@@ -269,6 +269,7 @@ function OfficialAccountSheet({
       onRequestClose={onClose}
       maxHeight="94dvh"
       grabberPlacement="top"
+      dragHandleOnly
       backdropTestId="profile-sheet-backdrop"
       headerAction={
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
@@ -402,6 +403,7 @@ function UserProfileSheetContent({
       onRequestClose={() => onClose()}
       maxHeight="94dvh"
       grabberPlacement="top"
+      dragHandleOnly
       backdropTestId="profile-sheet-backdrop"
       headerAction={
         <button type="button" className="icon-btn" onClick={onClose} aria-label="Закрыть">
