@@ -21,12 +21,12 @@ const day: api.PlayoffPairDay = {
   overrideStartsAt: null,
   effectiveStartsAt: '2030-10-26T17:00:00.000Z',
 };
-function show() {
+function show(onSaved?: () => Promise<void> | void) {
   render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <PlayoffPairScheduleEditor tournamentId="tournament-1" />
+      <PlayoffPairScheduleEditor tournamentId="tournament-1" onSaved={onSaved} />
     </QueryClientProvider>,
   );
 }
@@ -55,11 +55,13 @@ describe('pair day editor', () => {
   it('saves only the selected pair time in tournament local time', async () => {
     vi.spyOn(api, 'fetchPlayoffPairSchedule').mockResolvedValue({ days: [day] });
     const update = vi.spyOn(api, 'updatePlayoffPairDay').mockResolvedValue({ changed: true });
-    show();
+    const onSaved = vi.fn();
+    show(onSaved);
     const input = await screen.findByLabelText(/Первый.*Второй.*день 1/);
     fireEvent.change(input, { target: { value: '21:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Сохранить время пары' }));
     await waitFor(() => expect(update).toHaveBeenCalledWith('tournament-1', day, '21:00'));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledTimes(1));
   });
 
   it('keeps the current block locked and the next day editable', async () => {
