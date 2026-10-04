@@ -648,7 +648,7 @@ describe('UserProfileSheet', () => {
       new ApiError(
         409,
         'playoff_opponent_blocked',
-        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+        'Сегодня у вас игровой день серии плей-офф с этим соперником. Обычные дуэли между вами недоступны.',
       ),
     );
 
@@ -661,7 +661,7 @@ describe('UserProfileSheet', () => {
     const toast = await screen.findByRole('status');
     expect(toast).toHaveClass('achievement-reward-toast');
     expect(toast).toHaveTextContent(
-      'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+      'Сегодня у вас игровой день серии плей-офф с этим соперником. Обычные дуэли между вами недоступны.',
     );
     expect(screen.queryByRole('dialog', { name: 'Выбор типа дуэли' })).not.toBeInTheDocument();
     expect(amateurDuelApi.challengeAmateurDuel).not.toHaveBeenCalled();
