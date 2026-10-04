@@ -9,9 +9,17 @@ export function destinationForLocation(
   pathname: string,
   search: string,
 ): ArsenichDestinationKey | null {
-  const view = new URLSearchParams(search).get('view');
+  const params = new URLSearchParams(search);
+  const view = params.get('view');
   if (pathname === '/') {
-    if (view === 'training') return 'training';
+    if (view === 'training') {
+      if (params.get('play') === '1') return null;
+      const section = params.get('section');
+      if (section === 'course') return 'training-course';
+      if (section === 'advanced') return 'training-advanced';
+      if (section === 'open') return 'training-open';
+      return 'training';
+    }
     if (view === 'amateur') return 'amateur';
     if (view === 'pro') return null;
     return 'main';
