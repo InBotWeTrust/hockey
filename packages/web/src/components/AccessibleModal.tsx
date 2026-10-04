@@ -7,7 +7,13 @@ import {
   type RefObject,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { AnimatePresence, motion, useReducedMotion, type MotionStyle } from 'motion/react';
+import {
+  AnimatePresence,
+  motion,
+  useReducedMotion,
+  type DragControls,
+  type MotionStyle,
+} from 'motion/react';
 
 const FOCUSABLE_SELECTOR = [
   'button:not(:disabled)',
@@ -46,6 +52,8 @@ export function AccessibleModal({
   open = true,
   presentation = 'modal',
   onDragEnd,
+  dragControls,
+  dragListener,
   closeBlocked = false,
   initialFocusRef,
   restoreFocusTo,
@@ -65,6 +73,8 @@ export function AccessibleModal({
   open?: boolean;
   presentation?: 'modal' | 'sheet';
   onDragEnd?: (offsetY: number, velocityY: number) => void;
+  dragControls?: DragControls;
+  dragListener?: boolean;
   closeBlocked?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
   restoreFocusTo?: HTMLElement | null;
@@ -220,6 +230,8 @@ export function AccessibleModal({
                   }
             }
             drag={presentation === 'sheet' && !closeBlocked ? 'y' : false}
+            {...(dragControls === undefined ? {} : { dragControls })}
+            {...(dragListener === undefined ? {} : { dragListener })}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0.06, bottom: 0.62 }}
             dragSnapToOrigin

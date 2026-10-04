@@ -298,7 +298,7 @@ describe('UserProfileSheet', () => {
     expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-identity__name');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
-      'sheet-grabber',
+      'sheet-drag-handle',
     );
     expect(
       screen
