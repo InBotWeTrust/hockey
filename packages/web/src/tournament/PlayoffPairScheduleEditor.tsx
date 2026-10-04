@@ -17,10 +17,12 @@ function PairDayEditor({
   tournamentId,
   day,
   playoffSize,
+  onSaved,
 }: {
   tournamentId: string;
   day: PlayoffPairDay;
   playoffSize: number;
+  onSaved?: (() => Promise<void> | void) | undefined;
 }) {
   const [time, setTime] = useState(
     day.overrideStartsAt === null ? '' : localTime(day.overrideStartsAt, day.timezone),
@@ -33,6 +35,7 @@ function PairDayEditor({
       await client.invalidateQueries({
         queryKey: ['admin', 'tournaments', tournamentId, 'schedule'],
       });
+      await onSaved?.();
     },
   });
   const participants =
@@ -80,7 +83,13 @@ function PairDayEditor({
   );
 }
 
-export function PlayoffPairScheduleEditor({ tournamentId }: { tournamentId: string }) {
+export function PlayoffPairScheduleEditor({
+  tournamentId,
+  onSaved,
+}: {
+  tournamentId: string;
+  onSaved?: (() => Promise<void> | void) | undefined;
+}) {
   const schedule = useQuery({
     queryKey: ['playoff-pair-schedule', tournamentId],
     queryFn: () => fetchPlayoffPairSchedule(tournamentId),
@@ -106,6 +115,7 @@ export function PlayoffPairScheduleEditor({ tournamentId }: { tournamentId: stri
           tournamentId={tournamentId}
           day={day}
           playoffSize={playoffSize}
+          onSaved={onSaved}
         />
       ))}
     </section>

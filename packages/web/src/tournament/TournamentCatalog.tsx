@@ -543,7 +543,12 @@ export function tournamentPlayoffScheduleBlocks(
           roundNumber,
           stage,
           localDate: day.localDate,
-          startTime: day.startTime,
+          startTime: (() => {
+            const key = stage === 'third_place' ? 'BRONZE' : `R${roundNumber}S1`;
+            const times = objectValue(objectValue(configuredDays[dayIndex]).pairStartTimes);
+            const time = stage === 'third_place' || stageLabel === 'Финал' ? times[key] : undefined;
+            return typeof time === 'string' ? time.slice(0, 5) : day.startTime;
+          })(),
           stageLabel: label,
           duelKind: formats.get(roundNumber) ?? null,
           waitingLabel: playoffWaitingLabel(stageLabel),
