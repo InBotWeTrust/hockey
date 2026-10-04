@@ -34,6 +34,9 @@ describe('destinationForLocation', () => {
     ['/daily', '', 'daily'],
     ['/sections', '', 'sections'],
     ['/', '?view=training', 'training'],
+    ['/', '?view=training&section=course', 'training-course'],
+    ['/', '?view=training&section=advanced', 'training-advanced'],
+    ['/', '?view=training&section=open', 'training-open'],
     ['/achievements', '', 'tasks'],
     ['/inventory', '', 'shop'],
     ['/bonus-games', '', 'bonus-games'],
@@ -42,6 +45,14 @@ describe('destinationForLocation', () => {
     ['/profile', '', 'profile-main'],
   ] as const)('maps %s%s to %s', (pathname, search, destination) => {
     expect(destinationForLocation(pathname, search)).toBe(destination);
+  });
+
+  it.each([
+    '?view=training&section=course&exercise=stance&play=1',
+    '?view=training&section=advanced&exercise=notice_frame&play=1',
+    '?view=training&section=open&play=1',
+  ])('does not cover active training at %s', (search) => {
+    expect(destinationForLocation('/', search)).toBeNull();
   });
 
   it('does not introduce the professional section yet', () => {
