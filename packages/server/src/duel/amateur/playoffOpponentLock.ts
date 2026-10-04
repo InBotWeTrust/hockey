@@ -31,21 +31,20 @@ export async function getBlockedPlayoffOpponentIds(
             end = any($3::uuid[])
         and exists (
           select 1 from (
-            select coalesce(manual_fixture.scheduled_starts_at,
+            select coalesce(planned_fixture.rescheduled_starts_at,
                             pair_day.starts_at, day.rescheduled_starts_at,
                             day.first_game_starts_at) as starts_at
               from tournament_round_game_day day
               left join tournament_series_game_day_schedule pair_day
                 on pair_day.series_id = series.id and pair_day.round_game_day_id = day.id
               left join lateral (
-                select fixture.scheduled_starts_at
+                select fixture.id, fixture.status,
+                       exists (select 1 from tournament_fixture_attempt attempt
+                               where attempt.fixture_id = fixture.id) as has_attempt,
+                       case when fixture.rescheduled_reason is not null
+                            then fixture.scheduled_starts_at end as rescheduled_starts_at
                   from tournament_fixture fixture
-                 where fixture.series_id = series.id and fixture.status <> 'cancelled'
-                   and fixture.rescheduled_reason is not null
-                   and not exists (
-                     select 1 from tournament_fixture_attempt attempt
-                     where attempt.fixture_id = fixture.id
-                   )
+                 where fixture.series_id = series.id
                    and coalesce((fixture.result_snapshot->>'gameNumber')::int, 1) >
                      coalesce((select sum(previous.max_result_bearing_games)
                        from tournament_round_game_day previous
@@ -58,14 +57,16 @@ export async function getBlockedPlayoffOpponentIds(
                        where planned.round_id = day.round_id
                          and planned.status <> 'cancelled'
                          and planned.day_number <= day.day_number)
-                 order by fixture.fixture_number limit 1
-              ) manual_fixture on true
+              ) planned_fixture on true
              where day.round_id = series.round_id and day.status <> 'cancelled'
-               and not exists (
+               and ((planned_fixture.id is not null
+                     and planned_fixture.status <> 'cancelled'
+                     and not planned_fixture.has_attempt)
+                    or (planned_fixture.id is null and not exists (
                  select 1 from tournament_fixture_attempt attempt
                  join tournament_fixture fixture on fixture.id = attempt.fixture_id
                  where fixture.series_id = series.id and attempt.round_game_day_id = day.id
-               )
+               )))
             union all
             select coalesce(
                      case when fixture.rescheduled_reason is not null

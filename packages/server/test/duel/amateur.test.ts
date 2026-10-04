@@ -819,6 +819,76 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     }
   });
 
+  it('keeps every game date when multiple no-attempt fixtures in one day are individually moved', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z'
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    const fixtures = (
+      await pool.query<{ id: string; tournament_id: string; fixture_number: number }>(
+        `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       scheduled_starts_at,status,result_snapshot)
+       select tournament_id,round_id,id,game_number,'2030-10-07T15:00:00Z','conditional',
+       jsonb_build_object('gameNumber',game_number)
+       from tournament_playoff_series cross join generate_series(1,3) game_number
+       where id=$1 returning id,tournament_id,fixture_number`,
+        [seriesId],
+      )
+    ).rows;
+    for (const [gameNumber, startsAt, endsAt] of [
+      [2, '2030-10-08T15:00:00Z', '2030-10-08T16:00:00Z'],
+      [3, '2030-10-10T15:00:00Z', '2030-10-10T16:00:00Z'],
+    ] as const) {
+      const fixture = fixtures.find((row) => row.fixture_number === gameNumber)!;
+      await rescheduleTournamentFixture(pool, {
+        tournamentId: fixture.tournament_id,
+        fixtureId: fixture.id,
+        startsAt: new Date(startsAt),
+        endsAt: new Date(endsAt),
+        reason: 'Individual conditional game move',
+        adminUserId: userA,
+      });
+    }
+    const client = await pool.connect();
+    try {
+      for (const [instant, blocked] of [
+        ['2030-10-07T12:00:00Z', true],
+        ['2030-10-08T12:00:00Z', true],
+        ['2030-10-09T12:00:00Z', false],
+        ['2030-10-10T12:00:00Z', true],
+      ] as const) {
+        expect(
+          (await getBlockedPlayoffOpponentIds(client, userA, [userB], new Date(instant))).has(
+            userB,
+          ),
+          instant,
+        ).toBe(blocked);
+      }
+    } finally {
+      client.release();
+    }
+  });
+
+  it('does not retain a planned day lock after all of its fixtures are cancelled', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       scheduled_starts_at,status)
+       select tournament_id,round_id,id,1,now(),'cancelled'
+       from tournament_playoff_series where id=$1`,
+      [seriesId],
+    );
+    const client = await pool.connect();
+    try {
+      expect((await getBlockedPlayoffOpponentIds(client, userA, [userB])).size).toBe(0);
+    } finally {
+      client.release();
+    }
+  });
+
   it('uses tournament timezone rather than the user timezone or Moscow default', async () => {
     const seriesId = await createPlayoffSeriesPair();
     const revision = await pool.query<{ id: string }>(
