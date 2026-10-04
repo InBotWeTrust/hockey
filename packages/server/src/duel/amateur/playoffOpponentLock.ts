@@ -31,11 +31,35 @@ export async function getBlockedPlayoffOpponentIds(
             end = any($3::uuid[])
         and exists (
           select 1 from (
-            select coalesce(pair_day.starts_at, day.rescheduled_starts_at,
+            select coalesce(manual_fixture.scheduled_starts_at,
+                            pair_day.starts_at, day.rescheduled_starts_at,
                             day.first_game_starts_at) as starts_at
               from tournament_round_game_day day
               left join tournament_series_game_day_schedule pair_day
                 on pair_day.series_id = series.id and pair_day.round_game_day_id = day.id
+              left join lateral (
+                select fixture.scheduled_starts_at
+                  from tournament_fixture fixture
+                 where fixture.series_id = series.id and fixture.status <> 'cancelled'
+                   and fixture.rescheduled_reason is not null
+                   and not exists (
+                     select 1 from tournament_fixture_attempt attempt
+                     where attempt.fixture_id = fixture.id
+                   )
+                   and coalesce((fixture.result_snapshot->>'gameNumber')::int, 1) >
+                     coalesce((select sum(previous.max_result_bearing_games)
+                       from tournament_round_game_day previous
+                       where previous.round_id = day.round_id
+                         and previous.status <> 'cancelled'
+                         and previous.day_number < day.day_number), 0)
+                   and coalesce((fixture.result_snapshot->>'gameNumber')::int, 1) <=
+                     (select sum(planned.max_result_bearing_games)
+                       from tournament_round_game_day planned
+                       where planned.round_id = day.round_id
+                         and planned.status <> 'cancelled'
+                         and planned.day_number <= day.day_number)
+                 order by fixture.fixture_number limit 1
+              ) manual_fixture on true
              where day.round_id = series.round_id and day.status <> 'cancelled'
                and not exists (
                  select 1 from tournament_fixture_attempt attempt

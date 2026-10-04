@@ -19,6 +19,7 @@ import {
 import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { reconcileCompletedMonthlyRating } from '../../src/duel/amateur/monthlyRewards.js';
 import { getBlockedPlayoffOpponentIds } from '../../src/duel/amateur/playoffOpponentLock.js';
+import { rescheduleTournamentFixture } from '../../src/tournament/service.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -764,6 +765,59 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       }
     },
   );
+
+  it('follows a fixture rescheduled before its first attempt without moving other game days', async () => {
+    const seriesId = await createPlayoffSeriesPair();
+    await pool.query(
+      `update tournament_round_game_day d set local_date='2030-10-07',
+       first_game_starts_at='2030-10-07T15:00:00Z'
+       from tournament_playoff_series s where s.round_id=d.round_id and s.id=$1`,
+      [seriesId],
+    );
+    await pool.query(
+      `insert into tournament_round_game_day
+       (round_id,day_number,local_date,first_game_local_time,first_game_starts_at,
+        max_result_bearing_games,readiness_duration,planned_start_interval)
+       select round_id,2,'2030-10-09','18:00','2030-10-09T15:00:00Z',
+       3,interval '5 minutes',interval '30 minutes'
+       from tournament_playoff_series where id=$1`,
+      [seriesId],
+    );
+    const fixture = (
+      await pool.query<{ id: string; tournament_id: string }>(
+        `insert into tournament_fixture (tournament_id,round_id,series_id,fixture_number,
+       scheduled_starts_at,status)
+       select tournament_id,round_id,id,1,'2030-10-07T15:00:00Z','scheduled'
+       from tournament_playoff_series where id=$1 returning id,tournament_id`,
+        [seriesId],
+      )
+    ).rows[0]!;
+    await rescheduleTournamentFixture(pool, {
+      tournamentId: fixture.tournament_id,
+      fixtureId: fixture.id,
+      startsAt: new Date('2030-10-08T15:00:00Z'),
+      endsAt: new Date('2030-10-08T16:00:00Z'),
+      reason: 'Move first game before attempt creation',
+      adminUserId: userA,
+    });
+    const client = await pool.connect();
+    try {
+      for (const [instant, blocked] of [
+        ['2030-10-07T12:00:00Z', false],
+        ['2030-10-08T12:00:00Z', true],
+        ['2030-10-09T12:00:00Z', true],
+      ] as const) {
+        expect(
+          (await getBlockedPlayoffOpponentIds(client, userA, [userB], new Date(instant))).has(
+            userB,
+          ),
+          instant,
+        ).toBe(blocked);
+      }
+    } finally {
+      client.release();
+    }
+  });
 
   it('uses tournament timezone rather than the user timezone or Moscow default', async () => {
     const seriesId = await createPlayoffSeriesPair();
