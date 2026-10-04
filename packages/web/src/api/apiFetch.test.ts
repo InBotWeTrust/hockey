@@ -93,7 +93,7 @@ describe('apiFetch', () => {
     await expect(apiFetch('/duel/amateur/challenge')).rejects.toMatchObject({
       code: 'playoff_opponent_blocked',
       message:
-        'Это ваш соперник в плей-офф. Сначала сыграйте серию — после этого обычная дуэль станет доступна.',
+        'Сегодня у вас игровой день серии плей-офф с этим соперником. Обычные дуэли между вами недоступны.',
     });
   });
 
