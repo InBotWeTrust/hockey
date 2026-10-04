@@ -3487,6 +3487,20 @@
   margin: -2px auto 10px;
 }
 
+.sheet-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 32px;
+  margin: -10px -18px 0;
+  touch-action: none;
+  user-select: none;
+}
+
+.sheet-drag-handle .sheet-grabber {
+  margin: 0;
+}
+
 .public-profile-passport {
   gap: 12px;
   margin-top: -8px;
