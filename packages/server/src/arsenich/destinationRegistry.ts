@@ -2,7 +2,6 @@ export const ARSENICH_DESTINATION_KEYS = [
   'main',
   'daily',
   'sections',
-  'training',
   'training-course',
   'training-advanced',
   'training-open',
