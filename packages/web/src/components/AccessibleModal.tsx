@@ -31,6 +31,8 @@ interface BackgroundSnapshot {
 }
 
 const activeModalStack: symbol[] = [];
+const backgroundLocks = new WeakMap<HTMLElement, BackgroundSnapshot & { count: number }>();
+let deferredRestoreTarget: HTMLElement | null = null;
 
 export type DismissReason = 'backdrop' | 'escape' | 'close-button' | 'drag';
 
@@ -115,15 +117,19 @@ export function AccessibleModal({
     const backgrounds = Array.from(document.body.children)
       .filter((element): element is HTMLElement => element instanceof HTMLElement)
       .filter((element) => element !== portalBranch && !element.hasAttribute('data-pwa-update-root'))
-      .map<BackgroundSnapshot>((element) => ({
-        element,
-        inert: element.getAttribute('inert'),
-        ariaHidden: element.getAttribute('aria-hidden'),
-      }));
-    for (const background of backgrounds) {
-      background.element.setAttribute('inert', '');
-      background.element.setAttribute('aria-hidden', 'true');
-    }
+      .map((element) => {
+        const existing = backgroundLocks.get(element);
+        const lock = existing ?? {
+          element, count: 0,
+          inert: element.getAttribute('inert'),
+          ariaHidden: element.getAttribute('aria-hidden'),
+        };
+        lock.count += 1;
+        backgroundLocks.set(element, lock);
+        element.setAttribute('inert', '');
+        element.setAttribute('aria-hidden', 'true');
+        return lock;
+      });
 
     const modalId = modalIdRef.current;
     activeModalStack.push(modalId);
@@ -165,11 +171,22 @@ export function AccessibleModal({
       const stackIndex = activeModalStack.lastIndexOf(modalId);
       if (stackIndex !== -1) activeModalStack.splice(stackIndex, 1);
       for (const background of backgrounds) {
-        restoreAttribute(background.element, 'inert', background.inert);
-        restoreAttribute(background.element, 'aria-hidden', background.ariaHidden);
+        background.count -= 1;
+        if (background.count === 0) {
+          restoreAttribute(background.element, 'inert', background.inert);
+          restoreAttribute(background.element, 'aria-hidden', background.ariaHidden);
+          backgroundLocks.delete(background.element);
+        }
       }
       const restoreTarget = restoreTargetRef.current;
-      if (restoreTarget?.isConnected) restoreTarget.focus();
+      if (restoreTarget?.isConnected) {
+        if (restoreTarget.closest('[inert]')) deferredRestoreTarget = restoreTarget;
+        else restoreTarget.focus();
+      }
+      if (activeModalStack.length === 0) {
+        if (deferredRestoreTarget?.isConnected) deferredRestoreTarget.focus();
+        deferredRestoreTarget = null;
+      }
     };
   }, [initialFocusRef, open]);
 

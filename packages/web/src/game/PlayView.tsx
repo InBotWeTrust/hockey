@@ -403,6 +403,7 @@ export interface PlayViewProps<TState> {
       ) => DuelPlayerCondition | null)
     | undefined;
   hudAddon?: ReactNode;
+  rightHudAddon?: ReactNode;
   statusNotice?: ReactNode;
   statusNoticeTone?: 'success' | 'warning' | 'error' | 'slip' | 'magnetic' | undefined;
   statusNoticeClassName?: string | undefined;
@@ -747,6 +748,7 @@ export function PlayView<TState>({
   skidVisual,
   beachWindTarget,
   hudAddon,
+  rightHudAddon,
   statusNotice,
   statusNoticeTone,
   statusNoticeClassName,
@@ -2551,6 +2553,18 @@ export function PlayView<TState>({
               }}
             >
               {hudAddon}
+            </div>
+          )}
+          {rightHudAddon && (
+            <div style={{
+              position: 'absolute',
+              right: 'clamp(10px, 4.2%, 22px)',
+              bottom: 'clamp(16px, 3.4%, 30px)',
+              zIndex: 6,
+              pointerEvents: 'none',
+              ...routeGameStyle,
+            }}>
+              {rightHudAddon}
             </div>
           )}
           {!noticeInScoreboard && gameNotice}

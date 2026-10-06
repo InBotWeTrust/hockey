@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { transactionTitle } from '../../src/routes/inventory.js';
 
 describe('inventory transaction history labels', () => {
+  it.each([[true, 'Победа в драке'], [false, 'Поражение в драке']])('names fight rewards for won=%s', (won, title) => {
+    expect(transactionTitle('duel_fight_reward', { won })).toBe(title);
+  });
   it('gives every supported ledger reason a meaningful title', () => {
     const reasons = [
       'admin_adjustment',

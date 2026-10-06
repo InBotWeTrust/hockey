@@ -325,6 +325,12 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/db/migrate-cli.js < /dev/null
 
+          # Enable ordinary-duel fights in the isolated dev database only.
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
+            exec -T postgres-dev psql -v ON_ERROR_STOP=1 \
+              -U "$STAGING_POSTGRES_USER" -d "$STAGING_POSTGRES_DB" \
+              -c "update game_settings set value='true'::jsonb where key='duels.fights.enabled'" < /dev/null
+
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ]; then
             docker compose -f docker-compose.yml -f docker-compose.staging.yml \
               run --rm -T server-dev \

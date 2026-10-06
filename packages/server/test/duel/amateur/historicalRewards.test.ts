@@ -47,6 +47,11 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
     await pool.query(
       await fs.readFile(path.join(migrations, '177_playoff_pair_day_schedule.sql'), 'utf8'),
     );
+    // Current snapshot readers need additive fight clocks and tables, while
+    // the migration under test must retain all historical reward values.
+    for (const name of ['183_ordinary_duel_fight_clocks.sql', '184_ordinary_duel_fights.sql']) {
+      await pool.query(await fs.readFile(path.join(migrations, name), 'utf8'));
+    }
     await pool.end();
     const { databaseUrl, redisUrl } = getTestUrls();
     app = await buildApp({
