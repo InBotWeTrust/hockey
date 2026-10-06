@@ -1,3 +1,4 @@
+import type { FightState } from '@hockey/game-core';
 import type {
   DailyPeriodSpeedPreset,
   DuelInventoryResourceUnit,
@@ -151,6 +152,8 @@ export interface AmateurDuelParticipant {
   current_period_shots: number;
   current_period_goals: number;
   ready_at: string | null;
+  clock?: {periodElapsedMs:number;totalActiveMs:number;remainingMs:number;running:boolean};
+  recovery_until?:string|null;
   period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;
@@ -251,6 +254,7 @@ export interface AmateurDuelMatch {
   accepted_at: string | null;
   settled_at: string | null;
   earned_reward?: { stars: number; experience: number } | null;
+  fight_rewards?: Array<{ fight_id: string; won: boolean; stars: number; experience: number }>;
   created_at: string;
   server_now: string;
   period_started_at: string | null;
@@ -262,7 +266,16 @@ export interface AmateurDuelMatch {
   opponent: AmateurDuelParticipant;
 }
 
+export interface AmateurDuelFight {
+  id:string; initiator_user_id:string; status:string; response_deadline_at:string;
+  starts_at:string|null; resolved_at:string|null; winner_user_id:string|null; engine_state:FightState|null;
+}
 export interface AmateurDuelMatchState extends AmateurDuelMatch {
+  state_revision?:number;
+  fight_enabled?:boolean;
+  fight_paused_at?:string|null;
+  fight_availability?:{allowed:boolean;reason:string;remainingMs:number};
+  fight?:AmateurDuelFight|null;
   match_seed: string | null;
   current_period_shots: number;
   current_period_goals: number;
@@ -393,6 +406,7 @@ export interface SubmitAmateurDuelShotRequest {
 }
 
 export interface SubmitAmateurDuelShotResponse {
+  state_revision?:number;
   match_id: string;
   server_result: ShotResultType;
   confirmed_shot_index: number;
@@ -671,4 +685,13 @@ export function fetchAmateurHistoryCalendar(
   return apiFetch<AmateurDuelHistoryCalendarResponse>(
     `/duel/amateur/history/calendar${query ? `?${query}` : ''}`,
   );
+}
+
+export async function challengeAmateurFight(matchId:string,requestId:string):Promise<{match:AmateurDuelMatchState}> {
+ const response=await apiFetch<{match:AmateurDuelMatchState}>(`/duel/amateur/matches/${matchId}/fight/challenge`,{method:'POST',body:JSON.stringify({requestId})});
+ return {match:stampMatch(response.match)};
+}
+export async function respondAmateurFight(matchId:string,fightId:string,decision:'accept'|'decline',requestId:string):Promise<{match:AmateurDuelMatchState}> {
+ const response=await apiFetch<{match:AmateurDuelMatchState}>(`/duel/amateur/matches/${matchId}/fight/respond`,{method:'POST',body:JSON.stringify({fightId,decision,requestId})});
+ return {match:stampMatch(response.match)};
 }

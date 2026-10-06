@@ -1877,3 +1877,15 @@ it('stops a beach shot in deep water without a rebound or a second tap', async (
     });
 
 });
+
+it('keeps shots available with a separate right-side fight challenge', async () => {
+  render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+    active seed="fight-offer" goalieId={null} goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+    hudAddon={<span>Inventory</span>} rightHudAddon={<button>Fight</button>}
+    optimisticAddShot={() => undefined} submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+  await waitFor(() => expect(playerContainers.length).toBeGreaterThan(0));
+  expect(playerContainers.at(-1)?.visible).toBe(true);
+  expect(goalieContainers.at(-1)?.visible).toBe(true);
+  expect(screen.getByRole('button', { name: 'Fight' }).parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
+  expect(screen.getByRole('button', { name: /БРОСОК/ })).not.toBeDisabled();
+});

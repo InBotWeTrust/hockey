@@ -590,6 +590,39 @@ describe('createGameLoop', () => {
     nowSpy.mockRestore();
   });
 
+  it('keeps the resting player still while goal and goalie move, then resumes smoothly', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const player = vi.fn(), goal = vi.fn(), goalie = vi.fn();
+    let resting = true;
+    const loop = makeLoop({
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({ goalFreq: 1, goalieFreq: 1, shooterFreq: 1, puckSpeed: 1 }),
+      playerRenderer: { update: player } as never,
+      goalRenderer: { update: goal } as never,
+      goalieRenderer: { update: goalie } as never,
+      getDuelCondition: () => resting ? ({ puckSpeedDelta: 0, shooterSpeedMultiplier: 1,
+        canShoot: false, status: 'exhausted_stop', fatigueLevel: 'resting', stumbleActive: false,
+        shooterXOffsetPx: 0, fatigueMs: 0, nutritionConsumed: 0, skatesConsumed: 0 }) : null,
+    });
+    const ticker = makeTicker(); loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    now.mockReturnValue(2000); tick();
+    const stoppedX = player.mock.calls.at(-1)![1];
+    const firstGoalX = goal.mock.calls.at(-1)![1];
+    const firstGoalieX = goalie.mock.calls.at(-1)![0].position.x;
+    now.mockReturnValue(6500); tick();
+    expect(player.mock.calls.at(-1)![1]).toBe(stoppedX);
+    expect(player.mock.calls.at(-1)![3].resting).toBe(true);
+    expect(goal.mock.calls.at(-1)![1]).not.toBe(firstGoalX);
+    expect(goalie.mock.calls.at(-1)![0].position.x).not.toBe(firstGoalieX);
+    resting = false; now.mockReturnValue(7000); tick();
+    expect(player.mock.calls.at(-1)![3].resting).toBe(false);
+    expect(player.mock.calls.at(-1)![1]).toBeCloseTo(stoppedX);
+    now.mockReturnValue(7200); tick();
+    expect(player.mock.calls.at(-1)![1]).not.toBe(stoppedX);
+    loop.detach(); now.mockRestore();
+  });
+
   it('keeps reporting the latest paused duel condition while frozen', () => {
     const nowSpy = vi.spyOn(performance, 'now');
     nowSpy.mockReturnValue(1000);

@@ -1,3 +1,8 @@
+import { useDuelFightSocket } from '../hooks/useDuelFightSocket.js';
+import { FightControls } from '../components/duel/fight/FightControls.js';
+import { FightView } from '../game/fight/FightView.js';
+import { FightResultModal } from '../components/duel/fight/FightResultModal.js';
+import { FightModal } from '../components/duel/fight/FightModal.js';
 import {
   useCallback,
   useEffect,
@@ -5735,6 +5740,7 @@ function AmateurDuelPlayView({
     guardAmateurMutation(amateurAccess, () => undefined);
   };
   const match = useAmateurDuelStore((s) => s.match);
+  const fightSocket=useDuelFightSocket(matchId,match?.id===matchId&&(match.fight_enabled===true||!!match.fight_paused_at)&&match.source!=='tournament');
   const loading = useAmateurDuelStore((s) => s.loading);
   const error = useAmateurDuelStore((s) => s.error);
   const inFlight = useAmateurDuelStore((s) => s.inFlight);
@@ -5818,9 +5824,9 @@ function AmateurDuelPlayView({
   }, [matchId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.recovery_until ? 50 : 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [match?.fight?.status, match?.fight_paused_at, match?.me.recovery_until]);
 
   useEffect(() => {
     const inventory = inventoryQuery.data;
@@ -6054,6 +6060,31 @@ function AmateurDuelPlayView({
       tournamentAttempt.data?.attempt?.duelMatchId === match.id &&
       !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
+  const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
+  const fight = match.fight;
+  const fightPaused = !!match.fight_paused_at && fight?.status !== 'offered';
+  const fightOverlay = fightPaused && fight?.status !== 'offered' ? (
+    <FightModal>
+      {fight?.engine_state ? (
+        <FightView
+          state={fight.engine_state}
+          player={match.me.side === 'challenger' ? 0 : 1}
+          currentPlayer={{ name: match.me.display_name, avatarUrl: match.me.avatar_url }}
+          opponent={{ name: match.opponent.display_name, avatarUrl: match.opponent.avatar_url }}
+          nowMs={fightNow}
+          onAction={fightSocket.sendAction}
+          predictionReset={fightSocket.predictionReset}
+        />
+      ) : <p>Восстанавливаем состояние боя…</p>}
+      {fight?.status === 'resolved' && <FightResultModal won={fight.winner_user_id === match.me.user_id} />}
+      {!fightSocket.connected && fight?.status !== 'resolved' && <p className="fight-connection" role="status">Восстанавливаем связь…</p>}
+      {fightSocket.error && fight?.status !== 'resolved' && <p className="fight-connection" role="status">{fightSocket.error}</p>}
+    </FightModal>
+  ) : null;
+  const fightRecovery=match.me.recovery_until?Math.max(0,Date.parse(match.me.recovery_until)-fightNow):0;
+  const fightResting = fightRecovery > 0 && fight?.status === 'resolved' &&
+    fight.winner_user_id != null && fight.winner_user_id !== match.me.user_id;
+  const fightAction = fight?.status === 'offered' || (match.fight_enabled && match.fight_availability?.allowed) ? <FightControls match={match} nowMs={fightNow} iconStyle={DUEL_INVENTORY_ICON_GLASS_STYLE}/> : null;
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
@@ -6100,7 +6131,7 @@ function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
-          primaryActionBlocked={duelBlocked}
+          primaryActionBlocked={duelBlocked || fightRecovery>0}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
@@ -6111,7 +6142,7 @@ function AmateurDuelPlayView({
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          duelCondition={duelCondition}
+          duelCondition={(elapsed,speeds)=>{const condition=duelCondition(elapsed,speeds);return condition&&fightRecovery>0?{...condition,canShoot:false}:condition;}}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
@@ -6262,7 +6293,8 @@ function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          suppressedByModal={false}
+          suppressedByModal={!!fightOverlay}
+          preserveSceneOnModalReturn
           showIceCar={false}
           playEntranceOnMount={playEntranceOnMount}
           onEntranceConsumed={onEntranceConsumed}
@@ -6270,7 +6302,7 @@ function AmateurDuelPlayView({
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
           active={match.status === 'active' && !duelBlocked && amateurAccess.hasFullAccess}
-          primaryActionBlocked={duelBlocked}
+          primaryActionBlocked={duelBlocked || fightRecovery>0 || fightPaused}
           {...(!amateurAccess.hasFullAccess ? { inactiveAction: showAmateurRestriction } : {})}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
@@ -6288,23 +6320,39 @@ function AmateurDuelPlayView({
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
           }
           periodEndsAt={periodEndsAt}
-          onTimerExpired={refresh}
+          {...(fightPaused ? { timer: formatMs(Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
           backLabel={duelBackLabel(match.source, false)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          duelCondition={duelCondition}
+          duelCondition={(elapsed, speeds) => {
+            const condition = duelCondition(elapsed, speeds);
+            if (!condition || fightRecovery <= 0) return condition;
+            return fightResting ? {
+              ...condition, canShoot: false, status: 'exhausted_stop', fatigueLevel: 'resting',
+              stumbleActive: false, shooterXOffsetPx: 0,
+            } : { ...condition, canShoot: false };
+          }}
+          conditionNoticeOverride={fightResting}
+          statusNotice={fightResting ? 'Восстановление после драки' : undefined}
+          statusNoticeUnderScoreboard
+          statusNoticeClassName={fightResting ? 'duel-fatigue-notice duel-rest-notice' : undefined}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
+            <>
+            {match.fight?.status==='cancelled'&&match.fight.resolved_at&&fightNow-Date.parse(match.fight.resolved_at)<1500&&<p role="status">Драка завершена без победителя</p>}
+            {match.fight?.status==='resolved'&&match.fight.resolved_at&&fightNow-Date.parse(match.fight.resolved_at)<1500&&<p role="status">{match.fight.winner_user_id===match.me.user_id?'Победа в драке! +1 ⭐ · +1 опыт':'Поражение · +1 опыт'}</p>}
             <DuelInventoryMiniHud
               match={match}
               liveCondition={liveDuelCondition}
-              {...(loadoutEditable ? { onSelectKind: setSelectedLoadoutKind } : {})}
-            />
+              {...(loadoutEditable && !fightPaused ? { onSelectKind: setSelectedLoadoutKind } : {})}
+            /></>
           }
+          rightHudAddon={fightAction}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {loadoutEditable && selectedLoadoutKind === 'stick' && (
+        {fightOverlay}
+        {!fightPaused && loadoutEditable && selectedLoadoutKind === 'stick' && (
           <DuelRinkLoadoutModal
             kind="stick"
             match={match}
@@ -6405,7 +6453,7 @@ function AmateurDuelPlayView({
   );
 }
 
-function DuelResultModal({
+export function DuelResultModal({
   match,
   onClose,
   closeLabel = 'Понятно',
@@ -6572,6 +6620,12 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
+  const fightRewardRow = match.fight_rewards?.map((reward) => (
+    <div key={reward.fight_id} aria-label="Результат драки" className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
+      <span><strong>Драка:</strong> {reward.won ? 'победа' : 'поражение'}</span>
+      <DuelEarnedRewards reward={reward} />
+    </div>
+  )) ?? null;
 
   return (
     <div
@@ -6600,6 +6654,7 @@ function DuelResultCard({
                 <DuelResultCompactFact label="Очки" value={pointsText} />
                 <DuelEarnedRewards reward={match.earned_reward ?? null} />
               </div>
+              {fightRewardRow}
               <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
             <section className="duel-result-card__compact-summary">
@@ -6723,7 +6778,7 @@ function DuelResultCard({
                   {match.me.goals}:{match.opponent.goals}
                 </strong>
               </div>
-              <div className="tournament-duel-result__meta">
+              <div className="tournament-duel-result__meta" style={match.fight_rewards?.length ? {flexDirection:'column',alignItems:'stretch',gap:6} : undefined}>
                 {match.source !== 'tournament' ? (
                   <span className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
                     <span>
@@ -6745,6 +6800,7 @@ function DuelResultCard({
                     <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
                   </span>
                 )}
+                {fightRewardRow}
                 {series !== null && series.winsRequired > 1 && (
                   <span>
                     <strong>Счёт в серии:</strong>{' '}
@@ -8682,7 +8738,7 @@ function createDuelConditionForMatch(
   };
 }
 
-function DuelInventoryMiniHud({
+export function DuelInventoryMiniHud({
   match,
   liveCondition,
   onSelectKind,

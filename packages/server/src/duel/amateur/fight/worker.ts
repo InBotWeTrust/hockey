@@ -1,0 +1,84 @@
+import type { FightState } from '@hockey/game-core';
+import type { FastifyInstance } from 'fastify';
+import type { FightDuelAdapter } from './routes.js';
+import { advancePersistedFight, FIGHT_RESULT_HOLD_MS } from './service.js';
+export function startFightWorker(
+  app: FastifyInstance,
+  adapter: FightDuelAdapter,
+): () => Promise<void> {
+  const checked = new Map<string, number>();
+  let stopped = false;
+  let running: Promise<void> | null = null;
+  const tick = async () => {
+    const pending = await app.pg.query<{
+      match_id: string;
+      initiator_user_id: string;
+      status: string;
+      response_deadline_at: Date;
+      starts_at: Date | null;
+      resolved_at: Date | null;
+      engine_state: FightState | null;
+    }>(
+      "select f.match_id,f.initiator_user_id,f.status,f.response_deadline_at,f.starts_at,f.resolved_at,f.engine_state from amateur_duel_fight f join amateur_duel_match m on m.id=f.match_id where f.status in ('offered','starting','fighting','sudden_death') or (f.status='resolved' and m.fight_paused_at is not null) order by f.offered_at",
+    );
+    for (const row of pending.rows) {
+      const now = Date.now();
+      const state = row.engine_state;
+      const due =
+        row.status === 'resolved'
+          ? now >= (row.resolved_at?.getTime() ?? Infinity) + FIGHT_RESULT_HOLD_MS
+          : row.status === 'offered'
+          ? now >= row.response_deadline_at.getTime()
+          : row.status === 'starting'
+            ? now >= (row.starts_at?.getTime() ?? Infinity)
+            : state !== null &&
+              (now >= state.deadlineMs + state.rules.deliveryGraceMs ||
+                state.actions.some(
+                  (a) =>
+                    a.kind === 'attack' &&
+                    !a.resolved &&
+                    now >=
+                      Math.min(a.activeUntilMs, state.deadlineMs) + state.rules.deliveryGraceMs,
+                ));
+      if (!due && now - (checked.get(row.match_id) ?? 0) < 1000) continue;
+      checked.set(row.match_id, now);
+      await adapter
+        .transact(async (c) => {
+          const ctx = await adapter.prepare(c, row.match_id, row.initiator_user_id);
+          await advancePersistedFight(c, ctx);
+        })
+        .catch((err) =>
+          app.log.error({ err, matchId: row.match_id }, 'duel fight progression failed'),
+        );
+    }
+    for (const id of checked.keys())
+      if (!pending.rows.some((row) => row.match_id === id)) checked.delete(id);
+    const outbox = await app.pg.query<{ id: string; match_id: string; revision: string }>(
+      'select id,match_id,revision from amateur_duel_fight_outbox where published_at is null order by id limit 100',
+    );
+    for (const row of outbox.rows) {
+      await app.realtime.publish(`duel:fight:${row.match_id}`, {
+        type: 'duel:fight_update',
+        matchId: row.match_id,
+        revision: Number(row.revision),
+      });
+      await app.pg.query('update amateur_duel_fight_outbox set published_at=now() where id=$1', [
+        row.id,
+      ]);
+    }
+  };
+  const timer = setInterval(() => {
+    if (stopped || running) return;
+    running = tick()
+      .catch((err) => app.log.error({ err }, 'duel fight worker failed'))
+      .finally(() => {
+        running = null;
+      });
+  }, 10);
+  timer.unref();
+  return async () => {
+    stopped = true;
+    clearInterval(timer);
+    await running;
+  };
+}
