@@ -9,6 +9,7 @@ export default defineConfig({
     VitePWA({
       registerType: 'prompt',
       includeAssets: [
+        'maps/winter-city-e1d7eb043f80.webp',
         'icons/icon-512.png',
         'icons/icon-192.png',
         'icons/apple-touch-icon.png',
