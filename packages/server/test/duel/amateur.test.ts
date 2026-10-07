@@ -7316,12 +7316,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     function fightChallenge(id: string, token=tokenA, requestId='00000000-0000-4000-8000-000000000001') {
       return app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/fight/challenge`, headers: auth(token), payload: { requestId } });
     }
-    it('fight rejects a caller in the middle of a period even when opponent is eligible', async () => {
+    it('fight allows a caller in the middle of a period when both players are on ice', async () => {
       const id = await preparedFightMatch();
       await pool.query("update amateur_duel_participant set period_started_at=now()-interval '60 seconds' where match_id=$1 and user_id=$2", [id,userA]);
       const response = await fightChallenge(id);
-      expect(response.statusCode).toBe(409);
-      expect(response.json().error.details?.reason).toBe('outside_fight_window');
+      expect(response.statusCode).toBe(200);
+      expect(response.json().fight.status).toBe('offered');
     });
     it('fight rejects opponent not on ice and does not consume an attempt', async () => {
       const id = await preparedFightMatch();
@@ -7384,8 +7384,92 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect(recovery-Date.now()).toBeGreaterThan(1500); expect(recovery-Date.now()).toBeLessThanOrEqual(2000);
       expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(0);
       const second = await fightChallenge(id,tokenA,'00000000-0000-4000-8000-000000000003');
-      expect(second.statusCode).toBe(409);
+      expect(second.statusCode).toBe(200);
     });
+    it('fight allows three challenges each and deduplicates any previous request', async () => {
+      const id = await preparedFightMatch();
+      const requests = [randomUUID(), randomUUID(), randomUUID()];
+      const ids: string[] = [];
+      for (const request of requests) {
+        const challenge = await fightChallenge(id, tokenA, request);
+        expect(challenge.statusCode, JSON.stringify(challenge.json().error)).toBe(200);
+        ids.push(challenge.json().fight.id);
+        // Completed fights still consume a call; no decline counters in this scenario.
+        await pool.query("update amateur_duel_fight set status='cancelled',resolved_at=now(),reason='system_interruption' where id=$1", [challenge.json().fight.id]);
+      }
+      const state = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(state.json().match.fight_availability.reason).toBe('attempt_used');
+      const fourth = await fightChallenge(id, tokenA, randomUUID());
+      expect(fourth.statusCode).toBe(409);
+      expect(fourth.json().error.details.reason).toBe('attempt_used');
+      for (const [index, request] of requests.entries()) {
+        const retry = await fightChallenge(id, tokenA, request);
+        expect(retry.statusCode).toBe(200);
+        expect(retry.json().fight.id).toBe(ids[index]);
+      }
+      for (let call = 0; call < 3; call++) {
+        const opposite = await fightChallenge(id, tokenB, randomUUID());
+        expect(opposite.statusCode).toBe(200);
+        expect(opposite.json().fight.forced).toBe(false);
+        expect(opposite.json().match.fight_availability.remainingCalls).toBe(2-call);
+        await pool.query("update amateur_duel_fight set status='cancelled',resolved_at=now(),reason='system_interruption' where id=$1", [opposite.json().fight.id]);
+      }
+      expect((await fightChallenge(id, tokenB, randomUUID())).statusCode).toBe(409);
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight where match_id=$1', [id])).rows[0].n).toBe(6);
+    });
+    it('fight counts explicit and timeout refusals then starts a forced offer at the deadline', async () => {
+      const id = await preparedFightMatch();
+      const first = await fightChallenge(id, tokenA, randomUUID());
+      expect(first.statusCode).toBe(200);
+      const decline = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:first.json().fight.id,requestId:randomUUID(),decision:'decline'}});
+      expect(decline.statusCode).toBe(200);
+      const second = await fightChallenge(id, tokenA, randomUUID());
+      expect(second.statusCode).toBe(200);
+      await pool.query("update amateur_duel_fight set response_deadline_at=now()-interval '1 second' where id=$1", [second.json().fight.id]);
+      const expired = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(expired.json().fight.status).toBe('declined');
+      const third = await fightChallenge(id, tokenA, randomUUID());
+      expect(third.statusCode, JSON.stringify(third.json().error)).toBe(200);
+      expect(third.json().fight.forced).toBe(true);
+      expect(third.json().fight.status).toBe('offered');
+      expect(third.json().match.fight_paused_at).toBeNull();
+      expect(Date.parse(third.json().fight.response_deadline_at)-Date.parse(third.json().fight.offered_at)).toBe(10000);
+      const denied = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:third.json().fight.id,requestId:randomUUID(),decision:'decline'}});
+      expect(denied.statusCode).toBe(409);
+      expect(denied.json().error.details.reason).toBe('forced_fight');
+      await pool.query("update amateur_duel_fight set response_deadline_at=now()-interval '1 second' where id=$1", [third.json().fight.id]);
+      const started = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(started.statusCode).toBe(200);
+      expect(started.json().fight.status).toBe('starting');
+      expect(started.json().fight.engine_state.hp).toEqual([4,4]);
+      expect(started.json().match.fight_paused_at).not.toBeNull();
+      const repeated = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(repeated.json().fight.starts_at).toBe(started.json().fight.starts_at);
+    });
+
+    it('fight accepts a forced invitation before the countdown ends', async () => {
+      const id = await preparedFightMatch();
+      const c = await fightChallenge(id);
+      expect(c.statusCode).toBe(200);
+      await pool.query('update amateur_duel_fight set forced=true where id=$1', [c.json().fight.id]);
+      const response = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:randomUUID(),decision:'accept'}});
+      expect(response.statusCode).toBe(200);
+      expect(response.json().fight.status).toBe('starting');
+      expect(response.json().match.fight_paused_at).not.toBeNull();
+    });
+    it('fight cancels a forced invitation when active time no longer overlaps', async () => {
+      const id = await preparedFightMatch(2);
+      const c = await fightChallenge(id);
+      expect(c.statusCode).toBe(200);
+      await pool.query("update amateur_duel_fight set forced=true,response_deadline_at=now()-interval '1 second' where id=$1", [c.json().fight.id]);
+      await pool.query("update amateur_duel_participant set state='break_active',break_started_at=now() where match_id=$1 and user_id=$2", [id, userB]);
+      const state = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(state.statusCode).toBe(200);
+      expect(state.json().fight.status).toBe('cancelled');
+      expect(state.json().match.fight_paused_at).toBeNull();
+      expect(state.json().match.fight_availability.remainingCalls).toBe(2);
+    });
+
     it('fight acceptance creates a shared future start and four HP', async () => {
       const id = await preparedFightMatch(); const challenge = await fightChallenge(id);
       expect(challenge.statusCode,JSON.stringify(challenge.json().error)).toBe(200);
@@ -7412,7 +7496,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect((await pool.query('select recovery_until from amateur_duel_participant where match_id=$1 and user_id=$2',[id,userA])).rows[0].recovery_until).toBeNull();
     });
 
-    it('fight gives each player one challenge and returns both rewards', async () => {
+    it('fight preserves each player challenge allowance and returns both rewards', async () => {
       const id=await preparedFightMatch();
       const first=await fightChallenge(id); expect(first.statusCode).toBe(200);
       async function finish(fightId:string,token:string) {
@@ -7429,7 +7513,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       await finish(first.json().fight.id,tokenB);
       const bState=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
       expect(bState.json().match.fight_availability.allowed).toBe(true);
-      const denied=await fightChallenge(id,tokenA,randomUUID()); expect(denied.statusCode).toBe(409);
+      const aState=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(aState.json().match.fight_availability.allowed).toBe(true);
       const second=await fightChallenge(id,tokenB,randomUUID()); expect(second.statusCode).toBe(200);
       expect(second.json().fight.id).not.toBe(first.json().fight.id);
       const retry=await fightChallenge(id); expect(retry.json().fight.id).toBe(first.json().fight.id);
@@ -7438,7 +7523,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       await finish(second.json().fight.id,tokenA);
       const final=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
       expect(final.json().match.fight_rewards).toHaveLength(2);
-      expect(final.json().match.fight_availability.allowed).toBe(false);
+      expect(final.json().match.fight_availability.allowed).toBe(true);
       expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(4);
       expect((await pool.query("select count(*)::int as n from currency_ledger where reason='duel_fight_reward' and duel_match_id=$1",[id])).rows[0].n).toBe(4);
     });

@@ -1,6 +1,6 @@
-import { fightWindowRemainingMs, FIGHT_PERIOD_WINDOW_MS } from './fight/window.js';
+import { fightWindowRemainingMs } from './fight/window.js';
 import { startFightWorker } from './fight/worker.js';
-import { getFight, type PersistedFight } from './fight/service.js';
+import { getFight, getFightHistory, remainingFightCalls, type PersistedFight } from './fight/service.js';
 import { registerFightSocket } from './fight/ws.js';
 import { type FightDuelAdapter, registerFightRoutes } from './fight/routes.js';
 import { getParticipantClock, getEffectivePeriodStart } from './clock.js';
@@ -775,7 +775,7 @@ interface DuelMatchDTO {
   state_revision?: number;
   fight?: PersistedFight | null;
   fight_enabled?: boolean;
-  fight_availability?: { allowed:boolean; reason:string; remainingMs:number };
+  fight_availability?: { allowed:boolean; reason:string; remainingMs:number; remainingCalls:number };
   fight_paused_at?: string | null;
   duel_lock: GameplayLockDTO | null;
   gameplay_lock: GameplayLockDTO | null;
@@ -3929,11 +3929,12 @@ async function buildMatchStateDto(
   const enabled = (await client.query<{ enabled:boolean }>("select value='true'::jsonb as enabled from game_settings where key='duels.fights.enabled'")).rows[0]?.enabled === true && match.source !== 'tournament';
   const clocks = participants.map(p => getParticipantClock(p,getDuelPeriodRule(rules,Math.max(1,p.current_period)).durationMs,now.getTime()));
   const inFightWindow = clocks.every(clock => fightWindowRemainingMs(clock) > 0);
-  const remainingMs = inFightWindow ? 0 : Math.max(0, ...clocks.map(clock => clock.remainingMs - FIGHT_PERIOD_WINDOW_MS));
+  const remainingMs = 0;
   const presence = (await client.query<{user_id:string}>('select user_id from amateur_duel_fight_presence where match_id=$1 and expires_at>$2',[match.id,now])).rows;
-  const attemptUsed = (await client.query('select id from amateur_duel_fight where match_id=$1 and initiator_user_id=$2',[match.id,currentUserId])).rows.length > 0;
+  const remainingCalls = remainingFightCalls(await getFightHistory(client, match.id), currentUserId);
+  const attemptUsed = remainingCalls === 0;
   const busy = match.fight_paused_at !== null || (fight && ['offered','starting','fighting','sudden_death'].includes(fight.status));
-  let reason = !enabled ? 'disabled' : busy ? 'unavailable' : attemptUsed ? 'attempt_used' : opponent.state !== 'period_active' ? 'opponent_unavailable' : me.state !== 'period_active'||match.status !== 'active' ? 'unavailable' : !inFightWindow ? 'outside_fight_window' : participants.some(p=>!presence.some(r=>r.user_id===p.user_id)) ? 'protocol_unavailable' : 'available';
+  let reason = !enabled ? 'disabled' : busy ? 'unavailable' : attemptUsed ? 'attempt_used' : opponent.state !== 'period_active' ? 'opponent_unavailable' : me.state !== 'period_active'||match.status !== 'active' ? 'unavailable' : !inFightWindow ? 'opponent_unavailable' : participants.some(p=>!presence.some(r=>r.user_id===p.user_id)) ? 'protocol_unavailable' : 'available';
   if(reason==='available') {
     if(match.ends_at.getTime()+29_320>=nextRatingMonthBoundary(match.season_key).getTime()) reason='system_limit';
     for(const p of participants) {
@@ -3945,7 +3946,7 @@ async function buildMatchStateDto(
     ...dto,
     state_revision: Number((await client.query<{state_revision:string}>('select state_revision from amateur_duel_match where id=$1',[match.id])).rows[0]!.state_revision), fight, fight_enabled:enabled,
     fight_paused_at:match.fight_paused_at?.toISOString() ?? null,
-    fight_availability:{allowed:reason==='available',reason,remainingMs},
+    fight_availability:{allowed:reason==='available',reason,remainingMs,remainingCalls},
     me: participantDto(
       meForDto,
       match,

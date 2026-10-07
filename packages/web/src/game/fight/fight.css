@@ -375,3 +375,23 @@
 .fight-action.is-active { outline:2px solid #b8e7ff; outline-offset:-3px; }
 .fight-action.is-in-range:not(:disabled) { border-color:#b8e7ff; }
 .fight-action.btn.btn--cta:disabled { opacity:0.65; }
+
+.fight-challenge__count {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #16233b;
+  background: rgba(255,255,255,.88);
+  border: 1px solid rgba(255,255,255,.95);
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 950;
+  line-height: 1;
+  pointer-events: none;
+}

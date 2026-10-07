@@ -74,3 +74,26 @@ describe('inline fight offer', () => {
     expect(document.querySelector('.fight-challenge__pulse')).toBeNull();
   });
 });
+
+describe('forced incoming offer', () => {
+  it('shows that the fight starts after the countdown and still allows early acceptance', () => {
+    const match = offer();
+    match.fight = { ...match.fight!, forced: true };
+    render(<FightControls match={match} nowMs={1500} />);
+    expect(screen.getByRole('button', { name: 'Принять драку сейчас. Драка начнётся автоматически' })).toBeEnabled();
+    expect(screen.getByText('БОЙ')).toBeInTheDocument();
+    expect(screen.getByRole('timer', { name: 'Время до обязательной драки' })).toHaveTextContent('9');
+    expect(document.querySelector('.fight-challenge__pulse')).not.toBeNull();
+  });
+});
+
+describe('remaining fight calls', () => {
+  it('shows remaining calls on the own icon and hides them during an incoming offer', () => {
+    const own = { ...offer(), fight: null, fight_availability: {allowed:true,reason:'available',remainingMs:0,remainingCalls:2} } as AmateurDuelMatchState;
+    const view = render(<FightControls match={own} nowMs={0} />);
+    expect(screen.getByLabelText('Осталось вызовов: 2')).toHaveTextContent('2');
+    view.rerender(<FightControls match={{...offer(), fight_availability:own.fight_availability!}} nowMs={0} />);
+    expect(screen.queryByLabelText('Осталось вызовов: 2')).not.toBeInTheDocument();
+    expect(screen.getByRole('timer')).toHaveTextContent('10');
+  });
+});

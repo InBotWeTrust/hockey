@@ -16,11 +16,21 @@ import './src/app/design-system.css';
 let ends = Date.now()+180000;
 function windowRemaining(now=Date.now()){return fightWindowRemainingMs({periodElapsedMs:Math.max(0,180000-(ends-now)),remainingMs:Math.max(0,ends-now),running:now<ends});}
 function initial():AmateurDuelMatchState {
- return {id:'transition-preview',state_revision:0,fight_enabled:true,fight:null,fight_paused_at:null, fight_availability:{allowed:true,reason:'available',remainingMs:0},server_now:new Date().toISOString(),me:{user_id:'me',side:'challenger',state:'period_active',display_name:'Александр',current_period:1,loadout:{items:[]},inventory_available:[],inventory_report:[]},opponent:{user_id:'other',display_name:'Михаил'},current_period_shots:0,current_period_goals:0} as AmateurDuelMatchState;
+ return {id:'transition-preview',state_revision:0,fight_enabled:true,fight:null,fight_paused_at:null, fight_availability:{allowed:true,reason:'available',remainingMs:0,remainingCalls:3},server_now:new Date().toISOString(),me:{user_id:'me',side:'challenger',state:'period_active',display_name:'Александр',current_period:1,loadout:{items:[]},inventory_available:[],inventory_report:[]},opponent:{user_id:'other',display_name:'Михаил'},current_period_shots:0,current_period_goals:0} as AmateurDuelMatchState;
 }
 function write(match:AmateurDuelMatchState){useAmateurDuelStore.getState().applyState({...match,server_now:new Date().toISOString(),state_revision:(useAmateurDuelStore.getState().match?.state_revision??0)+1});}
-function offer(incoming:boolean){if(windowRemaining()<=0)return;const match=useAmateurDuelStore.getState().match!; write({...match,fight_paused_at:null,fight_availability:{allowed:false,reason:'attempt_used',remainingMs:0},fight:{id:'preview-fight',status:'offered',initiator_user_id:incoming?'other':'me',response_deadline_at:new Date(Date.now()+Math.min(FIGHT_RESPONSE_TIMEOUT_MS,windowRemaining())).toISOString(),starts_at:null,resolved_at:null,winner_user_id:null,engine_state:null}});}
-function accept(){const match=useAmateurDuelStore.getState().match!; const time=Date.now();if(match.fight?.status!=='offered'||time>=Date.parse(match.fight.response_deadline_at)||windowRemaining(time)<=0)return;write({...match,fight_paused_at:new Date(time).toISOString(),fight:{...match.fight,status:'starting',starts_at:new Date(time+1000).toISOString(),engine_state:createFightState(DEFAULT_FIGHT_RULES,time+1000)}});}
+function offer(incoming:boolean,forced=false){
+ if(windowRemaining()<=0)return;
+ const match=useAmateurDuelStore.getState().match!;
+ const calls=match.fight_availability?.remainingCalls??3;
+ if(!incoming&&calls===0)return;
+ write({...match,fight_paused_at:null,fight_availability:{allowed:false,reason:'unavailable',remainingMs:0,remainingCalls:incoming?calls:calls-1},fight:{id:'preview-fight',status:'offered',forced,initiator_user_id:incoming?'other':'me',response_deadline_at:new Date(Date.now()+FIGHT_RESPONSE_TIMEOUT_MS).toISOString(),starts_at:null,resolved_at:null,winner_user_id:null,engine_state:null}});
+}
+function accept(automatic=false){
+ const match=useAmateurDuelStore.getState().match!; const time=Date.now();
+ if(match.fight?.status!=='offered'||(!automatic&&time>=Date.parse(match.fight.response_deadline_at))||windowRemaining(time)<=0)return;
+ write({...match,fight_paused_at:new Date(time).toISOString(),fight:{...match.fight,status:'starting',starts_at:new Date(time+1000).toISOString(),engine_state:createFightState(DEFAULT_FIGHT_RULES,time+1000)}});
+}
 const originalFetch=window.fetch.bind(window);
 window.fetch=async(input,init)=>{const url=input instanceof Request?input.url:String(input);if(url.includes('/duel/amateur/matches/transition-preview/fight/')){if(url.endsWith('/challenge'))offer(false);if(url.endsWith('/respond'))accept();return new Response(JSON.stringify({match:useAmateurDuelStore.getState().match}),{headers:{'content-type':'application/json'}});}return originalFetch(input,init);};
 useAmateurDuelStore.setState({match:initial()});
@@ -34,7 +44,7 @@ function Scene(){
  const lastOfferEnded=useRef(0);
  useEffect(()=>{if(repeatRef.current)offer(true);const id=setInterval(()=>{
   const time=Date.now(), current=useAmateurDuelStore.getState().match!;
-  if(current.fight?.status==='offered'&&time>=Date.parse(current.fight.response_deadline_at)){write({...current,fight:{...current.fight,status:'declined'}});lastOfferEnded.current=time;}
+  if(current.fight?.status==='offered'&&time>=Date.parse(current.fight.response_deadline_at)){if(current.fight.forced)accept(true);else write({...current,fight_availability:{...current.fight_availability!,allowed:(current.fight_availability?.remainingCalls??0)>0},fight:{...current.fight,status:'declined'}});lastOfferEnded.current=time;}
   else if(repeatRef.current&&!current.fight_paused_at&&current.fight?.status!=='offered'&&time-lastOfferEnded.current>=1000)offer(true);
   else if(current.fight?.status==='resolved'&&current.fight_paused_at){
    if(time-Date.parse(current.fight.resolved_at!)>=2000){ends+=time-Date.parse(current.fight_paused_at);write({...current,fight_paused_at:null,me:{...current.me,recovery_until:current.fight.winner_user_id==='other'?ends>time?new Date(time+Math.min(5000,ends-time)).toISOString():null:null}});}
@@ -58,8 +68,9 @@ function Scene(){
    <button onClick={()=>{ends=Date.now()+3000;write(initial());}} disabled={paused}>Осталось 3 сек.</button>
    <button onClick={()=>setShowResult(true)}>Итог дуэли</button>
    <button onClick={()=>offer(true)} disabled={paused}>Входящий вызов</button>
+   <button onClick={()=>offer(true,true)} disabled={paused}>Обязательная драка</button>
    <label style={{display:'flex',alignItems:'center',whiteSpace:'nowrap'}}><input type="checkbox" checked={repeat} onChange={e=>{setRepeat(e.target.checked);if(e.target.checked)offer(true)}}/>Повтор</label>
-   <button onClick={accept} disabled={match.fight?.status!=='offered'||match.fight.initiator_user_id!=='me'}>Соперник принимает</button>
+   <button onClick={()=>accept()} disabled={match.fight?.status!=='offered'||match.fight.initiator_user_id!=='me'}>Соперник принимает</button>
   </div>
   <PlayView suppressedByModal={paused||showResult} preserveSceneOnModalReturn showIceCar={false} onBack={()=>write(initial())} active seed="preview" goalieId="rookie" periodNumber={1} periodsTotal={3} goals={match.current_period_goals} shots={match.current_period_shots} shotsTotal={30} periodEndsAt={ends}
    {...(paused?{timer:`${Math.floor(Math.max(0,ends-Date.parse(match.fight_paused_at!))/60000)}:${String(Math.floor(Math.max(0,ends-Date.parse(match.fight_paused_at!))/1000)%60).padStart(2,'0')}`}:{})}

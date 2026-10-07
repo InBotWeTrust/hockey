@@ -27,33 +27,23 @@ function database(existing: unknown = null) {
   });
   return { client: { query } as unknown as PoolClient, query };
 }
-describe('fight period windows', () => {
+describe('fight active time overlap', () => {
   it.each([[0,180000], [44999,135001], [135000,45000], [179999,1], [46000,14000], [10000,80000]])('allows a call at elapsed=%i remaining=%i', async (elapsed, remaining) => {
     const { client } = database();
     await expect(createChallenge(client, context(elapsed, remaining), 'me', 'request')).resolves.toBeDefined();
   });
-  it.each([[45000,135000], [134999,45001], [180000,0]])('rejects a call outside the windows at elapsed=%i remaining=%i', async (elapsed, remaining) => {
-    const { client, query } = database();
-    await expect(createChallenge(client, context(elapsed, remaining), 'me', 'request')).rejects.toMatchObject({ details: { reason: 'outside_fight_window' } });
-    expect(query.mock.calls.some(([sql]) => sql.includes('insert into amateur_duel_fight('))).toBe(false);
-  });
-  it('requires the opponent to be in a window too', async () => {
+  it.each([[45000,135000], [134999,45001]])('allows the full period at elapsed=%i remaining=%i', async (elapsed, remaining) => {
     const { client } = database();
-    await expect(createChallenge(client, context(20000,160000,60000,120000), 'me', 'request')).rejects.toMatchObject({ details: { reason: 'outside_fight_window' } });
+    await expect(createChallenge(client, context(elapsed, remaining), 'me', 'request')).resolves.toBeDefined();
   });
-  it('checks the window again when accepting', async () => {
-    const { client } = database({ id: 'fight', initiator_user_id: 'me', status: 'offered', response_deadline_at: new Date(1003000) });
-    await expect(respondChallenge(client, context(45000,135000), 'other', 'fight', 'accept', 'request')).rejects.toMatchObject({ details: { reason: 'outside_fight_window' } });
-  });
-  it('gives ten seconds to reply when the window permits', async () => {
+  it('requires both players to have active time remaining', async () => {
     const { client } = database();
-    const fight = await createChallenge(client, context(20000,160000), 'me', 'request');
+    await expect(createChallenge(client, context(20000,160000,180000,0), 'me', 'request')).rejects.toMatchObject({ details: { reason: 'opponent_unavailable' } });
+  });
+  it('gives ten seconds to reply even near the period end', async () => {
+    const { client } = database();
+    const fight = await createChallenge(client, context(177000,3000), 'me', 'request');
     expect(fight.response_deadline_at.getTime()).toBe(1010000);
-  });
-  it('caps the reply deadline at the end of the intersecting windows', async () => {
-    const { client } = database();
-    const fight = await createChallenge(client, context(43000,137000,44000,136000), 'me', 'request');
-    expect(fight.response_deadline_at.getTime()).toBe(1001000);
   });
 });
 
@@ -100,14 +90,14 @@ describe('fight reward history', () => {
   });
 });
 
- describe('one challenge per participant', () => {
+ describe('three challenges per participant', () => {
   it('allows the acceptor to initiate after the first fight', async () => {
     const {client} = database({id:'first',initiator_user_id:'other',request_id:'old',status:'resolved'});
     await expect(createChallenge(client,context(20000,160000),'me','new')).resolves.toBeDefined();
   });
-  it('does not allow a second initiating attempt after an opponent fight', async () => {
+  it('allows a second initiating attempt after an opponent fight', async () => {
     const {client} = database([{id:'second',initiator_user_id:'other',request_id:'other',status:'resolved'}, {id:'first',initiator_user_id:'me',request_id:'old',status:'declined'}]);
-    await expect(createChallenge(client,context(20000,160000),'me','new')).rejects.toMatchObject({details:{reason:'attempt_used'}});
+    await expect(createChallenge(client,context(20000,160000),'me','new')).resolves.toBeDefined();
   });
   it('replays an old request without creating another challenge', async () => {
     const first = {id:'first',initiator_user_id:'me',request_id:'old',status:'resolved'};
