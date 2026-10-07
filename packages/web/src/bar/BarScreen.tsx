@@ -136,7 +136,7 @@ function MatchGroup({
                 {match.format ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[match.format]}` : ''}
                 {match.title ? ` · ${match.title}` : ''}
               </span>
-              {match.kind === 'tournament' && match.startsAt ? (
+              {match.group === 'upcoming' && match.kind === 'tournament' && match.startsAt ? (
                 <time className="game-scoreboard__label bar-match-start" dateTime={match.startsAt}>
                   Начало: {new Date(match.startsAt).toLocaleString('ru-RU', {
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',

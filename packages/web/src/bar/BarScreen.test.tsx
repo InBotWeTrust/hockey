@@ -89,13 +89,12 @@ describe('bar board', () => {
     expect(screen.queryByText('Ожидает ответа')).not.toBeInTheDocument();
     expect(screen.getByText('Пока нет предстоящих матчей')).toBeInTheDocument();
   });
-  it('shows the scheduled tournament start for online and upcoming meetings', () => {
+  it('shows the scheduled tournament start only for upcoming meetings', () => {
     render(<MemoryRouter><BarScreen /></MemoryRouter>);
     const startsAt = '2026-10-08T16:00:00Z';
     const tournament = { ...match, kind: 'tournament' as const, startsAt };
     act(() => options.onSnapshot({ online: [tournament], upcoming: [{ ...tournament, group: 'upcoming' }], hasMore: false, page: 0 }));
-    expect(screen.getByText(/^Начало:/).tagName).toBe('TIME');
-    expect(screen.getByText(/^Начало:/)).toHaveAttribute('datetime', startsAt);
+    expect(screen.queryByText(/^Начало:/)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('tab', { name: 'Предстоящие' }));
     expect(screen.getByText(/^Начало:/)).toHaveAttribute('datetime', startsAt);
     expect(screen.queryByText('Ожидает начала')).not.toBeInTheDocument();
