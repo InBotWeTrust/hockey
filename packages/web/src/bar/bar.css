@@ -1,4 +1,4 @@
-/* Reuse the menu card material and shared segmented filters. */
+/* Match cards use the light surface from StartPeriodModal; filters stay shared. */
 .bar-screen {
   padding: calc(16px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom));
   overflow-y: auto;
@@ -66,11 +66,14 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding: 10px 12px;
+  padding: 8px 12px;
   margin-top: 8px;
-  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.68));
-  border-radius: 22px;
-  box-shadow: var(--surface-card-shadow, 0 8px 22px rgba(15, 23, 42, 0.1)), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.65);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.90) 0%, rgba(241, 245, 249, 0.88) 100%);
+  backdrop-filter: blur(22px) saturate(160%);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
   appearance: none;
   overflow: hidden;
   color: var(--ink);
@@ -141,7 +144,7 @@
   white-space: nowrap;
 }
 .bar-match-status {
-  font-size: 12px;
+  font-size: 10px;
   color: var(--muted);
 }
 .bar-empty,

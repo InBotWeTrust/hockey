@@ -126,7 +126,7 @@ function MatchGroup({
           <button
             key={`${match.kind}:${match.id}`}
             type="button"
-            className="section-card-surface bar-match-card"
+            className="bar-match-card"
             disabled={match.group !== 'online'}
             onClick={() => navigate(`/bar/${match.kind}/${match.id}`)}
           >
@@ -135,13 +135,20 @@ function MatchGroup({
                 {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
                 {match.title ? ` · ${match.title}` : ''}
               </span>
-              {match.kind === 'tournament' && match.startsAt && (
+              {match.kind === 'tournament' && match.startsAt ? (
                 <time className="bar-match-start" dateTime={match.startsAt}>
                   Начало: {new Date(match.startsAt).toLocaleString('ru-RU', {
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                   })}
                 </time>
-              )}
+              ) : null}
+              {match.group === 'online' && match.players.every((p) => p.state === 'break_active') ? (
+                <span className="bar-match-status">Перерыв</span>
+              ) : match.group !== 'online' && match.status === 'invited' ? (
+                <span className="bar-match-status">Ожидает ответа</span>
+              ) : match.group !== 'online' && !match.startsAt ? (
+                <span className="bar-match-status">Ожидает начала</span>
+              ) : null}
             </span>
             <span className="bar-match-players">
               <PlayerBadge player={match.players[0]} />
@@ -151,22 +158,6 @@ function MatchGroup({
                   : '—'}
               </strong>
               <PlayerBadge player={match.players[1]} />
-            </span>
-            <span className="bar-match-status">
-              {match.group === 'online'
-                ? match.players.every((p) => p.state === 'break_active')
-                  ? 'Перерыв'
-                  : 'Смотреть матч'
-                : match.status === 'invited'
-                  ? 'Ожидает принятия приглашения'
-                  : match.kind === 'duel' && match.startsAt
-                    ? new Date(match.startsAt).toLocaleString('ru-RU', {
-                        day: 'numeric',
-                        month: 'short',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })
-                    : 'Ожидает начала'}
             </span>
           </button>
         ))
