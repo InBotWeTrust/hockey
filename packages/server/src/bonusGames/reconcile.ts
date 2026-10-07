@@ -1,3 +1,4 @@
+import { settleBonusRecord } from './records.js';
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { evaluateEnduranceDeadlines } from './endurance.js';
@@ -178,6 +179,7 @@ export async function reconcileBonusAttempt(
           [periodEndsAt, current.id],
         );
         current = rows[0]!;
+        await settleBonusRecord(client, current, qualificationRules.activeTimeMs, periodEndsAt);
       } else if (outcome === 'failed') {
         const failedAt = current.goal_window_ends_at;
         await closeBonusPeriod(client, current, failedAt, 'goal_window_timeout');

@@ -1,3 +1,4 @@
+import type { BonusRecordResult } from './records.js';
 import type {CyberpunkPanelEvent} from '@hockey/game-core';
 import type {
   BeachCleanupEvent,
@@ -59,6 +60,7 @@ export interface BonusRewardSnapshot {
 }
 
 export interface BonusRulesSnapshot {
+  challengeLevel?: 1 | 2 | 3;
   gameId: string;
   slug: string;
   title: string;
@@ -129,8 +131,8 @@ const beachEnvironmentSchema = z.object({
 });
 
 const challengeEnvironmentSchema = z.object({
-  cyberpunk: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000)}).strict().optional(),
-  ski: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000)}).strict().optional(),
+  cyberpunk: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000),outagesEnabled:z.boolean().optional(),fatigueEnabled:z.boolean().optional()}).strict().optional(),
+  ski: z.object({version:z.literal(1),seed:z.string().max(256),durationMs:z.number().int().min(1000).max(86400000),slipsEnabled:z.boolean().optional(),fatigueEnabled:z.boolean().optional()}).strict().optional(),
   beach: beachEnvironmentSchema.optional(),
   baseModifiers: z.object({
     goalMultiplier: z.number().min(0.1).max(3),
@@ -338,6 +340,7 @@ export interface BonusGameDTO {
 }
 
 export interface BonusGameAttemptDTO {
+  record?: BonusRecordResult | null;
   id: string;
   gameId: string;
   status: BonusGameAttemptStatus;

@@ -1,3 +1,4 @@
+import { formatBonusRecord } from '../profile/BonusRecordsModal.js';
 import {CyberpunkEffects} from '../game/CyberpunkEffects';
 import {cyberpunkNotice} from '../game/cyberpunkNotice';
 import {cyberpunkEarliestTap,sampleCyberpunkEnvironment,cyberpunkCrossings,cyberpunkShooterMotion,cyberpunkEnvironmentForHistory,type CyberpunkPanelEvent} from '@hockey/game-core';
@@ -102,7 +103,7 @@ function formatPoints(value: number): string {
 
 function formatMarksmanshipPoints(value: number, scoring: MarksmanshipScoringRules): string {
   if (scoring.version !== 4 && scoring.version !== 5 && scoring.version !== 6) return formatPoints(value);
-  return new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(value / 10)
+  return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 10)
     .replaceAll('\u00a0', ' ');
 }
 
@@ -443,7 +444,7 @@ function BonusBreakReady({
   );
 }
 
-function BonusResult({
+export function BonusResult({
   kind,
   attempt,
   onCatalog,
@@ -467,6 +468,7 @@ function BonusResult({
   if (kind === 'failed') copy = enduranceRules ? 'Не успел забить' : 'Цель не достигнута';
   else if (kind === 'abandoned') copy = 'Прогресс попытки потерян';
   else if (attempt.reward_granted) copy = 'Награда за первое прохождение';
+  else if ((attempt.record?.stars ?? 0) > 0) copy = 'Награда за рекорд';
   else copy = 'Повтор завершён без награды';
   const accuracy =
     attempt.shots_taken > 0 ? Math.round((attempt.goals / attempt.shots_taken) * 100) : 0;
@@ -486,39 +488,44 @@ function BonusResult({
       : kind === 'completed'
         ? enduranceRules.activeTimeMs
         : Math.min(enduranceRules.activeTimeMs, derivedSurvivedTimeMs ?? 0);
-  const averageEnduranceShotMs =
-    enduranceDurationMs !== null && attempt.shots_taken > 0
-      ? enduranceDurationMs / attempt.shots_taken
+  const averageEnduranceGoalMs =
+    enduranceDurationMs !== null && attempt.goals > 0
+      ? enduranceDurationMs / attempt.goals
       : null;
-  const averageEnduranceShotText =
-    averageEnduranceShotMs === null
+  const averageEnduranceGoalText =
+    averageEnduranceGoalMs === null
       ? '—'
-      : `${new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format(averageEnduranceShotMs / 1_000)} сек`;
+      : `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(averageEnduranceGoalMs / 1_000)} сек`;
+  const awardedReward = {
+    coins: attempt.reward_granted ? attempt.reward.coins : 0,
+    stars: (attempt.reward_granted ? attempt.reward.stars : 0) + (attempt.record?.stars ?? 0),
+    experience: (attempt.reward_granted ? attempt.reward.experience : 0) + (attempt.record?.experience ?? 0),
+  };
   const rewardParts = [
-    attempt.reward.coins > 0
+    awardedReward.coins > 0
       ? {
           label: 'Монеты',
-          value: attempt.reward.coins,
-          text: formatRussianCount(attempt.reward.coins, 'монета', 'монеты', 'монет'),
+          value: awardedReward.coins,
+          text: formatRussianCount(awardedReward.coins, 'монета', 'монеты', 'монет'),
           tone: 'coin' as const,
           icon: <CircleDollarSign size={15} strokeWidth={2.4} aria-hidden="true" />,
         }
       : null,
-    attempt.reward.stars > 0
+    awardedReward.stars > 0
       ? {
           label: 'Звёзды',
-          value: attempt.reward.stars,
-          text: formatRussianCount(attempt.reward.stars, 'звезда', 'звезды', 'звёзд'),
+          value: awardedReward.stars,
+          text: formatRussianCount(awardedReward.stars, 'звезда', 'звезды', 'звёзд'),
           tone: 'star' as const,
           icon: <Star size={15} fill="currentColor" strokeWidth={2.4} aria-hidden="true" />,
         }
       : null,
-    attempt.reward.experience > 0
+    awardedReward.experience > 0
       ? {
           label: 'Опыт',
-          value: attempt.reward.experience,
+          value: awardedReward.experience,
           text: formatRussianCount(
-            attempt.reward.experience,
+            awardedReward.experience,
             'очко опыта',
             'очка опыта',
             'очков опыта',
@@ -551,7 +558,7 @@ function BonusResult({
             label={kind === 'completed' ? 'Время' : 'Продержался'}
             value={formatCountdown(enduranceDurationMs)}
           />
-          <BonusResultMetric label="В среднем на бросок" value={averageEnduranceShotText} />
+          <BonusResultMetric label="В среднем на гол" value={averageEnduranceGoalText} />
         </div>
       ) : marksmanshipRules ? (
         <div
@@ -587,7 +594,12 @@ function BonusResult({
           <BonusResultMetric label="Попадания" value={`${accuracy}%`} />
         </div>
       ) : null}
-      {kind === 'completed' && attempt.reward_granted && rewardParts.length > 0 ? (
+      {kind === 'completed' && attempt.record && <dl className="bonus-game-record-result">
+        {!enduranceRules && <div><dt>Время прохождения</dt><dd>{formatBonusRecord('speed',attempt.record)}</dd></div>}
+        <div><dt>Личный рекорд</dt><dd>{formatBonusRecord(attempt.rules.skill_code,attempt.record.personalBest)}</dd></div>
+        <div><dt>Место в рейтинге</dt><dd>{attempt.record.place}</dd></div>
+      </dl>}
+      {kind === 'completed' && rewardParts.length > 0 ? (
         <div className="bonus-game-result-reward">
           <span className="bonus-game-result-reward-label">Награда</span>
           <div className="bonus-game-result-reward-values">
@@ -599,12 +611,33 @@ function BonusResult({
                 style={{ color: `var(--reward-${part.tone})` }}
               >
                 {part.icon}
-                {part.text}
+                {part.tone === 'coin' ? part.text : part.value}
               </span>
             ))}
           </div>
+          {(attempt.record?.personalImproved || attempt.record?.globalImproved) && (
+            <div className="bonus-game-result-reward-sources bonus-game-result-reward-breakdown">
+              {[
+                ...(attempt.reward_granted ? [{ label: 'За прохождение', ...attempt.reward }] : []),
+                ...(attempt.record.personalImproved ? [{ label: 'Ты побил свой личный рекорд', coins: 0, stars: 2, experience: 10 }] : []),
+                ...(attempt.record.globalImproved ? [{ label: 'Ты показал лучший результат среди всех игроков', coins: 0, stars: 10, experience: 30 }] : []),
+              ].map((source) => (
+                <div key={source.label}>
+                  <span>{source.label === 'Ты показал лучший результат среди всех игроков' ? <>Ты показал лучший результат<br />среди всех игроков</> : source.label}</span>
+                  <div className="bonus-game-result-reward-values">
+                    {source.coins > 0 && <span className="bonus-game-result-reward-value" style={{ color: 'var(--reward-coin)' }}><CircleDollarSign size={15} aria-hidden="true" />{formatRussianCount(source.coins, 'монета', 'монеты', 'монет')}</span>}
+                    {source.stars > 0 && <span className="bonus-game-result-reward-value" style={{ color: 'var(--reward-star)' }}><Star size={15} fill="currentColor" aria-hidden="true" />{source.stars}</span>}
+                    {source.experience > 0 && <span className="bonus-game-result-reward-value" style={{ color: 'var(--reward-experience)' }}><TrendingUp size={15} aria-hidden="true" />{source.experience}</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       ) : null}
+      {kind === 'completed' && attempt.record && (
+        <p className="bonus-game-result-reward-sources">Улучшай свой результат и побей общий рекорд, чтобы снова получить звёзды и опыт.</p>
+      )}
       <div className="modal-actions bonus-game-result-actions">
         {kind === 'failed' && marksmanshipRules ? (
           <button type="button" className="btn btn--ghost" disabled={retrying} onClick={onRetry}>
