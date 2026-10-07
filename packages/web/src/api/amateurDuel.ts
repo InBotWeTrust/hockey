@@ -154,6 +154,7 @@ export interface AmateurDuelParticipant {
   ready_at: string | null;
   clock?: {periodElapsedMs:number;totalActiveMs:number;remainingMs:number;running:boolean};
   recovery_until?:string|null;
+  fight_aid_until?:string|null;
   period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;

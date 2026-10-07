@@ -15,3 +15,5 @@ export const DEFAULT_FIGHT_RULES: Readonly<FightRules> = Object.freeze({
 export const FIGHT_HIT_REACTION_MS = 350;
 export const FIGHT_FINISH_ANIMATION_MS = 700;
 export const FIGHT_RESULT_DISPLAY_MS = 2000;
+
+export const FIGHT_MEDICAL_AID_MS = 10_000;

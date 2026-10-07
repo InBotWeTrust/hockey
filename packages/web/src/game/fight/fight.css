@@ -94,11 +94,6 @@
 
 .modal-card.duel-fight-card {
   width: min(100%, 480px);
-  background-color: #a8bbd0;
-  background-image: url('/sprites/fight/amateur-fight-background-v1.png');
-  background-size: cover;
-  background-position: center center;
-  background-repeat: no-repeat;
   padding: 14px 12px 16px;
   overflow: hidden;
   height: 90dvh;
@@ -177,13 +172,26 @@
   min-height: 0;
   margin: 0 auto;
 }
+.fight-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
 .duel-fight-card .fight-scoreboard {
-  flex: 0 0 auto;
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: calc(100% - 24px);
+  z-index: 2;
 }
 .duel-fight-card .fight-arena {
   flex: 1;
   height: auto;
   min-height: 120px;
+  background: #a8bbd0 url('/sprites/fight/amateur-fight-background-v1.png') center / cover no-repeat;
+  border-radius: 18px;
 }
 .fight-actions {
   display: grid;
@@ -394,4 +402,43 @@
   font-weight: 950;
   line-height: 1;
   pointer-events: none;
+}
+
+/* Medical assistance uses the standard light modal surface and heading. */
+.modal-card.fight-medical-card {
+  width: min(100%, 480px);
+  height: auto;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+.fight-medical-card > .modal-title {
+  text-align: left;
+}
+.fight-medical-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  margin: 14px 0 0;
+  overflow: hidden;
+  border-radius: 18px;
+}
+.fight-medical-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.fight-medical-timer.game-scoreboard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  text-align: center;
+}
+.fight-medical-timer .game-scoreboard__value {
+  font-size: 72px;
 }

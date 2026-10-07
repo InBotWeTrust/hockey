@@ -4,6 +4,7 @@ import {
   createFightState,
   FIGHT_FINISH_ANIMATION_MS,
   FIGHT_RESULT_DISPLAY_MS,
+  FIGHT_MEDICAL_AID_MS,
   advanceFight,
   type FightState,
   type FightCommand,
@@ -101,6 +102,48 @@ export async function resumeDuel(
   }
   await queueFightSnapshot(client, ctx.id);
 }
+// Resume at the persisted deadline, including after a worker delay or reconnect.
+export async function advanceMedicalAid(
+  client: PoolClient, matchId: string, nowMs: number, interrupted = false,
+): Promise<boolean> {
+  const result = await client.query(
+    `update amateur_duel_participant set
+       period_paused_ms=period_paused_ms+greatest(0,floor(extract(epoch from
+         ((case when $3 then least(fight_aid_until,$2::timestamptz) else fight_aid_until end)-period_paused_at))*1000)::integer),
+       period_paused_at=null,fight_aid_until=null,recovery_until=null
+     where match_id=$1 and fight_aid_until is not null and (fight_aid_until<=$2 or $3)
+     returning user_id`,
+    [matchId,new Date(nowMs),interrupted],
+  );
+  const changed = (result.rowCount ?? 0) > 0;
+  if (changed) await queueFightSnapshot(client,matchId);
+  return changed;
+}
+
+async function beginMedicalAid(client: PoolClient, ctx: FightDuelContext, fight: PersistedFight): Promise<void> {
+  const resultEndsAt = fight.resolved_at!.getTime()+FIGHT_RESULT_HOLD_MS;
+  const aidUntil = new Date(resultEndsAt+FIGHT_MEDICAL_AID_MS);
+  // The common pause ends for the winner. Only the loser remains paused for assistance.
+  await client.query(
+    `update amateur_duel_participant set
+       period_paused_ms=period_paused_ms+case when user_id=$2 then
+         greatest(0,floor(extract(epoch from ($3::timestamptz-period_paused_at))*1000)::integer) else 0 end,
+       period_paused_at=case when user_id=$2 then null else period_paused_at end,
+       fight_aid_until=case when user_id<>$2 and state='period_active' then $4::timestamptz else null end,
+       recovery_until=null
+     where match_id=$1 and period_paused_at is not null`,
+    [ctx.id,fight.winner_user_id,new Date(resultEndsAt),aidUntil],
+  );
+  await client.query(
+    `update amateur_duel_match set
+       ends_at=ends_at+greatest(interval '0',$2::timestamptz-fight_paused_at)+($3::integer*interval '1 millisecond'),
+       fight_paused_at=null where id=$1 and fight_paused_at is not null`,
+    [ctx.id,new Date(resultEndsAt),FIGHT_MEDICAL_AID_MS],
+  );
+  await advanceMedicalAid(client,ctx.id,ctx.nowMs);
+  await queueFightSnapshot(client,ctx.id);
+}
+
 export async function createChallenge(
   client: PoolClient,
   ctx: FightDuelContext,
@@ -204,16 +247,17 @@ export async function advancePersistedFight(
   client: PoolClient,
   ctx: FightDuelContext,
 ): Promise<PersistedFight | null> {
+  await advanceMedicalAid(client,ctx.id,ctx.nowMs,ctx.status !== 'active' || ctx.mandatoryBlocked === true);
   let fight = await getFight(client, ctx.id);
   if (!fight) return null;
   if (fight.status === 'resolved') {
     if (ctx.paused && fight.resolved_at &&
         (ctx.nowMs >= fight.resolved_at.getTime() + FIGHT_RESULT_HOLD_MS || ctx.status !== 'active' || ctx.mandatoryBlocked)) {
-      await resumeDuel(client, ctx, ctx.nowMs,
-        ctx.status === 'active' && !ctx.mandatoryBlocked
-          ? ctx.participants.find(p => p.userId !== fight!.winner_user_id)?.userId ?? null
-          : null,
-        5000);
+      if (ctx.status === 'active' && !ctx.mandatoryBlocked && fight.winner_user_id !== null) {
+        await beginMedicalAid(client,ctx,fight);
+      } else {
+        await resumeDuel(client,ctx,ctx.nowMs,null,0);
+      }
     }
     return fight;
   }
