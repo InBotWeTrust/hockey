@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import type { ChallengeLevel } from './challengeLevels.js';
 import { AppError } from '../plugins/errors.js';
 import { observeCareerExperience } from '../achievements/service.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
@@ -11,6 +12,7 @@ export interface BalanceSnapshot {
 }
 
 export interface FirstClearRewardInput {
+  challengeLevel?: ChallengeLevel | null;
   userId: string;
   gameId: string;
   attemptId: string;
@@ -279,14 +281,36 @@ export async function grantFirstClearReward(
   client: PoolClient,
   input: FirstClearRewardInput,
 ): Promise<{ granted: boolean; balances: BalanceSnapshot }> {
-  const completion = await client.query<{ id: string }>(
+  const level = input.challengeLevel ?? null;
+  const completion = level === null ? await client.query<{ id: string }>(
     `insert into user_bonus_game_completion
        (user_id, bonus_game_id, attempt_id, reward_snapshot, completed_at)
      values ($1, $2, $3, $4::jsonb, $5)
-     on conflict (user_id, bonus_game_id) do nothing
-     returning id`,
+     on conflict (user_id, bonus_game_id) do nothing returning id`,
     [input.userId, input.gameId, input.attemptId, JSON.stringify(input.reward), input.now],
+  ) : await client.query<{ id: string }>(
+    `insert into user_bonus_game_level_completion
+       (user_id, bonus_game_id, attempt_id, reward_snapshot, completed_at, level, source)
+     values ($1, $2, $3, $4::jsonb, $5, $6, 'first_clear')
+     on conflict (user_id, bonus_game_id, level) do nothing returning id`,
+    [input.userId, input.gameId, input.attemptId, JSON.stringify(input.reward), input.now, level],
   );
+  if (level === 1) {
+    await client.query(`insert into user_bonus_game_completion
+      (user_id, bonus_game_id, attempt_id, reward_snapshot, completed_at)
+      values ($1, $2, $3, $4::jsonb, $5)
+      on conflict (user_id, bonus_game_id) do nothing`,
+      [input.userId, input.gameId, input.attemptId, JSON.stringify(input.reward), input.now]);
+  } else if (level === null) {
+    await client.query(`insert into user_bonus_game_level_completion
+      (user_id, bonus_game_id, level, attempt_id, reward_snapshot, completed_at, source)
+      select c.user_id, c.bonus_game_id, l.level, c.attempt_id, c.reward_snapshot, c.completed_at, 'legacy_credit'
+      from user_bonus_game_completion c join bonus_game g on g.id = c.bonus_game_id
+      cross join generate_series(1, 3) l(level)
+      where c.user_id = $1 and c.bonus_game_id = $2
+        and g.slug in ('challenge-beach', 'challenge-ski-resort', 'challenge-cyberpunk-yard')
+      on conflict (user_id, bonus_game_id, level) do nothing`, [input.userId, input.gameId]);
+  }
   const completionId = completion.rows[0]?.id;
   if (completionId === undefined) {
     return { granted: false, balances: await readBalanceSnapshot(client, input.userId) };
@@ -298,8 +322,9 @@ export async function grantFirstClearReward(
       where user_id = $1
         and bonus_game_id = $2
         and kind = 'first_clear_reward'
+        and challenge_level is not distinct from $3::smallint
       limit 1`,
-    [input.userId, input.gameId],
+    [input.userId, input.gameId, level],
   );
   if (existingReward.rows[0] !== undefined) {
     return { granted: false, balances: await readBalanceSnapshot(client, input.userId) };
@@ -359,10 +384,10 @@ export async function grantFirstClearReward(
     `insert into bonus_game_economy_event
        (user_id, bonus_game_id, attempt_id, kind,
         coins_delta, stars_delta, experience_delta,
-        coins_after, stars_after, experience_after, snapshot, created_at)
+        coins_after, stars_after, experience_after, snapshot, created_at, challenge_level)
      values ($1, $2, $3, 'first_clear_reward',
              $4, $5, $6,
-             $7, $8, $9, $10::jsonb, $11)`,
+             $7, $8, $9, $10::jsonb, $11, $12)`,
     [
       input.userId,
       input.gameId,
@@ -375,6 +400,7 @@ export async function grantFirstClearReward(
       Number(user.experience),
       JSON.stringify(input.reward),
       input.now,
+      level,
     ],
   );
 

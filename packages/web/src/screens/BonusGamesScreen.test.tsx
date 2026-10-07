@@ -1919,3 +1919,65 @@ it('renders ski slope rules and the target icon only for the new ski catalog',as
     expect(dialog.querySelector('.bonus-game-preview-modal__condition svg')).not.toBeNull();
   } finally {vi.unstubAllEnvs();}
 });
+
+it('selects cumulative challenge levels and shows the selected first-clear reward', async () => {
+  vi.stubEnv('DEV', true);
+  localStorage.clear();
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge', levels: [
+    { level: 1, preview_story: 'История ветра', preview_artwork_url: '/wind.webp', is_unlocked: true, is_completed: true, reward: { coins: 0, stars: 10, experience: 20 } },
+    { level: 2, preview_story: 'История луж', preview_artwork_url: '/puddles.webp', is_unlocked: true, is_completed: false, reward: { coins: 0, stars: 20, experience: 40 } },
+    { level: 3, is_unlocked: false, is_completed: false, reward: { coins: 0, stars: 30, experience: 60 } },
+  ], challenge_environment: { beach: { interactive: { version: 1, wind: [] } } } })]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Уровень 1/ }));
+    expect(dialog).toHaveTextContent('История ветра');
+    expect(dialog.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/wind.webp'));
+    expect(dialog).not.toHaveTextContent('Тапай по лужам');
+    expect(within(dialog).getByLabelText('Награда: 10 звёзд · 20 опыта')).toHaveClass('bonus-game-level-reward--received');
+    expect(dialog).not.toHaveTextContent('Награда получена');
+    expect(within(dialog).getByRole('button', { name: 'К игре' }).previousElementSibling)
+      .toBe(within(dialog).getByRole('group', { name: 'Уровень сложности' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Уровень 2/ }));
+    expect(dialog).toHaveTextContent('История луж');
+    expect(dialog.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/puddles.webp'));
+    expect(dialog).toHaveTextContent('Тапай по лужам');
+    expect(dialog).not.toHaveTextContent('На мокром льду игрок спотыкается');
+    expect(within(dialog).getByLabelText('Награда: 20 звёзд · 40 опыта')).not.toHaveClass('bonus-game-level-reward--received');
+    expect(dialog).not.toHaveTextContent('Награда получена');
+    const lockedLevel = within(dialog).getByRole('button', { name: /Уровень 3/ });
+    expect(lockedLevel).toBeDisabled();
+    expect(lockedLevel.querySelector('.bonus-game-level-choice__check')).toBeNull();
+    fireEvent.click(lockedLevel);
+    expect(dialog).toHaveTextContent('История луж');
+    expect(dialog.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/puddles.webp'));
+    expect(within(dialog).getByRole('button', { name: /Уровень 2/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(dialog).getByRole('button', { name: 'К игре' })).toBeEnabled();
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it('sends the selected level and refreshes a stale server lock without retrying start', async () => {
+  vi.stubEnv('DEV', true);
+  localStorage.clear();
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge', levels: [
+    { level: 1, is_unlocked: true, is_completed: true, reward: { coins: 0, stars: 10, experience: 20 } },
+    { level: 2, is_unlocked: true, is_completed: false, reward: { coins: 0, stars: 20, experience: 40 } },
+  ] })], { startFailure: new ApiError(409, 'bonus_previous_level_required', 'Сначала пройдите предыдущий уровень.') });
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Уровень 2/ }));
+    const readsBeforeStart = vi.mocked(globalThis.fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/bonus-games')).length;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'К игре' }));
+    await screen.findByRole('alert');
+    const posts = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0]![1]!.body as string)).toEqual({ level: 2 });
+    await waitFor(() => expect(vi.mocked(globalThis.fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/bonus-games')).length).toBeGreaterThan(readsBeforeStart));
+  } finally { vi.unstubAllEnvs(); }
+});

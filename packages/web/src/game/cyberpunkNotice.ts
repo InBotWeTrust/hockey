@@ -7,6 +7,6 @@ export function cyberpunkNotice(env:BonusChallengeEnvironmentRules,time:number,t
  else if(!condition.canShoot){notice='Игрок споткнулся';tone='slip';}
  else if(scene.activeStrip){notice='Магнитная полоса тормозит шайбу';tone='magnetic';}
  else if(scene.outage||scene.outageWarning) notice='Сбой питания · аварийный свет';
- else if(condition.shooterSpeedMultiplier<1){notice=`${condition.fatigueLevel==='heavy'?'Сильная усталость':'Усталость'} · замедление ${Math.round((1-condition.shooterSpeedMultiplier)*100+1e-8)}%`;tone=condition.fatigueLevel==='heavy'?'error':'warning';}
+ else if(env.fatigue && condition.shooterSpeedMultiplier<1){notice=`${condition.fatigueLevel==='heavy'?'Сильная усталость':'Усталость'} · замедление ${Math.round((1-condition.shooterSpeedMultiplier)*100+1e-8)}%`;tone=condition.fatigueLevel==='heavy'?'error':'warning';}
  return {notice,tone,scene};
 }

@@ -23,7 +23,10 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative beach interactions', (
   beforeEach(async () => {
     const user = await findOrCreateTelegramUser(pool, {providerUid: `beach-test-${randomUUID()}`, displayName: 'Synthetic beach test', timezone: 'Europe/Moscow'});
     userId = user.id; await pool.query('update users set level=2 where id=$1', [userId]);
-    const created = await startOrResumeBonusAttempt(pool, {userId, gameId, now: NOW, seedSecret: 'local-test-beach-secret'});
+    await pool.query(`insert into user_bonus_game_level_completion
+      (user_id,bonus_game_id,level,reward_snapshot,completed_at,source)
+      select $1,$2,level,'{}'::jsonb,$3,'legacy_credit' from generate_series(1,2) levels(level)`, [userId,gameId,NOW]);
+    const created = await startOrResumeBonusAttempt(pool, {userId, gameId, level: 3, now: NOW, seedSecret: 'local-test-beach-secret'});
     attemptId = created.attempt.id;
     await acknowledgeBonusPreview(pool, {userId, attemptId, dismissFuture: false, now: NOW});
     await startBonusPeriod(pool, {userId, attemptId, now: NOW, dailyAttemptLimit: 100});
