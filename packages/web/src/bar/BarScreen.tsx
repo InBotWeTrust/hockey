@@ -52,7 +52,7 @@ export function BarScreen(): JSX.Element {
     <main className="screen bar-screen">
       <BarHeader title="Бар" onBack={() => navigate('/sections')} />
       <section className="bar-content">
-        <p className="bar-intro">Смотри дуэли и турнирные матчи</p>
+        <h2 className="section-label bar-section-label">Выбери события</h2>
         <div className="bar-filters">
           <SegmentedTabs
             items={[{ id: 'online', label: 'Онлайн' }, { id: 'upcoming', label: 'Предстоящие' }]}
@@ -113,6 +113,7 @@ function MatchGroup({
   const navigate = useNavigate();
   return (
     <section className="bar-match-group" aria-label={title}>
+      <h2 className="section-label bar-section-label">Текущие встречи</h2>
       {matches.length === 0 ? (
         <p className="bar-empty">{empty}</p>
       ) : (
