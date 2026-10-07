@@ -339,111 +339,113 @@ export function FightView({
   };
   return (
     <section aria-label="Драка" className="fight-scene">
-      <div className="fight-scoreboard game-scoreboard game-scoreboard--stable-surface">
-        <div className="fight-scoreboard__row game-scoreboard__row">
-          {([player, other] as const).map((index, side) => (
-            <div
-              key={index}
-              className={`fight-health fight-health--${side} game-scoreboard__metric`}
-              aria-label={`${side === 0 ? 'Ты' : 'Соперник'}: ${state.hp[index]} HP`}
-            >
-              <UserAvatar
-                avatarUrl={(side === 0 ? currentPlayer : opponent)?.avatarUrl}
-                name={
-                  (side === 0 ? currentPlayer : opponent)?.name ?? (side === 0 ? 'Ты' : 'Соперник')
-                }
-                size={32}
-                alt={side === 0 ? 'Аватар текущего игрока' : 'Аватар соперника'}
-              />
-              <span
-                className="fight-health__name game-scoreboard__label"
-                title={(side === 0 ? currentPlayer : opponent)?.name}
+      <div className="fight-stage">
+        <div className="fight-scoreboard game-scoreboard game-scoreboard--stable-surface">
+          <div className="fight-scoreboard__row game-scoreboard__row">
+            {([player, other] as const).map((index, side) => (
+              <div
+                key={index}
+                className={`fight-health fight-health--${side} game-scoreboard__metric`}
+                aria-label={`${side === 0 ? 'Ты' : 'Соперник'}: ${state.hp[index]} HP`}
               >
-                {(side === 0 ? currentPlayer : opponent)?.name ?? (side === 0 ? 'Ты' : 'Соперник')}
-              </span>
-              <div className="fight-health__pips" aria-hidden="true">
-                {Array.from({ length: state.rules.initialHp }, (_, i) => i).map((pip) => (
-                  <i key={pip} className={pip < state.hp[index] ? 'is-filled' : ''} />
-                ))}
-              </div>
-            </div>
-          ))}
-          <div
-            className="fight-timer game-scoreboard__metric game-scoreboard__metric--timer"
-            role="timer"
-          >
-            <span className="game-scoreboard__label">Время</span>
-            <strong className="game-scoreboard__value">
-              {Math.max(
-                0,
-                Math.ceil(
-                  ((nowMs < state.phaseStartedAtMs ? state.phaseStartedAtMs : state.deadlineMs) -
-                    nowMs) /
-                    1000,
-                ),
-              )}
-            </strong>
-            {(nowMs < state.phaseStartedAtMs || state.status === 'sudden_death') && (
-              <small>{nowMs < state.phaseStartedAtMs ? 'Старт' : 'Решающий удар'}</small>
-            )}
-          </div>
-        </div>
-      </div>
-      {textureFailed && (
-        <p className="fight-notice" role="status">
-          Игроки не загрузились. Зоны удара и блока доступны.
-        </p>
-      )}
-      <div className="fight-arena">
-        <PixiStage
-          onResize={layout}
-          onReady={(app) => {
-            appRef.current = app;
-            void Assets.load([...FIGHT_ASSETS])
-              .then(() => {
-                if (appRef.current !== app) return;
-                sprites.current = ([0, 1] as const).map((side) => {
-                  const fighter = new Fighter(side);
-                  app.stage.addChild(fighter.view);
-                  return fighter;
-                });
-                layout();
-              })
-              .catch(() => {
-                if (appRef.current === app) setTextureFailed(true);
-              });
-          }}
-        />
-        <div className="fight-feedback-layer" aria-hidden="true">
-          {feedback.flatMap((event) =>
-            (['attacker', 'defender'] as const).map((role) => {
-              const kind =
-                role === 'defender'
-                  ? event.blocked
-                    ? 'guard'
-                    : 'hit'
-                  : event.blocked
-                    ? 'blocked'
-                    : 'strike';
-              const key = `${event.id}:${role}`;
-              return (
-                <div
-                  key={key}
-                  ref={(node) => {
-                    if (node) feedbackNodes.current.set(key, node);
-                    else feedbackNodes.current.delete(key);
-                  }}
-                  className={`fight-feedback fight-feedback--${kind}`}
-                  data-feedback={kind}
+                <UserAvatar
+                  avatarUrl={(side === 0 ? currentPlayer : opponent)?.avatarUrl}
+                  name={
+                    (side === 0 ? currentPlayer : opponent)?.name ?? (side === 0 ? 'Ты' : 'Соперник')
+                  }
+                  size={32}
+                  alt={side === 0 ? 'Аватар текущего игрока' : 'Аватар соперника'}
+                />
+                <span
+                  className="fight-health__name game-scoreboard__label"
+                  title={(side === 0 ? currentPlayer : opponent)?.name}
                 >
-                  <span />
-                  {[0, 1, 2, 3].map((n) => (
-                    <i key={n} style={{ '--spark-angle': `${n * 90 + 45}deg` } as CSSProperties} />
+                  {(side === 0 ? currentPlayer : opponent)?.name ?? (side === 0 ? 'Ты' : 'Соперник')}
+                </span>
+                <div className="fight-health__pips" aria-hidden="true">
+                  {Array.from({ length: state.rules.initialHp }, (_, i) => i).map((pip) => (
+                    <i key={pip} className={pip < state.hp[index] ? 'is-filled' : ''} />
                   ))}
                 </div>
-              );
-            }),
-          )}
+              </div>
+            ))}
+            <div
+              className="fight-timer game-scoreboard__metric game-scoreboard__metric--timer"
+              role="timer"
+            >
+              <span className="game-scoreboard__label">Время</span>
+              <strong className="game-scoreboard__value">
+                {Math.max(
+                  0,
+                  Math.ceil(
+                    ((nowMs < state.phaseStartedAtMs ? state.phaseStartedAtMs : state.deadlineMs) -
+                      nowMs) /
+                      1000,
+                  ),
+                )}
+              </strong>
+              {(nowMs < state.phaseStartedAtMs || state.status === 'sudden_death') && (
+                <small>{nowMs < state.phaseStartedAtMs ? 'Старт' : 'Решающий удар'}</small>
+              )}
+            </div>
+          </div>
+        </div>
+        {textureFailed && (
+          <p className="fight-notice" role="status">
+            Игроки не загрузились. Зоны удара и блока доступны.
+          </p>
+        )}
+        <div className="fight-arena">
+          <PixiStage
+            onResize={layout}
+            onReady={(app) => {
+              appRef.current = app;
+              void Assets.load([...FIGHT_ASSETS])
+                .then(() => {
+                  if (appRef.current !== app) return;
+                  sprites.current = ([0, 1] as const).map((side) => {
+                    const fighter = new Fighter(side);
+                    app.stage.addChild(fighter.view);
+                    return fighter;
+                  });
+                  layout();
+                })
+                .catch(() => {
+                  if (appRef.current === app) setTextureFailed(true);
+                });
+            }}
+          />
+          <div className="fight-feedback-layer" aria-hidden="true">
+            {feedback.flatMap((event) =>
+              (['attacker', 'defender'] as const).map((role) => {
+                const kind =
+                  role === 'defender'
+                    ? event.blocked
+                      ? 'guard'
+                      : 'hit'
+                    : event.blocked
+                      ? 'blocked'
+                      : 'strike';
+                const key = `${event.id}:${role}`;
+                return (
+                  <div
+                    key={key}
+                    ref={(node) => {
+                      if (node) feedbackNodes.current.set(key, node);
+                      else feedbackNodes.current.delete(key);
+                    }}
+                    className={`fight-feedback fight-feedback--${kind}`}
+                    data-feedback={kind}
+                  >
+                    <span />
+                    {[0, 1, 2, 3].map((n) => (
+                      <i key={n} style={{ '--spark-angle': `${n * 90 + 45}deg` } as CSSProperties} />
+                    ))}
+                  </div>
+                );
+              }),
+            )}
+          </div>
         </div>
       </div>
       <div className="fight-actions" aria-label="Действия в драке">

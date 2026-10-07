@@ -48,8 +48,10 @@ export function FightControls({
     : 0;
   if (!offered && !match.fight_availability?.allowed) return null;
   const disabled = busy || (offered && (!incoming || remaining === 0));
+  const forced = offered && fight.forced === true;
+  const calls = match.fight_availability?.remainingCalls;
   const label = offered
-    ? incoming ? 'Принять драку' : 'Ждём ответа соперника'
+    ? incoming ? forced ? 'Принять драку сейчас. Драка начнётся автоматически' : 'Принять драку' : forced ? 'Драка начнётся автоматически' : 'Ждём ответа соперника'
     : 'Вызвать на драку';
   return (
     <div
@@ -58,7 +60,7 @@ export function FightControls({
       onClick={(event) => event.stopPropagation()}
     >
       {offered && (
-        <span className="fight-challenge__timer" role="timer" aria-label="Время на ответ">
+        <span className="fight-challenge__timer" role="timer" aria-label={forced ? 'Время до обязательной драки' : 'Время на ответ'}>
           {remaining}
         </span>
       )}
@@ -108,8 +110,13 @@ export function FightControls({
           />
         </span>
       </button>
+      {!incoming && calls !== undefined && (
+        <span className="fight-challenge__count" aria-label={`Осталось вызовов: ${calls}`}>
+          {calls}
+        </span>
+      )}
       <span className="fight-challenge__label" aria-hidden="true">
-        {offered ? incoming ? 'ПРИНЯТЬ' : 'ЖДЁМ' : 'ВЫЗВАТЬ'}
+        {forced ? 'БОЙ' : offered ? incoming ? 'ПРИНЯТЬ' : 'ЖДЁМ' : 'ВЫЗВАТЬ'}
       </span>
       {error && <p className="fight-challenge__error" role="status">{error}</p>}
     </div>

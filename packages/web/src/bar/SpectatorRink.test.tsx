@@ -2,6 +2,8 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SpectatorRink } from './SpectatorRink.js';
 import { ReplayBuffer } from './replay.js';
+import type { Puck as PuckActor } from '../game/renderer/Puck.js';
+import type * as PuckModule from '../game/renderer/Puck.js';
 import type { BarPlayer } from './types.js';
 
 const mocks = vi.hoisted(() => {
@@ -31,14 +33,13 @@ vi.mock('../game/renderer/Player.js', () => ({ Player: mocks.Actor }));
 vi.mock('../game/renderer/Goal.js', () => ({ Goal: mocks.Actor }));
 vi.mock('../game/renderer/Goalie.js', () => ({ Goalie: mocks.Actor }));
 vi.mock('../game/renderer/Puck.js', async (importOriginal) => {
-  const { Puck } = await importOriginal<typeof import('../game/renderer/Puck.js')>();
+  const { Puck } = await importOriginal<typeof PuckModule>();
   return {
     Puck: class extends Puck {
       constructor(...args: ConstructorParameters<typeof Puck>) {
         super(...args);
-        const puck: InstanceType<typeof Puck> = this;
-        vi.spyOn(puck, 'update');
-        vi.spyOn(puck, 'destroy');
+        vi.spyOn(this as PuckActor, 'update');
+        vi.spyOn(this as PuckActor, 'destroy');
         mocks.actors.push(this);
       }
     },
@@ -130,7 +131,7 @@ describe('spectator scene lifecycle', () => {
     );
     render(<SpectatorRink player={player} buffer={buffer} />);
     const tick = mocks.app.ticker.add.mock.calls[0]![0] as () => void;
-    const puck = mocks.actors[3] as unknown as import('../game/renderer/Puck.js').Puck;
+    const puck = mocks.actors[3] as unknown as PuckActor;
     act(() => tick());
     now = 900;
     act(() => tick());

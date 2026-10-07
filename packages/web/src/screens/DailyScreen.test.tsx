@@ -8421,17 +8421,19 @@ describe('DailyScreen', () => {
     const engine=createFightState(DEFAULT_FIGHT_RULES, now - 1000);
     engine.status='resolved';engine.winner=0;engine.hp=[2,0];
     const resultMatch: AmateurDuelMatchState={...activeMatch,state_revision:1,fight_paused_at:new Date(now).toISOString(),
+      me:{...activeMatch.me,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}},
       fight:{...activeMatch.fight!,status:'resolved',engine_state:engine,winner_user_id:activeMatch.me.user_id,resolved_at:new Date(now).toISOString()}};
     act(()=>useAmateurDuelStore.getState().applyState(resultMatch));
     expect(within(await screen.findByRole('dialog',{name:'Вы победили'})).getByRole('group',{name:'+1 звезда'})).toBeInTheDocument();
     expect(screen.getByRole('dialog',{name:'Драка',hidden:true})).toBeInTheDocument();
+    expect(screen.getByText('02:29')).toBeInTheDocument();
     act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null}));
     await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
 
   });
 
-  it('rests the defeated hockey player until fight recovery ends', async () => {
+  it('shows medical assistance after defeat then returns directly to hockey', async () => {
     const now = Date.now();
     const activeMatch: AmateurDuelMatchState = {
       ...settledDuelMatch, status: 'active', outcome: null, winner_user_id: null, settled_at: null,
@@ -8459,17 +8461,19 @@ describe('DailyScreen', () => {
     const engine=createFightState(DEFAULT_FIGHT_RULES, now - 1000);
     engine.status='resolved';engine.winner=1;engine.hp=[0,2];
     const resultMatch: AmateurDuelMatchState={...activeMatch,state_revision:1,fight_paused_at:new Date(now).toISOString(),
+      me:{...activeMatch.me,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}},
       fight:{...activeMatch.fight!,status:'resolved',engine_state:engine,winner_user_id:activeMatch.opponent.user_id,resolved_at:new Date(now).toISOString()}};
     act(()=>useAmateurDuelStore.getState().applyState(resultMatch));
     expect(within(await screen.findByRole('dialog',{name:'Вы проиграли'})).getByRole('group',{name:'+1 опыт'})).toBeInTheDocument();
     expect(screen.getByRole('dialog',{name:'Драка',hidden:true})).toBeInTheDocument();
-    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null,me:{...resultMatch.me,recovery_until:new Date(Date.now()+5000).toISOString()}}));
+    expect(screen.getByText('02:29')).toBeInTheDocument();
+    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null,me:{...resultMatch.me,recovery_until:null,fight_aid_until:new Date(Date.now()+10000).toISOString(),clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}}}));
+    expect(await screen.findByRole('dialog',{name:'Оказание помощи'})).toBeInTheDocument();
+    expect(screen.getByRole('img',{name:'Доктор оказывает помощь хоккеисту'})).toBeInTheDocument();
+    expect(screen.getByRole('timer',{name:'До возвращения в игру'})).toHaveTextContent('10');
+    expect(screen.queryByText('Восстановление после драки')).not.toBeInTheDocument();
+    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:3,fight_paused_at:null,me:{...resultMatch.me,recovery_until:null,fight_aid_until:null,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:true}}}));
     await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    const notice = await screen.findByText('Восстановление после драки');
-    expect(notice).toHaveClass('initial-training-feedback-notice--scoreboard');
-    expect(screen.getByRole('button',{name:'ОТДЫХ'})).toBeDisabled();
-    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:3,fight_paused_at:null,me:{...resultMatch.me,recovery_until:new Date(now-1).toISOString()}}));
-    await waitFor(()=>expect(screen.queryByText('Восстановление после драки')).not.toBeInTheDocument());
     expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
 
   });

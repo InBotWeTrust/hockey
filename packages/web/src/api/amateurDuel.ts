@@ -154,6 +154,7 @@ export interface AmateurDuelParticipant {
   ready_at: string | null;
   clock?: {periodElapsedMs:number;totalActiveMs:number;remainingMs:number;running:boolean};
   recovery_until?:string|null;
+  fight_aid_until?:string|null;
   period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;
@@ -267,6 +268,7 @@ export interface AmateurDuelMatch {
 }
 
 export interface AmateurDuelFight {
+  forced?:boolean;
   id:string; initiator_user_id:string; status:string; response_deadline_at:string;
   starts_at:string|null; resolved_at:string|null; winner_user_id:string|null; engine_state:FightState|null;
 }
@@ -274,7 +276,7 @@ export interface AmateurDuelMatchState extends AmateurDuelMatch {
   state_revision?:number;
   fight_enabled?:boolean;
   fight_paused_at?:string|null;
-  fight_availability?:{allowed:boolean;reason:string;remainingMs:number};
+  fight_availability?:{allowed:boolean;reason:string;remainingMs:number;remainingCalls?:number};
   fight?:AmateurDuelFight|null;
   match_seed: string | null;
   current_period_shots: number;
