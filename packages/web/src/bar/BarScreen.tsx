@@ -130,9 +130,18 @@ function MatchGroup({
             disabled={match.group !== 'online'}
             onClick={() => navigate(`/bar/${match.kind}/${match.id}`)}
           >
-            <span className="bar-match-kind">
-              {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
-              {match.title ? ` · ${match.title}` : ''}
+            <span className="bar-match-heading">
+              <span className="bar-match-kind">
+                {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
+                {match.title ? ` · ${match.title}` : ''}
+              </span>
+              {match.kind === 'tournament' && match.startsAt && (
+                <time className="bar-match-start" dateTime={match.startsAt}>
+                  Начало: {new Date(match.startsAt).toLocaleString('ru-RU', {
+                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                  })}
+                </time>
+              )}
             </span>
             <span className="bar-match-players">
               <PlayerBadge player={match.players[0]} />
@@ -150,7 +159,7 @@ function MatchGroup({
                   : 'Смотреть матч'
                 : match.status === 'invited'
                   ? 'Ожидает принятия приглашения'
-                  : match.startsAt
+                  : match.kind === 'duel' && match.startsAt
                     ? new Date(match.startsAt).toLocaleString('ru-RU', {
                         day: 'numeric',
                         month: 'short',
