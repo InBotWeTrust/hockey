@@ -6,7 +6,7 @@ import { useAuthStore } from '../auth/authStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { BarSocket, type BarSocketStatus } from './BarSocket.js';
 import { ReplayBuffer } from './replay.js';
-import { SpectatorRink } from './SpectatorRink.js';
+import { playerStatus, SpectatorRink } from './SpectatorRink.js';
 import type { BarBoard, BarLive, BarMatch } from './types.js';
 import './bar.css';
 
@@ -126,38 +126,39 @@ function MatchGroup({
           <button
             key={`${match.kind}:${match.id}`}
             type="button"
-            className="bar-match-card"
+            className="game-scoreboard game-scoreboard--stable-surface bar-match-card"
             disabled={match.group !== 'online'}
             onClick={() => navigate(`/bar/${match.kind}/${match.id}`)}
           >
             <span className="bar-match-heading">
-              <span className="bar-match-kind">
+              <span className="game-scoreboard__label bar-match-kind">
                 {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
+                {match.format ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[match.format]}` : ''}
                 {match.title ? ` · ${match.title}` : ''}
               </span>
               {match.kind === 'tournament' && match.startsAt ? (
-                <time className="bar-match-start" dateTime={match.startsAt}>
+                <time className="game-scoreboard__label bar-match-start" dateTime={match.startsAt}>
                   Начало: {new Date(match.startsAt).toLocaleString('ru-RU', {
                     day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                   })}
                 </time>
               ) : null}
               {match.group === 'online' && match.players.every((p) => p.state === 'break_active') ? (
-                <span className="bar-match-status">Перерыв</span>
+                <span className="game-scoreboard__label bar-match-status">Перерыв</span>
               ) : match.group !== 'online' && match.status === 'invited' ? (
-                <span className="bar-match-status">Ожидает ответа</span>
+                <span className="game-scoreboard__label bar-match-status">Ожидает ответа</span>
               ) : match.group !== 'online' && !match.startsAt ? (
-                <span className="bar-match-status">Ожидает начала</span>
+                <span className="game-scoreboard__label bar-match-status">Ожидает начала</span>
               ) : null}
             </span>
             <span className="bar-match-players">
-              <PlayerBadge player={match.players[0]} />
-              <strong className="bar-score">
+              <PlayerBadge player={match.players[0]} showState={match.group === 'online'} totalPeriods={match.totalPeriods} />
+              <strong className="game-scoreboard__value bar-score">
                 {match.group === 'online'
                   ? `${match.players[0].goals} : ${match.players[1].goals}`
                   : '—'}
               </strong>
-              <PlayerBadge player={match.players[1]} />
+              <PlayerBadge player={match.players[1]} showState={match.group === 'online'} totalPeriods={match.totalPeriods} />
             </span>
           </button>
         ))
@@ -165,7 +166,7 @@ function MatchGroup({
     </section>
   );
 }
-function PlayerBadge({ player }: { player: BarMatch['players'][number] }): JSX.Element {
+function PlayerBadge({ player, showState, totalPeriods }: { player: BarMatch['players'][number]; showState: boolean; totalPeriods: number | null | undefined }): JSX.Element {
   return (
     <span className="bar-player">
       {player.avatarUrl ? (
@@ -175,7 +176,11 @@ function PlayerBadge({ player }: { player: BarMatch['players'][number] }): JSX.E
           {player.name.slice(0, 1)}
         </span>
       )}
-      <span>{player.name}</span>
+      <span className="bar-player-copy">
+        <span>{player.name}</span>
+        {showState && <small>{player.state === 'period_active' && totalPeriods
+          ? `Период ${player.period}/${totalPeriods}` : playerStatus(player)}</small>}
+      </span>
     </span>
   );
 }

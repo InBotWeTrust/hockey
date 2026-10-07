@@ -11,6 +11,7 @@ const row = {
   away_user_id: 'b',
   status: 'invited',
   duel_status: 'invited',
+  duel_kind: 'express' as const,
   starts_at: now,
   ends_at: new Date(now.getTime() + 60000),
   ready_expires_at: new Date(now.getTime() + 10000),
@@ -75,6 +76,8 @@ describe('public bar projections', () => {
     expect(data.totals).toEqual({ online: 12, upcoming: 47 });
     expect(data.upcoming[0]?.players.map((p) => p.goals)).toEqual([0, 0]);
     expect(data.upcoming[0]?.players[0].state).toBe('waiting');
+    expect(data.upcoming[0]?.format).toBe('express');
+    expect(data.upcoming[0]?.totalPeriods).toBe(3);
     expect(JSON.stringify(data)).not.toMatch(/rules_snapshot|match_seed|period_started_at/);
     expect(query.mock.calls[0]?.[0]).toContain('t.visibility');
     expect(query.mock.calls[0]?.[0]).toContain('not exists');

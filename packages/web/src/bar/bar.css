@@ -1,4 +1,4 @@
-/* Match cards use the light surface from StartPeriodModal; filters stay shared. */
+/* Match cards reuse the in-rink game scoreboard; filters stay shared. */
 .bar-screen {
   padding: calc(16px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom));
   overflow-y: auto;
@@ -68,15 +68,10 @@
   gap: 6px;
   padding: 8px 12px;
   margin-top: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.65);
   border-radius: 16px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.90) 0%, rgba(241, 245, 249, 0.88) 100%);
-  backdrop-filter: blur(22px) saturate(160%);
-  -webkit-backdrop-filter: blur(22px) saturate(160%);
-  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  background-color: rgba(46, 60, 91, 0.82);
   appearance: none;
   overflow: hidden;
-  color: var(--ink);
   font: inherit;
   text-align: center;
   cursor: pointer;
@@ -94,14 +89,11 @@
 }
 .bar-match-start {
   flex-shrink: 0;
-  color: var(--muted);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 .bar-match-kind {
   font-size: 11px;
-  font-weight: 700;
-  color: var(--muted);
   overflow-wrap: anywhere;
 }
 .bar-match-players {
@@ -120,6 +112,17 @@
   min-width: 0;
   overflow-wrap: anywhere;
 }
+.bar-player-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.bar-player-copy small {
+  color: rgba(211, 228, 246, 0.78);
+  font-size: 9px;
+  font-weight: 600;
+}
 .bar-player:last-child {
   justify-content: flex-end;
 }
@@ -134,8 +137,9 @@
 .bar-avatar-fallback {
   display: grid;
   place-items: center;
-  background: #e9eff5;
-  color: #53677d;
+  background: rgba(207, 233, 255, 0.14);
+  border: 1px solid rgba(221, 240, 255, 0.28);
+  color: #f8fbff;
   font-size: 14px;
 }
 .bar-score {
@@ -145,7 +149,6 @@
 }
 .bar-match-status {
   font-size: 10px;
-  color: var(--muted);
 }
 .bar-empty,
 .bar-connection {

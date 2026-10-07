@@ -24,6 +24,8 @@ afterEach(() => {
 const match: BarMatch = {
   id: 'm',
   kind: 'duel',
+  format: 'express',
+  totalPeriods: 3,
   title: null,
   group: 'online',
   status: 'active',
@@ -72,6 +74,9 @@ describe('bar board', () => {
     expect(screen.getByText('Онлайн')).toBeInTheDocument();
     expect(screen.getByText('Предстоящие')).toBeInTheDocument();
     expect(screen.getByText('Текущие встречи (12)')).toBeInTheDocument();
+    expect(screen.getByText(/Дуэль.*Экспресс/)).toBeInTheDocument();
+    expect(screen.getByText('Период 1/3')).toBeInTheDocument();
+    expect(screen.getByText('Перерыв')).toBeInTheDocument();
     expect(screen.getByText('2 : 1')).toBeInTheDocument();
     expect(screen.queryByText('Ожидает ответа')).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Онлайн' })).toHaveAttribute('aria-selected', 'true');

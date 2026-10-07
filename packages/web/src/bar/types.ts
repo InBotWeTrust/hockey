@@ -9,6 +9,8 @@ export interface BarPlayer {
   until: string | null;
 }
 export interface BarMatch {
+  format?: 'express' | 'express_plus' | 'classic' | null;
+  totalPeriods?: number | null;
   id: string;
   kind: 'duel' | 'tournament';
   title: string | null;

@@ -43,7 +43,7 @@ const PUBLIC_MATCHES = `with entries as (
        order by s.sequence_number desc limit 1
     ) segment on true
 ), public_matches as (
-  select e.*, m.status as duel_status, m.rules_snapshot, m.fight_paused_at, m.updated_at as match_updated_at,
+  select e.*, m.status as duel_status, m.duel_kind, m.rules_snapshot, m.fight_paused_at, m.updated_at as match_updated_at,
          case when e.status in ('settled','forfeit','cancelled','expired') then 'finished'
               when e.kind = 'duel' and m.status = 'active' and m.ends_at <= $1 then 'finished'
               when m.status = 'active' and m.ends_at > $1 then 'online'
@@ -71,6 +71,7 @@ interface MatchRow {
   match_id: string | null;
   status: string;
   duel_status: string | null;
+  duel_kind: 'express' | 'express_plus' | 'classic' | null;
   starts_at: Date | null;
   ends_at: Date | null;
   ready_expires_at: Date | null;
@@ -193,6 +194,8 @@ async function playersFor(
     return [
       {
         id: row.id,
+        format: row.duel_kind ?? null,
+        totalPeriods: row.rules_snapshot?.totalPeriods ?? null,
         kind: row.kind,
         title: row.title,
         group: row.match_group,
