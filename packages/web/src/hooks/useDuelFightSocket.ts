@@ -47,7 +47,11 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
               return;
             const state = next.fight?.engine_state;
             const player = next.me.side === 'challenger' ? 0 : 1;
-            if (!state || next.fight?.id !== current?.fight?.id || state.phaseId !== current?.fight?.engine_state?.phaseId)
+            if (
+              !state ||
+              next.fight?.id !== current?.fight?.id ||
+              state.phaseId !== current?.fight?.engine_state?.phaseId
+            )
               pending.current.clear();
             sequence.current =
               pending.current.size === 0
@@ -93,8 +97,12 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
       pending.current.clear();
     };
   }, [matchId, enabled, token]);
-  const sendAction = useCallback(
-    (kind: 'attack' | 'block', zone: 'head' | 'body') => {
+  const sendCommand = useCallback(
+    (
+      command:
+        | { kind: 'attack' | 'block'; zone: 'head' | 'body' }
+        | { kind: 'move'; direction: -1 | 0 | 1 },
+    ) => {
       const socket = socketRef.current;
       const fight = useAmateurDuelStore.getState().match?.fight;
       if (!connected || socket?.readyState !== WebSocket.OPEN || !fight?.engine_state) return false;
@@ -105,8 +113,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
         actionId,
         phaseId: fight.engine_state.phaseId,
         seq: ++sequence.current,
-        kind,
-        zone,
+        ...command,
       });
       pending.current.set(actionId, payload);
       socket.send(payload);
@@ -114,5 +121,13 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
     },
     [connected],
   );
-  return { connected, error, sendAction, predictionReset };
+  const sendAction = useCallback(
+    (kind: 'attack' | 'block', zone: 'head' | 'body') => sendCommand({ kind, zone }),
+    [sendCommand],
+  );
+  const sendMove = useCallback(
+    (direction: -1 | 0 | 1) => sendCommand({ kind: 'move', direction }),
+    [sendCommand],
+  );
+  return { connected, error, sendAction, sendMove, predictionReset };
 }

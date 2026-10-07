@@ -8,8 +8,9 @@ export function fightEntranceX(
   nowMs: number,
   reducedMotion: boolean,
   fighterScale?: number,
+  targetX?: number,
 ): number {
-  let target = width * (side === 0 ? 0.25 : 0.75);
+  let target = targetX ?? width * (side === 0 ? 0.25 : 0.75);
   if (fighterScale !== undefined) {
     const frame = FIGHT_ART.frames.idle;
     const left = (frame.offsetX - FIGHT_ART.canvas.width / 2) * fighterScale;

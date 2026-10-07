@@ -2,6 +2,8 @@ import type { PoolClient } from 'pg';
 import {
   DEFAULT_FIGHT_RULES,
   createFightState,
+  FIGHT_FINISH_ANIMATION_MS,
+  FIGHT_RESULT_DISPLAY_MS,
   advanceFight,
   type FightState,
   type FightCommand,
@@ -11,7 +13,7 @@ import { AppError } from '../../../plugins/errors.js';
 import type { FightDuelContext } from './routes.js';
 import { fightWindowRemainingMs, FIGHT_RESPONSE_TIMEOUT_MS } from './window.js';
 
-export const FIGHT_RESULT_HOLD_MS = 2000;
+export const FIGHT_RESULT_HOLD_MS = FIGHT_FINISH_ANIMATION_MS + FIGHT_RESULT_DISPLAY_MS;
 
 export interface PersistedFight {
   id: string;

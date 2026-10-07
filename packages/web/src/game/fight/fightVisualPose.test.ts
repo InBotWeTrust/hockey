@@ -14,9 +14,9 @@ const action: FightAction = {
   resolved: false,
 };
 describe('one visual strike per confirmed contact', () => {
-  it('prepares before confirmation and strikes together with the result, without an earlier punch', () => {
-    expect(fightVisualPose(action, 1100)).toBe('idle');
-    expect(fightVisualPose(action, 1400)).toBe('idle');
+  it('shows the target during windup and does not replay the strike on confirmation', () => {
+    expect(fightVisualPose(action, 1100)).toBe('windup_head');
+    expect(fightVisualPose(action, 1400)).toBe('windup_head');
     expect(fightVisualPose({ ...action, resolved: true }, 1500)).toBe('attack_head');
     expect(fightVisualPose({ ...action, resolved: true }, 1700)).toBe('attack_head');
     expect(fightVisualPose({ ...action, resolved: true }, 1800)).toBe('idle');

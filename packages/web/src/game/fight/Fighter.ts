@@ -2,6 +2,8 @@ import { Assets, Container, Rectangle, Sprite, Texture } from 'pixi.js';
 import { FIGHT_ART } from './fightArt.js';
 export type FighterPose =
   | 'idle'
+  | 'windup_head'
+  | 'windup_body'
   | 'attack_head'
   | 'attack_body'
   | 'block_head'
@@ -14,8 +16,9 @@ export const FIGHT_ASSETS = ['/sprites/fight/jersey-atlas-v1.png'] as const;
 export class Fighter {
   readonly view = new Container();
   private readonly sprite: Sprite;
-  private readonly textures: Record<FighterPose, Texture>;
-  private pose: FighterPose = 'idle';
+  private readonly fallSprite: Sprite;
+  private readonly textures: Record<Exclude<FighterPose, 'windup_head' | 'windup_body'>, Texture>;
+  private pose: Exclude<FighterPose, 'windup_head' | 'windup_body'> = 'idle';
 
   constructor(private readonly side: 0 | 1) {
     const atlas = Assets.get<Texture>(FIGHT_ASSETS[0]);
@@ -34,10 +37,14 @@ export class Fighter {
           ),
         }),
       ]),
-    ) as Record<FighterPose, Texture>;
+    ) as Record<Exclude<FighterPose, 'windup_head' | 'windup_body'>, Texture>;
     this.sprite = new Sprite(this.textures.idle);
     this.sprite.anchor.set(0.5, 0.9);
     this.view.addChild(this.sprite);
+    this.fallSprite = new Sprite(this.textures.hit);
+    this.fallSprite.anchor.set(0.5, 0.9);
+    this.fallSprite.visible = false;
+    this.view.addChild(this.fallSprite);
     this.view.on('destroyed', () => {
       for (const texture of Object.values(this.textures)) texture.destroy(false);
     });
@@ -68,12 +75,15 @@ export class Fighter {
     reducedMotion: boolean,
     reaction?: { kind: 'hit' | 'guard' | 'strike' | 'blocked'; progress: number },
     preparation?: number,
+    fallProgress?: number,
   ): void {
-    this.pose = pose;
-    this.sprite.texture = this.textures[pose];
+    const windup = pose === 'windup_head' || pose === 'windup_body';
+    this.pose = windup ? (pose === 'windup_head' ? 'block_head' : 'block_body') : pose;
+    this.sprite.texture = this.textures[this.pose];
     const scale = Math.min(width / FIGHT_ART.canvas.width, height / FIGHT_ART.canvas.height);
     this.sprite.scale.set(this.side === 0 ? scale : -scale, scale);
-    const tint = pose === 'hit' ? 0xffb0a6 : pose === 'lose' ? 0xb9c6d0 : 0xffffff;
+    const tint =
+      pose === 'hit' ? 0xffb0a6 : pose === 'lose' ? 0xb9c6d0 : windup ? 0xffe2ac : 0xffffff;
     const brightness = this.side === 1 ? 0.66 : 1;
     this.sprite.tint =
       (Math.round(((tint >> 16) & 255) * brightness) << 16) |
@@ -92,9 +102,19 @@ export class Fighter {
     this.sprite.x = reducedMotion
       ? 0
       : direction *
-        (preparation !== undefined ? 8 * Math.sin((Math.PI * preparation) / 2) : recoil * pulse);
+        (preparation !== undefined ? -10 * Math.sin((Math.PI * preparation) / 2) : recoil * pulse);
     this.sprite.y = reducedMotion ? 0 : -2 * pulse;
     // Actions use authored arm poses rather than rotating the entire body.
     this.sprite.rotation = 0;
+    const falling =
+      pose === 'lose' && fallProgress !== undefined && fallProgress < 1 && !reducedMotion;
+    this.sprite.alpha = falling ? fallProgress! : 1;
+    this.fallSprite.visible = falling;
+    if (falling) {
+      this.fallSprite.scale.copyFrom(this.sprite.scale);
+      this.fallSprite.tint = this.sprite.tint;
+      this.fallSprite.position.set(this.sprite.x, fallProgress! * 24 * scale);
+      this.fallSprite.alpha = 1 - fallProgress!;
+    }
   }
 }

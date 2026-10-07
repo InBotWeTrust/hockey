@@ -6073,6 +6073,7 @@ function AmateurDuelPlayView({
           opponent={{ name: match.opponent.display_name, avatarUrl: match.opponent.avatar_url }}
           nowMs={fightNow}
           onAction={fightSocket.sendAction}
+          onMove={fightSocket.sendMove}
           predictionReset={fightSocket.predictionReset}
         />
       ) : <p>Восстанавливаем состояние боя…</p>}
