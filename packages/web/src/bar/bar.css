@@ -29,6 +29,19 @@
   background: rgba(248, 249, 251, 0.96);
   box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
 }
+.bar-content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.bar-content > .bar-intro {
+  color: rgba(255, 255, 255, 0.86);
+}
+.bar-content .bar-empty,
+.bar-content .bar-connection,
+.bar-content .bar-pagination {
+  color: white;
+}
 .bar-intro {
   margin: 0 0 16px;
   color: var(--muted);

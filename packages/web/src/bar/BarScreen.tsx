@@ -51,17 +51,19 @@ export function BarScreen(): JSX.Element {
   return (
     <main className="screen bar-screen">
       <BarHeader title="Бар" onBack={() => navigate('/sections')} />
-      <section className="bar-board">
+      <section className="bar-content">
         <p className="bar-intro">Смотри дуэли и турнирные матчи</p>
-        <SegmentedTabs
-          items={[{ id: 'online', label: 'Онлайн' }, { id: 'upcoming', label: 'Предстоящие' }]}
-          activeTab={filter}
-          ariaLabel="Матчи в баре"
-          onChange={(next) => {
-            setFilter(next);
-            setPage(0);
-          }}
-        />
+        <div className="bar-filters">
+          <SegmentedTabs
+            items={[{ id: 'online', label: 'Онлайн' }, { id: 'upcoming', label: 'Предстоящие' }]}
+            activeTab={filter}
+            ariaLabel="Матчи в баре"
+            onChange={(next) => {
+              setFilter(next);
+              setPage(0);
+            }}
+          />
+        </div>
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
             {statusText[status]}
