@@ -1760,6 +1760,20 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
       id: fixture.fixture_id, technicalResult: true,
       resultDetails: { ...details, technicalReason: 'tournament_attempt_away_no_show' },
     }));
+    for (const [snapshot, reason] of [
+      [{ technical: true, absent: 'home' }, 'tournament_attempt_home_no_show'],
+      [{ technical: true, absent: 'both' }, 'tournament_attempt_both_no_show'],
+      [{ technical: true, disqualification: true }, 'tournament_disqualification'],
+    ] as const) {
+      await pool.query('update tournament_fixture set result_snapshot=$2 where id=$1',
+        [fixture.fixture_id, JSON.stringify(snapshot)]);
+      await pool.query(`update tournament_fixture_attempt set result_snapshot=result_snapshot ||
+        '{"reason":"Private administrative note","resolvedByAdmin":true}'::jsonb where fixture_id=$1`, [fixture.fixture_id]);
+      const result = await getTournamentScheduleDay(pool, tournamentId, fixture.home_user_id, '2030-10-26');
+      expect(result.myGames).toContainEqual(expect.objectContaining({
+        id: fixture.fixture_id, resultDetails: { ...details, technicalReason: reason },
+      }));
+    }
   });
 
   it('exposes personal readiness and completion on the active playoff board', async () => {

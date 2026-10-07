@@ -33,6 +33,8 @@ export function tournamentTechnicalReason(
   awayName: string | null | undefined,
 ): string | null {
   switch (reason) {
+    case 'tournament_attempt_both_no_show': return 'Оба игрока не подтвердили участие';
+    case 'tournament_disqualification': return 'Дисквалификация участника';
     case 'tournament_attempt_home_no_show': return `${homeName ?? 'Хозяин'} не подтвердил участие`;
     case 'tournament_attempt_away_no_show': return `${awayName ?? 'Гость'} не подтвердил участие`;
     case 'tournament_attempt_home_incomplete': return `${homeName ?? 'Хозяин'} не завершил игру`;
