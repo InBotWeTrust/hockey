@@ -118,8 +118,7 @@
   overflow-wrap: anywhere;
 }
 .bar-player:last-child {
-  flex-direction: row-reverse;
-  text-align: right;
+  justify-content: flex-end;
 }
 .bar-player img,
 .bar-avatar-fallback {
