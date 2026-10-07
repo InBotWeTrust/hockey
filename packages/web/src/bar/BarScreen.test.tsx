@@ -1,0 +1,89 @@
+import { act, render, screen, cleanup } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
+import { afterEach, describe, it, expect, vi } from 'vitest';
+import { BarScreen } from './BarScreen.js';
+import type { BarSocketOptions } from './BarSocket.js';
+import type { BarMatch } from './types.js';
+let options: BarSocketOptions;
+const disconnect = vi.fn();
+vi.mock('./BarSocket.js', () => ({
+  BarSocket: class {
+    constructor(o: BarSocketOptions) {
+      options = o;
+    }
+    connect() {}
+    disconnect() {
+      disconnect();
+    }
+  },
+}));
+afterEach(() => {
+  cleanup();
+  vi.clearAllMocks();
+});
+const match: BarMatch = {
+  id: 'm',
+  kind: 'duel',
+  title: null,
+  group: 'online',
+  status: 'active',
+  startsAt: null,
+  expiresAt: null,
+  players: [
+    {
+      userId: 'a',
+      name: 'Первый',
+      avatarUrl: null,
+      grip: 'left',
+      goals: 2,
+      state: 'period_active',
+      period: 1,
+      until: null,
+    },
+    {
+      userId: 'b',
+      name: 'Второй',
+      avatarUrl: null,
+      grip: 'right',
+      goals: 1,
+      state: 'break_active',
+      period: 1,
+      until: null,
+    },
+  ],
+};
+describe('bar board', () => {
+  it('groups online matches and targeted invitations, and replaces expired cards', () => {
+    render(
+      <MemoryRouter>
+        <BarScreen />
+      </MemoryRouter>,
+    );
+    act(() => {
+      options.onStatus('ready');
+      options.onSnapshot({
+        online: [match],
+        upcoming: [{ ...match, id: 'inv', group: 'upcoming', status: 'invited' }],
+        hasMore: false,
+        page: 0,
+      });
+    });
+    expect(screen.getByText('Онлайн')).toBeInTheDocument();
+    expect(screen.getByText('Предстоящие')).toBeInTheDocument();
+    expect(screen.getByText('2 : 1')).toBeInTheDocument();
+    const invite = screen.getByText('Ожидает принятия приглашения').closest('button');
+    expect(invite).toBeDisabled();
+    act(() => options.onSnapshot({ online: [match], upcoming: [], hasMore: false, page: 0 }));
+    expect(screen.queryByText('Ожидает принятия приглашения')).not.toBeInTheDocument();
+    expect(screen.getByText('Пока нет предстоящих матчей')).toBeInTheDocument();
+  });
+  it('disconnects the board subscription when leaving the page', () => {
+    const view = render(
+      <MemoryRouter>
+        <BarScreen />
+      </MemoryRouter>,
+    );
+    view.unmount();
+    expect(disconnect).toHaveBeenCalled();
+  });
+});

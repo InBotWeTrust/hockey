@@ -1,0 +1,198 @@
+/* Restaurant artwork belongs to the environment; cards use the existing menu typography. */
+.bar-screen {
+  padding: calc(16px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom));
+  overflow-y: auto;
+  background:
+    linear-gradient(rgba(20, 15, 10, 0.35), rgba(20, 15, 10, 0.75)),
+    url('/bar/restaurant.webp') center/cover;
+}
+.bar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 16px;
+  color: white;
+}
+.bar-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+.bar-board {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 24px;
+  background: rgba(248, 249, 251, 0.96);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
+}
+.bar-intro {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.bar-match-group + .bar-match-group {
+  margin-top: 24px;
+}
+.bar-match-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px;
+  margin-top: 10px;
+  border: 1px solid var(--border, #e0e5eb);
+  border-radius: 18px;
+  background: white;
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.bar-match-card:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.bar-match-kind {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.bar-match-players {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.bar-player {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bar-player img,
+.bar-avatar-fallback {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.bar-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: #e9eff5;
+  color: #53677d;
+  font-size: 18px;
+}
+.bar-score {
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bar-match-status {
+  font-size: 12px;
+  color: var(--muted);
+}
+.bar-empty,
+.bar-connection {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 12px 0;
+}
+.bar-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: 12px;
+}
+.bar-rinks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.bar-rink-panel {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: white;
+  border: 1px solid #e1e7ed;
+}
+.bar-rink-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px;
+  font-size: 12px;
+}
+.bar-rink-header strong {
+  overflow-wrap: anywhere;
+}
+.bar-rink-header b {
+  font-size: 18px;
+}
+.bar-rink {
+  position: relative;
+  aspect-ratio: 572/700;
+  overflow: hidden;
+}
+.bar-rink svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.bar-rink-notice {
+  position: absolute;
+  bottom: 8px;
+  left: 5px;
+  right: 5px;
+  text-align: center;
+  padding: 5px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 11px;
+  font-weight: 700;
+}
+.bar-rink-notice--goal {
+  color: #20804c;
+}
+.bar-rink-status {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 8px 4px;
+}
+.bar-live-score {
+  text-align: center;
+  font-size: 32px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 0 0 16px;
+}
+.bar-final {
+  text-align: center;
+  font-weight: 700;
+  color: #20804c;
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-shot-motion {
+    display: none;
+  }
+}
+
+.bar-header .icon-btn {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.7);
+}
