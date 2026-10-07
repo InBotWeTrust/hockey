@@ -3044,7 +3044,16 @@ function tournamentResultDetailsSql(fixture: string, attempt: string): string {
     'awayAccuracy', ${attempt}.away_accuracy,
     'homeActiveTimeMs', ${attempt}.home_active_time_ms,
     'awayActiveTimeMs', ${attempt}.away_active_time_ms,
-    'technicalReason', coalesce(${fixture}.result_snapshot->>'reason', ${attempt}.result_snapshot->>'reason')
+    'technicalReason', case
+      when ${fixture}.result_snapshot->>'disqualification' = 'true'
+        then 'tournament_disqualification'
+      when ${fixture}.result_snapshot->>'absent' in ('home', 'away', 'both')
+        then 'tournament_attempt_' || (${fixture}.result_snapshot->>'absent') || '_no_show'
+      when coalesce(${fixture}.result_snapshot->>'reason', ${attempt}.result_snapshot->>'reason')
+        in ('tournament_attempt_home_no_show', 'tournament_attempt_away_no_show',
+            'tournament_attempt_home_incomplete', 'tournament_attempt_away_incomplete')
+        then coalesce(${fixture}.result_snapshot->>'reason', ${attempt}.result_snapshot->>'reason')
+      else null end
   )`;
 }
 
