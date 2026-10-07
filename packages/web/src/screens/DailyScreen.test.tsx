@@ -2351,8 +2351,9 @@ describe('DailyScreen', () => {
       />,
     );
 
-    expect(screen.getByText('Усталость · замедление 7%')).toHaveClass('duel-fatigue-notice');
-    expect(screen.getByText('Усталость · замедление 7%').parentElement).toHaveClass('game-scoreboard-stack');
+    const notice = screen.getByText('Усталость · замедление 7%').closest('[role="status"]');
+    expect(notice).toHaveClass('duel-fatigue-notice');
+    expect(notice?.parentElement).toHaveClass('game-scoreboard-stack');
   });
 
   it('combines the later period with missing energy in a tournament game', () => {
@@ -2432,10 +2433,10 @@ describe('DailyScreen', () => {
     );
 
     expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeDisabled();
-    expect(screen.getByText('Споткнулся · бросок недоступен')).toHaveClass(
+    expect(screen.getByText('Споткнулся · бросок недоступен').closest('[role="status"]')).toHaveClass(
       'duel-stumble-notice',
     );
-    expect(screen.getByText('Споткнулся · бросок недоступен').parentElement).toHaveClass(
+    expect(screen.getByText('Споткнулся · бросок недоступен').closest('[role="status"]')?.parentElement).toHaveClass(
       'game-scoreboard-stack',
     );
 
@@ -3441,7 +3442,7 @@ describe('DailyScreen', () => {
     expect(scoreboardText.indexOf('ВРЕМЯ')).toBeGreaterThan(scoreboardText.indexOf('БРОСКИ'));
     fireEvent.click(screen.getByRole('button', { name: 'Звук в разработке' }));
     expect(screen.getByText('Звук в разработке').closest('[role="status"]')).toBeInTheDocument();
-    expect(screen.getByText('00/30')).toBeInTheDocument();
+    expect(screen.getByText('60/90')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'День завершён' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).not.toBeInTheDocument();
   });
