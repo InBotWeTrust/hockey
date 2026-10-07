@@ -3585,7 +3585,7 @@ describe('DailyScreen', () => {
     await waitFor(() => {
       expect(screen.getAllByText('ПЕРЕРЫВ').length).toBeGreaterThan(0);
     });
-    expect(screen.getByText('10/90')).toBeInTheDocument();
+    expect(screen.getByText('10/60')).toBeInTheDocument();
     const breakControl = screen.getByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' });
     expect(breakControl).toBeDisabled();
     await waitFor(() => {
