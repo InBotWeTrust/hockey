@@ -1446,6 +1446,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   it('keeps an invitation readable after its template is soft deleted', async () => {
     const templateId = await createTemplate();
     const matchId = (await challenge(templateId)).json().match.id;
+    // Wait for the real activity write from the challenge response before
+    // installing the historical opponent timestamp used by this assertion.
+    await vi.waitFor(async () => {
+      const pending = await pool.query('select last_seen_at from users where id = $1', [userA]);
+      expect(pending.rows[0]?.last_seen_at).not.toBeNull();
+    });
     await pool.query("update users set last_seen_at = '2026-09-30T12:34:56.000Z' where id = $1", [
       userA,
     ]);
