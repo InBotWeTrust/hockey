@@ -4,7 +4,7 @@
     "sessionSeed": "open-window:v1:notice_frame:0:0", "goalieId": "rookie", "shotIndex": 1,
     "startMs": 1495, "endMs": 8640, "decisionMs": 6640,
     "opening": { "startMs": 6520, "endMs": 6760 },
-    "bankVersion": 4, "gameCoreVersion": 69,
+    "bankVersion": 4, "gameCoreVersion": 78,
     "explanation": "Вратарь сместился, и появился путь к воротам."
   },
   {
@@ -12,7 +12,7 @@
     "sessionSeed": "observation-v4:open:10", "goalieId": "rookie", "shotIndex": 1,
     "startMs": 0, "endMs": 7120, "decisionMs": 5120,
     "opening": { "startMs": 5030, "endMs": 5240 },
-    "bankVersion": 4, "gameCoreVersion": 69,
+    "bankVersion": 4, "gameCoreVersion": 78,
     "explanation": "Игрок находится напротив свободной части ворот."
   },
   {
@@ -20,7 +20,7 @@
     "sessionSeed": "open-window:v1:notice_motion:0:0", "goalieId": "rookie", "shotIndex": 1,
     "startMs": 3000, "endMs": 11000, "decisionMs": 9000,
     "opening": null,
-    "bankVersion": 4, "gameCoreVersion": 69,
+    "bankVersion": 4, "gameCoreVersion": 78,
     "explanation": "Сейчас свободного пути от игрока к воротам нет."
   },
   {
@@ -28,7 +28,7 @@
     "recordingKey": "egor-78", "sessionSeed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7",
     "goalieId": "rookie", "shotIndex": 14, "startMs": 30409, "endMs": 31407,
     "decisionMs": 31000, "opening": { "startMs": 30880, "endMs": 31200 },
-    "bankVersion": 4, "gameCoreVersion": 69,
+    "bankVersion": 4, "gameCoreVersion": 78,
     "explanation": "Игрок оказался напротив свободной части ворот."
   },
   {
@@ -36,7 +36,7 @@
     "recordingKey": "egor-78", "sessionSeed": "f7ccea08f6403c17c42a8d4c48d33855cdbe0ac6247371a94d2817b567c9c5d7",
     "goalieId": "rookie", "shotIndex": 40, "startMs": 87020, "endMs": 88439,
     "decisionMs": 87600, "opening": null,
-    "bankVersion": 4, "gameCoreVersion": 69,
+    "bankVersion": 4, "gameCoreVersion": 78,
     "explanation": "В этом фрагменте свободного пути к воротам нет."
   },
   {
@@ -44,7 +44,7 @@
     "recordingKey": "vladislav-76", "sessionSeed": "063ea52c4398ff6cc36c740fa0541545a17567aa863c0347255aff658d0b6f2e",
     "goalieId": "rookie", "shotIndex": 43, "startMs": 86706, "endMs": 87751,
     "decisionMs": 87000, "opening": { "startMs": 86920, "endMs": 87100 },
-    "bankVersion": 4, "gameCoreVersion": 69,
+    "bankVersion": 4, "gameCoreVersion": 78,
     "explanation": "На мгновение путь от игрока к воротам открылся."
   }
 ]
