@@ -26,6 +26,8 @@ export interface ActiveClassicTournamentGame {
 
 export interface ActivePlayoffTournamentGame {
   kind: 'playoff';
+  my_ready?: boolean;
+  my_completed?: boolean;
   tournament_id: string;
   fixture_id: string;
   duel_match_id: string | null;

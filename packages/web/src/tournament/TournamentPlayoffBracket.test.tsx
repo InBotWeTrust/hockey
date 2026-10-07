@@ -56,6 +56,42 @@ const ACTIVE_SERIES: TournamentBracketSeries = {
 };
 
 describe('TournamentPlayoffBracket series modal', () => {
+  it('explains an express tie with saved accuracy and names the winner', () => {
+    render(<TournamentPlayoffBracket tournamentId="cup" currentUserId={null}
+      onOpenFixture={vi.fn()} timezone="Europe/Moscow"
+      series={[{ ...ACTIVE_SERIES, fixtures: [{ ...ACTIVE_SERIES.fixtures[0]!,
+        homeScore: 21, awayScore: 21, winnerSide: 'away', resultDetails: {
+          duelKind: 'express', homeAccuracy: 70, awayAccuracy: 75.005,
+          homeActiveTimeMs: 180000, awayActiveTimeMs: 180000, technicalReason: null,
+        },
+      }] }]} />);
+    fireEvent.click(screen.getByRole('button', { name: /Открыть серию/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog).toHaveTextContent('Sirius (70%)');
+    expect(dialog).toHaveTextContent('Aleksandra (75,01%)');
+    expect(within(dialog).getByText('Победитель: Aleksandra · по точности')).toBeInTheDocument();
+  });
+
+  it('omits the next fixture time while retaining game-day start times', () => {
+    render(
+      <TournamentPlayoffBracket
+        tournamentId="cup"
+        currentUserId={null}
+        onOpenFixture={vi.fn()}
+        series={[{ ...ACTIVE_SERIES, fixtures: [{
+          ...ACTIVE_SERIES.fixtures[0]!, status: 'scheduled',
+          scheduledStartsAt: '2099-10-05T16:37:00.000Z',
+          gameDay: { id: 'day', dayNumber: 1, localDate: '2099-10-05', startsAt: '2099-10-05T16:00:00.000Z' },
+        }] }]}
+        timezone="Europe/Moscow"
+      />,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Открыть серию/ }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).queryByText(/Следующая:/)).toBeNull();
+    expect(within(dialog).getByText('5 октября, начало в 19:00')).toBeInTheDocument();
+  });
+
   it('shows each played game as a neutral, visually separated matchup row', () => {
     render(
       <TournamentPlayoffBracket

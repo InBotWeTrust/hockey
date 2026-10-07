@@ -161,6 +161,20 @@ const beachGoalie: GoalieConfig = {
 };
 
 describe('PlayView', () => {
+  it('displays cumulative quota counters without disabling a playable period', () => {
+    render(
+      <PlayView active seed="quota" goalieId="rookie" periodNumber={3}
+        suppressedByModal={false} showIceCar={false} onBack={vi.fn()}
+        optimisticAddShot={vi.fn()} submitShot={async () => ({ serverResult: 'miss', state: {} })}
+        applyState={vi.fn()}
+        goals={0} shots={0} shotsTotal={30}
+        scoreboardShots={60} scoreboardShotsTotal={90}
+      />,
+    );
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('БРОСКИ60/90');
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+  });
+
   beforeEach(() => {
     tickerCallbacks.length = 0;
     tickerEvents.length = 0;

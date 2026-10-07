@@ -11555,6 +11555,11 @@ button.daily-calendar__day:active {
   gap: 8px;
 }
 
+.tournament-fixture-matchup__names--explained {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .tournament-fixture-card__footer > div {
   display: flex;
   min-width: 0;
@@ -12395,6 +12400,12 @@ button.daily-calendar__day:active {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.tournament-bracket-game--explained .tournament-bracket-game__matchup,
+.tournament-bracket-game--explained .tournament-bracket-game__technical-result {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .tournament-bracket-game__participant {
