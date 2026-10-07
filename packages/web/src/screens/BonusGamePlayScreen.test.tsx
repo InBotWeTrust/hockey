@@ -2078,3 +2078,58 @@ it('activates server-snapshotted cyberpunk rendering without changing legacy att
   const latest=playViewProbe.mock.calls.at(-1)![0] as Record<string,unknown>;
   expect((latest.shooterMotionTime as typeof sample)(3000,pauses)).toBe(beforeReply);
 });
+
+it.each(['challenge-beach', 'challenge-ski-resort', 'challenge-cyberpunk-yard'])(
+  'shows the interactive finale on a repeat win without reward in %s', (slug) => {
+    const base = attempt();
+    setStore({ attempt: attempt({ status: 'completed', state: 'closed', reward_granted: false,
+      rules: { ...base.rules, slug, skill_code: 'challenge' } }) });
+    renderScreen();
+    const dialog = screen.getByRole('dialog', { name: 'Игра пройдена' });
+    expect(within(dialog).getByRole('region', { name: 'Финал истории' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('img')).toBeInTheDocument();
+    expect(dialog).not.toHaveTextContent('Повтор завершён без награды');
+    expect(within(dialog).queryByText('Награда')).toBeNull();
+  },
+);
+
+it.each(['completed', 'failed'] as const)('shows the beach story then the authoritative %s result', (status) => {
+  const base = attempt();
+  setStore({ attempt: attempt({ status, state: 'closed', reward_granted: status === 'completed', rules: { ...base.rules, slug: 'challenge-beach', skill_code: 'challenge' } }) });
+  renderScreen();
+  expect(screen.queryByRole('button', { name: 'Дальше' })).toBeNull();
+  expect(screen.getByRole('img')).toBeInTheDocument();
+  const dialog = screen.getByRole('dialog', { name: status === 'completed' ? 'Игра пройдена' : 'Попытка завершена' });
+  expect(dialog).toHaveTextContent('Голы18');
+  expect(dialog).not.toHaveTextContent(status === 'completed' ? 'Награда за первое прохождение' : 'Цель не достигнута');
+});
+
+it('keeps an abandoned beach attempt on its ordinary result', () => {
+  const base = attempt();
+  setStore({ attempt: attempt({ status: 'abandoned', state: 'closed', rules: { ...base.rules, slug: 'challenge-beach', skill_code: 'challenge' } }) });
+  renderScreen();
+  expect(screen.getByRole('dialog', { name: 'Попытка завершена' })).toHaveTextContent('Прогресс попытки потерян');
+  expect(screen.queryByText('Кадр 1 из 2')).toBeNull();
+});
+
+ it.each(['completed', 'failed'] as const)('shows ski avalanche story within the ordinary %s result', (status) => {
+  const base = attempt();
+  setStore({ attempt: attempt({ status, state: 'closed', reward_granted: status === 'completed', rules: { ...base.rules, slug: 'challenge-ski-resort', skill_code: 'challenge' } }) });
+  renderScreen();
+  const dialog = screen.getByRole('dialog', { name: status === 'completed' ? 'Игра пройдена' : 'Попытка завершена' });
+  expect(dialog).toHaveTextContent(status === 'completed' ? 'успел уйти с катка' : 'Лавина накрыла каток');
+  expect(dialog).toHaveTextContent('Голы18');
+  expect(screen.getByRole('button', { name: 'К бонусным играм' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Дальше' })).toBeNull();
+ });
+
+it.each(['completed', 'failed'] as const)('shows cyberpunk story within the ordinary %s result', (status) => {
+  const base = attempt();
+  setStore({ attempt: attempt({ status, state: 'closed', reward_granted: status === 'completed', rules: { ...base.rules, slug: 'challenge-cyberpunk-yard', skill_code: 'challenge' } }) });
+  renderScreen();
+  const dialog = screen.getByRole('dialog', { name: status === 'completed' ? 'Игра пройдена' : 'Попытка завершена' });
+  expect(dialog).toHaveTextContent(status === 'completed' ? 'сеть перегорела' : 'Магниты удержали');
+  expect(dialog).toHaveTextContent('Голы18');
+  expect(screen.getByRole('button', { name: 'К бонусным играм' })).toBeEnabled();
+  expect(screen.queryByRole('button', { name: 'Дальше' })).toBeNull();
+});

@@ -1,3 +1,4 @@
+import { ChallengeFinale } from '../game/ChallengeFinale.js';
 import { formatBonusRecord } from '../profile/BonusRecordsModal.js';
 import {CyberpunkEffects} from '../game/CyberpunkEffects';
 import {cyberpunkNotice} from '../game/cyberpunkNotice';
@@ -536,10 +537,14 @@ export function BonusResult({
       : null,
   ].filter((part): part is NonNullable<typeof part> => part !== null);
 
+  const finaleLocation = attempt.rules.skill_code === 'challenge'
+    ? ({ 'challenge-beach': 'beach', 'challenge-ski-resort': 'ski', 'challenge-cyberpunk-yard': 'cyberpunk' } as const)[attempt.rules.slug as 'challenge-beach' | 'challenge-ski-resort' | 'challenge-cyberpunk-yard']
+    : undefined;
+  const showFinale = finaleLocation !== undefined && kind !== 'abandoned';
   return (
     <AccessibleModal
       title={title}
-      copy={copy}
+      copy={showFinale ? undefined : copy}
       closeBlocked={true}
       onClose={() => undefined}
       cardClassName="bonus-game-result-modal"
@@ -549,6 +554,7 @@ export function BonusResult({
         WebkitBackdropFilter: 'blur(8px)',
       }}
     >
+      {showFinale && <ChallengeFinale key={attempt.id} outcome={kind as 'completed' | 'failed'} location={finaleLocation} />}
       {enduranceRules && enduranceDurationMs !== null ? (
         <div
           className="bonus-game-result-metrics bonus-game-result-metrics--endurance"
