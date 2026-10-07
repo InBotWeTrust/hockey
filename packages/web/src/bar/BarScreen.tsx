@@ -9,6 +9,7 @@ import { ReplayBuffer } from './replay.js';
 import { playerStatus, SpectatorRink } from './SpectatorRink.js';
 import type { BarBoard, BarLive, BarMatch } from './types.js';
 import './bar.css';
+import { MatchChat } from './MatchChat.js';
 
 function useBarSnapshot(resource: string) {
   const [data, setData] = useState<BarBoard | BarLive | null>(null);
@@ -55,7 +56,10 @@ export function BarScreen(): JSX.Element {
         <h2 className="section-label bar-section-label">Выбери события</h2>
         <div className="bar-filters">
           <SegmentedTabs
-            items={[{ id: 'online', label: 'Онлайн' }, { id: 'upcoming', label: 'Предстоящие' }]}
+            items={[
+              { id: 'online', label: 'Онлайн' },
+              { id: 'upcoming', label: 'Предстоящие' },
+            ]}
             activeTab={filter}
             ariaLabel="Матчи в баре"
             onChange={(next) => {
@@ -133,17 +137,24 @@ function MatchGroup({
             <span className="bar-match-heading">
               <span className="game-scoreboard__label bar-match-kind">
                 {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
-                {match.format ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[match.format]}` : ''}
+                {match.format
+                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[match.format]}`
+                  : ''}
                 {match.title ? ` · ${match.title}` : ''}
               </span>
               {match.group === 'upcoming' && match.kind === 'tournament' && match.startsAt ? (
                 <time className="game-scoreboard__label bar-match-start" dateTime={match.startsAt}>
-                  Начало: {new Date(match.startsAt).toLocaleString('ru-RU', {
-                    day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+                  Начало:{' '}
+                  {new Date(match.startsAt).toLocaleString('ru-RU', {
+                    day: 'numeric',
+                    month: 'short',
+                    hour: '2-digit',
+                    minute: '2-digit',
                   })}
                 </time>
               ) : null}
-              {match.group === 'online' && match.players.every((p) => p.state === 'break_active') ? (
+              {match.group === 'online' &&
+              match.players.every((p) => p.state === 'break_active') ? (
                 <span className="game-scoreboard__label bar-match-status">Перерыв</span>
               ) : match.group !== 'online' && match.status === 'invited' ? (
                 <span className="game-scoreboard__label bar-match-status">Ожидает ответа</span>
@@ -152,13 +163,21 @@ function MatchGroup({
               ) : null}
             </span>
             <span className="bar-match-players">
-              <PlayerBadge player={match.players[0]} showState={match.group === 'online'} totalPeriods={match.totalPeriods} />
+              <PlayerBadge
+                player={match.players[0]}
+                showState={match.group === 'online'}
+                totalPeriods={match.totalPeriods}
+              />
               <strong className="game-scoreboard__value bar-score">
                 {match.group === 'online'
                   ? `${match.players[0].goals} : ${match.players[1].goals}`
                   : '—'}
               </strong>
-              <PlayerBadge player={match.players[1]} showState={match.group === 'online'} totalPeriods={match.totalPeriods} />
+              <PlayerBadge
+                player={match.players[1]}
+                showState={match.group === 'online'}
+                totalPeriods={match.totalPeriods}
+              />
             </span>
           </button>
         ))
@@ -166,7 +185,15 @@ function MatchGroup({
     </section>
   );
 }
-function PlayerBadge({ player, showState, totalPeriods }: { player: BarMatch['players'][number]; showState: boolean; totalPeriods: number | null | undefined }): JSX.Element {
+function PlayerBadge({
+  player,
+  showState,
+  totalPeriods,
+}: {
+  player: BarMatch['players'][number];
+  showState: boolean;
+  totalPeriods: number | null | undefined;
+}): JSX.Element {
   return (
     <span className="bar-player">
       {player.avatarUrl ? (
@@ -178,8 +205,13 @@ function PlayerBadge({ player, showState, totalPeriods }: { player: BarMatch['pl
       )}
       <span className="bar-player-copy">
         <span>{player.name}</span>
-        {showState && <small>{player.state === 'period_active' && totalPeriods
-          ? `Период ${player.period}/${totalPeriods}` : playerStatus(player)}</small>}
+        {showState && (
+          <small>
+            {player.state === 'period_active' && totalPeriods
+              ? `Период ${player.period}/${totalPeriods}`
+              : playerStatus(player)}
+          </small>
+        )}
       </span>
     </span>
   );
@@ -194,7 +226,7 @@ function BarHeader({ title, onBack }: { title: string; onBack: () => void }): JS
     </header>
   );
 }
-export function BarMatchScreen(): JSX.Element {
+export function BarMatchScreen({ viewerId }: { viewerId?: string } = {}): JSX.Element {
   const navigate = useNavigate();
   const { kind, id } = useParams();
   const resource = `kind=${encodeURIComponent(kind ?? '')}&id=${encodeURIComponent(id ?? '')}`;
@@ -213,7 +245,7 @@ export function BarMatchScreen(): JSX.Element {
   return (
     <main className="screen bar-screen bar-screen--match">
       <BarHeader title="Трансляция" onBack={() => navigate('/bar')} />
-      <section className="bar-board">
+      <section className="game-scoreboard game-scoreboard--stable-surface bar-board">
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
             {statusText[status]}
@@ -222,10 +254,10 @@ export function BarMatchScreen(): JSX.Element {
         {live?.match === null && <p className="bar-empty">Матч больше недоступен</p>}
         {live?.match && (
           <>
-            <p className="bar-intro">
+            <p className="section-label bar-match-title">
               {live.match.kind === 'duel' ? 'Дуэль' : (live.match.title ?? 'Турнир')}
             </p>
-            <p className="bar-live-score">
+            <p className="game-scoreboard__value bar-live-score">
               {live.match.players[0].goals} : {live.match.players[1].goals}
             </p>
             {live.match.group === 'finished' && (
@@ -235,12 +267,22 @@ export function BarMatchScreen(): JSX.Element {
             )}
             <div className="bar-rinks">
               {live.match.players.map((player) => (
-                <SpectatorRink key={`${live.playbackId}:${player.userId}`} player={player} buffer={buffer} motion={live.motion?.find((track) => track.userId === player.userId)} />
+                <SpectatorRink
+                  key={`${live.playbackId}:${player.userId}`}
+                  player={player}
+                  kind={live.match!.kind}
+                  totalPeriods={live.match!.totalPeriods}
+                  buffer={buffer}
+                  motion={live.motion?.find((track) => track.userId === player.userId)}
+                />
               ))}
             </div>
           </>
         )}
       </section>
+      {live?.match && live.match.group !== 'upcoming' && kind && id && (
+        <MatchChat key={resource} kind={kind} id={id} {...(viewerId ? { viewerId } : {})} />
+      )}
     </main>
   );
 }

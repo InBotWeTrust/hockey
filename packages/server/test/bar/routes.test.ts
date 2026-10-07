@@ -12,6 +12,7 @@ vi.mock('../../src/auth/jwt.js', () => ({
 }));
 async function setup(blocked = false) {
   const app = Fastify();
+  app.decorate('authenticate', async () => {});
   const query = vi.fn(async () => ({ rows: [{ blocked_at: blocked ? new Date() : null }] }));
   const get = vi.fn(async () =>
     JSON.stringify({ online: [], upcoming: [], hasMore: false, page: 0 }),

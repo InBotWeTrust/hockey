@@ -58,6 +58,8 @@ interface PlayerRow {
   avatar_url: string | null;
   grip: 'left' | 'right';
   goals: number | null;
+  current_shots?: number;
+  shots_taken?: number | null;
   state: string | null;
   current_period: number | null;
   period_started_at: Date | null;
@@ -87,13 +89,14 @@ interface MatchRow {
     periodDurationMs?: number;
     breakDurationMs?: number;
     totalPeriods?: number;
+    shotsPerPeriod?: number;
     periodSpeedPresets?: Array<{
       periodNumber: number;
       shooterFrequency: number;
       goalieFrequency: number;
       goalFrequency: number;
     }>;
-    periodRules?: Array<{ periodNumber: number; durationMs: number }>;
+    periodRules?: Array<{ periodNumber: number; durationMs: number; shotsLimit?: number | null }>;
   } | null;
   fight_paused_at: Date | null;
   match_updated_at?: Date | null;
@@ -121,6 +124,7 @@ export function projectPlayer(player: PlayerRow, row: MatchRow, now: Date): BarP
   let until: Date | null = null;
   const period = Number(player.current_period ?? 0);
   const rules = row.rules_snapshot;
+  const periodRule = rules?.periodRules?.find((p) => p.periodNumber === period);
   if (row.fight_paused_at !== null || player.period_paused_at !== null) state = 'paused';
   else if (state === 'period_active' && player.period_started_at !== null) {
     const duration =
@@ -142,6 +146,9 @@ export function projectPlayer(player: PlayerRow, row: MatchRow, now: Date): BarP
     avatarUrl: player.avatar_url,
     grip: player.grip,
     goals: Number(player.goals ?? 0),
+    shots: Number(player.current_shots ?? 0),
+    shotsTaken: Number(player.shots_taken ?? 0),
+    shotsTotal: periodRule ? (periodRule.shotsLimit ?? null) : (rules?.shotsPerPeriod ?? null),
     state,
     period,
     until: until?.toISOString() ?? null,
@@ -164,8 +171,17 @@ async function playersFor(
                where recent.amateur_duel_match_id = p.match_id and recent.user_id = p.user_id
                  and recent.mode = 'amateur_duel' and recent.server_result = 'goal'
                  and recent.created_at > $3::timestamptz
-            ) end) as goals, p.state, p.current_period, p.period_started_at, p.break_started_at,
-            p.period_paused_ms, p.period_paused_at
+            ) end) as goals,
+            greatest(0, p.shots_taken - case when $3::timestamptz is null then 0 else (
+              select count(*)::int from shot_session recent
+               where recent.amateur_duel_match_id = p.match_id and recent.user_id = p.user_id
+                 and recent.mode = 'amateur_duel' and recent.created_at > $3::timestamptz
+            ) end) as shots_taken, p.state, p.current_period, p.period_started_at, p.break_started_at,
+            p.period_paused_ms, p.period_paused_at,
+            case when $3::timestamptz is null then null else (select count(*)::int from shot_session ss
+              where ss.amateur_duel_match_id=p.match_id and ss.user_id=p.user_id
+                and ss.mode='amateur_duel' and ss.period_number=p.current_period
+                and ss.created_at <= $3) end as current_shots
        from users u left join amateur_duel_participant p
          on p.user_id = u.id and p.match_id = any($2::uuid[])
       where u.id = any($1::uuid[])`,
@@ -191,6 +207,8 @@ async function playersFor(
           : {
               ...p,
               goals: score,
+              shots_taken: 0,
+              current_shots: 0,
               state: null,
               current_period: null,
               period_started_at: null,

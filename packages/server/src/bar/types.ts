@@ -4,6 +4,9 @@ export interface BarPlayer {
   avatarUrl: string | null;
   grip: 'left' | 'right';
   goals: number;
+  shots?: number;
+  shotsTaken?: number;
+  shotsTotal?: number | null;
   state: string;
   period: number;
   until: string | null;

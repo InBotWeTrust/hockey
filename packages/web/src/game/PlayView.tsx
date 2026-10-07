@@ -1,3 +1,5 @@
+import { LONG_COURT_RINK_ASPECT_RATIO, LONG_COURT_GAME_LAYER_STYLE } from './matchCourt.js';
+export { LONG_COURT_GAME_LAYER_STYLE } from './matchCourt.js';
 import { PERSPECTIVE_PLAYER_OPTIONS, PERSPECTIVE_GOAL_OPTIONS, PERSPECTIVE_GOALIE_OPTIONS, PERSPECTIVE_PUCK_OPTIONS } from './perspectiveActors.js';
 export { PERSPECTIVE_PLAYER_OPTIONS, PERSPECTIVE_GOAL_OPTIONS, PERSPECTIVE_GOALIE_OPTIONS, PERSPECTIVE_PUCK_OPTIONS } from './perspectiveActors.js';
 import {resolveCyberpunkCourtShot,type CyberpunkRules,type CyberpunkPanelEvent} from '@hockey/game-core';
@@ -115,13 +117,6 @@ type RouteCameraPhase = 'settled' | 'zoomed' | 'exiting';
 
 const PLAY_ROUTE_TRANSITION_MS = 580;
 
-const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
-
-export const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
-  top: '24.55%',
-  height: '74.2%',
-  bottom: 'auto',
-};
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;

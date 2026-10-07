@@ -26,8 +26,6 @@
   margin: 0 auto;
   padding: 16px;
   border-radius: 24px;
-  background: rgba(248, 249, 251, 0.96);
-  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.18);
 }
 .bar-content {
   width: 100%;
@@ -194,21 +192,6 @@
   aspect-ratio: 572/700;
   overflow: hidden;
 }
-.bar-rink-notice {
-  position: absolute;
-  bottom: 8px;
-  left: 5px;
-  right: 5px;
-  text-align: center;
-  padding: 5px;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.94);
-  font-size: 11px;
-  font-weight: 700;
-}
-.bar-rink-notice--goal {
-  color: #20804c;
-}
 .bar-rink-status {
   text-align: center;
   font-size: 11px;
@@ -248,4 +231,334 @@
 }
 .bar-rink-stage canvas {
   display: block;
+}
+/* The match view fits the viewport; only the conversation scrolls. */
+.bar-screen--match {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+}
+.bar-screen--match .bar-header {
+  max-width: none;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.bar-screen--match .bar-board {
+  padding: 0;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+.bar-match-title {
+  margin: 0 0 8px;
+  color: white;
+  text-align: center;
+}
+.bar-live-score {
+  font-size: 30px;
+  margin: 0 0 10px;
+}
+.bar-rinks {
+  gap: 10px;
+}
+.bar-rink-panel {
+  border: none;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+.bar-rink-header {
+  padding: 0 2px 7px;
+  justify-content: flex-start;
+  align-items: center;
+  color: white;
+  font-size: 12px;
+}
+.bar-rink-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-rink-panel .game-scoreboard {
+  margin: 0 0 6px;
+  border-radius: 12px;
+}
+.bar-rink-panel .game-scoreboard__row {
+  padding: 7px 2px;
+}
+.bar-rink-panel .game-scoreboard__metric {
+  padding: 0 3px;
+  gap: 4px;
+}
+.bar-rink-panel .game-scoreboard__label {
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+.bar-rink-panel .game-scoreboard__value {
+  font-size: 14px;
+}
+.bar-rink {
+  border: 3px solid #1e3a5f;
+  border-radius: 18px;
+  box-sizing: border-box;
+}
+.bar-chat {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+}
+.bar-chat > .section-label {
+  padding: 12px 14px 8px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.bar-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar-chat-input {
+  padding: 8px 10px;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+.bar-chat-error {
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #b42318;
+}
+@media (max-height: 650px) {
+  .bar-screen--match {
+    gap: 8px;
+    padding-top: calc(8px + var(--app-safe-top));
+  }
+  .bar-live-score {
+    font-size: 24px;
+    margin-bottom: 6px;
+  }
+}
+
+.bar-screen--match .bar-board {
+  max-width: none;
+  padding: 12px;
+  border-radius: 24px;
+}
+.bar-screen--match .bar-board .bar-match-title {
+  padding: 0;
+  color: rgba(211, 228, 246, 0.78);
+}
+
+.bar-chat-title {
+  flex-shrink: 0;
+  width: calc(100% + 14px);
+  max-width: none;
+  margin: 0 auto 0 -14px;
+}
+.bar-rink-header .user-avatar {
+  box-sizing: border-box;
+}
+
+.bar-rink-header .bar-player-avatar {
+  padding: 2px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin: 0;
+  display: grid;
+}
+.bar-screen--match {
+  height: var(--app-viewport-height, 100dvh);
+  max-height: var(--app-viewport-height, 100dvh);
+  box-sizing: border-box;
+}
+.bar-rink-header .bar-player-avatar {
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+}
+
+/* The room shares the rink glass; the composer has no extra enclosing surface. */
+.bar-chat {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  border-radius: 24px;
+}
+.bar-chat-input {
+  padding: 8px 12px 12px;
+  border: 0;
+}
+.bar-chat-input .chat-dock-composer {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Equal glass controls, with the main chat's blur fading over messages below. */
+.bar-chat-input :is(textarea, button[aria-label='Отправить']) {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #f8fbff !important;
+  border: 1px solid rgba(255, 255, 255, 0.78) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+.bar-chat-input textarea {
+  min-width: 0;
+}
+.bar-chat-input button[aria-label='Отправить']:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
+/* Compact spectator chat, without changing the main chat layout. */
+.bar-chat-messages {
+  padding: 8px 10px;
+  gap: 6px;
+}
+.bar-chat-messages [data-testid='chat-bubble'] {
+  margin-bottom: 0 !important;
+  gap: 6px !important;
+  max-width: 94% !important;
+}
+.bar-chat-messages [data-testid='chat-bubble'] :is(.glass, .chat-bubble--own) {
+  padding: 6px 9px !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+}
+.bar-chat-messages button[aria-label^='Профиль:'] {
+  font-size: 11px !important;
+}
+.bar-chat-messages button[aria-label^='Аватар:'] {
+  width: 30px;
+  height: 30px;
+  padding: 2px !important;
+  border: 1px solid rgba(205, 232, 255, 0.46) !important;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.bar-chat-messages button[aria-label^='Аватар:'] > * {
+  width: 24px !important;
+  height: 24px !important;
+}
+.bar-chat-messages .pill {
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+}
+.bar-chat-messages .pill > span:first-child {
+  font-size: 12px !important;
+}
+
+.bar-chat-input textarea::placeholder {
+  color: rgba(248, 251, 255, 0.72);
+  opacity: 1;
+}
+
+.bar-rink {
+  container-type: inline-size;
+}
+.bar-rink .bar-rink-result {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  width: calc(100% - 16px);
+  padding: 10px;
+  border-radius: 18px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.bar-rink-result .modal-title {
+  margin: 0 0 8px;
+  font-size: clamp(11px, 8cqw, 16px);
+  text-align: center;
+}
+.bar-rink-result .duel-result-card__compact-fact {
+  justify-content: space-between;
+  gap: 4px;
+}
+.bar-rink-result .duel-result-card__compact-fact span {
+  font-size: 8px;
+  letter-spacing: 0.04em;
+}
+.bar-rink-result .duel-result-card__compact-fact strong {
+  font-size: 13px;
+}
+.bar-chat-messages {
+  flex-basis: 0;
+}
+.bar-chat-input {
+  flex: 0 0 auto;
+}
+
+.bar-chat {
+  position: relative;
+}
+.bar-chat-messages {
+  padding-bottom: calc(var(--bar-chat-composer-height, 72px) + 8px);
+}
+.bar-chat-input.chat-edge-bottom--overlay {
+  padding: 20px 12px 12px;
+  margin: 0;
+  --glass-edge-inset: -32px 0 0;
+  --glass-edge-blur: 14px;
+  --glass-edge-bg: linear-gradient(
+    to top,
+    rgba(8, 14, 22, 0.9) 0%,
+    rgba(8, 14, 22, 0.86) 50%,
+    rgba(8, 14, 22, 0.62) 75%,
+    rgba(8, 14, 22, 0) 100%
+  );
+  --glass-edge-mask: linear-gradient(to top, #000 0%, #000 55%, transparent 100%);
+}
+
+/* Keep each rink proportional within its half; the surrounding chrome spans the screen. */
+.bar-screen--match .bar-chat {
+  max-width: none;
+}
+.bar-screen--match .bar-rink {
+  width: 100%;
+  max-width: 208px;
+  margin: 0 auto;
+}
+.bar-screen--match .bar-rink-header {
+  justify-content: center;
+}
+.bar-rink-panel > .game-scoreboard {
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (max-height: 650px) {
+  .bar-screen--match .bar-rink {
+    max-width: 128px;
+  }
+}
+
+.bar-rink-scene {
+  position: absolute;
+  top: -25%;
+  left: 0;
+  width: 100%;
+  height: 125%;
+  pointer-events: none;
 }

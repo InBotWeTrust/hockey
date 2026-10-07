@@ -1,3 +1,4 @@
+import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from '../game/matchCourt.js';
 import { useDuelFightSocket } from '../hooks/useDuelFightSocket.js';
 import { FightControls } from '../components/duel/fight/FightControls.js';
 import { FightView } from '../game/fight/FightView.js';
@@ -289,8 +290,6 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
   }
 }
 
-const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
-const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 
 export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
   return usesAmateurCourt

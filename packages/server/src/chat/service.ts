@@ -175,6 +175,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       end as cnt
     ) mc on true
     where c.id in (select chat_id from my_chat_ids)
+      and not exists (select 1 from bar_match_chat b where b.chat_id = c.id)
       and c.is_active = true
     order by (c.type = 'channel') desc,
              cm_self.pinned_at desc nulls last,
@@ -986,6 +987,7 @@ export async function getUnreadCounts(pool: Pool, userId: string): Promise<Recor
         left join chat_members cm_access
           on cm_access.chat_id = c.id and cm_access.user_id = $1
        where c.is_active = true
+          and not exists (select 1 from bar_match_chat b where b.chat_id=c.id)
          and (c.type in ('system', 'channel') or cm_access.user_id is not null)
     )
     select m.chat_id, count(m.id)::bigint as cnt

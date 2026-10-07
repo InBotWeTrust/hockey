@@ -3,6 +3,7 @@ import type { ShotResult } from '@hockey/game-core';
 export interface ResultModalProps {
   result: ShotResult;
   durationMs: number;
+  contained?: boolean;
   subText?: string | null;
   displayKind?: ResultModalKind | undefined;
   title?: string | undefined;
@@ -47,6 +48,7 @@ const THEMES: Record<ResultModalKind, Theme> = {
 export function ResultModal({
   result,
   durationMs,
+  contained = false,
   displayKind,
   title,
   details,
@@ -70,20 +72,20 @@ export function ResultModal({
         role="status"
         aria-live="polite"
         style={{
-          position: 'fixed',
+          position: contained ? 'absolute' : 'fixed',
           top: '50%',
           left: '50%',
-          zIndex: 300,
+          zIndex: contained ? 3 : 300,
           boxSizing: 'border-box',
-          padding: 'clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px)',
-          borderRadius: 24,
+          padding: contained ? '7px 12px' : 'clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px)',
+          borderRadius: contained ? 12 : 24,
           background: 'rgba(172, 184, 198, 0.74)',
           border: '1.5px solid rgba(255, 255, 255, 0.86)',
           backdropFilter: 'blur(18px) saturate(115%)',
           WebkitBackdropFilter: 'blur(18px) saturate(115%)',
           textAlign: 'center',
           pointerEvents: 'none',
-          maxWidth: 'min(420px, calc(100vw - 40px))',
+          maxWidth: contained ? 'calc(100% - 16px)' : 'min(420px, calc(100vw - 40px))',
           boxShadow: [
             `0 0 0 2px ${theme.glowSoft}`,
             `0 0 34px ${theme.glow}`,
@@ -99,7 +101,9 @@ export function ResultModal({
             style={{
               fontFamily: 'var(--font-sans)',
               fontWeight: 900,
-              fontSize: theme.titleSize ?? 'clamp(38px, 6vmin, 58px)',
+              fontSize: contained
+                ? 'clamp(18px, 13cqw, 30px)'
+                : (theme.titleSize ?? 'clamp(38px, 6vmin, 58px)'),
               lineHeight: 1,
               letterSpacing: theme.letterSpacing ?? '0.06em',
               color: '#111827',
@@ -111,7 +115,11 @@ export function ResultModal({
         </div>
         {details && details.length > 0 ? (
           <div className="result-modal__details">
-            {details.map((detail) => <div key={detail} className="result-modal__detail">{detail}</div>)}
+            {details.map((detail) => (
+              <div key={detail} className="result-modal__detail">
+                {detail}
+              </div>
+            ))}
           </div>
         ) : null}
       </div>

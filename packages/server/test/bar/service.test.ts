@@ -41,6 +41,12 @@ const player = {
   period_paused_at: null,
 };
 describe('public bar projections', () => {
+  it('keeps cumulative shot count separate from the current period quota', () => {
+    expect(projectPlayer({ ...player, current_shots: 2, shots_taken: 12 }, row, now)).toMatchObject(
+      { shots: 2, shotsTaken: 12 },
+    );
+  });
+
   it('hides declined/expired invites including expiry exactly at the boundary', () => {
     expect(isVisibleEntry(row, now)).toBe(true);
     expect(isVisibleEntry({ ...row, status: 'cancelled' }, now)).toBe(false);
@@ -83,7 +89,9 @@ describe('public bar projections', () => {
     expect(query.mock.calls[0]?.[0]).toContain('not exists');
   });
   it('returns totals even when the selected page has no matches', async () => {
-    const query = vi.fn().mockResolvedValueOnce({ rows: [{ id: null, online_total: 12, upcoming_total: 47 }] });
+    const query = vi
+      .fn()
+      .mockResolvedValueOnce({ rows: [{ id: null, online_total: 12, upcoming_total: 47 }] });
     const data = await getBarBoard({ query } as unknown as Pool, 2, now);
     expect(data.totals).toEqual({ online: 12, upcoming: 47 });
     expect(data.online).toEqual([]);

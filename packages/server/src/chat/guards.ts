@@ -4,7 +4,18 @@ import { ChatAccessDeniedError, MessageNotFoundError, MessageNotOwnedError } fro
 
 export async function getChatById(pool: Pool, chatId: string): Promise<ChatRow | null> {
   const r = await pool.query<ChatRow>(
-    `select * from chats where id = $1 and is_active = true limit 1`,
+    `select c.* from chats c where c.id = $1 and c.is_active = true
+       and not exists (
+         select 1 from bar_match_chat b
+           left join amateur_duel_match m on b.kind='duel' and m.id=b.match_id
+           left join tournament_fixture f on b.kind='tournament' and f.id=b.match_id
+           left join tournament t on t.id=f.tournament_id
+          where b.chat_id=c.id and (
+            (b.kind='duel' and (m.id is null or m.status not in ('active','settled','forfeit')))
+            or (b.kind='tournament' and (t.id is null or t.visibility <> 'public'
+                or t.status in ('draft','cancelled','archived','paused')))
+          )
+       ) limit 1`,
     [chatId],
   );
   return r.rowCount && r.rowCount > 0 ? r.rows[0]! : null;

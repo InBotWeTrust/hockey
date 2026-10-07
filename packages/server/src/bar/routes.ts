@@ -1,4 +1,6 @@
 import fp from 'fastify-plugin';
+import { joinBarChat } from './chat.js';
+import { checkAndConsumeRateLimit } from '../chat/cache.js';
 import type { FastifyPluginAsync } from 'fastify';
 import type { WebSocket } from 'ws';
 import { z } from 'zod';
@@ -16,6 +18,13 @@ const querySchema = z
   .refine((q) => (q.kind === undefined) === (q.id === undefined));
 
 const plugin: FastifyPluginAsync<{ accessSecret: string }> = async (app, options) => {
+  app.post('/bar/:kind/:id/chat', { preHandler: [app.authenticate] }, async (req) => {
+    const { kind, id } = z
+      .object({ kind: z.enum(['duel', 'tournament']), id: z.string().uuid() })
+      .parse(req.params);
+    await checkAndConsumeRateLimit(app.redis, req.user.id);
+    return joinBarChat(app.pg, req.user.id, kind, id);
+  });
   const hub = new SnapshotHub(
     async (key) => {
       const cacheKey = `bar:v1:${key}`;

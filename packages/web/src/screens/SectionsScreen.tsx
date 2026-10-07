@@ -344,7 +344,7 @@ export function SectionsScreen(): JSX.Element {
             />
             <SectionCard
               title="Бар"
-              supportingText="Трансляции дуэлей и турниров"
+              supportingText="Трансляции и обсуждения"
               tone="default"
               artworkSrc={SECTION_ARTWORK.bar}
               onClick={() => navigate('/bar')}
