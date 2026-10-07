@@ -39,8 +39,23 @@ export interface BarBoard {
   page: number;
 }
 export interface BarLive {
+  motion?: BarMotion[];
   playbackId: string | null;
   complete?: boolean;
   match: BarMatch | null;
   shots: BarShot[];
+}
+
+export interface BarMotionFrame {
+  offsetMs: number;
+  shooterX: number;
+  goalOffsetX: number;
+  goalieX: number;
+  goalieY: number;
+}
+export interface BarMotion {
+  userId: string;
+  period: number;
+  sampledAt: string;
+  frames: BarMotionFrame[];
 }

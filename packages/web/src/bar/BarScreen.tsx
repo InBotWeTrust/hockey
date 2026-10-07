@@ -235,7 +235,7 @@ export function BarMatchScreen(): JSX.Element {
             )}
             <div className="bar-rinks">
               {live.match.players.map((player) => (
-                <SpectatorRink key={player.userId} player={player} buffer={buffer} />
+                <SpectatorRink key={`${live.playbackId}:${player.userId}`} player={player} buffer={buffer} motion={live.motion?.find((track) => track.userId === player.userId)} />
               ))}
             </div>
           </>

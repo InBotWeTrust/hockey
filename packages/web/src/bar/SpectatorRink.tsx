@@ -1,5 +1,31 @@
-import { useEffect, useState } from 'react';
-import type { BarPlayer, BarShot } from './types.js';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { Application } from 'pixi.js';
+import {
+  GOAL,
+  GOALIE_SIZE,
+  GOALIE_Y,
+  GOAL_OPENING,
+  PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE,
+  PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
+} from '@hockey/game-core';
+import { PixiStage } from '../game/PixiStage.js';
+import type { Scale } from '../game/coords.js';
+import { Player } from '../game/renderer/Player.js';
+import { Goal } from '../game/renderer/Goal.js';
+import { Goalie } from '../game/renderer/Goalie.js';
+import { Puck } from '../game/renderer/Puck.js';
+import {
+  PERSPECTIVE_PLAYER_OPTIONS,
+  PERSPECTIVE_GOAL_OPTIONS,
+  PERSPECTIVE_GOALIE_OPTIONS,
+  PERSPECTIVE_PUCK_OPTIONS,
+} from '../game/perspectiveActors.js';
+import {
+  TRAINING_NEW_COURT_BACKGROUND,
+  TRAINING_NEW_COURT_BG_CROP_BOTTOM,
+} from '../game/trainingNewCourt.js';
+import { MotionTimeline } from './motion.js';
+import type { BarPlayer, BarShot, BarMotion } from './types.js';
 import type { ReplayBuffer } from './replay.js';
 
 export function playerStatus(player: BarPlayer): string {
@@ -10,84 +36,165 @@ export function playerStatus(player: BarPlayer): string {
   return 'Ожидает продолжения';
 }
 const outcome = { goal: 'Гол!', save: 'Сейв', miss: 'Мимо' };
+const preloadAssets = [
+  PERSPECTIVE_GOAL_OPTIONS.spriteUrl!,
+  PERSPECTIVE_GOALIE_OPTIONS.idleSpriteUrl!,
+  PERSPECTIVE_GOALIE_OPTIONS.saveSpriteUrl!,
+];
+interface Scene {
+  app: Application;
+  scale: Scale;
+  player: Player;
+  goal: Goal;
+  goalie: Goalie;
+  puck: Puck;
+}
 export function SpectatorRink({
   player,
   buffer,
+  motion,
 }: {
   player: BarPlayer;
   buffer: ReplayBuffer;
+  motion?: BarMotion | undefined;
 }): JSX.Element {
   const [shot, setShot] = useState<BarShot | null>(null);
+  const props = useRef({ player, buffer });
+  props.current = { player, buffer };
+  const scene = useRef<Scene | null>(null);
+  const timeline = useMemo(() => new MotionTimeline(), []);
   useEffect(() => {
-    const play = () => setShot(buffer.take(player.userId));
-    play();
-    const timer = setInterval(play, 1300);
-    return () => clearInterval(timer);
-  }, [buffer, player.userId]);
-  const shooterX = shot?.shooterX ?? 286;
-  const goalX = shot?.goalX ?? 286;
-  const goalieX = shot?.goalieX ?? 286;
-  const puckEnd = shot?.result === 'save' ? 300 : 265;
-  const facing = player.grip === 'left' ? 'left' : 'right';
+    if (motion) timeline.push(motion, performance.now());
+  }, [motion, timeline]);
+  useEffect(() => {
+    const visibility = () => {
+      if (document.hidden) scene.current?.app.stop();
+      else scene.current?.app.start();
+    };
+    document.addEventListener('visibilitychange', visibility);
+    return () => {
+      document.removeEventListener('visibilitychange', visibility);
+      const current = scene.current;
+      scene.current = null;
+      if (current) {
+        current.app.stop();
+        current.player.destroy();
+        current.goal.destroy();
+        current.goalie.destroy();
+        current.puck.destroy();
+      }
+    };
+  }, []);
+  const ready = (app: Application, scale: Scale) => {
+    const actors: Scene = {
+      app,
+      scale,
+      player: new Player(props.current.player.grip, PERSPECTIVE_PLAYER_OPTIONS),
+      goal: new Goal(PERSPECTIVE_GOAL_OPTIONS),
+      goalie: new Goalie(PERSPECTIVE_GOALIE_OPTIONS),
+      puck: new Puck(props.current.player.grip, PERSPECTIVE_PUCK_OPTIONS),
+    };
+    scene.current = actors;
+    app.stage.addChild(
+      actors.goal.container,
+      actors.goalie.container,
+      actors.player.container,
+      actors.puck.container,
+    );
+    app.ticker.maxFPS = 30;
+    let active: { shot: BarShot; startedAt: number; flightMs: number; impact: boolean } | null =
+      null;
+    let nextShotAt = 0;
+    app.ticker.add(() => {
+      if (document.hidden || scene.current !== actors) return;
+      const now = performance.now();
+      const current = props.current.player;
+      if (active && now - active.startedAt >= 1300) {
+        active = null;
+        setShot(null);
+        actors.goalie.setSavePose(false);
+      }
+      if (!active && now >= nextShotAt) {
+        const next = props.current.buffer.take(current.userId);
+        if (next && next.period === current.period) {
+          const path = actors.puck.shotPath(
+            next.shooterX,
+            next.result === 'save' ? GOALIE_Y : GOAL_OPENING.y,
+          );
+          const flightMs = Math.max(180, Math.abs(path.end.y - path.start.y) / 1.2);
+          active = { shot: next, startedAt: now, flightMs, impact: false };
+          nextShotAt = now + 1300;
+          actors.player.playShot();
+          actors.puck.playShot(path.start, path.end, now, flightMs);
+        }
+      }
+      const frame = timeline.sample(current.period, now);
+      const sx = active?.shot.shooterX ?? frame?.shooterX ?? 286;
+      const goalOffsetX = active
+        ? (active.shot.goalX - (GOAL.x + GOAL.width / 2)) /
+          PERSPECTIVE_COURT_GOAL_VISUAL_OFFSET_X_SCALE
+        : (frame?.goalOffsetX ?? 0);
+      const gx = active
+        ? 286 + (active.shot.goalieX - 286) / PERSPECTIVE_COURT_GOALIE_VISUAL_X_SCALE
+        : (frame?.goalieX ?? 286);
+      actors.player.update(actors.scale, sx, undefined, {
+        resting: current.state === 'break_active',
+      });
+      actors.goal.update(actors.scale, goalOffsetX);
+      actors.goalie.update(
+        {
+          position: { x: gx, y: frame?.goalieY ?? GOALIE_Y },
+          width: GOALIE_SIZE.width,
+          height: GOALIE_SIZE.height,
+        },
+        actors.scale,
+      );
+      if (active) {
+        actors.puck.update(now, actors.scale);
+        if (!active.impact && now - active.startedAt >= active.flightMs) {
+          active.impact = true;
+          setShot(active.shot);
+          actors.goalie.setSavePose(active.shot.result === 'save');
+          if (active.shot.result === 'goal') actors.goal.triggerGoalLight();
+        }
+      } else actors.puck.resetAtStart(actors.scale, sx);
+    });
+    if (document.hidden) app.stop();
+  };
   return (
     <section className="bar-rink-panel" aria-label={`Площадка: ${player.name}`}>
       <header className="bar-rink-header">
         <strong>{player.name}</strong>
         <b>{player.goals}</b>
       </header>
-      <div className="bar-rink">
-        <svg
-          viewBox="0 0 572 700"
-          role="img"
-          aria-label={shot ? `Бросок ${shot.index}: ${outcome[shot.result]}` : playerStatus(player)}
-        >
-          <image
-            href="/sprites/new-light-court.webp"
-            width="572"
-            height="700"
-            preserveAspectRatio="xMidYMid slice"
+      <div
+        className="bar-rink"
+        role="img"
+        aria-label={shot ? `Бросок ${shot.index}: ${outcome[shot.result]}` : playerStatus(player)}
+      >
+        <img
+          className="bar-rink-background"
+          src={TRAINING_NEW_COURT_BACKGROUND}
+          alt=""
+          style={{ height: `calc(100% + ${TRAINING_NEW_COURT_BG_CROP_BOTTOM})` }}
+        />
+        <div className="bar-rink-stage">
+          <PixiStage
+            onReady={ready}
+            onResize={(scale) => {
+              if (scene.current) scene.current.scale = scale;
+            }}
+            preloadAssets={preloadAssets}
+            resolutionLimit={1.5}
           />
-          <image href="/sprites/gate.webp" x={goalX - 92} y="183" width="184" height="110" />
-          <image
-            href={shot?.result === 'save' ? '/sprites/save.webp' : '/sprites/goalkeeper.webp'}
-            x={goalieX - 48}
-            y="241"
-            width="96"
-            height="103"
-          />
-          <image
-            href={`/sprites/ultimate-player-${facing}${shot ? '-shoot' : ''}.webp`}
-            x={shooterX - 64}
-            y="484"
-            width="128"
-            height="155"
-          />
-          {shot && (
-            <g key={shot.id} className="bar-shot-motion">
-              <ellipse cx={shooterX} cy="592" rx="9" ry="5" fill="#15212d">
-                <animate
-                  attributeName="cy"
-                  from="592"
-                  to={String(puckEnd)}
-                  dur="0.65s"
-                  fill="freeze"
-                />
-                <animate
-                  attributeName="opacity"
-                  values="1;1;0"
-                  keyTimes="0;0.75;1"
-                  dur="1.2s"
-                  fill="freeze"
-                />
-              </ellipse>
-            </g>
-          )}
-        </svg>
-        <div
-          className={`bar-rink-notice${shot?.result === 'goal' ? ' bar-rink-notice--goal' : ''}`}
-        >
-          {shot ? outcome[shot.result] : playerStatus(player)}
         </div>
+        {(shot || player.state !== 'period_active') && (
+          <div
+            className={`bar-rink-notice${shot?.result === 'goal' ? ' bar-rink-notice--goal' : ''}`}
+          >
+            {shot ? outcome[shot.result] : playerStatus(player)}
+          </div>
+        )}
       </div>
       <p className="bar-rink-status">{playerStatus(player)}</p>
     </section>

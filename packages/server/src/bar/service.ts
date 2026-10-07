@@ -1,3 +1,4 @@
+import { sampleBarMotion } from './motion.js';
 import type { Pool } from 'pg';
 import {
   getGoalie,
@@ -43,7 +44,7 @@ const PUBLIC_MATCHES = `with entries as (
        order by s.sequence_number desc limit 1
     ) segment on true
 ), public_matches as (
-  select e.*, m.status as duel_status, m.duel_kind, m.rules_snapshot, m.fight_paused_at, m.updated_at as match_updated_at,
+  select e.*, m.status as duel_status, m.duel_kind, m.match_seed, m.rules_snapshot, m.fight_paused_at, m.updated_at as match_updated_at,
          case when e.status in ('settled','forfeit','cancelled','expired') then 'finished'
               when e.kind = 'duel' and m.status = 'active' and m.ends_at <= $1 then 'finished'
               when m.status = 'active' and m.ends_at > $1 then 'online'
@@ -72,6 +73,7 @@ interface MatchRow {
   status: string;
   duel_status: string | null;
   duel_kind: 'express' | 'express_plus' | 'classic' | null;
+  match_seed?: string;
   starts_at: Date | null;
   ends_at: Date | null;
   ready_expires_at: Date | null;
@@ -85,6 +87,12 @@ interface MatchRow {
     periodDurationMs?: number;
     breakDurationMs?: number;
     totalPeriods?: number;
+    periodSpeedPresets?: Array<{
+      periodNumber: number;
+      shooterFrequency: number;
+      goalieFrequency: number;
+      goalFrequency: number;
+    }>;
     periodRules?: Array<{ periodNumber: number; durationMs: number }>;
   } | null;
   fight_paused_at: Date | null;
@@ -145,6 +153,7 @@ async function playersFor(
   rows: MatchRow[],
   now: Date,
   delayedAt: Date | null = null,
+  motionRows?: PlayerRow[],
 ): Promise<BarMatch[]> {
   if (rows.length === 0) return [];
   const players = await pool.query<PlayerRow & { match_id: string | null }>(
@@ -173,6 +182,7 @@ async function playersFor(
     const home = player(row.home_user_id);
     const away = player(row.away_user_id);
     if (!home || !away) return [];
+    motionRows?.push(home, away);
     // A scheduled fixture may share users with another active match. Never borrow its participant state.
     const publicPlayer = (p: PlayerRow & { match_id: string | null }, score: number) =>
       projectPlayer(
@@ -280,8 +290,9 @@ export async function getBarLive(
     row.match_group === 'upcoming'
       ? { ...row, match_id: null, home_score: 0, away_score: 0, fight_paused_at: null }
       : row;
-  const match =
-    (await playersFor(pool, [publicRow], now, new Date(now.getTime() - BAR_DELAY_MS)))[0] ?? null;
+  const motionRows: PlayerRow[] = [];
+  const cutoff = new Date(now.getTime() - BAR_DELAY_MS);
+  const match = (await playersFor(pool, [publicRow], now, cutoff, motionRows))[0] ?? null;
   if (match?.group === 'upcoming') return { match, shots: [], complete: false, playbackId: null };
   if (match === null || row.match_id === null)
     return {
@@ -358,5 +369,57 @@ export async function getBarLive(
     (row.match_updated_at == null ||
       now.getTime() - row.match_updated_at.getTime() >= BAR_DELAY_MS + 2000);
   if (match.group === 'finished' && !complete) match.group = 'online';
-  return { match, shots, complete, playbackId: row.match_id };
+  const motion = motionRows.map((p) => {
+    const publicPlayer = match.players.find((candidate) => candidate.userId === p.user_id)!;
+    const latest = result.rows
+      .filter((shot) => shot.user_id === p.user_id && shot.period_number === p.current_period)
+      .at(-1);
+    const moving = publicPlayer.state === 'period_active';
+    const sampleTime = moving
+      ? cutoff.getTime()
+      : Math.min(
+          cutoff.getTime(),
+          (p.break_started_at ?? p.period_paused_at)?.getTime() ?? cutoff.getTime(),
+        );
+    const delta =
+      latest && moving ? Math.max(0, sampleTime - latest.created_at.getTime() - 1000) : 0;
+    const elapsedMs = latest
+      ? latest.input_payload.tapTime + delta
+      : Math.max(
+          0,
+          sampleTime -
+            (p.period_started_at?.getTime() ?? sampleTime) -
+            Number(p.period_paused_ms ?? 0),
+        );
+    const preset = row.rules_snapshot?.periodSpeedPresets?.find(
+      (value) => value.periodNumber === p.current_period,
+    );
+    return sampleBarMotion(
+      {
+        userId: p.user_id,
+        period: p.current_period ?? 0,
+        state: publicPlayer.state,
+        elapsedMs,
+        shooterElapsedMs: latest
+          ? (latest.input_payload.shooterMotionTime ??
+              latest.input_payload.shooterTapTime ??
+              latest.input_payload.tapTime) + delta
+          : elapsedMs,
+        seed: row.match_seed ?? latest?.match_seed ?? '',
+        shotIndex: (latest?.shot_index ?? 0) + 1,
+        ...(latest?.input_payload.shooterFrequency !== undefined || preset
+          ? { shooterFrequency: latest?.input_payload.shooterFrequency ?? preset!.shooterFrequency }
+          : {}),
+        ...(latest?.input_payload.goalieFrequency !== undefined || preset
+          ? { goalieFrequency: latest?.input_payload.goalieFrequency ?? preset!.goalieFrequency }
+          : {}),
+        ...(latest?.input_payload.goalFrequency !== undefined || preset
+          ? { goalFrequency: latest?.input_payload.goalFrequency ?? preset!.goalFrequency }
+          : {}),
+      },
+      row.rules_snapshot?.goalieId ?? GOALIES[0]!.id,
+      cutoff,
+    );
+  });
+  return { match, shots, motion, complete, playbackId: row.match_id };
 }
