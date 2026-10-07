@@ -3,17 +3,25 @@ import type { PoolClient } from 'pg';
 import { advanceFight, type FightCommand } from '@hockey/game-core';
 import type { FightDuelContext } from './routes.js';
 import { getFight, denyFight, queueFightSnapshot } from './service.js';
-export const fightActionSchema = z
-  .object({
-    type: z.literal('fight:action'),
-    fightId: z.string().uuid(),
-    actionId: z.string().uuid(),
-    phaseId: z.number().int().nonnegative(),
-    seq: z.number().int().positive().max(2147483647),
-    kind: z.enum(['attack', 'block']),
-    zone: z.enum(['head', 'body']),
-  })
-  .strict();
+const commandBase = {
+  type: z.literal('fight:action'),
+  fightId: z.string().uuid(),
+  actionId: z.string().uuid(),
+  phaseId: z.number().int().nonnegative(),
+  seq: z.number().int().positive().max(2147483647),
+};
+export const fightActionSchema = z.discriminatedUnion('kind', [
+  z
+    .object({ ...commandBase, kind: z.enum(['attack', 'block']), zone: z.enum(['head', 'body']) })
+    .strict(),
+  z
+    .object({
+      ...commandBase,
+      kind: z.literal('move'),
+      direction: z.union([z.literal(-1), z.literal(0), z.literal(1)]),
+    })
+    .strict(),
+]);
 export type FightActionPayload = z.infer<typeof fightActionSchema>;
 export async function admitFightCommand(
   client: PoolClient,
@@ -39,7 +47,11 @@ export async function admitFightCommand(
       duplicate.payload.seq !== body.seq ||
       duplicate.payload.phaseId !== body.phaseId ||
       duplicate.payload.kind !== body.kind ||
-      duplicate.payload.zone !== body.zone
+      (duplicate.payload.kind === 'move' && body.kind === 'move'
+        ? duplicate.payload.direction !== body.direction
+        : duplicate.payload.kind !== 'move' &&
+          body.kind !== 'move' &&
+          duplicate.payload.zone !== body.zone)
     )
       denyFight('duplicate_payload_mismatch');
     return duplicate.ack;
@@ -51,6 +63,7 @@ export async function admitFightCommand(
     ctx.nowMs < state.phaseStartedAtMs
   )
     denyFight('not_started');
+  if (body.kind === 'move' && state.rules.version < 2) denyFight('unsupported_action');
   if (body.phaseId !== state.phaseId) denyFight('old_phase');
   if (body.seq !== state.lastSeq[player] + 1) denyFight('sequence');
   const effectiveAtMs = ctx.nowMs - fight.compensation_ms[player];
@@ -64,8 +77,9 @@ export async function admitFightCommand(
     player,
     phaseId: body.phaseId,
     seq: body.seq,
-    kind: body.kind,
-    zone: body.zone,
+    ...(body.kind === 'move'
+      ? { kind: body.kind, direction: body.direction }
+      : { kind: body.kind, zone: body.zone }),
     effectiveAtMs,
   };
   const transition = advanceFight(

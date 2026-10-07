@@ -33,6 +33,7 @@ export class FightFeedbackTracker {
       if (this.seen.has(key)) continue;
       this.seen.add(key);
       if (attack.activeAtMs >= state.deadlineMs || nowMs - attack.activeUntilMs > 1500) continue;
+      if (attack.outcome === 'miss') continue;
       const defender = attack.player === 0 ? 1 : 0;
       const blocked = state.actions.some(
         (block) =>

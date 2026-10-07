@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for server-authoritative duel fights', () => {
-    expect(GAME_CORE_VERSION).toBe(77);
+  it('is bumped for fight movement and readable windup', () => {
+    expect(GAME_CORE_VERSION).toBe(78);
   });
 });

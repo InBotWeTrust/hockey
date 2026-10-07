@@ -1,24 +1,149 @@
-import React, {useEffect, useRef, useState} from 'react';
-import {createRoot} from 'react-dom/client';
-import {FightModal} from './src/components/duel/fight/FightModal';
-import {FightView} from './src/game/fight/FightView';
-import {advanceFight,createFightState,DEFAULT_FIGHT_RULES,type FightCommand} from '@hockey/game-core';
+import React, { useEffect, useRef, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { FightModal } from './src/components/duel/fight/FightModal';
+import { FightResultModal } from './src/components/duel/fight/FightResultModal';
+import { FightView } from './src/game/fight/FightView';
+import {
+  advanceFight,
+  createFightState,
+  DEFAULT_FIGHT_RULES,
+  type FightCommand,
+} from '@hockey/game-core';
 import './src/app/global.css';
 import './src/app/design-system.css';
-function Scene(){
- const [now,setNow]=useState(Date.now());
- const [zone,setZone]=useState<'head'|'body'>('head');
- const fight=useRef(createFightState(DEFAULT_FIGHT_RULES,now+1000));
- useEffect(()=>{const timer=setInterval(()=>{const time=Date.now();if(time>=fight.current.deadlineMs){const next=createFightState(DEFAULT_FIGHT_RULES,time);next.phaseId=fight.current.phaseId+1;fight.current=next;}else fight.current=advanceFight(fight.current,[],time-150).state;setNow(time)},16);return()=>clearInterval(timer)},[]);
- const demo=(kind:string)=>{
-   const time=Date.now(); const state=createFightState(DEFAULT_FIGHT_RULES,time-1000);
-   state.phaseId=fight.current.phaseId+1;
-   const attacker=kind==='guard'||kind==='hit'?1:0;
-   const commands:FightCommand[]=[{player:attacker,kind:'attack',zone,phaseId:state.phaseId,seq:1,effectiveAtMs:time}];
-   if(kind==='guard'||kind==='blocked')commands.push({...commands[0]!,player:attacker===0?1:0,kind:'block'});
-   fight.current=advanceFight(state,commands,time).state;setNow(time);
- };
- return <div className="duel-fight-screen"><FightModal><FightView currentPlayer={{name:'Александр',avatarUrl:'/sprites/advanced-training-coach-avatar.webp'}} opponent={{name:'Михаил',avatarUrl:null}} state={fight.current} player={0} nowMs={now} onAction={(kind,zone)=>{
-  const time=Date.now();fight.current=advanceFight(fight.current,[{player:0,kind,zone,phaseId:fight.current.phaseId,seq:fight.current.lastSeq[0]+1,effectiveAtMs:time}],time).state;setNow(time);
- }}/>{new URLSearchParams(location.search).has('effects')&&<div style={{display:'flex',gap:6,justifyContent:'center',flexWrap:'wrap',paddingTop:8}}><select aria-label="Зона проверки" value={zone} onChange={e=>setZone(e.target.value as 'head'|'body')} style={{fontSize:11}}><option value="head">Голова</option><option value="body">Корпус</option></select>{[['strike','Попасть'],['blocked','В блок'],['guard','Защититься'],['hit','Пропустить']].map(([kind,label])=><button key={kind} onClick={()=>demo(kind!)} style={{fontSize:10}}>{label}</button>)}</div>}</FightModal></div>
-}createRoot(document.getElementById('root')!).render(<Scene/>);
+function Scene() {
+  const [now, setNow] = useState(Date.now());
+  const [mode, setMode] = useState('idle');
+  const [player, setPlayer] = useState<0 | 1>(0);
+  const fight = useRef(createFightState(DEFAULT_FIGHT_RULES, now + 1000));
+  const botAt = useRef(now + 2000);
+  const send = (
+    command:
+      | Omit<
+          Extract<FightCommand, { kind: 'move' }>,
+          'player' | 'phaseId' | 'seq' | 'effectiveAtMs'
+        >
+      | Omit<
+          Extract<FightCommand, { kind: 'attack' | 'block' }>,
+          'player' | 'phaseId' | 'seq' | 'effectiveAtMs'
+        >,
+    side = player,
+  ) => {
+    const time = Date.now();
+    const input = {
+      ...command,
+      player: side,
+      phaseId: fight.current.phaseId,
+      seq: fight.current.lastSeq[side] + 1,
+      effectiveAtMs: time,
+    } as FightCommand;
+    const next = advanceFight(
+      fight.current,
+      [input],
+      Math.max(fight.current.finalizedThroughMs, time),
+    );
+    fight.current = next.state;
+    setNow(time);
+    return !next.events.some((e) => e.type === 'rejected');
+  };
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const time = Date.now();
+      if (
+        mode !== 'idle' &&
+        time >= botAt.current &&
+        time >= fight.current.phaseStartedAtMs &&
+        ['fighting', 'sudden_death'].includes(fight.current.status)
+      ) {
+        const side = player === 0 ? 1 : 0;
+        send(
+          {
+            kind: mode.startsWith('block') ? 'block' : 'attack',
+            zone: mode.endsWith('body') ? 'body' : 'head',
+          },
+          side,
+        );
+        botAt.current = time + 1800;
+      }
+      fight.current = advanceFight(
+        fight.current,
+        [],
+        Math.max(fight.current.finalizedThroughMs, time),
+      ).state;
+      setNow(time);
+    }, 16);
+    return () => clearInterval(timer);
+  }, [mode, player]);
+  const restart = () => {
+    const time = Date.now();
+    const next = createFightState(DEFAULT_FIGHT_RULES, time + 1000);
+    fight.current = next;
+    botAt.current = time + 2000;
+    setNow(time);
+    setReset((n) => n + 1);
+  };
+  const [reset, setReset] = useState(0);
+  return (
+    <div className="duel-fight-screen">
+      <FightModal>
+        <FightView
+          key={reset}
+          currentPlayer={{ name: 'Ты', avatarUrl: '/sprites/advanced-training-coach-avatar.webp' }}
+          opponent={{ name: 'Соперник', avatarUrl: null }}
+          state={fight.current}
+          player={player}
+          nowMs={now}
+          onAction={(kind, zone) => send({ kind, zone })}
+          onMove={(direction) => send({ kind: 'move', direction })}
+        />
+        {fight.current.status === 'resolved' && now < (fight.current.endedAtMs ?? now) + 2700 && (
+          <FightResultModal won={fight.current.winner === player} />
+        )}
+        <div
+          style={{
+            paddingTop: 8,
+            flex: '0 0 auto',
+            display: 'flex',
+            gap: 6,
+            justifyContent: 'center',
+            fontSize: 11,
+          }}
+        >
+          <button onClick={restart}>Новый бой</button>
+          <button
+            onClick={() => {
+              restart();
+              fight.current.hp[player === 0 ? 1 : 0] = 1;
+              setMode('idle');
+            }}
+          >
+            Последний удар
+          </button>
+          <select
+            aria-label="Действие соперника"
+            value={mode}
+            onChange={(e) => {
+              setMode(e.target.value);
+              botAt.current = Date.now() + 500;
+            }}
+          >
+            <option value="idle">Соперник ждёт</option>
+            <option value="attack_head">Бьёт в голову</option>
+            <option value="attack_body">Бьёт в корпус</option>
+            <option value="block_head">Блок головы</option>
+            <option value="block_body">Блок корпуса</option>
+          </select>
+          <button
+            onClick={() => {
+              setPlayer((p) => (p === 0 ? 1 : 0));
+              restart();
+            }}
+          >
+            Сменить сторону
+          </button>
+        </div>
+      </FightModal>
+    </div>
+  );
+}
+createRoot(document.getElementById('root')!).render(<Scene />);

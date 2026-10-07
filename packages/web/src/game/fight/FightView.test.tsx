@@ -33,8 +33,8 @@ describe('fight mobile controls', () => {
       expect(button.closest('.fight-actions')).not.toBeNull();
       expect(button.textContent).not.toBe('');
     }
-    expect(screen.getByLabelText('Ты: 3 HP')).toBeInTheDocument();
-    expect(screen.getByLabelText('Соперник: 3 HP')).toBeInTheDocument();
+    expect(screen.getByLabelText('Ты: 4 HP')).toBeInTheDocument();
+    expect(screen.getByLabelText('Соперник: 4 HP')).toBeInTheDocument();
   });
   it('keeps the current player and opponent identities aligned with their HP on either side', () => {
     const state = createFightState(DEFAULT_FIGHT_RULES, 0);
@@ -75,16 +75,16 @@ describe('fight mobile controls', () => {
       const state = advanceFight(
         initial,
         blocked ? [command, { ...command, player: 1, kind: 'block' }] : [command],
-        1500,
+        1600,
       ).state;
-      view.rerender(<FightView {...props} state={state} nowMs={1500} />);
+      view.rerender(<FightView {...props} state={state} nowMs={1600} />);
       expect(
         view.container.querySelector(`[data-feedback="${blocked ? 'blocked' : 'strike'}"]`),
       ).not.toBeNull();
       expect(
         view.container.querySelector(`[data-feedback="${blocked ? 'guard' : 'hit'}"]`),
       ).not.toBeNull();
-      view.rerender(<FightView {...props} state={state} nowMs={2100} />);
+      view.rerender(<FightView {...props} state={state} nowMs={2200} />);
       expect(view.container.querySelector('[data-feedback]')).toBeNull();
     },
   );
@@ -94,11 +94,19 @@ describe('fight mobile controls', () => {
     const view = render(<FightView state={state} player={0} nowMs={1000} onAction={action} />);
     fireEvent.click(screen.getByRole('button', { name: 'Ударить в голову' }));
     const rejected = { ...state, lastSeq: [1, 0] as [number, number] };
-    view.rerender(<FightView state={rejected} player={0} nowMs={1050} onAction={action} />);
+    view.rerender(
+      <FightView state={rejected} player={0} nowMs={1050} onAction={action} predictionReset={1} />,
+    );
     expect(screen.getByRole('button', { name: 'Блок корпуса' })).not.toBeDisabled();
     fireEvent.click(screen.getByRole('button', { name: 'Блок корпуса' }));
     view.rerender(
-      <FightView state={{ ...rejected, phaseId: 1 }} player={0} nowMs={1100} onAction={action} />,
+      <FightView
+        state={{ ...rejected, phaseId: 1 }}
+        player={0}
+        nowMs={1100}
+        onAction={action}
+        predictionReset={1}
+      />,
     );
     expect(screen.getByRole('button', { name: 'Ударить в голову' })).not.toBeDisabled();
   });
@@ -127,7 +135,9 @@ describe('fight mobile controls', () => {
 
 it('disables all fight inputs after the confirmed result', () => {
   const state = createFightState(DEFAULT_FIGHT_RULES, 0);
-  state.status = 'resolved'; state.winner = 0; state.hp = [2, 0];
+  state.status = 'resolved';
+  state.winner = 0;
+  state.hp = [2, 0];
   const action = vi.fn();
   render(<FightView state={state} player={0} nowMs={1000} onAction={action} />);
   for (const button of screen.getAllByRole('button')) {
@@ -135,4 +145,33 @@ it('disables all fight inputs after the confirmed result', () => {
     fireEvent.click(button);
   }
   expect(action).not.toHaveBeenCalled();
+});
+
+it('keeps recovery locked when a movement acknowledgement advances the sequence', () => {
+  const state = createFightState(DEFAULT_FIGHT_RULES, 0);
+  const props = { player: 0 as const, onAction: vi.fn(() => true), onMove: vi.fn(() => true) };
+  const view = render(<FightView {...props} state={state} nowMs={1000} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Ударить в голову' }));
+  view.rerender(<FightView {...props} state={{ ...state, lastSeq: [1, 0] }} nowMs={1100} />);
+  expect(screen.getByRole('button', { name: 'Ударить в голову' })).toBeDisabled();
+});
+it('starts and stops movement on pointer down/up and stops on lost focus', () => {
+  const move = vi.fn(() => true);
+  render(
+    <FightView
+      state={createFightState(DEFAULT_FIGHT_RULES, 0)}
+      player={0}
+      nowMs={1000}
+      onAction={() => {}}
+      onMove={move}
+    />,
+  );
+  const forward = screen.getByRole('button', { name: 'Двигаться вперёд' });
+  fireEvent.pointerDown(forward, { pointerId: 1 });
+  expect(move).toHaveBeenLastCalledWith(1);
+  fireEvent.pointerUp(forward, { pointerId: 1 });
+  expect(move).toHaveBeenLastCalledWith(0);
+  fireEvent.pointerDown(forward, { pointerId: 2 });
+  fireEvent(window, new Event('blur'));
+  expect(move).toHaveBeenLastCalledWith(0);
 });
