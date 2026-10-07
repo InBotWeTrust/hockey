@@ -270,6 +270,8 @@ export interface ActiveClassicGame {
 
 export interface ActivePlayoffGame {
   kind: 'playoff';
+  my_ready: boolean;
+  my_completed: boolean;
   tournament_id: string;
   fixture_id: string;
   duel_match_id: string | null;
@@ -1300,6 +1302,8 @@ export async function listActiveClassicGames(
     };
   });
   const playoff = await pool.query<{
+    my_ready: boolean;
+    my_completed: boolean;
     tournament_id: string;
     fixture_id: string;
     duel_match_id: string | null;
@@ -1331,6 +1335,10 @@ export async function listActiveClassicGames(
             )
             tournament.id as tournament_id, fixture.id as fixture_id,
             attempt.amateur_duel_match_id as duel_match_id,
+            case when participant.id = fixture.home_participant_id
+              then attempt.home_ready_at is not null
+              else attempt.away_ready_at is not null end as my_ready,
+            coalesce(duel_participant.state = 'completed', false) as my_completed,
             tournament.title as tournament_title,
             coalesce(round_game_day.day_number, round.number) as tournament_day,
             round.stage as round_stage, round.number as round_number,
@@ -1357,6 +1365,9 @@ export async function listActiveClassicGames(
        join tournament_participant participant
          on participant.id in (fixture.home_participant_id, fixture.away_participant_id)
         and participant.user_id = $1 and participant.state = 'approved'
+       left join amateur_duel_participant duel_participant
+         on duel_participant.match_id = attempt.amateur_duel_match_id
+        and duel_participant.user_id = participant.user_id
       where tournament.status = 'playoff'
         and round.stage in ('playoff', 'third_place')
         and fixture.status in ('scheduled', 'open', 'active', 'paused')
@@ -1387,6 +1398,8 @@ export async function listActiveClassicGames(
     const beforeStart = input.now < row.scheduled_starts_at;
     return {
       kind: 'playoff',
+      my_ready: row.my_ready,
+      my_completed: row.my_completed,
       tournament_id: row.tournament_id,
       fixture_id: row.fixture_id,
       duel_match_id: row.duel_match_id,

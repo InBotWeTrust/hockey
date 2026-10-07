@@ -1641,7 +1641,11 @@ describe('DailyScreen', () => {
     );
   });
 
-  it('opens a started playoff fixture from the arena during its server readiness window', async () => {
+  it.each([
+    ['ready_check', false, false, 'Игра серии ожидает подтверждения.'],
+    ['ready_check', true, false, 'Ждём соперника'],
+    ['active', true, true, 'Ждём соперника'],
+  ])('opens a playoff fixture with personal status %s ready=%s completed=%s', async (state, myReady, myCompleted, subtitle) => {
     const readinessEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
@@ -1662,7 +1666,9 @@ describe('DailyScreen', () => {
                 readiness_ends_at: readinessEndsAt,
                 closes_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
                 break_ends_at: null,
-                state: 'ready_check',
+                state,
+                my_ready: myReady,
+                my_completed: myCompleted,
                 current_period: 0,
                 total_shots: 0,
                 total_goals: 0,
@@ -1690,8 +1696,12 @@ describe('DailyScreen', () => {
       </QueryClientProvider>,
     );
 
-    expect(await screen.findByText('Игра серии ожидает подтверждения.')).toBeInTheDocument();
-    expect(screen.getByText('До подтверждения')).toBeInTheDocument();
+    expect(await screen.findByText(subtitle)).toBeInTheDocument();
+    if (myCompleted) {
+      expect(screen.queryByText('До конца')).toBeNull();
+    } else {
+      expect(screen.getByText('До подтверждения')).toBeInTheDocument();
+    }
     fireEvent.click(screen.getByRole('button', { name: 'На лёд' }));
 
     await waitFor(() =>
@@ -1699,6 +1709,33 @@ describe('DailyScreen', () => {
         'view=amateur&section=tournaments&tournament=playoff-ready&tab=schedule&fixture=fixture-ready&match=match-ready&play=1',
       ),
     );
+  });
+
+  it.each([
+    ['daily', 'period_active', 1, 0, 0, '00/30'],
+    ['daily', 'period_active', 2, 0, 30, '30/60'],
+    ['daily', 'break_active', 2, 30, 60, '60/90'],
+    ['daily', 'idle', 2, 0, 60, '60/90'],
+    ['daily', 'period_active', 3, 1, 61, '61/90'],
+    ['classic', 'period_active', 2, 0, 30, '30/60'],
+    ['classic', 'break_active', 2, 30, 60, '60/60'],
+    ['classic', 'period_active', 3, 1, 61, '61/90'],
+    ['classic', 'idle', 2, 0, 60, '60/90'],
+  ])('shows cumulative shots for %s %s period %s', async (mode, state, period, periodShots, totalShots, label) => {
+    const data = {
+      ...(mode === 'classic' ? classicIdleState : baseState),
+      state, current_period: period, current_period_shots: periodShots,
+      daily_total_shots: totalShots, shots_per_period: 30, total_periods: 3,
+      period_started_at: new Date().toISOString(),
+      period_ends_at: new Date(Date.now() + 1_200_000).toISOString(),
+      break_ends_at: new Date(Date.now() + 300_000).toISOString(),
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(data), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    }));
+    renderWith([mode === 'classic' ? '/?view=classic&tournament=classic-1' : '/?view=daily']);
+    const scoreboard = await screen.findByLabelText('Игровое табло');
+    expect(scoreboard).toHaveTextContent(`БРОСКИ${label}`);
   });
 
   it('lets a beginner browse an already-created playoff match from the arena', async () => {

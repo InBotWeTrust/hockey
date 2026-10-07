@@ -6560,7 +6560,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (match.source === 'challenge') {
           const firstShot = await client.query<{ total: number }>(
             `select count(*)::int as total from shot_session
-              where amateur_duel_match_id = $1`,
+              where mode = 'amateur_duel' and amateur_duel_match_id = $1`,
             [match.id],
           );
           if (firstShot.rows[0]?.total === 1) {

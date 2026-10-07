@@ -20,6 +20,19 @@ import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { reconcileCompletedMonthlyRating } from '../../src/duel/amateur/monthlyRewards.js';
 import { getBlockedPlayoffOpponentIds } from '../../src/duel/amateur/playoffOpponentLock.js';
 import { rescheduleTournamentFixture } from '../../src/tournament/service.js';
+import { observeCareerActivityStreak } from '../../src/achievements/service.js';
+
+interface QueryPlanNode {
+  'Index Name'?: string;
+  'Relation Name'?: string;
+  'Actual Rows'?: number;
+  'Actual Loops'?: number;
+  Plans?: QueryPlanNode[];
+}
+
+function queryPlanNodes(node: QueryPlanNode): QueryPlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(queryPlanNodes)];
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -1499,6 +1512,103 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(next.json().match.duel_lock?.blocked).toBe(true);
+  });
+
+  it('uses the duel shot index for first-shot detection and records acceptance only once', async () => {
+    const matchId = (await challenge(await createTemplate({
+      periodRules: [{ periodNumber: 1, mode: 'quota', durationMs: 1_200_000, shotsLimit: 3 }],
+    }))).json().match.id;
+    expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+    const queries = vi.spyOn(Client.prototype, 'query');
+    let countQuery: string;
+    let countParams: unknown[];
+    try {
+      for (const shotIndex of [1, 2]) {
+        const shot = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/shot`,
+          headers: auth(tokenA),
+          payload: { shot_index: shotIndex, input: { tapTime: shotIndex * 1000 }, claimed_result: 'goal' },
+        });
+        expect(shot.statusCode, shot.body).toBe(200);
+      }
+      const call = queries.mock.calls.find(([sql]) =>
+        /select count\(\*\)::int as total from shot_session\s+where/.test(String(sql)),
+      );
+      expect(call).toBeDefined();
+      countQuery = String(call![0]);
+      countParams = call![1] as unknown as unknown[];
+    } finally {
+      queries.mockRestore();
+    }
+    const events = await pool.query(
+      `select 1 from event_log where type='amateur_duel_challenge_accepted'
+        and payload->>'match_id'=$1`, [matchId],
+    );
+    expect(events.rowCount).toBe(1);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      // Test index eligibility, not machine-dependent elapsed time or table size.
+      await client.query('set local enable_seqscan=off');
+      const result = await client.query<{ 'QUERY PLAN': Array<{ Plan: QueryPlanNode }> }>(
+        `explain (format json) ${countQuery}`, countParams,
+      );
+      expect(queryPlanNodes(result.rows[0]!['QUERY PLAN'][0]!.Plan)
+        .some((node) => node['Index Name'] === 'shot_session_amateur_duel_idx')).toBe(true);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+
+  it('limits career streak history work to the observed player and preserves local-day deduplication', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    await pool.query(
+      `insert into shot_session
+         (user_id,mode,amateur_duel_match_id,period_number,shot_index,seed,input_payload,server_result,game_core_version,created_at)
+       select $1::uuid,'amateur_duel',$3::uuid,1,n+1,'streak-test','{}'::jsonb,'goal',1,
+              '2026-09-30T21:30:00Z'::timestamptz + n * interval '1 day'
+         from generate_series(0,6) n
+       union all
+       select $1::uuid,'amateur_duel',$3::uuid,1,8,'streak-test','{}'::jsonb,'goal',1,'2026-10-07T10:00:00Z'::timestamptz
+       union all
+       select $2::uuid,'amateur_duel',$3::uuid,1,n+1,'streak-test','{}'::jsonb,'goal',1,
+              '2026-09-28T21:30:00Z'::timestamptz + n * interval '1 day'
+         from generate_series(0,8) n`, [userA,userB,matchId],
+    );
+    const queries = vi.spyOn(pool, 'query');
+    let streakQuery: string;
+    let streakParams: unknown[];
+    try {
+      await observeCareerActivityStreak(pool, userA, new Date('2026-10-07T10:00:00Z'));
+      const call = queries.mock.calls.find(([sql]) => String(sql).includes('historical_streaks.best_days'));
+      expect(call).toBeDefined();
+      streakQuery = String(call![0]);
+      streakParams = call![1] as unknown as unknown[];
+    } finally {
+      queries.mockRestore();
+    }
+    const result = await pool.query<{ activity_day: string; best_days: number }>(streakQuery,streakParams);
+    expect(result.rows).toEqual([{ activity_day: '2026-10-07', best_days: 7 }]);
+    const plan = await pool.query<{ 'QUERY PLAN': Array<{ Plan: QueryPlanNode }> }>(
+      `explain (analyze,format json) ${streakQuery}`,streakParams,
+    );
+    const scans = queryPlanNodes(plan.rows[0]!['QUERY PLAN'][0]!.Plan)
+      .filter((node) => node['Relation Name'] === 'shot_session');
+    expect(scans.length).toBeGreaterThan(0);
+    expect(scans.reduce((total,node) => total + (node['Actual Rows'] ?? 0) * (node['Actual Loops'] ?? 1),0))
+      .toBeLessThanOrEqual(8);
+    await observeCareerActivityStreak(pool,userA,new Date('2026-10-07T11:00:00Z'));
+    const events = await pool.query(
+      `select 1 from achievement_stage_events where user_id=$1 and achievement_id='career-streak'
+        and event_key='activity-day:2026-10-07'`,[userA],
+    );
+    expect(events.rowCount).toBe(1);
+    const stages = await pool.query<{ progress: { days: number } }>(
+      `select progress from user_achievement_stages where user_id=$1 and achievement_id='career-streak'`,[userA],
+    );
+    expect(stages.rows[0]?.progress.days).toBe(7);
   });
 
   it('timestamps an accepted ordinary shot after the gameplay-lock wait and recovers exactly one hour later', async () => {

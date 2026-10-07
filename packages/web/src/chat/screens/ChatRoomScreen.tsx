@@ -603,6 +603,9 @@ export function ChatRoomScreen(): JSX.Element {
     mutationFn: () => markChatAsRead(chatId),
     onSuccess: () => {
       resetUnread(chatId);
+      queryClient.setQueryData<ChatDTO[]>(chatKeys.list(), (chats) =>
+        chats?.map((chat) => chat.id === chatId ? { ...chat, unreadCount: 0 } : chat),
+      );
       void queryClient.invalidateQueries({ queryKey: chatKeys.unread() });
       void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
     },

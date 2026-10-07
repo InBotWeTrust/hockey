@@ -41,6 +41,7 @@ import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 import { TournamentDescription } from './TournamentDescription.js';
 import { useDailyStore } from '../stores/dailyStore.js';
+import { tournamentTechnicalReason, tournamentTieBreakPresentation } from './resultPresentation.js';
 
 type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
 type TournamentCatalogFilter = 'active' | 'future' | 'completed';
@@ -1243,6 +1244,12 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                 const finished = fixtureHasResult(fixture);
                 const myResult = mine ? myFixtureResultLabel(fixture, currentUserId) : null;
                 const technicalResultLabel = fixtureTechnicalResultLabel(fixture);
+                const tieBreak = tournamentTieBreakPresentation(fixture.resultDetails,
+                  finished && fixture.score.home === fixture.score.away, fixture.technicalResult === true);
+                const winnerName = fixtureWinnerUserId(fixture) === fixture.home?.userId
+                  ? fixture.home?.name : fixtureWinnerUserId(fixture) === fixture.away?.userId ? fixture.away?.name : null;
+                const technicalReason = fixture.technicalResult === true
+                  ? tournamentTechnicalReason(fixture.resultDetails?.technicalReason, fixture.home?.name, fixture.away?.name) : null;
                 return (
                   <article
                     key={fixture.id}
@@ -1277,9 +1284,9 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                             alt={fixture.away?.name ?? 'Гость'}
                           />
                         </div>
-                        <span className="tournament-fixture-matchup__names">
-                          {fixturePlayerLabel(fixture.home, showSeed)} —{' '}
-                          {fixturePlayerLabel(fixture.away, showSeed)}
+                        <span className={`tournament-fixture-matchup__names${tieBreak.reason === null ? '' : ' tournament-fixture-matchup__names--explained'}`}>
+                          {fixturePlayerLabel(fixture.home, showSeed)}{tieBreak.home === null ? '' : ` (${tieBreak.home})`} —{' '}
+                          {fixturePlayerLabel(fixture.away, showSeed)}{tieBreak.away === null ? '' : ` (${tieBreak.away})`}
                         </span>
                       </div>
                     </div>
@@ -1299,6 +1306,8 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                                 {technicalResultLabel ??
                                   `Счёт ${fixture.score.home}:${fixture.score.away}`}
                               </strong>
+                              {tieBreak.reason !== null && winnerName && <p className="modal-copy">Победитель: {winnerName} · {tieBreak.reason}</p>}
+                              {technicalReason !== null && <p className="modal-copy">{technicalReason}</p>}
                             </>
                           )}
                           {mine && playable && (

@@ -295,6 +295,8 @@ export interface PlayViewProps<TState> {
   goals: number;
   scoreLabel?: string | undefined;
   scoreboardGoals?: number | undefined;
+  scoreboardShots?: number | undefined;
+  scoreboardShotsTotal?: number | undefined;
   shots: number;
   shotIndexBase?: number | undefined;
   shotsTotal?: number | undefined;
@@ -630,6 +632,8 @@ export function PlayView<TState>({
   goals,
   scoreLabel,
   scoreboardGoals,
+  scoreboardShots,
+  scoreboardShotsTotal,
   shots,
   shotIndexBase,
   shotsTotal,
@@ -808,12 +812,12 @@ export function PlayView<TState>({
           : 'error';
   const liveScoreboardRef = useRef({
     goals: scoreboardGoals ?? goals,
-    shots,
+    shots: scoreboardShots ?? shots,
     notice: scoreboardNotice,
   });
   liveScoreboardRef.current = {
     goals: scoreboardGoals ?? goals,
-    shots,
+    shots: scoreboardShots ?? shots,
     notice: scoreboardNotice,
   };
   const [scoreboardSnapshot, setScoreboardSnapshot] = useState<{
@@ -1996,7 +2000,8 @@ export function PlayView<TState>({
 
   const timerValue = timer ?? formatMs(scoreboardRemaining);
   const visibleScoreboardGoals = scoreboardSnapshot?.goals ?? scoreboardGoals ?? goals;
-  const visibleScoreboardShots = scoreboardSnapshot?.shots ?? shots;
+  const visibleScoreboardShots = scoreboardSnapshot?.shots ?? scoreboardShots ?? shots;
+  const visibleScoreboardShotsTotal = scoreboardShotsTotal ?? shotsTotal;
   const visibleScoreboardNotice = scoreboardSnapshot?.notice ?? scoreboardNotice;
   const visibleCustomScoreboardModel =
     typeof scoreboardModel === 'function'
@@ -2102,7 +2107,7 @@ export function PlayView<TState>({
                   goals: visibleScoreboardGoals,
                   ...(scoreLabel !== undefined ? { scoreLabel } : {}),
                   shots: visibleScoreboardShots,
-                  ...(shotsTotal !== undefined ? { shotsTotal } : {}),
+                  ...(visibleScoreboardShotsTotal !== undefined ? { shotsTotal: visibleScoreboardShotsTotal } : {}),
                   ...(visibleScoreboardNotice !== undefined
                     ? { notice: visibleScoreboardNotice }
                     : {}),
@@ -2175,7 +2180,7 @@ export function PlayView<TState>({
               goals={visibleScoreboardGoals}
               {...(scoreLabel !== undefined ? { scoreLabel } : {})}
               shots={visibleScoreboardShots}
-              shotsTotal={shotsTotal}
+              shotsTotal={visibleScoreboardShotsTotal}
               opponent={scoreboardOpponent}
             />
           ))}

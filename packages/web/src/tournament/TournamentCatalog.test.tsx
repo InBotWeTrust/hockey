@@ -1607,6 +1607,22 @@ describe('TournamentCatalog', () => {
           score: { home: 0, away: 0 },
           technicalResult: true,
           winnerUserId: 'u6',
+          resultDetails: {
+            duelKind: 'classic', homeAccuracy: null, awayAccuracy: null,
+            homeActiveTimeMs: null, awayActiveTimeMs: null,
+            technicalReason: 'tournament_attempt_home_no_show',
+          },
+        },
+        {
+          id: 'f4', fixtureNumber: 4, stage: 'playoff', roundNumber: 3,
+          scheduledStartsAt: null, windowEndsAt: null, status: 'settled',
+          venueMode: 'neutral_default',
+          home: { userId: 'u7', name: 'Andrey' }, away: { userId: 'u8', name: 'Lost Star' },
+          score: { home: 75, away: 75 }, winnerUserId: 'u7',
+          resultDetails: {
+            duelKind: 'classic', homeAccuracy: 83.33333, awayAccuracy: 83.33333,
+            homeActiveTimeMs: 327399, awayActiveTimeMs: 409658, technicalReason: null,
+          },
         },
       ],
     });
@@ -1625,6 +1641,10 @@ describe('TournamentCatalog', () => {
     expect(await screen.findAllByText('Счёт 0:0')).toHaveLength(1);
     expect(screen.getByText('Счёт 3:1')).toBeInTheDocument();
     expect(screen.getByText('Техническая победа — Шестой')).toBeInTheDocument();
+    expect(screen.getByText('Пятый не подтвердил участие')).toBeInTheDocument();
+    expect(screen.getByText(/Andrey \(05:27\)/)).toBeInTheDocument();
+    expect(screen.getByText(/Lost Star \(06:50\)/)).toBeInTheDocument();
+    expect(screen.getByText('Победитель: Andrey · по времени')).toBeInTheDocument();
   });
 
   it('labels own results, preserves scores and hides individual times for future games', async () => {
