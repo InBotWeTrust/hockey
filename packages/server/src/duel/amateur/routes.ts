@@ -1,6 +1,6 @@
-import { fightWindowRemainingMs, FIGHT_PERIOD_WINDOW_MS } from './fight/window.js';
+import { fightWindowRemainingMs } from './fight/window.js';
 import { startFightWorker } from './fight/worker.js';
-import { getFight, type PersistedFight } from './fight/service.js';
+import { getFight, getFightHistory, remainingFightCalls, advanceMedicalAid, type PersistedFight } from './fight/service.js';
 import { registerFightSocket } from './fight/ws.js';
 import { type FightDuelAdapter, registerFightRoutes } from './fight/routes.js';
 import { getParticipantClock, getEffectivePeriodStart } from './clock.js';
@@ -567,6 +567,7 @@ interface DuelParticipantRow {
   period_paused_ms: number;
   period_paused_at: Date | null;
   recovery_until: Date | null;
+  fight_aid_until: Date | null;
   match_id: string;
   user_id: string;
   side: ParticipantSide;
@@ -745,6 +746,7 @@ interface DuelRulesSnapshot {
 interface DuelParticipantDTO {
   clock?: ReturnType<typeof getParticipantClock>;
   recovery_until?: string | null;
+  fight_aid_until?: string | null;
   user_id: string;
   display_name: string;
   avatar_url: string | null;
@@ -775,7 +777,7 @@ interface DuelMatchDTO {
   state_revision?: number;
   fight?: PersistedFight | null;
   fight_enabled?: boolean;
-  fight_availability?: { allowed:boolean; reason:string; remainingMs:number };
+  fight_availability?: { allowed:boolean; reason:string; remainingMs:number; remainingCalls:number };
   fight_paused_at?: string | null;
   duel_lock: GameplayLockDTO | null;
   gameplay_lock: GameplayLockDTO | null;
@@ -2617,7 +2619,7 @@ async function fetchParticipants(
             reserved_inventory_charges, consumed_inventory_charges,
             inventory_effects_snapshot, inventory_report, result_points, experience_snapshot,
             tournament_loadout_period, tournament_loadout_version,
-            tournament_loadout_confirmed_at, period_paused_ms, period_paused_at, recovery_until
+            tournament_loadout_confirmed_at, period_paused_ms, period_paused_at, recovery_until, fight_aid_until
        from amateur_duel_participant
       where match_id = $1
       order by side`,
@@ -3401,7 +3403,8 @@ async function reconcileMatch(
   now: Date,
   inspectHistorical = false,
 ): Promise<ReconciledMatch> {
-  if (isTerminalMatchStatus(match.status)) return { match, changed: false };
+  const aidChanged = await advanceMedicalAid(client,match.id,now.getTime(),isTerminalMatchStatus(match.status));
+  if (isTerminalMatchStatus(match.status)) return { match, changed: aidChanged };
   if (match.fight_paused_at != null) return { match, changed: false };
   if (!matchRewardStorageCompatible(match)) {
     if (inspectHistorical) return { match, changed: false };
@@ -3409,8 +3412,8 @@ async function reconcileMatch(
   }
   let changed =
     match.source !== 'tournament' && match.status === 'active'
-      ? await reconcileParticipantTimers(client, match, now)
-      : false;
+      ? (await reconcileParticipantTimers(client, match, now)) || aidChanged
+      : aidChanged;
   const tournamentAttempt = await reconcileTournamentAttemptForDuel(client, {
     duelMatchId: match.id,
     now,
@@ -3468,7 +3471,7 @@ async function reconcileParticipantTimers(
   const participants = await fetchParticipants(client, match.id);
   let changed = false;
   for (let participant of participants) {
-    if (participant.state === 'period_active' && participant.period_started_at !== null) {
+    if (participant.state === 'period_active' && participant.period_started_at !== null && participant.period_paused_at === null) {
       const periodRule = getDuelPeriodRule(rules, participant.current_period);
       const timeoutAt = new Date(participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) + periodRule.durationMs);
       let closed = false;
@@ -3656,7 +3659,7 @@ function participantDto(
   const periodEndsAt =
     participant.state === 'period_active' && participant.period_started_at !== null
       ? new Date(
-          participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) +
+          getEffectivePeriodStart(participant,Date.now())!.getTime() +
             getDuelPeriodRule(rules, participant.current_period).durationMs,
         ).toISOString()
       : null;
@@ -3667,6 +3670,7 @@ function participantDto(
   return {
     clock: getParticipantClock(participant, getDuelPeriodRule(rules, Math.max(1, participant.current_period)).durationMs, Date.now()),
     recovery_until: participant.state === 'period_active' ? participant.recovery_until?.toISOString() ?? null : null,
+    fight_aid_until: participant.state === 'period_active' ? participant.fight_aid_until?.toISOString() ?? null : null,
     user_id: participant.user_id,
     display_name: displayName,
     avatar_url: avatarUrl,
@@ -3760,7 +3764,7 @@ async function buildMatchDto(
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
       ? new Date(
-          me.period_started_at.getTime() + Number(me.period_paused_ms ?? 0) + getDuelPeriodRule(rules, me.current_period).durationMs,
+          getEffectivePeriodStart(me,now.getTime())!.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
         ).toISOString()
       : null;
   const breakEndsAt =
@@ -3916,7 +3920,7 @@ async function buildMatchStateDto(
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
       ? new Date(
-          me.period_started_at.getTime() + Number(me.period_paused_ms ?? 0) + getDuelPeriodRule(rules, me.current_period).durationMs,
+          getEffectivePeriodStart(me,now.getTime())!.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
         ).toISOString()
       : null;
   const breakEndsAt =
@@ -3929,15 +3933,16 @@ async function buildMatchStateDto(
   const enabled = (await client.query<{ enabled:boolean }>("select value='true'::jsonb as enabled from game_settings where key='duels.fights.enabled'")).rows[0]?.enabled === true && match.source !== 'tournament';
   const clocks = participants.map(p => getParticipantClock(p,getDuelPeriodRule(rules,Math.max(1,p.current_period)).durationMs,now.getTime()));
   const inFightWindow = clocks.every(clock => fightWindowRemainingMs(clock) > 0);
-  const remainingMs = inFightWindow ? 0 : Math.max(0, ...clocks.map(clock => clock.remainingMs - FIGHT_PERIOD_WINDOW_MS));
+  const remainingMs = 0;
   const presence = (await client.query<{user_id:string}>('select user_id from amateur_duel_fight_presence where match_id=$1 and expires_at>$2',[match.id,now])).rows;
-  const attemptUsed = (await client.query('select id from amateur_duel_fight where match_id=$1 and initiator_user_id=$2',[match.id,currentUserId])).rows.length > 0;
+  const remainingCalls = remainingFightCalls(await getFightHistory(client, match.id), currentUserId);
+  const attemptUsed = remainingCalls === 0;
   const busy = match.fight_paused_at !== null || (fight && ['offered','starting','fighting','sudden_death'].includes(fight.status));
-  let reason = !enabled ? 'disabled' : busy ? 'unavailable' : attemptUsed ? 'attempt_used' : opponent.state !== 'period_active' ? 'opponent_unavailable' : me.state !== 'period_active'||match.status !== 'active' ? 'unavailable' : !inFightWindow ? 'outside_fight_window' : participants.some(p=>!presence.some(r=>r.user_id===p.user_id)) ? 'protocol_unavailable' : 'available';
+  let reason = !enabled ? 'disabled' : busy ? 'unavailable' : attemptUsed ? 'attempt_used' : opponent.state !== 'period_active' ? 'opponent_unavailable' : me.state !== 'period_active'||match.status !== 'active' ? 'unavailable' : !inFightWindow ? 'opponent_unavailable' : participants.some(p=>!presence.some(r=>r.user_id===p.user_id)) ? 'protocol_unavailable' : 'available';
   if(reason==='available') {
-    if(match.ends_at.getTime()+29_320>=nextRatingMonthBoundary(match.season_key).getTime()) reason='system_limit';
+    if(match.ends_at.getTime()+39_320>=nextRatingMonthBoundary(match.season_key).getTime()) reason='system_limit';
     for(const p of participants) {
-      const lock=await getSafeSegmentStartLockState(client,{userId:p.user_id,now,maxSegmentDurationMs:Math.max(0,match.ends_at.getTime()-now.getTime())+29_320});
+      const lock=await getSafeSegmentStartLockState(client,{userId:p.user_id,now,maxSegmentDurationMs:Math.max(0,match.ends_at.getTime()-now.getTime())+39_320});
       if(lock.blocked) reason='system_limit';
     }
   }
@@ -3945,7 +3950,7 @@ async function buildMatchStateDto(
     ...dto,
     state_revision: Number((await client.query<{state_revision:string}>('select state_revision from amateur_duel_match where id=$1',[match.id])).rows[0]!.state_revision), fight, fight_enabled:enabled,
     fight_paused_at:match.fight_paused_at?.toISOString() ?? null,
-    fight_availability:{allowed:reason==='available',reason,remainingMs},
+    fight_availability:{allowed:reason==='available',reason,remainingMs,remainingCalls},
     me: participantDto(
       meForDto,
       match,
@@ -4664,11 +4669,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       match = (await reconcileMatch(client, match, now)).match;
       const rules = parseRulesSnapshot(match.rules_snapshot);
       const participants = await fetchParticipants(client, matchId);
-      let canExtend = match.ends_at.getTime() + 29_320 < nextRatingMonthBoundary(match.season_key).getTime();
+      let canExtend = match.ends_at.getTime() + 39_320 < nextRatingMonthBoundary(match.season_key).getTime();
       let mandatoryBlocked = now.getTime() >= nextRatingMonthBoundary(match.season_key).getTime();
       for (const p of participants) {
         if ((await getTournamentGameplayLockState(client,p.user_id,now)).blocked) mandatoryBlocked=true;
-        const lock = await getSafeSegmentStartLockState(client, { userId:p.user_id, now, maxSegmentDurationMs:Math.max(0,match.ends_at.getTime()-now.getTime())+29_320 });
+        const lock = await getSafeSegmentStartLockState(client, { userId:p.user_id, now, maxSegmentDurationMs:Math.max(0,match.ends_at.getTime()-now.getTime())+39_320 });
         if (lock.blocked) canExtend=false;
       }
       return { id: matchId, status: match.status, source: match.source,
@@ -6475,6 +6480,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                   period_paused_ms = 0,
                   period_paused_at = null,
                   recovery_until = null,
+                  fight_aid_until = null,
                   break_started_at = null,
                   ready_at = null,
                   updated_at = now()

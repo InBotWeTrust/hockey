@@ -5835,9 +5835,9 @@ function AmateurDuelPlayView({
   }, [matchId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.recovery_until ? 50 : 1000);
+    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : 1000);
     return () => window.clearInterval(id);
-  }, [match?.fight?.status, match?.fight_paused_at, match?.me.recovery_until]);
+  }, [match?.fight?.status, match?.fight_paused_at, match?.me.fight_aid_until, match?.me.recovery_until]);
 
   useEffect(() => {
     const inventory = inventoryQuery.data;
@@ -6073,9 +6073,11 @@ function AmateurDuelPlayView({
 
   const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
   const fight = match.fight;
-  const fightPaused = !!match.fight_paused_at && fight?.status !== 'offered';
+  const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
+  const medicalAid = medicalAidUntilMs !== undefined;
+  const fightPaused = medicalAid || (!!match.fight_paused_at && fight?.status !== 'offered');
   const fightOverlay = fightPaused && fight?.status !== 'offered' ? (
-    <FightModal>
+    <FightModal {...(medicalAid ? {medicalAidUntilMs,nowMs:fightNow} : {})}>
       {fight?.engine_state ? (
         <FightView
           state={fight.engine_state}
@@ -6094,8 +6096,6 @@ function AmateurDuelPlayView({
     </FightModal>
   ) : null;
   const fightRecovery=match.me.recovery_until?Math.max(0,Date.parse(match.me.recovery_until)-fightNow):0;
-  const fightResting = fightRecovery > 0 && fight?.status === 'resolved' &&
-    fight.winner_user_id != null && fight.winner_user_id !== match.me.user_id;
   const fightAction = fight?.status === 'offered' || (match.fight_enabled && match.fight_availability?.allowed) ? <FightControls match={match} nowMs={fightNow} iconStyle={DUEL_INVENTORY_ICON_GLASS_STYLE}/> : null;
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
@@ -6332,7 +6332,7 @@ function AmateurDuelPlayView({
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
           }
           periodEndsAt={periodEndsAt}
-          {...(fightPaused ? { timer: formatMs(Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
+          {...(fightPaused ? { timer: formatMs(match.me.clock?.remainingMs ?? Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
           backLabel={duelBackLabel(match.source, false)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
@@ -6340,15 +6340,8 @@ function AmateurDuelPlayView({
           duelCondition={(elapsed, speeds) => {
             const condition = duelCondition(elapsed, speeds);
             if (!condition || fightRecovery <= 0) return condition;
-            return fightResting ? {
-              ...condition, canShoot: false, status: 'exhausted_stop', fatigueLevel: 'resting',
-              stumbleActive: false, shooterXOffsetPx: 0,
-            } : { ...condition, canShoot: false };
+            return { ...condition, canShoot: false };
           }}
-          conditionNoticeOverride={fightResting}
-          statusNotice={fightResting ? 'Восстановление после драки' : undefined}
-          statusNoticeUnderScoreboard
-          statusNoticeClassName={fightResting ? 'duel-fatigue-notice duel-rest-notice' : undefined}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <>

@@ -4,6 +4,7 @@ import {
   createFightState,
   FIGHT_FINISH_ANIMATION_MS,
   FIGHT_RESULT_DISPLAY_MS,
+  FIGHT_MEDICAL_AID_MS,
   advanceFight,
   type FightState,
   type FightCommand,
@@ -11,7 +12,7 @@ import {
 } from '@hockey/game-core';
 import { AppError } from '../../../plugins/errors.js';
 import type { FightDuelContext } from './routes.js';
-import { fightWindowRemainingMs, FIGHT_RESPONSE_TIMEOUT_MS } from './window.js';
+import { fightWindowRemainingMs, FIGHT_RESPONSE_TIMEOUT_MS, FIGHT_MAX_CALLS, FIGHT_MAX_REFUSALS } from './window.js';
 
 export const FIGHT_RESULT_HOLD_MS = FIGHT_FINISH_ANIMATION_MS + FIGHT_RESULT_DISPLAY_MS;
 
@@ -22,6 +23,8 @@ export interface PersistedFight {
   request_id: string;
   response_decision: 'accept' | 'decline' | null;
   status: string;
+  forced: boolean;
+  reason: string | null;
   offered_at: Date;
   response_deadline_at: Date;
   starts_at: Date | null;
@@ -46,6 +49,19 @@ export async function getFight(
     ).rows[0] ?? null
   );
 }
+export async function getFightHistory(client: PoolClient, matchId: string): Promise<PersistedFight[]> {
+  return (await client.query<PersistedFight>(
+    'select * from amateur_duel_fight where match_id=$1 order by offered_at desc,id desc', [matchId],
+  )).rows;
+}
+export function remainingFightCalls(history: PersistedFight[], userId: string): number {
+  return Math.max(0, FIGHT_MAX_CALLS - history.filter(f => f.initiator_user_id === userId).length);
+}
+function mustAcceptFight(history: PersistedFight[], userId: string): boolean {
+  return history.filter(f => f.initiator_user_id !== userId && f.status === 'declined' &&
+    (f.reason === 'decline' || f.reason === 'timeout')).length >= FIGHT_MAX_REFUSALS;
+}
+
 export async function queueFightSnapshot(client: PoolClient, matchId: string): Promise<void> {
   const result = await client.query<{ state_revision: string }>(
     'update amateur_duel_match set state_revision=state_revision+1,updated_at=now() where id=$1 returning state_revision',
@@ -86,31 +102,69 @@ export async function resumeDuel(
   }
   await queueFightSnapshot(client, ctx.id);
 }
+// Resume at the persisted deadline, including after a worker delay or reconnect.
+export async function advanceMedicalAid(
+  client: PoolClient, matchId: string, nowMs: number, interrupted = false,
+): Promise<boolean> {
+  const result = await client.query(
+    `update amateur_duel_participant set
+       period_paused_ms=period_paused_ms+greatest(0,floor(extract(epoch from
+         ((case when $3 then least(fight_aid_until,$2::timestamptz) else fight_aid_until end)-period_paused_at))*1000)::integer),
+       period_paused_at=null,fight_aid_until=null,recovery_until=null
+     where match_id=$1 and fight_aid_until is not null and (fight_aid_until<=$2 or $3)
+     returning user_id`,
+    [matchId,new Date(nowMs),interrupted],
+  );
+  const changed = (result.rowCount ?? 0) > 0;
+  if (changed) await queueFightSnapshot(client,matchId);
+  return changed;
+}
+
+async function beginMedicalAid(client: PoolClient, ctx: FightDuelContext, fight: PersistedFight): Promise<void> {
+  const resultEndsAt = fight.resolved_at!.getTime()+FIGHT_RESULT_HOLD_MS;
+  const aidUntil = new Date(resultEndsAt+FIGHT_MEDICAL_AID_MS);
+  // The common pause ends for the winner. Only the loser remains paused for assistance.
+  await client.query(
+    `update amateur_duel_participant set
+       period_paused_ms=period_paused_ms+case when user_id=$2 then
+         greatest(0,floor(extract(epoch from ($3::timestamptz-period_paused_at))*1000)::integer) else 0 end,
+       period_paused_at=case when user_id=$2 then null else period_paused_at end,
+       fight_aid_until=case when user_id<>$2 and state='period_active' then $4::timestamptz else null end,
+       recovery_until=null
+     where match_id=$1 and period_paused_at is not null`,
+    [ctx.id,fight.winner_user_id,new Date(resultEndsAt),aidUntil],
+  );
+  await client.query(
+    `update amateur_duel_match set
+       ends_at=ends_at+greatest(interval '0',$2::timestamptz-fight_paused_at)+($3::integer*interval '1 millisecond'),
+       fight_paused_at=null where id=$1 and fight_paused_at is not null`,
+    [ctx.id,new Date(resultEndsAt),FIGHT_MEDICAL_AID_MS],
+  );
+  await advanceMedicalAid(client,ctx.id,ctx.nowMs);
+  await queueFightSnapshot(client,ctx.id);
+}
+
 export async function createChallenge(
   client: PoolClient,
   ctx: FightDuelContext,
   userId: string,
   requestId: string,
 ): Promise<PersistedFight> {
-  const initiated = (await client.query<PersistedFight>(
-    'select * from amateur_duel_fight where match_id=$1 and initiator_user_id=$2',
-    [ctx.id, userId],
-  )).rows[0];
-  if (initiated?.request_id === requestId) return initiated;
-  const existing = await getFight(client, ctx.id);
+  const history = await getFightHistory(client, ctx.id);
+  const replay = history.find(f => f.initiator_user_id === userId && f.request_id === requestId);
+  if (replay) return replay;
+  const existing = history[0];
   // Opposite simultaneous calls converge on the same outstanding offer.
   if (existing?.status === 'offered') return existing;
-  if (initiated) denyFight('attempt_used');
+  if (remainingFightCalls(history, userId) === 0) denyFight('attempt_used');
   if (ctx.paused || (existing && ['starting','fighting','sudden_death'].includes(existing.status)))
     denyFight('unavailable');
   if (!['challenge', 'matchmaking'].includes(ctx.source)) denyFight('unsupported_mode');
   if (ctx.status !== 'active' || ctx.paused) denyFight('unavailable');
   const opponent = ctx.participants.find((p) => p.userId !== userId);
   const me = ctx.participants.find((p) => p.userId === userId);
-  if (!opponent || opponent.state !== 'period_active') denyFight('opponent_unavailable');
-  if (!me || me.state !== 'period_active') denyFight('unavailable');
-  const windowRemainingMs = Math.min(...ctx.participants.map(fightWindowRemainingMs));
-  if (windowRemainingMs <= 0) denyFight('outside_fight_window');
+  if (!opponent || opponent.state !== 'period_active' || fightWindowRemainingMs(opponent) <= 0) denyFight('opponent_unavailable');
+  if (!me || me.state !== 'period_active' || fightWindowRemainingMs(me) <= 0) denyFight('unavailable');
   const enabled = await client.query<{ enabled: boolean }>(
     "select value='true'::jsonb as enabled from game_settings where key='duels.fights.enabled'",
   );
@@ -123,20 +177,21 @@ export async function createChallenge(
   if (ctx.participants.some((p) => !presence.rows.some((r) => r.user_id === p.userId)))
     denyFight('protocol_unavailable');
   const result = await client.query<PersistedFight>(
-    `insert into amateur_duel_fight(match_id,initiator_user_id,request_id,status,offered_at,response_deadline_at,rules,compensation_ms)
-    values($1,$2,$3,'offered',$4,$5,$6,$7) returning *`,
+    `insert into amateur_duel_fight(match_id,initiator_user_id,request_id,status,offered_at,response_deadline_at,rules,compensation_ms,forced)
+    values($1,$2,$3,'offered',$4,$5,$6,$7,$8) returning *`,
     [
       ctx.id,
       userId,
       requestId,
       new Date(ctx.nowMs),
-      new Date(ctx.nowMs + Math.min(FIGHT_RESPONSE_TIMEOUT_MS, windowRemainingMs)),
+      new Date(ctx.nowMs + FIGHT_RESPONSE_TIMEOUT_MS),
       JSON.stringify(DEFAULT_FIGHT_RULES),
       JSON.stringify(
         ctx.participants.map(
           (p) => presence.rows.find((r) => r.user_id === p.userId)!.compensation_ms,
         ),
       ),
+      mustAcceptFight(history, opponent.userId),
     ],
   );
   await queueFightSnapshot(client, ctx.id);
@@ -160,53 +215,55 @@ export async function respondChallenge(
   if (ctx.status !== 'active' || ctx.mandatoryBlocked) denyFight('system_interruption');
   if (ctx.nowMs >= fight.response_deadline_at.getTime()) denyFight('response_expired');
   if (decision === 'decline') {
+    if (fight.forced) denyFight('forced_fight');
     await client.query(
       "update amateur_duel_fight set status='declined',resolved_at=$2,reason='decline',response_decision='decline',response_request_id=$3,revision=revision+1 where id=$1",
       [fight.id, new Date(ctx.nowMs), requestId],
     );
     await resumeDuel(client, ctx, ctx.nowMs, userId, 2000);
   } else {
-    if (ctx.participants.some(p => p.state !== 'period_active')) denyFight('opponent_unavailable');
-    if (ctx.participants.some(p => fightWindowRemainingMs(p) <= 0)) denyFight('outside_fight_window');
-    if (!ctx.canExtend) denyFight('system_limit');
-    await client.query('update amateur_duel_match set fight_paused_at=$2 where id=$1', [
-      ctx.id,
-      new Date(ctx.nowMs),
-    ]);
-    await client.query('update amateur_duel_participant set period_paused_at=$2 where match_id=$1', [
-      ctx.id,
-      new Date(ctx.nowMs),
-    ]);
-    const start = ctx.nowMs + 1000;
-    await client.query(
-      "update amateur_duel_fight set status='starting',starts_at=$2,engine_state=$3,response_decision='accept',response_request_id=$4,revision=revision+1 where id=$1",
-      [fight.id, new Date(start), JSON.stringify(createFightState(fight.rules, start)), requestId],
-    );
-    await queueFightSnapshot(client, ctx.id);
+    await startChallenge(client, ctx, fight, requestId);
   }
   return (await getFight(client, ctx.id))!;
+}
+
+async function startChallenge(
+  client: PoolClient, ctx: FightDuelContext, fight: PersistedFight, requestId: string | null,
+): Promise<void> {
+  if (ctx.participants.some(p => p.state !== 'period_active' || fightWindowRemainingMs(p) <= 0))
+    denyFight('opponent_unavailable');
+  if (!ctx.canExtend) denyFight('system_limit');
+  await client.query('update amateur_duel_match set fight_paused_at=$2 where id=$1', [ctx.id, new Date(ctx.nowMs)]);
+  await client.query('update amateur_duel_participant set period_paused_at=$2 where match_id=$1', [ctx.id, new Date(ctx.nowMs)]);
+  const start = ctx.nowMs + 1000;
+  await client.query(
+    "update amateur_duel_fight set status='starting',starts_at=$2,engine_state=$3,response_decision='accept',response_request_id=$4,revision=revision+1 where id=$1",
+    [fight.id, new Date(start), JSON.stringify(createFightState(fight.rules, start)), requestId],
+  );
+  await queueFightSnapshot(client, ctx.id);
 }
 
 export async function advancePersistedFight(
   client: PoolClient,
   ctx: FightDuelContext,
 ): Promise<PersistedFight | null> {
+  await advanceMedicalAid(client,ctx.id,ctx.nowMs,ctx.status !== 'active' || ctx.mandatoryBlocked === true);
   let fight = await getFight(client, ctx.id);
   if (!fight) return null;
   if (fight.status === 'resolved') {
     if (ctx.paused && fight.resolved_at &&
         (ctx.nowMs >= fight.resolved_at.getTime() + FIGHT_RESULT_HOLD_MS || ctx.status !== 'active' || ctx.mandatoryBlocked)) {
-      await resumeDuel(client, ctx, ctx.nowMs,
-        ctx.status === 'active' && !ctx.mandatoryBlocked
-          ? ctx.participants.find(p => p.userId !== fight!.winner_user_id)?.userId ?? null
-          : null,
-        5000);
+      if (ctx.status === 'active' && !ctx.mandatoryBlocked && fight.winner_user_id !== null) {
+        await beginMedicalAid(client,ctx,fight);
+      } else {
+        await resumeDuel(client,ctx,ctx.nowMs,null,0);
+      }
     }
     return fight;
   }
   if (['declined', 'cancelled'].includes(fight.status)) return fight;
   if (ctx.status !== 'active' || ctx.mandatoryBlocked ||
-      (fight.status === 'offered' && ctx.participants.some(p => p.state !== 'period_active'))) {
+      (fight.status === 'offered' && (ctx.participants.some(p => p.state !== 'period_active' || fightWindowRemainingMs(p) <= 0) || !ctx.canExtend))) {
     await client.query(
       "update amateur_duel_fight set status='cancelled',reason='system_interruption',resolved_at=$2,revision=revision+1 where id=$1",
       [fight.id, new Date(ctx.nowMs)],
@@ -216,6 +273,10 @@ export async function advancePersistedFight(
   }
   if (fight.status === 'offered') {
     if (ctx.nowMs >= fight.response_deadline_at.getTime()) {
+      if (fight.forced) {
+        await startChallenge(client, ctx, fight, null);
+        return getFight(client, ctx.id);
+      }
       const target = ctx.participants.find((p) => p.userId !== fight!.initiator_user_id)!;
       await client.query(
         "update amateur_duel_fight set status='declined',reason='timeout',response_decision='decline',resolved_at=$2,revision=revision+1 where id=$1",
