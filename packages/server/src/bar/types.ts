@@ -30,6 +30,7 @@ export interface BarShot {
   goalieX: number;
 }
 export interface BarBoard {
+  totals: { online: number; upcoming: number };
   online: BarMatch[];
   upcoming: BarMatch[];
   hasMore: boolean;

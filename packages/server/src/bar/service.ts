@@ -210,23 +210,40 @@ export async function getBarBoard(pool: Pool, page: number, now = new Date()): P
     and (ends_at is null or ends_at > $1)
     and (ready_expires_at is null or ready_expires_at > $1)
     and (kind = 'duel' or starts_at is not null)`;
-  const { rows } = await pool.query<MatchRow>(
-    `${PUBLIC_MATCHES}
-    (select * from public_matches where ${visible} and match_group = 'online'
-     order by starts_at desc, id limit $2 offset $3)
-    union all
-    (select * from public_matches where ${visible} and match_group = 'upcoming'
-     order by starts_at, id limit $2 offset $3)`,
+  const { rows } = await pool.query<MatchRow & { online_total: number; upcoming_total: number }>(
+    `${PUBLIC_MATCHES}, visible_matches as (
+      select * from public_matches where ${visible}
+    ), totals as (
+      select count(*) filter (where match_group = 'online')::int as online_total,
+             count(*) filter (where match_group = 'upcoming')::int as upcoming_total
+      from visible_matches
+    ), paged as (
+      (select * from visible_matches where match_group = 'online'
+       order by starts_at desc, id limit $2 offset $3)
+      union all
+      (select * from visible_matches where match_group = 'upcoming'
+       order by starts_at, id limit $2 offset $3)
+    )
+    select paged.*, totals.online_total, totals.upcoming_total
+    from totals left join paged on true`,
     [now, BAR_PAGE_SIZE + 1, page * BAR_PAGE_SIZE],
   );
-  const onlineRows = rows.filter((r) => r.match_group === 'online' && isVisibleEntry(r, now));
-  const upcomingRows = rows.filter((r) => r.match_group === 'upcoming' && isVisibleEntry(r, now));
+  const onlineRows = rows.filter(
+    (r) => r.id !== null && r.match_group === 'online' && isVisibleEntry(r, now),
+  );
+  const upcomingRows = rows.filter(
+    (r) => r.id !== null && r.match_group === 'upcoming' && isVisibleEntry(r, now),
+  );
   const matches = await playersFor(
     pool,
     [...onlineRows.slice(0, BAR_PAGE_SIZE), ...upcomingRows.slice(0, BAR_PAGE_SIZE)],
     now,
   );
   return {
+    totals: {
+      online: Number(rows[0]?.online_total ?? 0),
+      upcoming: Number(rows[0]?.upcoming_total ?? 0),
+    },
     online: matches.filter((r) => r.group === 'online'),
     upcoming: matches.filter((r) => r.group === 'upcoming'),
     hasMore: onlineRows.length > BAR_PAGE_SIZE || upcomingRows.length > BAR_PAGE_SIZE,

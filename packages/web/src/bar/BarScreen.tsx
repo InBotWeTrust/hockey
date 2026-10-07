@@ -74,6 +74,7 @@ export function BarScreen(): JSX.Element {
             <MatchGroup
               title={filter === 'online' ? 'Онлайн' : 'Предстоящие'}
               matches={board[filter]}
+              total={board.totals?.[filter]}
               empty={filter === 'online' ? 'Сейчас никто не играет' : 'Пока нет предстоящих матчей'}
             />
             {(page > 0 || board.hasMore) && (
@@ -104,16 +105,20 @@ export function BarScreen(): JSX.Element {
 function MatchGroup({
   title,
   matches,
+  total,
   empty,
 }: {
   title: string;
   matches: BarMatch[];
+  total?: number | undefined;
   empty: string;
 }): JSX.Element {
   const navigate = useNavigate();
   return (
     <section className="bar-match-group" aria-label={title}>
-      <h2 className="section-label bar-section-label">Текущие встречи</h2>
+      <h2 className="section-label bar-section-label">
+        Текущие встречи{total === undefined ? '' : ` (${total})`}
+      </h2>
       {matches.length === 0 ? (
         <p className="bar-empty">{empty}</p>
       ) : (

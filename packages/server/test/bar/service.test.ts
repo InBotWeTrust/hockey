@@ -69,14 +69,22 @@ describe('public bar projections', () => {
     };
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [fixture] })
+      .mockResolvedValueOnce({ rows: [{ ...fixture, online_total: 12, upcoming_total: 47 }] })
       .mockResolvedValueOnce({ rows: [player, { ...player, user_id: 'b' }] });
     const data = await getBarBoard({ query } as unknown as Pool, 0, now);
+    expect(data.totals).toEqual({ online: 12, upcoming: 47 });
     expect(data.upcoming[0]?.players.map((p) => p.goals)).toEqual([0, 0]);
     expect(data.upcoming[0]?.players[0].state).toBe('waiting');
     expect(JSON.stringify(data)).not.toMatch(/rules_snapshot|match_seed|period_started_at/);
     expect(query.mock.calls[0]?.[0]).toContain('t.visibility');
     expect(query.mock.calls[0]?.[0]).toContain('not exists');
+  });
+  it('returns totals even when the selected page has no matches', async () => {
+    const query = vi.fn().mockResolvedValueOnce({ rows: [{ id: null, online_total: 12, upcoming_total: 47 }] });
+    const data = await getBarBoard({ query } as unknown as Pool, 2, now);
+    expect(data.totals).toEqual({ online: 12, upcoming: 47 });
+    expect(data.online).toEqual([]);
+    expect(data.upcoming).toEqual([]);
   });
   it('reads only delayed, bounded committed shots and never exposes seeds', async () => {
     const query = vi

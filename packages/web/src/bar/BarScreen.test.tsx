@@ -62,6 +62,7 @@ describe('bar board', () => {
     act(() => {
       options.onStatus('ready');
       options.onSnapshot({
+        totals: { online: 12, upcoming: 47 },
         online: [match],
         upcoming: [{ ...match, id: 'inv', group: 'upcoming', status: 'invited' }],
         hasMore: false,
@@ -70,14 +71,16 @@ describe('bar board', () => {
     });
     expect(screen.getByText('Онлайн')).toBeInTheDocument();
     expect(screen.getByText('Предстоящие')).toBeInTheDocument();
+    expect(screen.getByText('Текущие встречи (12)')).toBeInTheDocument();
     expect(screen.getByText('2 : 1')).toBeInTheDocument();
     expect(screen.queryByText('Ожидает принятия приглашения')).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Онлайн' })).toHaveAttribute('aria-selected', 'true');
     fireEvent.click(screen.getByRole('tab', { name: 'Предстоящие' }));
+    expect(screen.getByText('Текущие встречи (47)')).toBeInTheDocument();
     expect(screen.queryByText('2 : 1')).not.toBeInTheDocument();
     const invite = screen.getByText('Ожидает принятия приглашения').closest('button');
     expect(invite).toBeDisabled();
-    act(() => options.onSnapshot({ online: [match], upcoming: [], hasMore: false, page: 0 }));
+    act(() => options.onSnapshot({ online: [match], upcoming: [], totals: { online: 12, upcoming: 0 }, hasMore: false, page: 0 }));
     expect(screen.queryByText('Ожидает принятия приглашения')).not.toBeInTheDocument();
     expect(screen.getByText('Пока нет предстоящих матчей')).toBeInTheDocument();
   });
