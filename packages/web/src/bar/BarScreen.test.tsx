@@ -1,4 +1,4 @@
-import { act, render, screen, cleanup } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { BarScreen } from './BarScreen.js';
@@ -53,7 +53,7 @@ const match: BarMatch = {
   ],
 };
 describe('bar board', () => {
-  it('groups online matches and targeted invitations, and replaces expired cards', () => {
+  it('filters online matches and targeted invitations, and replaces expired cards', () => {
     render(
       <MemoryRouter>
         <BarScreen />
@@ -71,6 +71,10 @@ describe('bar board', () => {
     expect(screen.getByText('Онлайн')).toBeInTheDocument();
     expect(screen.getByText('Предстоящие')).toBeInTheDocument();
     expect(screen.getByText('2 : 1')).toBeInTheDocument();
+    expect(screen.queryByText('Ожидает принятия приглашения')).not.toBeInTheDocument();
+    expect(screen.getByRole('tab', { name: 'Онлайн' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: 'Предстоящие' }));
+    expect(screen.queryByText('2 : 1')).not.toBeInTheDocument();
     const invite = screen.getByText('Ожидает принятия приглашения').closest('button');
     expect(invite).toBeDisabled();
     act(() => options.onSnapshot({ online: [match], upcoming: [], hasMore: false, page: 0 }));

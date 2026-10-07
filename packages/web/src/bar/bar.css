@@ -1,4 +1,4 @@
-/* Restaurant artwork belongs to the environment; cards use the existing menu typography. */
+/* Reuse the menu card material and shared segmented filters. */
 .bar-screen {
   padding: calc(16px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom));
   overflow-y: auto;
@@ -35,8 +35,8 @@
   font-size: 13px;
   text-align: center;
 }
-.bar-match-group + .bar-match-group {
-  margin-top: 24px;
+.bar-match-group {
+  margin-top: 16px;
 }
 .bar-match-card {
   width: 100%;
@@ -45,9 +45,11 @@
   gap: 12px;
   padding: 14px;
   margin-top: 10px;
-  border: 1px solid var(--border, #e0e5eb);
-  border-radius: 18px;
-  background: white;
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.68));
+  border-radius: 22px;
+  box-shadow: var(--surface-card-shadow, 0 8px 22px rgba(15, 23, 42, 0.1)), inset 0 1px 0 rgba(255, 255, 255, 0.78);
+  appearance: none;
+  overflow: hidden;
   color: var(--ink);
   font: inherit;
   text-align: center;

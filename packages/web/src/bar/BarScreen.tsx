@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import { ChevronLeft } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
@@ -44,6 +45,7 @@ const statusText: Record<BarSocketStatus, string> = {
 export function BarScreen(): JSX.Element {
   const navigate = useNavigate();
   const [page, setPage] = useState(0);
+  const [filter, setFilter] = useState<'online' | 'upcoming'>('online');
   const { data, status } = useBarSnapshot(`page=${page}`);
   const board = data && 'online' in data ? data : null;
   return (
@@ -51,6 +53,15 @@ export function BarScreen(): JSX.Element {
       <BarHeader title="Бар" onBack={() => navigate('/sections')} />
       <section className="bar-board">
         <p className="bar-intro">Смотри дуэли и турнирные матчи</p>
+        <SegmentedTabs
+          items={[{ id: 'online', label: 'Онлайн' }, { id: 'upcoming', label: 'Предстоящие' }]}
+          activeTab={filter}
+          ariaLabel="Матчи в баре"
+          onChange={(next) => {
+            setFilter(next);
+            setPage(0);
+          }}
+        />
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
             {statusText[status]}
@@ -58,11 +69,10 @@ export function BarScreen(): JSX.Element {
         )}
         {board && (
           <>
-            <MatchGroup title="Онлайн" matches={board.online} empty="Сейчас никто не играет" />
             <MatchGroup
-              title="Предстоящие"
-              matches={board.upcoming}
-              empty="Пока нет предстоящих матчей"
+              title={filter === 'online' ? 'Онлайн' : 'Предстоящие'}
+              matches={board[filter]}
+              empty={filter === 'online' ? 'Сейчас никто не играет' : 'Пока нет предстоящих матчей'}
             />
             {(page > 0 || board.hasMore) && (
               <div className="bar-pagination">
@@ -100,8 +110,7 @@ function MatchGroup({
 }): JSX.Element {
   const navigate = useNavigate();
   return (
-    <section className="bar-match-group">
-      <h2 className="section-label">{title}</h2>
+    <section className="bar-match-group" aria-label={title}>
       {matches.length === 0 ? (
         <p className="bar-empty">{empty}</p>
       ) : (
@@ -109,7 +118,7 @@ function MatchGroup({
           <button
             key={`${match.kind}:${match.id}`}
             type="button"
-            className="bar-match-card"
+            className="section-card-surface bar-match-card"
             disabled={match.group !== 'online'}
             onClick={() => navigate(`/bar/${match.kind}/${match.id}`)}
           >
