@@ -1,4 +1,5 @@
-.screen.city-map-screen {
+.screen.city-map-screen,
+.app-shell--bottom-nav-visible .app-content > .screen.city-map-screen {
   padding: 0 !important;
   overflow: hidden;
   position: relative;
