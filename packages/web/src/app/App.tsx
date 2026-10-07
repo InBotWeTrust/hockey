@@ -140,6 +140,8 @@ const ProfileStorySeriesScreen = lazy(() =>
     default: module.ProfileStorySeriesScreen,
   })),
 );
+const BarScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarScreen })));
+const BarMatchScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarMatchScreen })));
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
 );
@@ -379,6 +381,8 @@ function AppExperience(): JSX.Element {
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
+              <Route path="/bar" element={<PrivateRoute><BarScreen /></PrivateRoute>} />
+              <Route path="/bar/:kind/:id" element={<PrivateRoute><BarMatchScreen /></PrivateRoute>} />
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/invite/:code" element={<InviteScreen />} />
               <Route path="/prices" element={<PricesScreen />} />

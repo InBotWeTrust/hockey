@@ -64,7 +64,7 @@ export function CityMap({
       meta: 'В разработке',
       action: () => setSelected('Спортзал'),
     },
-    { title: 'Бар', x: 50, y: 46, meta: 'В разработке', action: () => setSelected('Бар') },
+    { title: 'Бар', x: 50, y: 46, meta: 'Трансляции и обсуждения', action: () => navigate('/bar') },
     {
       title: 'Зал Славы',
       x: 69,

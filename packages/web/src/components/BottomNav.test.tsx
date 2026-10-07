@@ -153,6 +153,11 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
   });
 
+  it('keeps bar and spectator pages within the second tab', () => {
+    renderBottomNav('/bar/duel/11111111-1111-4111-8111-111111111111');
+    expect(screen.getByRole('button', { name: 'Разделы' })).toHaveAttribute('aria-current', 'page');
+  });
+
   it('opens sections from the second tab', () => {
     renderBottomNav('/');
 

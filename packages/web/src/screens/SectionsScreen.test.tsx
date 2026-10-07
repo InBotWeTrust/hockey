@@ -1009,6 +1009,12 @@ describe('SectionsScreen', () => {
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
 
+  it('opens the bar page from its restaurant card', async () => {
+    renderSections();
+    fireEvent.click(screen.getByRole('button', { name: 'Бар' }));
+    expect(screen.getByTestId('location')).toHaveTextContent('/bar');
+  });
+
   it('groups frequent actions before the longer game modes', async () => {
     // Break caught: the shop must not fall below the long list of progression modes on phones.
     mockSectionsApi();
@@ -1026,7 +1032,7 @@ describe('SectionsScreen', () => {
       within(modes)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Бонусные игры', 'Любители', 'Профессионалы']);
+    ).toEqual(['Бонусные игры', 'Бар', 'Любители', 'Профессионалы']);
     within(quickAccess)
       .getAllByRole('button')
       .forEach((button) => expect(button).toHaveClass('section-card-surface'));

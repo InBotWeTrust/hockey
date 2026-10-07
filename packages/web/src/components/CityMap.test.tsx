@@ -44,6 +44,7 @@ describe('CityMap destination actions', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/daily');
   });
   it.each([
+    ['Бар', '/bar'],
     ['Магазин', '/inventory'],
     ['Задания', '/achievements'],
     ['Бонусные игры', '/bonus-games'],

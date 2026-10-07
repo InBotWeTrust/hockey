@@ -35,6 +35,7 @@ import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 import { tournamentRoutes } from './tournament/routes.js';
+import { barRoutes } from './bar/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
 import { coinPackageRoutes } from './payments/routes.js';
@@ -256,6 +257,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
+  await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(
