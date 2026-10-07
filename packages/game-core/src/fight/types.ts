@@ -12,7 +12,7 @@ export interface FightRules {
   blockRecoveryMs: number;
   deliveryGraceMs: number;
 }
-export interface FightCommand {
+export interface FightActionCommand {
   player: FightPlayer;
   phaseId: number;
   seq: number;
@@ -20,13 +20,25 @@ export interface FightCommand {
   kind: 'attack' | 'block';
   zone: FightZone;
 }
-export interface FightAction extends FightCommand {
+export interface FightMoveCommand {
+  player: FightPlayer;
+  phaseId: number;
+  seq: number;
+  effectiveAtMs: number;
+  kind: 'move';
+  direction: -1 | 0 | 1;
+}
+export type FightCommand = FightActionCommand | FightMoveCommand;
+export interface FightAction extends FightActionCommand {
+  outcome?: 'hit' | 'blocked' | 'miss';
   activeAtMs: number;
   activeUntilMs: number;
   busyUntilMs: number;
   resolved: boolean;
 }
 export interface FightState {
+  endedAtMs?: number;
+  moves?: FightMoveCommand[];
   rules: FightRules;
   phaseId: number;
   phaseStartedAtMs: number;
@@ -39,8 +51,16 @@ export interface FightState {
   finalizedThroughMs: number;
 }
 export type FightEvent =
-  | { type: 'rejected'; player: FightPlayer; seq: number; reason: 'phase' | 'duplicate' | 'busy' | 'time' }
+  | {
+      type: 'rejected';
+      player: FightPlayer;
+      seq: number;
+      reason: 'phase' | 'duplicate' | 'busy' | 'time';
+    }
   | { type: 'damage'; atMs: number; damage: [number, number] }
   | { type: 'phase'; phaseId: number; startsAtMs: number }
   | { type: 'result'; winner: FightPlayer | null; atMs: number };
-export interface FightTransition { state: FightState; events: FightEvent[] }
+export interface FightTransition {
+  state: FightState;
+  events: FightEvent[];
+}

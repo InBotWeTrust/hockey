@@ -98,6 +98,15 @@ export interface TournamentParticipant {
   seed: number | null;
 }
 
+export interface TournamentResultDetails {
+  duelKind: string | null;
+  homeAccuracy: number | null;
+  awayAccuracy: number | null;
+  homeActiveTimeMs: number | null;
+  awayActiveTimeMs: number | null;
+  technicalReason: string | null;
+}
+
 export interface TournamentFixture {
   id: string;
   seriesId?: string | null;
@@ -132,6 +141,7 @@ export interface TournamentFixture {
   score: { home: number; away: number };
   winnerUserId?: string | null;
   technicalResult?: boolean;
+  resultDetails?: TournamentResultDetails;
 }
 
 export interface TournamentScheduleDay {
@@ -252,6 +262,7 @@ export interface TournamentBracketFixture {
   awayScore: number | null;
   winnerSide: 'home' | 'away' | null;
   technicalResult?: boolean;
+  resultDetails?: TournamentResultDetails;
 }
 
 export interface TournamentBracketSeries {

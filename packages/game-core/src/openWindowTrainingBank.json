@@ -14,7 +14,7 @@
       "endMs": 7689
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_frame:1",
@@ -31,7 +31,7 @@
       "endMs": 6510
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_frame:2",
@@ -48,7 +48,7 @@
       "endMs": 10121
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_frame:3",
@@ -65,7 +65,7 @@
       "endMs": 9115
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_frame:4",
@@ -82,7 +82,7 @@
       "endMs": 8438
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_frame:5",
@@ -99,7 +99,7 @@
       "endMs": 10837
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_frame:6",
@@ -116,7 +116,7 @@
       "endMs": 6564
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:0",
@@ -133,7 +133,7 @@
       "endMs": 10390
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:1",
@@ -150,7 +150,7 @@
       "endMs": 9254
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:2",
@@ -167,7 +167,7 @@
       "endMs": 8928
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:3",
@@ -184,7 +184,7 @@
       "endMs": 6867
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:4",
@@ -201,7 +201,7 @@
       "endMs": 8379
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:5",
@@ -218,7 +218,7 @@
       "endMs": 8267
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_motion:6",
@@ -235,7 +235,7 @@
       "endMs": 9166
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:0",
@@ -252,7 +252,7 @@
       "endMs": 10505
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:1",
@@ -269,7 +269,7 @@
       "endMs": 9294
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:2",
@@ -286,7 +286,7 @@
       "endMs": 8042
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:3",
@@ -303,7 +303,7 @@
       "endMs": 8235
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:4",
@@ -320,7 +320,7 @@
       "endMs": 6902
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:5",
@@ -337,7 +337,7 @@
       "endMs": 8838
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:notice_independent:6",
@@ -354,7 +354,7 @@
       "endMs": 6925
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:0",
@@ -371,7 +371,7 @@
       "endMs": 9891
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:1",
@@ -388,7 +388,7 @@
       "endMs": 7666
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:2",
@@ -405,7 +405,7 @@
       "endMs": 10228
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:3",
@@ -422,7 +422,7 @@
       "endMs": 7738
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:4",
@@ -439,7 +439,7 @@
       "endMs": 9169
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:5",
@@ -456,7 +456,7 @@
       "endMs": 9255
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_direction:6",
@@ -473,7 +473,7 @@
       "endMs": 7356
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:0",
@@ -490,7 +490,7 @@
       "endMs": 9018
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:1",
@@ -507,7 +507,7 @@
       "endMs": 7822
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:2",
@@ -524,7 +524,7 @@
       "endMs": 10857
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:3",
@@ -541,7 +541,7 @@
       "endMs": 8462
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:4",
@@ -558,7 +558,7 @@
       "endMs": 7621
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:5",
@@ -575,7 +575,7 @@
       "endMs": 6453
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_opening:6",
@@ -592,7 +592,7 @@
       "endMs": 10296
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:0",
@@ -609,7 +609,7 @@
       "endMs": 6604
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:1",
@@ -626,7 +626,7 @@
       "endMs": 8608
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:2",
@@ -643,7 +643,7 @@
       "endMs": 11902
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:3",
@@ -660,7 +660,7 @@
       "endMs": 9259
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:4",
@@ -677,7 +677,7 @@
       "endMs": 6800
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:5",
@@ -694,7 +694,7 @@
       "endMs": 9292
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:anticipate_timing:6",
@@ -711,7 +711,7 @@
       "endMs": 9490
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:0",
@@ -728,7 +728,7 @@
       "endMs": 6382
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:1",
@@ -745,7 +745,7 @@
       "endMs": 9402
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:2",
@@ -762,7 +762,7 @@
       "endMs": 11403
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:3",
@@ -779,7 +779,7 @@
       "endMs": 7313
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:4",
@@ -796,7 +796,7 @@
       "endMs": 11906
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:5",
@@ -813,7 +813,7 @@
       "endMs": 6380
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_risk:6",
@@ -830,7 +830,7 @@
       "endMs": 9509
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:0",
@@ -851,7 +851,7 @@
       "endMs": 6875
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:1",
@@ -872,7 +872,7 @@
       "endMs": 7157
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:2",
@@ -893,7 +893,7 @@
       "endMs": 5633
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:3",
@@ -914,7 +914,7 @@
       "endMs": 7759
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:4",
@@ -935,7 +935,7 @@
       "endMs": 10464
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:5",
@@ -956,7 +956,7 @@
       "endMs": 6856
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_skip:6",
@@ -977,7 +977,7 @@
       "endMs": 8655
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:0",
@@ -994,7 +994,7 @@
       "endMs": 8663
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:1",
@@ -1011,7 +1011,7 @@
       "endMs": 8356
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:2",
@@ -1028,7 +1028,7 @@
       "endMs": 9102
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:3",
@@ -1045,7 +1045,7 @@
       "endMs": 10425
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:4",
@@ -1062,7 +1062,7 @@
       "endMs": 9672
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:5",
@@ -1079,7 +1079,7 @@
       "endMs": 10236
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:decide_sequence:6",
@@ -1096,7 +1096,7 @@
       "endMs": 11647
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:0",
@@ -1113,7 +1113,7 @@
       "endMs": 9959
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:1",
@@ -1130,7 +1130,7 @@
       "endMs": 6610
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:2",
@@ -1147,7 +1147,7 @@
       "endMs": 6959
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:3",
@@ -1164,7 +1164,7 @@
       "endMs": 11285
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:4",
@@ -1181,7 +1181,7 @@
       "endMs": 11700
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:5",
@@ -1198,7 +1198,7 @@
       "endMs": 7143
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_short:6",
@@ -1215,7 +1215,7 @@
       "endMs": 10021
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:0",
@@ -1232,7 +1232,7 @@
       "endMs": 9807
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:1",
@@ -1249,7 +1249,7 @@
       "endMs": 7955
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:2",
@@ -1266,7 +1266,7 @@
       "endMs": 10092
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:3",
@@ -1283,7 +1283,7 @@
       "endMs": 7592
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:4",
@@ -1300,7 +1300,7 @@
       "endMs": 9090
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:5",
@@ -1317,7 +1317,7 @@
       "endMs": 11004
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_faster:6",
@@ -1334,7 +1334,7 @@
       "endMs": 11568
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:0",
@@ -1351,7 +1351,7 @@
       "endMs": 6683
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:1",
@@ -1368,7 +1368,7 @@
       "endMs": 11473
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:2",
@@ -1385,7 +1385,7 @@
       "endMs": 10284
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:3",
@@ -1402,7 +1402,7 @@
       "endMs": 8531
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:4",
@@ -1419,7 +1419,7 @@
       "endMs": 9304
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:5",
@@ -1436,7 +1436,7 @@
       "endMs": 7363
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   },
   {
     "id": "open-window-v1:pace_three_minutes:6",
@@ -1453,6 +1453,6 @@
       "endMs": 9483
     },
     "bankVersion": 1,
-    "gameCoreVersion": 69
+    "gameCoreVersion": 78
   }
 ]

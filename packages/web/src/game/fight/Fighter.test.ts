@@ -36,6 +36,22 @@ describe('prepared fight artwork', () => {
     expect(new Set(frames.map((frame) => frame.join(','))).size).toBe(7);
     expect(frames.every((frame) => frame[2]! > 0 && frame[3]! > 0)).toBe(true);
   });
+  it('transitions from the hit frame into kneeling without blur or a second strike', () => {
+    prepareAtlas();
+    const fighter = new Fighter(0);
+    fighter.update('lose', 240, 300, false, undefined, undefined, 0);
+    const current = fighter.view.children[0] as Sprite;
+    const previous = fighter.view.children[1] as Sprite;
+    expect(current.alpha).toBe(0);
+    expect(previous.visible).toBe(true);
+    expect(previous.alpha).toBe(1);
+    fighter.update('lose', 240, 300, false, undefined, undefined, 0.5);
+    expect(current.alpha).toBe(0.5);
+    expect(previous.alpha).toBe(0.5);
+    fighter.update('lose', 240, 300, false, undefined, undefined, 1);
+    expect(current.alpha).toBe(1);
+    expect(previous.visible).toBe(false);
+  });
   it('keeps the opponent darker in every pose', () => {
     prepareAtlas();
     const left = new Fighter(0);

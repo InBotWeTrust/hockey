@@ -7,6 +7,7 @@ import type {
 } from '../api/tournament.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
+import { tournamentTechnicalReason, tournamentTieBreakPresentation } from './resultPresentation.js';
 import {
   PlayoffSeriesCard,
   TournamentPlayoffOverview,
@@ -405,7 +406,7 @@ function SeriesDetailsModal(props: {
     >
       <div className="tournament-bracket-series-modal__meta">
         <strong>{isCompleted ? scheduleLabel : statusLabel}</strong>
-        {!isCompleted && scheduleLabel !== statusLabel && <span>{scheduleLabel}</span>}
+        {!isCompleted && series.status !== 'active' && scheduleLabel !== statusLabel && <span>{scheduleLabel}</span>}
       </div>
       <div className="tournament-bracket-series-modal__players">
         {players.map((player, index) => {
@@ -455,6 +456,13 @@ function SeriesDetailsModal(props: {
               <div className="tournament-bracket-game-day__fixtures">
                 {group.fixtures.map((fixture) => {
                   const resultLabel = gameResultLabel(fixture);
+                  const technical = fixture.technicalResult === true || fixture.status === 'forfeit';
+                  const tieBreak = tournamentTieBreakPresentation(fixture.resultDetails,
+                    resultLabel !== null && fixture.homeScore === fixture.awayScore, technical);
+                  const winnerName = fixture.winnerSide === 'home' ? fixture.homeName
+                    : fixture.winnerSide === 'away' ? fixture.awayName : null;
+                  const technicalReason = technical
+                    ? tournamentTechnicalReason(fixture.resultDetails?.technicalReason, fixture.homeName, fixture.awayName) : null;
                   const ariaResultLabel =
                     fixture.technicalResult === true || fixture.status === 'forfeit'
                       ? resultLabel
@@ -466,7 +474,7 @@ function SeriesDetailsModal(props: {
                         : null;
                   return (
                     <div
-                      className={`tournament-bracket-game${resultLabel === null ? '' : ' tournament-bracket-game--played'}`}
+                      className={`tournament-bracket-game${resultLabel === null ? '' : ' tournament-bracket-game--played'}${tieBreak.reason !== null || technical ? ' tournament-bracket-game--explained' : ''}`}
                       key={fixture.id}
                       aria-label={
                         ariaResultLabel === null
@@ -483,12 +491,14 @@ function SeriesDetailsModal(props: {
                             </span>
                           ) : (
                             <span className="tournament-bracket-game__matchup">
-                              {fixture.homeName} — {fixture.awayName} {fixture.homeScore}:
+                              {fixture.homeName}{tieBreak.home === null ? '' : ` (${tieBreak.home})`} — {fixture.awayName}{tieBreak.away === null ? '' : ` (${tieBreak.away})`} {fixture.homeScore}:
                               {fixture.awayScore}
                             </span>
                           )}
                         </strong>
                       )}
+                      {tieBreak.reason !== null && winnerName && <span>Победитель: {winnerName} · {tieBreak.reason}</span>}
+                      {technicalReason !== null && <span>{technicalReason}</span>}
                     </div>
                   );
                 })}

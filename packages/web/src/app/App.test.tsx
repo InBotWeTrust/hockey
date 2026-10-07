@@ -131,6 +131,9 @@ describe('App routing + auth', () => {
   });
 
   it('opens a local second-period daily preview without authentication', async () => {
+    // This tests the route, not cold Vite module compilation. Load the real
+    // lazy screen before starting the DOM assertion's short wait budget.
+    await import('../screens/DailyScreen.js');
     window.history.replaceState({}, '', '/dev/daily-period-preview');
     render(<App />);
 

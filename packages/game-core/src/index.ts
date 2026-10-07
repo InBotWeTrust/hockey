@@ -214,3 +214,5 @@ export * from "./cyberpunkCourtShot.js";
 export * from './fight/types.js';
 export * from './fight/config.js';
 export * from './fight/engine.js';
+
+export * from './fight/movement.js';

@@ -18,40 +18,40 @@ describe('confirmed fight feedback', () => {
     const tracker = new FightFeedbackTracker(initial);
     const pending = advanceFight(initial, [command(0, 'attack')], 1100).state;
     expect(tracker.advance(pending, 1100)).toEqual([]);
-    const hit = advanceFight(pending, [], 1400).state;
-    const effects = tracker.advance(hit, 1400);
+    const hit = advanceFight(pending, [], 1600).state;
+    const effects = tracker.advance(hit, 1600);
     expect(effects).toHaveLength(1);
     expect(effects[0]).toMatchObject({ attacker: 0, defender: 1, blocked: false, zone: 'head' });
-    expect(tracker.advance(hit, 1450)).toEqual(effects);
-    expect(tracker.advance(hit, 2000)).toEqual([]);
-    expect(new FightFeedbackTracker(hit).advance(hit, 2000)).toEqual([]);
+    expect(tracker.advance(hit, 1650)).toEqual(effects);
+    expect(tracker.advance(hit, 2200)).toEqual([]);
+    expect(new FightFeedbackTracker(hit).advance(hit, 2200)).toEqual([]);
   });
   it('only counts the matching block active at contact, not a different zone or late guard', () => {
     for (const [zone, time, blocked] of [
       ['head', 1000, true],
       ['body', 1000, false],
-      ['head', 1200, false],
+      ['head', 1501, false],
     ] as const) {
       const initial = base();
       const tracker = new FightFeedbackTracker(initial);
       const state = advanceFight(
         initial,
         [command(0, 'attack'), { ...command(1, 'block', zone), effectiveAtMs: time }],
-        1500,
+        1600,
       ).state;
-      expect(tracker.advance(state, 1500)[0]).toMatchObject({ blocked });
+      expect(tracker.advance(state, 1600)[0]).toMatchObject({ blocked });
     }
   });
   it('shows simultaneous trades and discards effects when the phase changes', () => {
     const initial = base();
     const tracker = new FightFeedbackTracker(initial);
-    const trade = advanceFight(initial, [command(0, 'attack'), command(1, 'attack')], 1500).state;
-    expect(tracker.advance(trade, 1500)).toHaveLength(2);
-    expect(tracker.advance({ ...trade, phaseId: 1, actions: [] }, 1550)).toEqual([]);
+    const trade = advanceFight(initial, [command(0, 'attack'), command(1, 'attack')], 1600).state;
+    expect(tracker.advance(trade, 1600)).toHaveLength(2);
+    expect(tracker.advance({ ...trade, phaseId: 1, actions: [] }, 1650)).toEqual([]);
   });
   it('skips attacks sealed long before a delayed snapshot arrives', () => {
     const tracker = new FightFeedbackTracker(base());
-    const state = advanceFight(base(), [command(0, 'attack')], 1400).state;
+    const state = advanceFight(base(), [command(0, 'attack')], 1600).state;
     expect(tracker.advance(state, 8000)).toEqual([]);
   });
 });

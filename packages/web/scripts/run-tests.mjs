@@ -7,6 +7,9 @@ const here = dirname(fileURLToPath(import.meta.url));
 const packageRoot = resolve(here, '..');
 const dailyScreenTest = 'src/screens/DailyScreen.test.tsx';
 const isolatedSuiteTests = [
+  // The real constructor scans goal situations in timer-driven CPU batches.
+  // Run it without competing with the parallel component test workers.
+  'src/screens/MarksmanshipConstructorScreen.test.tsx',
   'src/chat/test/ChatRoomScreen.test.tsx',
   'src/screens/ProfileSettingsScreen.test.tsx',
   'src/tournament/TournamentAdmin.test.tsx',

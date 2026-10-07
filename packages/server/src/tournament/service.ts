@@ -2979,6 +2979,14 @@ interface TournamentScheduleFixtureRow {
   actual_starts_at?: Date | null;
   winner_user_id?: string | null;
   technical_result: boolean;
+  result_details: {
+    duelKind: string | null;
+    homeAccuracy: number | null;
+    awayAccuracy: number | null;
+    homeActiveTimeMs: number | null;
+    awayActiveTimeMs: number | null;
+    technicalReason: string | null;
+  };
 }
 
 function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
@@ -3025,7 +3033,28 @@ function tournamentScheduleFixtureDto(row: TournamentScheduleFixtureRow) {
     score: { home: Number(row.home_score), away: Number(row.away_score) },
     winnerUserId: row.winner_user_id ?? null,
     technicalResult: row.technical_result,
+    resultDetails: row.result_details,
   };
+}
+
+function tournamentResultDetailsSql(fixture: string, attempt: string): string {
+  return `jsonb_build_object(
+    'duelKind', coalesce(${attempt}.result_snapshot->>'duelKind', ${fixture}.result_snapshot->>'duelKind'),
+    'homeAccuracy', ${attempt}.home_accuracy,
+    'awayAccuracy', ${attempt}.away_accuracy,
+    'homeActiveTimeMs', ${attempt}.home_active_time_ms,
+    'awayActiveTimeMs', ${attempt}.away_active_time_ms,
+    'technicalReason', case
+      when ${fixture}.result_snapshot->>'disqualification' = 'true'
+        then 'tournament_disqualification'
+      when ${fixture}.result_snapshot->>'absent' in ('home', 'away', 'both')
+        then 'tournament_attempt_' || (${fixture}.result_snapshot->>'absent') || '_no_show'
+      when coalesce(${fixture}.result_snapshot->>'reason', ${attempt}.result_snapshot->>'reason')
+        in ('tournament_attempt_home_no_show', 'tournament_attempt_away_no_show',
+            'tournament_attempt_home_incomplete', 'tournament_attempt_away_incomplete')
+        then coalesce(${fixture}.result_snapshot->>'reason', ${attempt}.result_snapshot->>'reason')
+      else null end
+  )`;
 }
 
 const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
@@ -3038,7 +3067,7 @@ const PUBLIC_SCHEDULE_FIXTURE_SELECT = `
          fixture.home_user_id, fixture.home_name, fixture.home_avatar_url, fixture.home_seed,
          fixture.away_user_id, fixture.away_name, fixture.away_avatar_url, fixture.away_seed,
          fixture.home_score, fixture.away_score, fixture.winner_user_id,
-         fixture.technical_result
+         fixture.technical_result, fixture.result_details
     from fixture_scope fixture`;
 
 const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
@@ -3081,7 +3110,8 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
              else au.avatar_url end, au.avatar_url) as away_avatar_url,
            case when r.stage in ('playoff', 'third_place') then aws.rank end as away_seed,
            f.home_score, f.away_score, winner.user_id as winner_user_id,
-           coalesce((f.result_snapshot->>'technical')::boolean, false) as technical_result
+           coalesce((f.result_snapshot->>'technical')::boolean, false) as technical_result,
+           ${tournamentResultDetailsSql('f', 'latest_attempt')} as result_details
       from tournament_fixture f
       join tournament_round r on r.id = f.round_id
       join tournament tournament on tournament.id = f.tournament_id
@@ -3097,7 +3127,7 @@ const PUBLIC_SCHEDULE_FIXTURE_SCOPE = `
         on aws.tournament_id = f.tournament_id and aws.participant_id = ap.id
       left join tournament_participant winner on winner.id = f.winner_participant_id
       left join lateral (
-        select attempt.round_game_day_id, attempt.amateur_duel_match_id
+        select attempt.*
           from tournament_fixture_attempt attempt
          where attempt.fixture_id = f.id
          order by attempt.attempt_number desc
@@ -4840,6 +4870,7 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
                'homeScore', fixture.home_score,
                'awayScore', fixture.away_score,
                'technicalResult', coalesce((fixture.result_snapshot->>'technical')::boolean, false),
+               'resultDetails', ${tournamentResultDetailsSql('fixture', 'latest_attempt')},
                'winnerSide', case
                  when fixture.winner_participant_id = fixture.home_participant_id then 'home'
                  when fixture.winner_participant_id = fixture.away_participant_id then 'away'
@@ -4857,7 +4888,7 @@ export async function getTournamentBracket(pool: Pool, tournamentId: string) {
              on fixture_away.id = fixture.away_participant_id
            left join users fixture_away_user on fixture_away_user.id = fixture_away.user_id
            left join lateral (
-             select attempt.round_game_day_id
+             select attempt.*
                from tournament_fixture_attempt attempt
               where attempt.fixture_id = fixture.id
               order by attempt.attempt_number desc

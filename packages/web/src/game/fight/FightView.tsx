@@ -1,10 +1,17 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { Assets, type Application } from 'pixi.js';
 import { Fighter, FIGHT_ASSETS, type FighterPose } from './Fighter.js';
-import type { FightState, FightZone } from '@hockey/game-core';
+import {
+  FIGHT_HIT_REACTION_MS,
+  fightPositionsAt,
+  fightInRange,
+  type FightState,
+  type FightZone,
+  type FightMoveCommand,
+} from '@hockey/game-core';
 import { PixiStage } from '../PixiStage.js';
 import './fight.css';
-import { FIGHT_ART } from './fightArt.js';
+import { fightDefeatPose } from './fightDefeatPose.js';
 import { fightVisualPose } from './fightVisualPose.js';
 import { fightEntranceX } from './fightEntrance.js';
 import { FightFeedbackTracker, FIGHT_FEEDBACK_MS } from './fightFeedback.js';
@@ -16,6 +23,7 @@ export interface FightViewProps {
   state: FightState;
   player: 0 | 1;
   nowMs: number;
+  onMove?: (direction: -1 | 0 | 1) => void | boolean;
   onAction: (kind: 'attack' | 'block', zone: FightZone) => void | boolean;
 }
 export function FightView({
@@ -23,6 +31,7 @@ export function FightView({
   player,
   nowMs,
   onAction,
+  onMove,
   predictionReset,
   currentPlayer,
   opponent,
@@ -31,7 +40,75 @@ export function FightView({
   const predictedRef = useRef(0);
   const appRef = useRef<Application | null>(null);
   const sprites = useRef<Fighter[]>([]);
-  const prediction = useRef<{ kind: 'attack' | 'block'; zone: FightZone } | null>(null);
+  const prediction = useRef<{
+    kind: 'attack' | 'block';
+    zone: FightZone;
+    startedAtMs: number;
+  } | null>(null);
+  const [moving, setMoving] = useState<-1 | 0 | 1>(0);
+  const movingRef = useRef<-1 | 0 | 1>(0);
+  const movePredictions = useRef<FightMoveCommand[]>([]);
+  const nowRef = useRef(nowMs);
+  nowRef.current = nowMs;
+  const moveCallback = useRef(onMove);
+  moveCallback.current = onMove;
+  const move = (direction: -1 | 0 | 1) => {
+    if (
+      direction !== 0 &&
+      (terminal || nowMs < state.phaseStartedAtMs || nowMs >= state.deadlineMs)
+    )
+      return;
+    if (moveCallback.current?.(direction) === false) return;
+    movingRef.current = direction;
+    setMoving(direction);
+    movePredictions.current.push({
+      kind: 'move',
+      player,
+      direction,
+      phaseId: state.phaseId,
+      seq: 1,
+      effectiveAtMs: nowRef.current,
+    });
+  };
+  useEffect(() => {
+    const stop = () => {
+      if (movingRef.current) {
+        moveCallback.current?.(0);
+        movingRef.current = 0;
+        setMoving(0);
+        movePredictions.current = [];
+      }
+    };
+    const hidden = () => {
+      if (document.hidden) stop();
+    };
+    window.addEventListener('blur', stop);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      stop();
+      window.removeEventListener('blur', stop);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, []);
+  useEffect(() => {
+    if (!moving) return;
+    const timer = setInterval(() => {
+      if (moveCallback.current?.(movingRef.current) === false) {
+        movingRef.current = 0;
+        setMoving(0);
+        return;
+      }
+      movePredictions.current.push({
+        kind: 'move',
+        player,
+        direction: movingRef.current,
+        phaseId: state.phaseId,
+        seq: 1,
+        effectiveAtMs: nowRef.current,
+      });
+    }, 200);
+    return () => clearInterval(timer);
+  }, [moving, player, state.phaseId]);
   const [textureFailed, setTextureFailed] = useState(false);
   const feedbackTracker = useRef(new FightFeedbackTracker(state));
   const feedback = feedbackTracker.current.advance(state, nowMs);
@@ -49,18 +126,89 @@ export function FightView({
     predictedRef.current = 0;
     setPredictedUntil(0);
     prediction.current = null;
-  }, [state.phaseId, state.lastSeq[player], predictionReset]);
+    if (movingRef.current) moveCallback.current?.(0);
+    movingRef.current = 0;
+    setMoving(0);
+    movePredictions.current = [];
+  }, [state.phaseId, predictionReset]);
   const other = player === 0 ? 1 : 0;
   for (const i of [0, 1] as const)
-    if (state.hp[i] < previousHp.current[i]) hitUntil.current[i] = nowMs + 350;
+    if (state.hp[i] < previousHp.current[i]) hitUntil.current[i] = nowMs + FIGHT_HIT_REACTION_MS;
   previousHp.current = state.hp;
   const terminal = state.status === 'resolved' || state.status === 'cancelled';
+  const ownAction = [...state.actions]
+    .reverse()
+    .find((a) => a.player === player && nowMs < a.busyUntilMs + state.rules.deliveryGraceMs);
+  const lockEnd = Math.max(
+    predictedUntil,
+    ownAction ? ownAction.busyUntilMs + state.rules.deliveryGraceMs : 0,
+  );
+  const lockStart = ownAction?.effectiveAtMs ?? prediction.current?.startedAtMs ?? nowMs;
+  const readiness = Math.max(
+    0,
+    Math.min(1, (nowMs - lockStart) / Math.max(1, lockEnd - lockStart)),
+  );
+  const activeKind =
+    ownAction?.kind ?? (nowMs < predictedUntil ? prediction.current?.kind : undefined);
+  const activeZone = ownAction?.zone ?? prediction.current?.zone;
+  const predictionAcknowledged =
+    prediction.current &&
+    state.actions.some(
+      (a) =>
+        a.player === player &&
+        a.kind === prediction.current!.kind &&
+        a.zone === prediction.current!.zone &&
+        a.effectiveAtMs >= prediction.current!.startedAtMs - state.rules.deliveryGraceMs,
+    );
+  const visualState = {
+    ...state,
+    actions:
+      prediction.current && !predictionAcknowledged && nowMs < predictedUntil
+        ? [
+            ...state.actions,
+            {
+              player,
+              phaseId: state.phaseId,
+              seq: -1,
+              ...prediction.current,
+              effectiveAtMs: prediction.current.startedAtMs,
+              activeAtMs:
+                prediction.current.startedAtMs +
+                (prediction.current.kind === 'attack' ? state.rules.windupMs : 0),
+              activeUntilMs:
+                prediction.current.startedAtMs +
+                (prediction.current.kind === 'attack'
+                  ? state.rules.windupMs + state.rules.activeMs
+                  : state.rules.blockMs),
+              busyUntilMs: predictedUntil,
+              resolved: false,
+            },
+          ]
+        : state.actions,
+    moves: [
+      ...(state.moves ?? []),
+      ...movePredictions.current.filter(
+        (m) =>
+          m.effectiveAtMs >
+          Math.max(
+            ...(state.moves ?? []).filter((a) => a.player === player).map((a) => a.effectiveAtMs),
+            -1,
+          ),
+      ),
+    ],
+  };
+  const positions = fightPositionsAt(visualState, nowMs);
+  const inRange = fightInRange(visualState, nowMs);
+  useEffect(() => {
+    if (terminal || nowMs >= state.deadlineMs) {
+      if (movingRef.current) moveCallback.current?.(0);
+      movingRef.current = 0;
+      setMoving(0);
+      movePredictions.current = [];
+    }
+  }, [terminal, state.deadlineMs, nowMs]);
   const busy =
-    terminal ||
-    nowMs < state.phaseStartedAtMs ||
-    nowMs >= state.deadlineMs ||
-    nowMs < predictedUntil ||
-    state.actions.some((a) => a.player === player && nowMs < a.busyUntilMs);
+    terminal || nowMs < state.phaseStartedAtMs || nowMs >= state.deadlineMs || nowMs < lockEnd;
   const layout = () => {
     const app = appRef.current;
     if (!app) return;
@@ -74,7 +222,7 @@ export function FightView({
       app.renderer.resize(host.clientWidth, host.clientHeight);
     }
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-    const fighterScale = Math.min((app.screen.width - 16) / 520, (app.screen.height * 0.84) / 512);
+    const fighterScale = Math.min((app.screen.width - 16) / 580, (app.screen.height * 0.84) / 512);
     const baseline = Math.min(
       app.screen.height * 0.9,
       app.screen.height * 0.6 + 405 * fighterScale * 0.5,
@@ -85,15 +233,24 @@ export function FightView({
         .reverse()
         .find((a) => a.player === index && nowMs < a.busyUntilMs && nowMs >= a.effectiveAtMs);
       let pose: FighterPose =
-        state.hp[index] === 0 || (state.status === 'resolved' && state.winner !== index)
-          ? 'lose'
-          : nowMs < hitUntil.current[index]
-            ? 'hit'
-            : action
-              ? fightVisualPose(action, nowMs)
-              : 'idle';
-      if (!terminal && index === player && prediction.current?.kind === 'block' && nowMs < predictedUntil)
-        pose = `${prediction.current.kind}_${prediction.current.zone}`;
+        fightDefeatPose(
+          state.hp[index],
+          state.status === 'resolved' && state.winner !== index,
+          nowMs,
+          hitUntil.current[index],
+        ) ?? (action ? fightVisualPose(action, nowMs) : 'idle');
+      if (
+        !terminal &&
+        index === player &&
+        prediction.current &&
+        nowMs < predictedUntil &&
+        !action &&
+        !predictionAcknowledged
+      )
+        pose =
+          prediction.current.kind === 'block'
+            ? `block_${prediction.current.zone}`
+            : `windup_${prediction.current.zone}`;
       fighter.view.position.set(
         fightEntranceX(
           app.screen.width,
@@ -103,28 +260,27 @@ export function FightView({
           nowMs,
           reduced,
           fighterScale,
+          app.screen.width * (player === 0 ? positions[index]! : 1 - positions[index]!),
         ),
         baseline,
       );
       const reaction = [...feedback]
         .reverse()
         .find((e) => e.attacker === index || e.defender === index);
-      if (reaction && state.hp[index] > 0) {
+      if (reaction && pose !== 'lose') {
         if (reaction.defender === index && !reaction.blocked) pose = 'hit';
-        else if (reaction.attacker === index && nowMs - reaction.startedAtMs < 260)
-          pose = `attack_${reaction.zone}`;
       }
       const pendingAttack = action?.kind === 'attack' && !action.resolved;
       const predictedAttack =
         index === player &&
         prediction.current?.kind === 'attack' &&
         nowMs < predictedUntil &&
+        !predictionAcknowledged &&
         !action;
       const preparing = !reaction && (pendingAttack || predictedAttack);
       const preparationStart = pendingAttack
         ? action.effectiveAtMs
-        : predictedUntil -
-          (state.rules.windupMs + state.rules.activeMs + state.rules.attackRecoveryMs);
+        : (prediction.current?.startedAtMs ?? nowMs);
       fighter.update(
         pose,
         fighterScale * 384,
@@ -144,26 +300,16 @@ export function FightView({
             }
           : undefined,
         preparing
-          ? Math.max(
-              0,
-              Math.min(
-                1,
-                (nowMs - preparationStart) /
-                  (state.rules.windupMs + state.rules.activeMs + state.rules.deliveryGraceMs),
-              ),
-            )
+          ? Math.max(0, Math.min(1, (nowMs - preparationStart) / state.rules.windupMs))
+          : undefined,
+        pose === 'lose' && hitUntil.current[index] > 0
+          ? Math.max(0, Math.min(1, (nowMs - hitUntil.current[index]) / 350))
           : undefined,
       );
       if (reduced || state.phaseId !== 0 || nowMs >= state.phaseStartedAtMs) {
-        const frame = FIGHT_ART.frames[pose];
-        const left = (frame.offsetX - 192) * fighterScale;
-        const right = (frame.offsetX + frame.width - 192) * fighterScale;
-        const outerLeft = i === 0 ? left : -right;
-        const outerRight = i === 0 ? right : -left;
-        fighter.view.x = Math.max(
-          -outerLeft + 12,
-          Math.min(app.screen.width - outerRight - 12, fighter.view.x),
-        );
+        // A fixed skate footprint avoids shifts when the arm pose changes.
+        const margin = 130 * fighterScale + 12;
+        fighter.view.x = Math.max(margin, Math.min(app.screen.width - margin, fighter.view.x));
       }
       const points = fighter.targets;
       for (const event of feedback) {
@@ -182,12 +328,13 @@ export function FightView({
   const act = (kind: 'attack' | 'block', zone: FightZone) => {
     if (busy || nowMs < predictedRef.current) return;
     if (onAction(kind, zone) === false) return;
-    prediction.current = { kind, zone };
+    prediction.current = { kind, zone, startedAtMs: nowMs };
     predictedRef.current =
       nowMs +
       (kind === 'attack'
         ? state.rules.windupMs + state.rules.activeMs + state.rules.attackRecoveryMs
         : state.rules.blockMs + state.rules.blockRecoveryMs);
+    predictedRef.current += state.rules.deliveryGraceMs;
     setPredictedUntil(predictedRef.current);
   };
   return (
@@ -215,7 +362,7 @@ export function FightView({
                 {(side === 0 ? currentPlayer : opponent)?.name ?? (side === 0 ? 'Ты' : 'Соперник')}
               </span>
               <div className="fight-health__pips" aria-hidden="true">
-                {[0, 1, 2].map((pip) => (
+                {Array.from({ length: state.rules.initialHp }, (_, i) => i).map((pip) => (
                   <i key={pip} className={pip < state.hp[index] ? 'is-filled' : ''} />
                 ))}
               </div>
@@ -314,17 +461,64 @@ export function FightView({
               <button
                 key={`${kind}-${zone}`}
                 type="button"
-                className="btn btn--cta fight-action"
+                className={`btn btn--cta fight-action${kind === 'attack' && inRange ? ' is-in-range' : ''}${busy && activeKind === kind && activeZone === zone ? ' is-active' : ''}`}
+                style={{ '--fight-ready': `${readiness * 100}%` } as CSSProperties}
+                aria-pressed={busy && activeKind === kind && activeZone === zone}
                 disabled={busy}
                 aria-label={label}
                 onClick={() => act(kind, zone)}
               >
-                {kind === 'attack' ? (zone === 'head' ? 'Удар в голову' : 'Удар в корпус') : label}
+                <span>
+                  {kind === 'attack'
+                    ? zone === 'head'
+                      ? 'Удар в голову'
+                      : 'Удар в корпус'
+                    : label}
+                </span>
+                {busy && !terminal && <i className="fight-action__progress" aria-hidden="true" />}
               </button>
             );
           }),
         )}
       </div>
+      {onMove && state.rules.version >= 2 && (
+        <div className="fight-movement" aria-label="Движение в драке">
+          {([-1, 1] as const).map((direction) => (
+            <button
+              key={direction}
+              type="button"
+              className="btn btn--cta fight-move"
+              aria-label={direction === 1 ? 'Двигаться вперёд' : 'Двигаться назад'}
+              aria-pressed={moving === direction}
+              disabled={terminal || nowMs < state.phaseStartedAtMs || nowMs >= state.deadlineMs}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.currentTarget.setPointerCapture?.(e.pointerId);
+                move(direction);
+              }}
+              onPointerUp={() => move(0)}
+              onPointerCancel={() => move(0)}
+              onLostPointerCapture={() => {
+                if (movingRef.current === direction) move(0);
+              }}
+              onKeyDown={(e) => {
+                if (!e.repeat && (e.key === ' ' || e.key === 'Enter')) {
+                  e.preventDefault();
+                  move(direction);
+                }
+              }}
+              onKeyUp={(e) => {
+                if (e.key === ' ' || e.key === 'Enter') move(0);
+              }}
+              onBlur={() => {
+                if (movingRef.current === direction) move(0);
+              }}
+            >
+              <span aria-hidden="true">{direction === 1 ? '→' : '←'}</span>
+            </button>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
