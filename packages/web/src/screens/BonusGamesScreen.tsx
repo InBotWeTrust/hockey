@@ -506,8 +506,11 @@ export function BonusGamesScreen(): JSX.Element {
             </p>
           ) : null}
           {previewGame.skill_code !== 'challenge' && <div className="bonus-records-entry">
-            <button type="button" className="btn btn--ghost" disabled={!previewGame.is_completed} onClick={() => { setRecordsGame(previewGame); setPreviewGame(null); }}>Рекорды</button>
-            {!previewGame.is_completed && <p className="modal-copy">Пройди эту локацию, чтобы увидеть рекорды.</p>}
+            {previewGame.is_completed ? (
+              <button type="button" className="bonus-records-entry__link" onClick={() => { setRecordsGame(previewGame); setPreviewGame(null); }}>
+                <span>Рекорды локации</span><span aria-hidden="true">→</span>
+              </button>
+            ) : <p className="modal-copy">Рекорды откроются после прохождения.</p>}
           </div>}
           <div className="modal-actions">
             {previewGame.levels?.length ? <>

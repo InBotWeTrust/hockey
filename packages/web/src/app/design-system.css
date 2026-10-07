@@ -15749,7 +15749,13 @@ button.daily-calendar__day:active {
   width: 100%;
   overflow: hidden;
 }
-.bonus-records-entry { margin-top: 12px; text-align: center; }
+.bonus-records-entry { margin-top: 12px; text-align: left; }
+.bonus-records-entry__link {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  width: 100%; min-height: 44px; padding: 0; border: 0; background: transparent;
+  color: #536b83; font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.bonus-records-entry__link:focus-visible { outline: 2px solid #2563eb; outline-offset: 3px; border-radius: 6px; }
 .bonus-records-entry .modal-copy { margin: 6px 0 0; }
 
 .bonus-records-modal__subtitle { flex: none; margin: 0 0 12px; }
