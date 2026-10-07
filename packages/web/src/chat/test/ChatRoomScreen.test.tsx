@@ -584,6 +584,25 @@ describe('ChatRoomScreen', () => {
     expect(screen.queryByLabelText('Доставлено')).toBeNull();
   });
 
+  it('clears only the opened chat list badge immediately after the server confirms reading', async () => {
+    const chat: api.ChatDTO = {
+      id: 'c1', type: 'direct', name: 'Иван', entityType: null, entityId: null,
+      lastMessageAt: msgFromOther.createdAt, unreadCount: 2, lastMessage: msgFromOther,
+      lastMessageSenderName: 'Иван', dmCounterpart: null, memberCount: 2, pinnedAt: null,
+    };
+    const chats = [chat, { ...chat, id: 'c2', unreadCount: 3 }];
+    vi.mocked(api.fetchChatList).mockResolvedValueOnce(chats)
+      .mockImplementation(() => new Promise(() => undefined));
+    let confirmRead!: () => void;
+    vi.mocked(api.markChatAsRead).mockImplementation(() => new Promise<void>((resolve) => { confirmRead = resolve; }));
+    const { queryClient } = renderRoom('c1');
+    await screen.findByText('привет');
+    await waitFor(() => expect(queryClient.getQueryData(chatKeys.list())).toEqual(chats));
+    await waitFor(() => expect(confirmRead).toBeTypeOf('function'));
+    await act(async () => { confirmRead(); });
+    await waitFor(() => expect(queryClient.getQueryData<api.ChatDTO[]>(chatKeys.list())?.map((item) => item.unreadCount)).toEqual([0, 3]));
+  });
+
   it('marks the chat as read on mount once messages have loaded', async () => {
     renderRoom('c1');
     await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));

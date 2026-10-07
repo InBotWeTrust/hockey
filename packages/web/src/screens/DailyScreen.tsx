@@ -1500,13 +1500,16 @@ function GameHub({
         const isReady = game.state === 'ready_check' && readinessRemaining > 0;
         const isExpiredReadyCheck = game.state === 'ready_check' && readinessRemaining === 0;
         const isActive = game.state === 'active';
+        const waitingForOpponent = (isReady && game.my_ready === true) || (isActive && game.my_completed === true);
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
           kind: 'duel',
           eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
           title: game.tournament_title,
-          subtitle: isPaused
+          subtitle: waitingForOpponent
+            ? 'Ждём соперника'
+            : isPaused
             ? 'Игра ожидает решения администратора.'
             : isBreak
               ? 'Перерыв между играми серии'
@@ -1517,7 +1520,9 @@ function GameHub({
                   : isExpiredReadyCheck
                     ? 'Время подтверждения истекло.'
                     : 'Игра серии ожидает готовности.',
-          meta: isBreak
+          meta: isActive && game.my_completed === true
+            ? 'Вы завершили свою игру'
+            : isBreak
             ? `Следующая игра через ${formatMs(breakRemaining)}`
             : isPaused
               ? 'Расписание ожидает решения'
@@ -1548,7 +1553,9 @@ function GameHub({
             <DailyHubScoreboard
               activePeriod={0}
               ariaLabel={
-                isPaused
+                isActive && game.my_completed === true
+                  ? `${game.tournament_title}. Вы завершили свою игру. Ждём соперника.`
+                  : isPaused
                   ? `${game.tournament_title}. Игра ожидает решения администратора.`
                   : isBreak
                     ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
@@ -1562,7 +1569,9 @@ function GameHub({
               }
               periodsTotal={game.total_periods}
               timer={
-                isPaused
+                isActive && game.my_completed === true
+                  ? '—'
+                  : isPaused
                   ? '—'
                   : isBreak
                     ? formatMs(breakRemaining)
@@ -1575,7 +1584,9 @@ function GameHub({
                           : formatEventRemaining(startsAtRemaining)
               }
               timerLabel={
-                isPaused
+                isActive && game.my_completed === true
+                  ? 'Ожидание'
+                  : isPaused
                   ? 'Пауза'
                   : isBreak
                     ? 'Перерыв'
@@ -9312,6 +9323,8 @@ function DailyPlayView({
         receivedAtPerformanceMs={data.received_at_performance_ms}
         goals={isBreak || isClosed ? data.daily_total_goals : data.current_period_goals}
         shots={isBreak || isClosed ? data.daily_total_shots : data.current_period_shots}
+        scoreboardShots={data.daily_total_shots}
+        scoreboardShotsTotal={data.shots_per_period * (isClosed ? data.total_periods : periodNumber)}
         shotsTotal={
           isBreak || isClosed ? data.shots_per_period * data.total_periods : data.shots_per_period
         }
@@ -9909,6 +9922,8 @@ function ClassicTournamentPlayView({
         goals={active ? data.current_period_goals : data.daily_total_goals}
         scoreboardGoals={data.daily_total_goals}
         shots={active ? data.current_period_shots : data.daily_total_shots}
+        scoreboardShots={data.daily_total_shots}
+        scoreboardShotsTotal={data.shots_per_period * (data.state === 'closed' ? data.total_periods : Math.max(1, periodNumber))}
         shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
         periodsTotal={data.total_periods}
         scoreboardPeriodsTotal={data.total_periods}

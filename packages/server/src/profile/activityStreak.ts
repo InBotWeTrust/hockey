@@ -1,8 +1,9 @@
-export const ACTIVITY_STREAK_CTES = `activity_days as (
+function activityStreakCtes(userScoped: boolean): string {
+  return `activity_days as (
   select distinct s.user_id, (s.created_at at time zone u.timezone)::date as day
     from shot_session s
     join users u on u.id = s.user_id
-   where s.mode in ('daily', 'amateur_duel', 'tournament_classic')
+   where ${userScoped ? 's.user_id = $1 and ' : ''}s.mode in ('daily', 'amateur_duel', 'tournament_classic')
 ),
 anchors as (
   select u.id as user_id, max(a.day) filter (
@@ -33,3 +34,8 @@ historical_streaks as (
             from grouped_days group by user_id, streak_group) grouped
    group by user_id
 )`;
+}
+
+export const ACTIVITY_STREAK_CTES = activityStreakCtes(false);
+// The single-player observer binds the user ID as its first query parameter.
+export const USER_ACTIVITY_STREAK_CTES = activityStreakCtes(true);

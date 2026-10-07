@@ -14,7 +14,7 @@ import {
 } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
-import { fetchUnreadCounts } from '../chat/api.js';
+import { fetchChatList, fetchUnreadCounts, type ChatDTO } from '../chat/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
 
@@ -145,13 +145,26 @@ export function BottomNav(): JSX.Element | null {
     readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
   );
 
-  const totalUnread = useChatStore((s) => s.totalUnread());
+  const liveUnread = useChatStore((s) => s.unreadByChat);
+  // Observe the list cache without adding another list request. The list can
+  // refresh independently of the unread endpoint (e.g. after reconnect).
+  const { data: chatList } = useQuery<ChatDTO[]>({
+    queryKey: chatKeys.list(),
+    queryFn: fetchChatList,
+    enabled: false,
+  });
+  const effectiveUnread = { ...liveUnread };
+  for (const chat of chatList ?? []) {
+    effectiveUnread[chat.id] = Math.max(chat.unreadCount, liveUnread[chat.id] ?? 0);
+  }
+  const totalUnread = Object.values(effectiveUnread).filter((count) => count > 0).length;
   const setUnread = useChatStore((s) => s.setUnread);
 
   const { data: unreadMap } = useQuery<Record<string, number>>({
     queryKey: chatKeys.unread(),
     queryFn: fetchUnreadCounts,
     enabled: Boolean(user) && !isDemo,
+    refetchInterval: 30_000,
   });
   const { data: amateurEvents } = useQuery({
     queryKey: ['amateur-duel', 'events'],

@@ -1,7 +1,7 @@
 import type { Pool, PoolClient } from 'pg';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { observeAchievementStage, openFirstAchievementStages } from './stageProgress.js';
-import { ACTIVITY_STREAK_CTES } from '../profile/activityStreak.js';
+import { USER_ACTIVITY_STREAK_CTES } from '../profile/activityStreak.js';
 
 type Queryable = Pool | PoolClient;
 
@@ -393,7 +393,7 @@ export async function observeCareerStreak(
 
 export async function observeCareerActivityStreak(db: Queryable, userId: string, occurredAt: Date) {
   const { rows } = await db.query<{ activity_day: string; best_days: number }>(
-    `with ${ACTIVITY_STREAK_CTES}
+    `with ${USER_ACTIVITY_STREAK_CTES}
      select (date_trunc('day', $2::timestamptz at time zone users.timezone))::date::text as activity_day,
             coalesce(historical_streaks.best_days, 0)::int as best_days
        from users

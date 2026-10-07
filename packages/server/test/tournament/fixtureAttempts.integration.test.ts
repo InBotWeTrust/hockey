@@ -17,6 +17,7 @@ import {
   createTournamentDraft,
   generateRegularSchedule,
   getTournamentBracket,
+  getTournamentScheduleDay,
   publishRegularSchedule,
   publishTournament,
   rescheduleTournamentFixture,
@@ -1731,6 +1732,62 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
         },
       ]),
     );
+  });
+
+  it('returns the saved playoff tie-break metrics and technical reason in both public views', async () => {
+    const { tournamentId, fixture } = await openFirstPlayoffAttempt(pool, 'result-presentation');
+    await pool.query(`update tournament_fixture_attempt set status='settled',
+      home_accuracy=83.33333, away_accuracy=83.33333,
+      home_active_time_ms=327399, away_active_time_ms=409658,
+      result_snapshot=result_snapshot || '{"duelKind":"classic"}'::jsonb
+      where fixture_id=$1`, [fixture.fixture_id]);
+    await pool.query(`update tournament_fixture set status='settled', home_score=75, away_score=75,
+      winner_participant_id=home_participant_id where id=$1`, [fixture.fixture_id]);
+    const details = {
+      duelKind: 'classic', homeAccuracy: 83.33333, awayAccuracy: 83.33333,
+      homeActiveTimeMs: 327399, awayActiveTimeMs: 409658, technicalReason: null,
+    };
+    const bracket = await getTournamentBracket(pool, tournamentId);
+    expect(bracket.flatMap((series) => series.fixtures)).toContainEqual(expect.objectContaining({
+      id: fixture.fixture_id, resultDetails: details,
+    }));
+    const schedule = await getTournamentScheduleDay(pool, tournamentId, fixture.home_user_id, '2030-10-26');
+    expect(schedule.myGames).toContainEqual(expect.objectContaining({ id: fixture.fixture_id, resultDetails: details }));
+    await pool.query(`update tournament_fixture set result_snapshot=result_snapshot ||
+      '{"technical":true,"reason":"tournament_attempt_away_no_show"}'::jsonb where id=$1`, [fixture.fixture_id]);
+    const technical = await getTournamentScheduleDay(pool, tournamentId, fixture.home_user_id, '2030-10-26');
+    expect(technical.myGames).toContainEqual(expect.objectContaining({
+      id: fixture.fixture_id, technicalResult: true,
+      resultDetails: { ...details, technicalReason: 'tournament_attempt_away_no_show' },
+    }));
+  });
+
+  it('exposes personal readiness and completion on the active playoff board', async () => {
+    const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'personal-board-state');
+    const now = new Date('2030-10-26T17:00:00.000Z');
+    await pool.query(`update tournament_fixture_attempt
+      set scheduled_starts_at=$2, readiness_expires_at=$2::timestamptz + interval '5 minutes',
+          hard_deadline_at=$2::timestamptz + interval '30 minutes'
+      where fixture_id=$1`, [fixture.fixture_id, now]);
+    const games = (userId: string) => listActiveClassicGames(pool, { userId, now });
+    expect(await games(fixture.home_user_id)).toContainEqual(expect.objectContaining({
+      kind: 'playoff', my_ready: false, my_completed: false,
+    }));
+    await pool.query(`update tournament_fixture_attempt set home_ready_at=$2 where fixture_id=$1`, [fixture.fixture_id, now]);
+    expect(await games(fixture.home_user_id)).toContainEqual(expect.objectContaining({
+      my_ready: true, my_completed: false,
+    }));
+    expect(await games(fixture.away_user_id)).toContainEqual(expect.objectContaining({
+      my_ready: false, my_completed: false,
+    }));
+    await pool.query(`update tournament_fixture_attempt set status='active', away_ready_at=$2 where fixture_id=$1`, [fixture.fixture_id, now]);
+    await pool.query(`update amateur_duel_participant set state='completed', current_period=3 where match_id=$1 and user_id=$2`, [opened.duelMatchId, fixture.home_user_id]);
+    expect(await games(fixture.home_user_id)).toContainEqual(expect.objectContaining({
+      state: 'active', my_ready: true, my_completed: true,
+    }));
+    expect(await games(fixture.away_user_id)).toContainEqual(expect.objectContaining({
+      state: 'active', my_ready: true, my_completed: false,
+    }));
   });
 
   it('keeps tournament readiness separate from local loadout confirmation', async () => {
