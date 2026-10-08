@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { advanceFight, createFightState } from '../src/fight/engine.js';
 import { fightPositionsAt, FIGHT_MOVE_LEASE_MS } from '../src/fight/movement.js';
-import { DEFAULT_FIGHT_RULES } from '../src/fight/config.js';
+import { DEFAULT_FIGHT_RULES as NEW_FIGHT_RULES } from '../src/fight/config.js';
+// Persisted v2 distance and timed-block contract remains unchanged.
+const DEFAULT_FIGHT_RULES = {...NEW_FIGHT_RULES, version:2, windupMs:500, attackRecoveryMs:300};
 import type { FightCommand } from '../src/fight/types.js';
 const attack = (at: number): FightCommand => ({
   player: 0,

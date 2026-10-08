@@ -67,6 +67,7 @@ export function advanceFight(
       reject('time');
       continue;
     }
+    if (cmd.kind === 'input') { reject('time'); continue; }
     if (cmd.kind === 'move') {
       if (state.rules.version >= 2) state.moves!.push({ ...cmd });
       continue;

@@ -1,3 +1,4 @@
+import { getFightPosture } from './responsiveInput.js';
 import type { FightState } from './types.js';
 // Normalized arena coordinates. Movement leases prevent skating after disconnect.
 export const FIGHT_MOVE_LEASE_MS = 450;
@@ -7,6 +8,19 @@ const MIN = 0.25;
 const MAX = 0.75;
 const GAP = 0.34;
 export function fightPositionsAt(state: FightState, atMs: number): [number, number] {
+  if (state.rules.version >= 3 && state.responsive) {
+    const frame = [...state.responsive.timeline].reverse().find(f => f.atMs <= atMs);
+    if (!frame) return [.32,.68];
+    const positions: [number,number] = [...frame.positions];
+    const end=Math.min(atMs,state.endedAtMs??state.deadlineMs);
+    for (const player of [0,1] as const) {
+      const p=getFightPosture(state,player,frame.atMs);
+      if (!p.crouch && frame.atMs>=p.readyAtMs) positions[player]+=p.direction*(player===0?1:-1)*SPEED*(p.guard?.5:1)*Math.max(0,Math.min(end,frame.leaseUntil[player])-frame.atMs);
+      positions[player]=Math.max(MIN,Math.min(MAX,positions[player]));
+    }
+    if (positions[1]-positions[0]<GAP) {const middle=(positions[0]+positions[1])/2;positions[0]=middle-GAP/2;positions[1]=middle+GAP/2;}
+    return positions;
+  }
   const positions: [number, number] = [0.32, 0.68];
   if (state.rules.version < 2) return [0.25, 0.75];
   const end = Math.max(state.phaseStartedAtMs, Math.min(atMs, state.endedAtMs ?? state.deadlineMs));
