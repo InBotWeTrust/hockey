@@ -1634,7 +1634,7 @@ export function PlayView<TState>({
         cancelAnimationFrame(entranceRafRef.current);
         entranceRafRef.current = null;
       }
-      loop.detach();
+      loop.detach(preserveSceneOnModalReturn);
       setIsEntrancePlaying(false);
       goal.container.visible = !showIceCar;
       goal.update(scaleRef.current, 0);

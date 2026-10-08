@@ -4,7 +4,7 @@ export const DEFAULT_FIGHT_RULES: Readonly<FightRules> = Object.freeze({
   initialHp: 5,
   mainDurationMs: 20_000,
   suddenDeathDurationMs: 10_000,
-  windupMs: 400,
+  windupMs: 80,
   activeMs: 100,
   attackRecoveryMs: 150,
   blockMs: 700,

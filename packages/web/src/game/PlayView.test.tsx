@@ -192,6 +192,26 @@ describe('PlayView', () => {
     vi.restoreAllMocks();
   });
 
+  it('resumes the duel shot from the same scene time after fight and medical aid', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    const props = {showIceCar:false,onBack:()=>undefined,active:true,seed:'fight-return',
+      goalieId:null,goalieConfig:beachGoalie,periodNumber:1,goals:0,shots:0,
+      preserveSceneOnModalReturn:true,playEntranceOnMount:false,
+      initialSceneElapsedMs:0,initialShooterElapsedMs:0,shotResolver,
+      optimisticAddShot:()=>undefined,submitShot:()=>new Promise<null>(()=>{}),applyState:()=>undefined} as const;
+    const view=render(<PlayView {...props} suppressedByModal={false}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    view.rerender(<PlayView {...props} suppressedByModal/>);
+    now=31500;
+    view.rerender(<PlayView {...props} suppressedByModal={false}/>);
+    act(()=>tickerCallbacks.at(-1)?.());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({tapTime:500,shooterTapTime:500})}));
+  });
+
   it('keeps the upright transparent goal asset scoped to the initial training course', () => {
     expect(TRAINING_COURSE_GOAL_OPTIONS).toMatchObject({
       spriteUrl: '/sprites/training-course-goal-transparent.png',

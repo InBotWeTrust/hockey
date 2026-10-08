@@ -52,6 +52,26 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+  it('excludes modal time when reattaching the same scene', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const goal = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie', goalRenderer: { update: goal } as never });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    now.mockReturnValue(1500); tick();
+    const before = loop.getShooterT();
+    const goalBefore = goal.mock.calls.at(-1)![1];
+    loop.detach(true);
+    now.mockReturnValue(31500);
+    loop.attach(ticker); tick();
+    expect(loop.getShooterT()).toBe(before);
+    expect(goal.mock.calls.at(-1)![1]).toBe(goalBefore);
+    now.mockReturnValue(31516); tick();
+    expect(loop.getShooterT()).toBe(before + 16);
+    loop.detach(); now.mockRestore();
+  });
+
   it('keeps zero-frequency tutorial goals centered across time', () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const goal = vi.fn();

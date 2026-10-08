@@ -1,10 +1,12 @@
 import { moveResponsivePositions } from './responsiveMovement.js';
+export { moveResponsivePositions, GAP as FIGHT_MIN_DISTANCE } from './responsiveMovement.js';
 import { getFightPosture } from './responsiveInput.js';
 import type { FightState } from './types.js';
 // Normalized arena coordinates. Movement leases prevent skating after disconnect.
 export const FIGHT_MOVE_LEASE_MS = 450;
 export const FIGHT_REACH = 0.4;
-const SPEED = 0.0003;
+export const FIGHT_MOVE_SPEED = 0.0003;
+const SPEED = FIGHT_MOVE_SPEED;
 const MIN = 0.25;
 const MAX = 0.75;
 const GAP = 0.34;

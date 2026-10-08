@@ -78,6 +78,7 @@ function Scene(){
   </div>
   <PlayView suppressedByModal={paused||assisting||showResult} preserveSceneOnModalReturn showIceCar={false} onBack={()=>write(initial())} active seed="preview" goalieId="rookie" periodNumber={1} periodsTotal={3} goals={match.current_period_goals} shots={match.current_period_shots} shotsTotal={30} periodEndsAt={ends}
    {...(paused?{timer:`${Math.floor(Math.max(0,ends-Date.parse(match.fight_paused_at!))/60000)}:${String(Math.floor(Math.max(0,ends-Date.parse(match.fight_paused_at!))/1000)%60).padStart(2,'0')}`}:assisting?{timer:`${Math.floor(Math.max(0,ends-aidUntil!)/60000)}:${String(Math.floor(Math.max(0,ends-aidUntil!)/1000)%60).padStart(2,'0')}`}:{})}
+   duelCondition={new URLSearchParams(location.search).has('fatigue') ? ()=>({puckSpeedDelta:0,shooterSpeedMultiplier:.65,canShoot:true,status:'normal',fatigueLevel:'heavy',stumbleActive:false,shooterXOffsetPx:0,fatigueMs:5000,nutritionConsumed:0,skatesConsumed:0}) : undefined}
    primaryActionBlocked={assisting}
    longCourtBackground="/sprites/amateur-daily-court.webp" scoreboardOpponent={{name:'Михаил',avatarUrl:null,goals:0,shots:0,time:'ИГРАЕТ 1/3',timeTone:'active'}}
    hudAddon={<DuelInventoryMiniHud match={match}/>}
