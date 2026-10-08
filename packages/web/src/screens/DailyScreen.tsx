@@ -9227,6 +9227,7 @@ function DailyPlayView({
         serverNow={data.server_now}
         receivedAtPerformanceMs={data.received_at_performance_ms}
         goals={isBreak || isClosed ? data.daily_total_goals : data.current_period_goals}
+        scoreboardGoals={data.daily_total_goals}
         shots={isBreak || isClosed ? data.daily_total_shots : data.current_period_shots}
         scoreboardShots={data.daily_total_shots}
         scoreboardShotsTotal={data.shots_per_period * (isClosed ? data.total_periods : periodNumber)}
