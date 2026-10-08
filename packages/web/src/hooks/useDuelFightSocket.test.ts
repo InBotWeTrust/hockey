@@ -146,3 +146,30 @@ it('applies compact fight updates without rolling back shot progress or match re
  socket.message({type:'fight:snapshot',matchId:'match',fight:old,serverNow:new Date(900).toISOString()});
  expect(useAmateurDuelStore.getState().match!.fight!.revision).toBe(3);hook.unmount();
 });
+
+it('does not release held movement when a repeated attack is busy', () => {
+ vi.useFakeTimers();
+ const hook=renderHook(()=>useDuelFightSocket('match',true));
+ const socket=Socket.instances[0]!;
+ socket.message({type:'connection:ready'});
+ act(()=>hook.result.current.sendInput({direction:1,crouch:false,guard:false}));
+ let id:unknown;
+ act(()=>{id=hook.result.current.sendAttack();});
+ const reset=hook.result.current.predictionReset;
+ socket.message({type:'fight:ack',actionId:id,ack:{accepted:false,reason:'busy'}});
+ expect(hook.result.current.predictionReset).toBe(reset);
+ act(()=>vi.advanceTimersByTime(150));
+ expect(JSON.parse(socket.sent.at(-1)!).input.direction).toBe(1);
+ hook.unmount();
+});
+
+it('stops commands and renewals after a terminal snapshot',()=>{
+ vi.useFakeTimers();const hook=renderHook(()=>useDuelFightSocket('match',true));const socket=Socket.instances[0]!;
+ socket.message({type:'connection:ready'});
+ act(()=>hook.result.current.sendInput({direction:1,crouch:false,guard:false}));
+ const done=snapshot(2);done.fight!.status='resolved';done.fight!.engine_state!.status='resolved';
+ socket.message({type:'duel:snapshot',match:done});const count=socket.sent.length;
+ act(()=>vi.advanceTimersByTime(1500));
+ act(()=>{expect(hook.result.current.sendAttack()).toBe(false);expect(hook.result.current.sendInput({direction:0,crouch:false,guard:false})).toBe(false);});
+ expect(socket.sent).toHaveLength(count);hook.unmount();
+});

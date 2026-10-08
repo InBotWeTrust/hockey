@@ -1,7 +1,8 @@
+import { FightMovementPresentation } from './fightMovementPresentation.js';
 import { FightReserve } from './FightReserve.js';
 import { useEffect,useRef,useState } from 'react';
 import { Assets,type Application } from 'pixi.js';
-import { fightPositionsAt,fightInRange,getFightPosture,neutralFightInput,type FightHeldInput } from '@hockey/game-core';
+import { fightInRange,getFightPosture,neutralFightInput,type FightHeldInput } from '@hockey/game-core';
 import { PixiStage } from '../PixiStage.js';
 import { Fighter,FIGHT_ASSETS } from './Fighter.js';
 import { FightTimeline } from './fightTimeline.js';
@@ -16,14 +17,16 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
  const app=useRef<Application|null>(null),fighters=useRef<Fighter[]>([]);
  const flashes=useRef(new Map<number,HTMLSpanElement>());
  const timeline=useRef(new FightTimeline(state));timeline.current.observe(state,nowMs);
+ const movement=useRef(new FightMovementPresentation());
  const held=useRef<FightHeldInput>(neutralFightInput());const predictedReady=useRef(0);
  const clock=useRef({now:nowMs,performance:performance.now()});clock.current={now:nowMs,performance:performance.now()};
  const [failed,setFailed]=useState(false);
  const terminal=state.status==='resolved'||state.status==='cancelled';
  const disabled=terminal||nowMs<state.phaseStartedAtMs||nowMs>=state.deadlineMs;
  const reset=(props.predictionReset??0)+state.phaseId*100000;
- useEffect(()=>{timeline.current.clearPrediction();predictedReady.current=0;held.current=neutralFightInput();},[reset]);
- const setInput=(input:FightHeldInput)=>{if(latest.current.onInput?.(input)===false){held.current=neutralFightInput();return;}held.current={...input};};
+ useEffect(()=>{timeline.current.clearPrediction();movement.current.clear();predictedReady.current=0;held.current=neutralFightInput();},[reset]);
+ const setInput=(input:FightHeldInput)=>{const p=latest.current;const id=p.onInput?.(input);if(id===false){held.current=neutralFightInput();movement.current.clear();return;}
+  movement.current.input(p.state,p.player,clock.current.now+Math.max(0,performance.now()-clock.current.performance),input,typeof id==='string'?id:undefined,predictedReady.current);held.current={...input};};
  const attack=()=>{
    const current=latest.current;const posture=getFightPosture(current.state,current.player,current.nowMs);
    const ready=Math.max(predictedReady.current,posture.readyAtMs);
@@ -42,7 +45,7 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
   const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
   const scale=Math.min((a.screen.width-16)/580,a.screen.height*.84/512);
   const baseline=Math.min(a.screen.height*.9,a.screen.height*.6+405*scale*.5);
-  const positions=fightPositionsAt(p.state,time);
+  const positions=movement.current.positions(p.state,p.player,time,predictedReady.current);
   fighters.current.forEach((fighter,side)=>{
    const index=(side===0?p.player:1-p.player) as 0|1;
    const visual=timeline.current.frame(p.state,index,time);
