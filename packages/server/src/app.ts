@@ -32,6 +32,7 @@ import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
+import { barRoutes } from './bar/routes.js';
 import { tournamentRoutes } from './tournament/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
@@ -243,6 +244,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(

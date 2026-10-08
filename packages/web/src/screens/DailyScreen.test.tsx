@@ -1738,6 +1738,27 @@ describe('DailyScreen', () => {
     expect(scoreboard).toHaveTextContent(`БРОСКИ${label}`);
   });
 
+  it.each([
+    [1, 0, 0, '00'],
+    [2, 0, 23, '23'],
+    [2, 1, 24, '24'],
+    [3, 8, 54, '54'],
+  ])('continues daily goals across periods: period %s with %s current goals', async (period, periodGoals, totalGoals, label) => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({
+      ...baseState,
+      state: 'period_active',
+      current_period: period,
+      current_period_goals: periodGoals,
+      daily_total_goals: totalGoals,
+      current_period_shots: 10,
+      daily_total_shots: (period - 1) * 30 + 10,
+      period_started_at: new Date().toISOString(),
+      period_ends_at: new Date(Date.now() + 1_200_000).toISOString(),
+    }), { status: 200, headers: { 'content-type': 'application/json' } }));
+    renderWith(['/?view=daily']);
+    expect(await screen.findByLabelText('Игровое табло')).toHaveTextContent(`ГОЛЫ${label}`);
+  });
+
   it('lets a beginner browse an already-created playoff match from the arena', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
     const readinessEndsAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();

@@ -38,6 +38,7 @@ const MONTHLY_RATING_CONGRATULATIONS_KEY = [
 ] as const;
 
 const SECTION_ARTWORK = {
+  bar: '/bar/bar-card-v2.webp',
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/training-evening.webp',
@@ -284,6 +285,14 @@ export function SectionsScreen(): JSX.Element {
               size="tall"
               artworkSrc={SECTION_ARTWORK.shop}
               onClick={() => navigate('/inventory')}
+            />
+            <QuickSectionCard
+              title="Бар"
+              meta="Трансляции и обсуждения"
+              tone="default"
+              size="wide"
+              artworkSrc={SECTION_ARTWORK.bar}
+              onClick={() => navigate('/bar')}
             />
           </div>
         </section>
