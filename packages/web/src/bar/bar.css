@@ -1,0 +1,564 @@
+/* Match cards reuse the in-rink game scoreboard; filters stay shared. */
+.bar-screen {
+  padding: calc(16px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom));
+  overflow-y: auto;
+  background:
+    linear-gradient(rgba(20, 15, 10, 0.35), rgba(20, 15, 10, 0.75)),
+    url('/bar/bar-interior-v2.webp') center/cover;
+}
+.bar-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto 16px;
+  color: white;
+}
+.bar-header h1 {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+}
+.bar-board {
+  max-width: 760px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 16px;
+  border-radius: 24px;
+}
+.bar-content {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.bar-filters .segmented-tabs__item:first-child::before {
+  content: '';
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  margin-right: 7px;
+  border-radius: 50%;
+  background: #38cf79;
+  vertical-align: 1px;
+}
+.bar-section-label {
+  margin: 0 0 10px -14px;
+}
+.bar-content .bar-empty,
+.bar-content .bar-connection,
+.bar-content .bar-pagination {
+  color: white;
+}
+.bar-intro {
+  margin: 0 0 16px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+.bar-match-group {
+  margin-top: 16px;
+}
+.bar-match-card {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 12px;
+  margin-top: 8px;
+  border-radius: 16px;
+  appearance: none;
+  overflow: hidden;
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+}
+.bar-match-card:disabled {
+  opacity: 1;
+  cursor: default;
+}
+.bar-match-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+}
+.bar-match-start {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.bar-match-kind {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.bar-match-players {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+}
+.bar-player {
+  display: flex;
+  text-align: left;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 700;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.bar-player-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 3px;
+}
+.bar-player-copy small {
+  color: rgba(211, 228, 246, 0.78);
+  font-size: 9px;
+  font-weight: 600;
+}
+.bar-player:last-child {
+  justify-content: flex-end;
+}
+.bar-player img,
+.bar-avatar-fallback {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.bar-avatar-fallback {
+  display: grid;
+  place-items: center;
+  background: rgba(207, 233, 255, 0.14);
+  border: 1px solid rgba(221, 240, 255, 0.28);
+  color: #f8fbff;
+  font-size: 14px;
+}
+.bar-score {
+  font-size: 23px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.bar-match-status {
+  font-size: 10px;
+}
+.bar-empty,
+.bar-connection {
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+  padding: 12px 0;
+}
+.bar-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 20px;
+  font-size: 12px;
+}
+.bar-rinks {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.bar-rink-panel {
+  min-width: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: white;
+  border: 1px solid #e1e7ed;
+}
+.bar-rink-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 10px;
+  font-size: 12px;
+}
+.bar-rink-header strong {
+  overflow-wrap: anywhere;
+}
+.bar-rink-header b {
+  font-size: 18px;
+}
+.bar-rink {
+  position: relative;
+  aspect-ratio: 572/700;
+  overflow: hidden;
+}
+.bar-rink-status {
+  text-align: center;
+  font-size: 11px;
+  color: var(--muted);
+  margin: 8px 4px;
+}
+.bar-live-score {
+  text-align: center;
+  font-size: 32px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  margin: 0 0 16px;
+}
+.bar-final {
+  text-align: center;
+  font-weight: 700;
+  color: #20804c;
+}
+
+.bar-header .icon-btn {
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.7);
+}
+.bar-rink-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+.bar-rink-stage {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.bar-rink-stage canvas {
+  display: block;
+}
+/* The match view fits the viewport; only the conversation scrolls. */
+.bar-screen--match {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+  min-height: 0;
+  height: 100%;
+}
+.bar-screen--match .bar-header {
+  max-width: none;
+  margin-bottom: 0;
+  flex-shrink: 0;
+}
+.bar-screen--match .bar-board {
+  padding: 0;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+.bar-match-title {
+  margin: 0 0 8px;
+  color: white;
+  text-align: center;
+}
+.bar-live-score {
+  font-size: 30px;
+  margin: 0 0 10px;
+}
+.bar-rinks {
+  gap: 10px;
+}
+.bar-rink-panel {
+  border: none;
+  border-radius: 0;
+  background: none;
+  overflow: visible;
+}
+.bar-rink-header {
+  padding: 0 2px 7px;
+  justify-content: flex-start;
+  align-items: center;
+  color: white;
+  font-size: 12px;
+}
+.bar-rink-header strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-rink-panel .game-scoreboard {
+  margin: 0 0 6px;
+  border-radius: 12px;
+}
+.bar-rink-panel .game-scoreboard__row {
+  padding: 7px 2px;
+}
+.bar-rink-panel .game-scoreboard__metric {
+  padding: 0 3px;
+  gap: 4px;
+}
+.bar-rink-panel .game-scoreboard__label {
+  font-size: 7px;
+  letter-spacing: 0.06em;
+}
+.bar-rink-panel .game-scoreboard__value {
+  font-size: 14px;
+}
+.bar-rink {
+  border: 3px solid #1e3a5f;
+  border-radius: 18px;
+  box-sizing: border-box;
+}
+.bar-chat {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  min-height: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 20px;
+}
+.bar-chat > .section-label {
+  padding: 12px 14px 8px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.bar-chat-messages {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 6px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.bar-chat-input {
+  padding: 8px 10px;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.18);
+}
+.bar-chat-error {
+  margin: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #b42318;
+}
+@media (max-height: 650px) {
+  .bar-screen--match {
+    gap: 8px;
+    padding-top: calc(8px + var(--app-safe-top));
+  }
+  .bar-live-score {
+    font-size: 24px;
+    margin-bottom: 6px;
+  }
+}
+
+.bar-screen--match .bar-board {
+  max-width: none;
+  padding: 12px;
+  border-radius: 24px;
+}
+.bar-screen--match .bar-board .bar-match-title {
+  padding: 0;
+  color: rgba(211, 228, 246, 0.78);
+}
+
+.bar-chat-title {
+  flex-shrink: 0;
+  width: calc(100% + 14px);
+  max-width: none;
+  margin: 0 auto 0 -14px;
+}
+.bar-rink-header .user-avatar {
+  box-sizing: border-box;
+}
+
+.bar-rink-header .bar-player-avatar {
+  padding: 2px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin: 0;
+  display: grid;
+}
+.bar-screen--match {
+  height: var(--app-viewport-height, 100dvh);
+  max-height: var(--app-viewport-height, 100dvh);
+  box-sizing: border-box;
+}
+.bar-rink-header .bar-player-avatar {
+  width: 30px;
+  height: 30px;
+  overflow: hidden;
+}
+
+/* The room shares the rink glass; the composer has no extra enclosing surface. */
+.bar-chat {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+  border-radius: 24px;
+}
+.bar-chat-input {
+  padding: 8px 12px 12px;
+  border: 0;
+}
+.bar-chat-input .chat-dock-composer {
+  margin: 0;
+  padding: 0;
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Equal glass controls, with the main chat's blur fading over messages below. */
+.bar-chat-input :is(textarea, button[aria-label='Отправить']) {
+  background: rgba(255, 255, 255, 0.2) !important;
+  color: #f8fbff !important;
+  border: 1px solid rgba(255, 255, 255, 0.78) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  backdrop-filter: blur(20px) saturate(130%);
+  -webkit-backdrop-filter: blur(20px) saturate(130%);
+}
+.bar-chat-input textarea {
+  min-width: 0;
+}
+.bar-chat-input button[aria-label='Отправить']:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.8);
+  outline-offset: 2px;
+}
+
+/* Compact spectator chat, without changing the main chat layout. */
+.bar-chat-messages {
+  padding: 8px 10px;
+  gap: 6px;
+}
+.bar-chat-messages [data-testid='chat-bubble'] {
+  margin-bottom: 0 !important;
+  gap: 6px !important;
+  max-width: 94% !important;
+}
+.bar-chat-messages [data-testid='chat-bubble'] :is(.glass, .chat-bubble--own) {
+  padding: 6px 9px !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+}
+.bar-chat-messages button[aria-label^='Профиль:'] {
+  font-size: 11px !important;
+}
+.bar-chat-messages button[aria-label^='Аватар:'] {
+  width: 30px;
+  height: 30px;
+  padding: 2px !important;
+  border: 1px solid rgba(205, 232, 255, 0.46) !important;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06)) !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.bar-chat-messages button[aria-label^='Аватар:'] > * {
+  width: 24px !important;
+  height: 24px !important;
+}
+.bar-chat-messages .pill {
+  padding: 2px 7px !important;
+  font-size: 11px !important;
+}
+.bar-chat-messages .pill > span:first-child {
+  font-size: 12px !important;
+}
+
+.bar-chat-input textarea::placeholder {
+  color: rgba(248, 251, 255, 0.72);
+  opacity: 1;
+}
+
+.bar-rink {
+  container-type: inline-size;
+}
+.bar-rink .bar-rink-result {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+  width: calc(100% - 16px);
+  padding: 10px;
+  border-radius: 18px;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+.bar-rink-result .modal-title {
+  margin: 0 0 8px;
+  font-size: clamp(11px, 8cqw, 16px);
+  text-align: center;
+}
+.bar-rink-result .duel-result-card__compact-fact {
+  justify-content: space-between;
+  gap: 4px;
+}
+.bar-rink-result .duel-result-card__compact-fact span {
+  font-size: 8px;
+  letter-spacing: 0.04em;
+}
+.bar-rink-result .duel-result-card__compact-fact strong {
+  font-size: 13px;
+}
+.bar-chat-messages {
+  flex-basis: 0;
+}
+.bar-chat-input {
+  flex: 0 0 auto;
+}
+
+.bar-chat {
+  position: relative;
+}
+.bar-chat-messages {
+  padding-bottom: calc(var(--bar-chat-composer-height, 72px) + 8px);
+}
+.bar-chat-input.chat-edge-bottom--overlay {
+  padding: 20px 12px 12px;
+  margin: 0;
+  --glass-edge-inset: -32px 0 0;
+  --glass-edge-blur: 14px;
+  --glass-edge-bg: linear-gradient(
+    to top,
+    rgba(8, 14, 22, 0.9) 0%,
+    rgba(8, 14, 22, 0.86) 50%,
+    rgba(8, 14, 22, 0.62) 75%,
+    rgba(8, 14, 22, 0) 100%
+  );
+  --glass-edge-mask: linear-gradient(to top, #000 0%, #000 55%, transparent 100%);
+}
+
+/* Keep each rink proportional within its half; the surrounding chrome spans the screen. */
+.bar-screen--match .bar-chat {
+  max-width: none;
+}
+.bar-screen--match .bar-rink {
+  width: 100%;
+  max-width: 208px;
+  margin: 0 auto;
+}
+.bar-screen--match .bar-rink-header {
+  justify-content: center;
+}
+.bar-rink-panel > .game-scoreboard {
+  max-width: 320px;
+  margin-left: auto;
+  margin-right: auto;
+}
+@media (max-height: 650px) {
+  .bar-screen--match .bar-rink {
+    max-width: 128px;
+  }
+}
+
+.bar-rink-scene {
+  position: absolute;
+  top: -25%;
+  left: 0;
+  width: 100%;
+  height: 125%;
+  pointer-events: none;
+}
