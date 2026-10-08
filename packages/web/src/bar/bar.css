@@ -4,7 +4,7 @@
   overflow-y: auto;
   background:
     linear-gradient(rgba(20, 15, 10, 0.35), rgba(20, 15, 10, 0.75)),
-    url('/bar/restaurant.webp') center/cover;
+    url('/bar/bar-interior-v2.webp') center/cover;
 }
 .bar-header {
   display: flex;
