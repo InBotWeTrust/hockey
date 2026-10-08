@@ -45,10 +45,10 @@ export async function assertBonusGameAccessibleToUser(
   const access = await resolveAmateurAccess(db, userId);
   if (access.hasFullAccess) return;
 
-  const { rows } = await db.query<{ category_position: number }>(
-    `select category_position
+  const { rows } = await db.query<{ category_position: number; skill_code: string }>(
+    `select category_position, skill_code
        from (
-         select id,
+         select id, skill_code,
                 row_number() over (partition by skill_code order by sort_order, id)::int
                   as category_position
            from bonus_game
@@ -58,7 +58,7 @@ export async function assertBonusGameAccessibleToUser(
     [gameId],
   );
   const position = rows[0]?.category_position;
-  if (position === undefined || Number(position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL) {
+  if (position === undefined || !['speed', 'accuracy'].includes(rows[0]!.skill_code) || Number(position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL) {
     await assertFullAmateurAccess(db, userId);
   }
 }
@@ -182,7 +182,7 @@ function deriveCardState(row: CatalogRow, hasAmateurAccess: boolean): BonusGameC
   if (row.status === 'archived') return 'archived';
   if (
     !hasAmateurAccess &&
-    (row.category_position === null ||
+    (!['speed', 'accuracy'].includes(row.skill_code) || row.category_position === null ||
       Number(row.category_position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL)
   ) {
     return 'level_locked';

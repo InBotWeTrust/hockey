@@ -1,7 +1,7 @@
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { Target, X } from 'lucide-react';
+import { Star, Target, TrendingUp, X } from 'lucide-react';
 import {
   fetchBonusRecords,
   type BonusRecordPlayer,
@@ -182,6 +182,11 @@ export function BonusRecordsModal({
       <p className="modal-copy bonus-records-modal__subtitle">
         {skillName} · {title}
       </p>
+      <div className="bonus-records-modal__rewards">
+        <p>Побей свой рекорд – получишь <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-star)' }} aria-label="2 звезды"><Star size={14} fill="currentColor" aria-hidden="true" />2</span> и <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-experience)' }} aria-label="10 опыта"><TrendingUp size={14} aria-hidden="true" />10</span>.</p>
+        <p>Побей рекорд локации среди всех игроков – получишь <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-star)' }} aria-label="10 звёзд"><Star size={14} fill="currentColor" aria-hidden="true" />10</span> и <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-experience)' }} aria-label="30 опыта"><TrendingUp size={14} aria-hidden="true" />30</span>.</p>
+        <p>Награда начисляется за каждое улучшение. Первый личный результат и повтор рекорда награды не дают. Первый результат в пустом рейтинге тоже без бонуса.</p>
+      </div>
       <p className="modal-copy bonus-records-modal__explanation">{explanation}</p>
       <div className="experience-rating__viewport" ref={scrollRef}>
         {query.isLoading ? (

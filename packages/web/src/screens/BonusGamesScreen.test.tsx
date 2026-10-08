@@ -1880,15 +1880,16 @@ describe('BonusGamesScreen', () => {
   });
 });
 
-it('keeps production challenges closed with a development toast', async () => {
+it('opens the challenges section but blocks unreleased locations in production', async () => {
   vi.stubEnv('DEV', false);
   localStorage.clear();
-  mockCatalog([card({ title: 'Закрытый Пляж', skill_code: 'challenge' })]);
+  mockCatalog([card({ title: 'Закрытый курорт', slug: 'challenge-ski-resort', skill_code: 'challenge', state: 'sequence_locked' })]);
   try {
     renderCatalog();
     fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
-    expect(await screen.findByText('Раздел в разработке')).toBeInTheDocument();
-    expect(screen.queryByRole('heading', { name: 'Закрытый Пляж' })).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Закрыта' }));
+    expect(await screen.findByText('Локация в разработке')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   } finally { vi.unstubAllEnvs(); }
 });
 
@@ -1980,4 +1981,28 @@ it('sends the selected level and refreshes a stale server lock without retrying 
     expect(JSON.parse(posts[0]![1]!.body as string)).toEqual({ level: 2 });
     await waitFor(() => expect(vi.mocked(globalThis.fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/bonus-games')).length).toBeGreaterThan(readsBeforeStart));
   } finally { vi.unstubAllEnvs(); }
+});
+
+it('opens the released beach preview in a production build', async () => {
+  vi.stubEnv('DEV', false);
+  localStorage.clear();
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge' })]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('Локация в разработке')).not.toBeInTheDocument();
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it.each(['Меткость', 'Выносливость', 'Испытания'])('keeps %s inaccessible to beginners', async name => {
+  useAuthStore.setState({ user: { id: 'beginner', displayName: 'Новичок', competitionLevel: 'beginner' } });
+  useDailyStore.setState({ data: { lifetime_total_goals: 0, amateur_unlock_goals_required: 300 } as DailyStateResponse });
+  localStorage.clear();
+  mockCatalog([card({})]);
+  renderCatalog();
+  fireEvent.click(await screen.findByRole('tab', { name }));
+  expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
+  expect(useAmateurAccessToastStore.getState().toast).not.toBeNull();
 });
