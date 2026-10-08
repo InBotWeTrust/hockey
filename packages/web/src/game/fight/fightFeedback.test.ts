@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   advanceFight,
   createFightState,
-  DEFAULT_FIGHT_RULES,
+  DEFAULT_FIGHT_RULES as RESPONSIVE_RULES,
   type FightCommand,
 } from '@hockey/game-core';
 import { FightFeedbackTracker } from './fightFeedback.js';
+const DEFAULT_FIGHT_RULES = {...RESPONSIVE_RULES,version:2,initialHp:4,mainDurationMs:15000,windupMs:500,attackRecoveryMs:300};
 const command = (
   player: 0 | 1,
   kind: 'attack' | 'block',

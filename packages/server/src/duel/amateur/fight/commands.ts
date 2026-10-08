@@ -11,6 +11,7 @@ const commandBase = {
   seq: z.number().int().positive().max(2147483647),
 };
 export const fightActionSchema = z.discriminatedUnion('kind', [
+  z.object({...commandBase, kind:z.literal('input'), input:z.object({direction:z.union([z.literal(-1),z.literal(0),z.literal(1)]),crouch:z.boolean(),guard:z.boolean()}).strict()}).strict(),
   z
     .object({ ...commandBase, kind: z.enum(['attack', 'block']), zone: z.enum(['head', 'body']) })
     .strict(),
@@ -47,11 +48,11 @@ export async function admitFightCommand(
       duplicate.payload.seq !== body.seq ||
       duplicate.payload.phaseId !== body.phaseId ||
       duplicate.payload.kind !== body.kind ||
-      (duplicate.payload.kind === 'move' && body.kind === 'move'
-        ? duplicate.payload.direction !== body.direction
-        : duplicate.payload.kind !== 'move' &&
-          body.kind !== 'move' &&
-          duplicate.payload.zone !== body.zone)
+      (duplicate.payload.kind === 'input' && body.kind === 'input'
+        ? duplicate.payload.input.direction !== body.input.direction || duplicate.payload.input.crouch !== body.input.crouch || duplicate.payload.input.guard !== body.input.guard
+        : duplicate.payload.kind === 'move' && body.kind === 'move'
+          ? duplicate.payload.direction !== body.direction
+          : 'zone' in duplicate.payload && 'zone' in body && duplicate.payload.zone !== body.zone)
     )
       denyFight('duplicate_payload_mismatch');
     return duplicate.ack;
@@ -63,13 +64,14 @@ export async function admitFightCommand(
     ctx.nowMs < state.phaseStartedAtMs
   )
     denyFight('not_started');
+  if ((body.kind === 'input' && state.rules.version < 3) || (state.rules.version >= 3 && (body.kind === 'move' || body.kind === 'block'))) denyFight('unsupported_action');
   if (body.kind === 'move' && state.rules.version < 2) denyFight('unsupported_action');
   if (body.phaseId !== state.phaseId) denyFight('old_phase');
   if (body.seq !== state.lastSeq[player] + 1) denyFight('sequence');
   const effectiveAtMs = ctx.nowMs - fight.compensation_ms[player];
   if (
     effectiveAtMs < state.phaseStartedAtMs ||
-    effectiveAtMs < state.finalizedThroughMs ||
+    (state.rules.version >= 3 ? effectiveAtMs <= state.finalizedThroughMs : effectiveAtMs < state.finalizedThroughMs) ||
     effectiveAtMs >= state.deadlineMs
   )
     denyFight('late_action');
@@ -77,7 +79,8 @@ export async function admitFightCommand(
     player,
     phaseId: body.phaseId,
     seq: body.seq,
-    ...(body.kind === 'move'
+    actionId: body.actionId,
+    ...(body.kind === 'input' ? { kind:body.kind,input:body.input } : body.kind === 'move'
       ? { kind: body.kind, direction: body.direction }
       : { kind: body.kind, zone: body.zone }),
     effectiveAtMs,

@@ -7441,7 +7441,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       const started = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
       expect(started.statusCode).toBe(200);
       expect(started.json().fight.status).toBe('starting');
-      expect(started.json().fight.engine_state.hp).toEqual([4,4]);
+      expect(started.json().fight.engine_state.hp).toEqual([5,5]);
       expect(started.json().match.fight_paused_at).not.toBeNull();
       const repeated = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
       expect(repeated.json().fight.starts_at).toBe(started.json().fight.starts_at);
@@ -7524,12 +7524,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect(participants.every(p=>p.period_paused_at===null&&p.recovery_until===null)).toBe(true);
     });
 
-    it('fight acceptance creates a shared future start and four HP', async () => {
+    it('fight acceptance creates a shared future start and five HP', async () => {
       const id = await preparedFightMatch(); const challenge = await fightChallenge(id);
       expect(challenge.statusCode,JSON.stringify(challenge.json().error)).toBe(200);
       const response=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:challenge.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
       expect(response.statusCode).toBe(200); expect(response.json().fight.status).toBe('starting');
-      expect(response.json().fight.engine_state.hp).toEqual([4,4]);
+      expect(response.json().fight.engine_state.hp).toEqual([5,5]);
       expect(Date.parse(response.json().fight.starts_at)-Date.now()).toBeGreaterThan(500);
     });
 
@@ -7557,7 +7557,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(token),payload:{fightId,requestId:randomUUID(),decision:'accept'}});
         expect(accepted.statusCode,JSON.stringify(accepted.json().error)).toBe(200);
         const engine=accepted.json().fight.engine_state;
-        engine.hp=[2,1]; engine.phaseStartedAtMs=Date.now()-16000; engine.deadlineMs=Date.now()-1000; engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
+        engine.hp=[2,1]; if(engine.responsive)engine.responsive.initialHp=[2,1]; engine.phaseStartedAtMs=Date.now()-16000; engine.deadlineMs=Date.now()-1000; engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
         await pool.query("update amateur_duel_fight set status='fighting',starts_at=now()-interval '16 seconds',engine_state=$2 where id=$1",[fightId,JSON.stringify(engine)]);
         const state=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
         expect(state.json().fight.status).toBe('resolved');
@@ -7588,7 +7588,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       const id=await preparedFightMatch(); const c=await fightChallenge(id); expect(c.statusCode).toBe(200);
       const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
       expect(accepted.statusCode).toBe(200);
-      const engine=accepted.json().fight.engine_state; engine.hp=[2,1]; engine.phaseStartedAtMs=Date.now()-16000; engine.deadlineMs=Date.now()-1000; engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
+      const engine=accepted.json().fight.engine_state; engine.hp=[2,1]; if(engine.responsive)engine.responsive.initialHp=[2,1]; engine.phaseStartedAtMs=Date.now()-16000; engine.deadlineMs=Date.now()-1000; engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
       await pool.query("update amateur_duel_fight set status='fighting',starts_at=now()-interval '16 seconds',engine_state=$2 where match_id=$1",[id,JSON.stringify(engine)]);
       const before=(await pool.query('select id,xp,experience from users where id=any($1::uuid[]) order by id',[[userA,userB]])).rows;
       for(let i=0;i<2;i++) {
@@ -7704,17 +7704,17 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         await vi.waitFor(()=>{if(connectionError) throw connectionError; expect(messages.some(m=>m.type==='connection:ready')).toBe(true);},{timeout:3000});
         socket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000004',phaseId:0,seq:1,kind:'attack',zone:'head'}));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.accepted===true)).toBe(true),{timeout:2000});
-        const moving={type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000005',phaseId:0,seq:2,kind:'move',direction:-1};
+        const moving={type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000005',phaseId:0,seq:2,kind:'input',input:{direction:-1,crouch:false,guard:false}};
         socket.send(JSON.stringify(moving));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.seq===2&&m.ack.accepted===true)).toBe(true),{timeout:2000});
         const command=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and seq=2',[c.json().fight.id])).rows[0].payload;
-        expect(command).toMatchObject({kind:'move',direction:-1,player:0});
+        expect(command).toMatchObject({kind:'input',input:{direction:-1,crouch:false,guard:false},player:0});
         socket.send(JSON.stringify(moving));
         await vi.waitFor(()=>expect(messages.filter(m=>m.type==='fight:ack'&&m.ack?.seq===2)).toHaveLength(2),{timeout:2000});
         expect((await pool.query('select count(*)::int as n from amateur_duel_fight_command where fight_id=$1 and seq=2',[c.json().fight.id])).rows[0].n).toBe(1);
-        socket.send(JSON.stringify({...moving,direction:1}));
+        socket.send(JSON.stringify({...moving,input:{direction:1,crouch:false,guard:false}}));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:error')).toBe(true),{timeout:2000});
-        socket.send(JSON.stringify({...moving,actionId:'00000000-0000-4000-8000-000000000006',seq:3,direction:0}));
+        socket.send(JSON.stringify({...moving,actionId:'00000000-0000-4000-8000-000000000006',seq:3,input:{direction:0,crouch:false,guard:false}}));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.seq===3&&m.ack.accepted===true)).toBe(true),{timeout:2000});
 
       } finally {socket.close();}

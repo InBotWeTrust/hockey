@@ -1,6 +1,6 @@
 import { render, waitFor } from '@testing-library/react';
 import { describe, it, expect, vi } from 'vitest';
-import { createFightState, DEFAULT_FIGHT_RULES } from '@hockey/game-core';
+import { createFightState, DEFAULT_FIGHT_RULES as RESPONSIVE_RULES } from '@hockey/game-core';
 import { FightView } from './FightView.js';
 const { app } = vi.hoisted(() => {
   const app = {
@@ -16,6 +16,7 @@ const { app } = vi.hoisted(() => {
   };
   return { app };
 });
+const DEFAULT_FIGHT_RULES = {...RESPONSIVE_RULES,version:2,initialHp:4,mainDurationMs:15000,windupMs:500,attackRecoveryMs:300};
 vi.mock('pixi.js', () => ({ Assets: { load: () => Promise.resolve([]) } }));
 vi.mock('./Fighter.js', () => ({
   FIGHT_ASSETS: [],

@@ -442,3 +442,57 @@
 .fight-medical-timer .game-scoreboard__value {
   font-size: 72px;
 }
+
+.fight-responsive-controls { display:grid; grid-template-columns:1fr 1fr; gap:20px; padding-top:12px; flex:0 0 auto; }
+.fight-control-left { display:grid; grid-template-columns:1fr 1fr; gap:8px; justify-items:center; align-content:center; }
+.fight-control-right { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:center; justify-items:center; }
+.fight-held.btn.btn--cta { width:100%; aspect-ratio:1; min-height:0; border-radius:50%; padding:0; font-size:13px; touch-action:none; user-select:none; }
+.fight-control-left .fight-held.btn.btn--cta { width:min(100%,54px); font-size:27px; }
+.fight-control-right .fight-held { max-width:88px; }
+.fight-held--down { grid-column:1 / -1; justify-self:center; }
+.fight-held.btn.btn--cta[aria-pressed="true"] { transform:scale(.96); background:rgba(94,157,196,.82); border-color:rgba(202,237,255,.9); opacity:1; }
+.fight-guard-pips { display:flex; gap:4px; margin-top:4px; }
+.fight-guard-pips i { width:10px; height:3px; border-radius:2px; background:rgba(255,255,255,.22); }
+.fight-guard-pips i.is-filled { background:#a8dbf3; }
+.fight-scene--responsive .fight-health__pips i { box-shadow:none; }
+@media (max-width:360px) { .fight-responsive-controls { gap:12px; }  }
+
+.fight-guard-reserve { display:flex; align-items:center; justify-content:center; gap:4px; margin-top:5px; color:#a8dbf3; font-size:12px; line-height:14px; font-weight:700; }
+.fight-guard-reserve.is-empty { color:#ff9b91; }
+
+.fight-scene--responsive .fight-health { min-width:0; }
+.fight-player-identity { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; min-width:0; }
+.fight-player-identity > :first-child { flex-shrink:0; }
+.fight-player-identity .fight-health__name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; margin:0; }
+.fight-reserve { display:flex; align-items:center; justify-content:center; gap:4px; margin-top:5px; }
+.fight-reserve--health { color:#ff858c; }
+.fight-reserve--guard { color:#a8dbf3; }
+.fight-reserve span { display:flex; }
+.fight-reserve .is-filled svg { fill:currentColor; }
+.fight-reserve .is-empty { opacity:.28; }
+.fight-reserve .is-changing { animation:fight-reserve-change 300ms ease-out; }
+@keyframes fight-reserve-change { 0% { transform:scale(1.3); opacity:1; } 50% { transform:scale(.85); } 100% { transform:scale(1); } }
+.fight-responsive-flash { position:absolute; width:38px; height:38px; background:#ffd47c; clip-path:polygon(50% 0,60% 32%,85% 15%,68% 40%,100% 50%,68% 60%,85% 85%,60% 68%,50% 100%,40% 68%,15% 85%,32% 60%,0 50%,32% 40%,15% 15%,40% 32%); }
+.fight-responsive-flash[data-kind="guard"] { background:#8bd9ff; }
+@media (prefers-reduced-motion:reduce) { .fight-reserve .is-changing { animation:none; } }
+
+.fight-health--0 .fight-player-identity, .fight-health--0 .fight-reserve { justify-content:flex-start; }
+.fight-health--1 .fight-player-identity, .fight-health--1 .fight-reserve { justify-content:flex-end; }
+.fight-health--1 .fight-player-identity { flex-direction:row-reverse; }
+.fight-health--0 .fight-health__name { text-align:left; }
+.fight-health--1 .fight-health__name { text-align:right; }
+.fight-reserve--guard .is-filled svg { fill:rgba(168,219,243,.28); stroke:#a8dbf3; stroke-width:1.8; }
+
+.fight-scene--responsive .fight-reserve { width:100%; }
+
+.fight-scene--responsive .fight-reserve { gap:2px; }
+
+/* Health and guard share icon sizes and align to the outside of each player section. */
+.fight-scene--responsive .fight-health { gap:3px; }
+.fight-scene--responsive .fight-reserve { width:min(100%,116px); margin-top:0; gap:4px; }
+.fight-scene--responsive .fight-health--0 .fight-reserve { align-self:flex-start; }
+.fight-scene--responsive .fight-health--1 .fight-reserve { align-self:flex-end; }
+.fight-scene--responsive .fight-reserve > span { width:calc((100% - 16px) / 5); flex-shrink:0; }
+.fight-scene--responsive .fight-reserve svg { width:100%; height:auto; }
+.fight-scene--responsive .fight-health--0 .fight-reserve--guard { justify-content:flex-start; }
+.fight-scene--responsive .fight-health--1 .fight-reserve--guard { justify-content:flex-end; }

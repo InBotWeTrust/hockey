@@ -27,3 +27,7 @@ describe('one visual strike per confirmed contact', () => {
     expect(fightVisualPose(guard, 1400)).toBe('idle');
   });
 });
+
+it('responsive strike is visible after windup without server confirmation', () => {
+  expect(fightVisualPose(action, 1200, 3)).toBe('attack_head');
+});

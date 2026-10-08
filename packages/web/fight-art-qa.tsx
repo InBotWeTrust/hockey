@@ -8,6 +8,7 @@ import {
   createFightState,
   DEFAULT_FIGHT_RULES,
   type FightCommand,
+  type FightHeldInput,
 } from '@hockey/game-core';
 import './src/app/global.css';
 import './src/app/design-system.css';
@@ -23,13 +24,14 @@ function Scene() {
           Extract<FightCommand, { kind: 'move' }>,
           'player' | 'phaseId' | 'seq' | 'effectiveAtMs'
         >
+      | {kind:'input';input:FightHeldInput}
       | Omit<
           Extract<FightCommand, { kind: 'attack' | 'block' }>,
           'player' | 'phaseId' | 'seq' | 'effectiveAtMs'
         >,
     side = player,
   ) => {
-    const time = Date.now();
+    const time = Math.max(Date.now(), fight.current.finalizedThroughMs + 1);
     const input = {
       ...command,
       player: side,
@@ -56,14 +58,15 @@ function Scene() {
         ['fighting', 'sudden_death'].includes(fight.current.status)
       ) {
         const side = player === 0 ? 1 : 0;
-        send(
+        send({kind:'input',input:{direction:0,crouch:mode.endsWith('body'),guard:mode.startsWith('block')}},side);
+        if(!mode.startsWith('block')) send(
           {
             kind: mode.startsWith('block') ? 'block' : 'attack',
             zone: mode.endsWith('body') ? 'body' : 'head',
           },
           side,
         );
-        botAt.current = time + 1800;
+        botAt.current = time + (mode.startsWith('block') ? 150 : 1800);
       }
       fight.current = advanceFight(
         fight.current,
@@ -94,6 +97,8 @@ function Scene() {
           player={player}
           nowMs={now}
           onAction={(kind, zone) => send({ kind, zone })}
+          onInput={(input) => send({kind:'input',input})}
+          onAttack={() => {const id=crypto.randomUUID();return send({kind:'attack',zone:'head',actionId:id})?id:false;}}
           onMove={(direction) => send({ kind: 'move', direction })}
         />
         {fight.current.status === 'resolved' && now < (fight.current.endedAtMs ?? now) + 2700 && (

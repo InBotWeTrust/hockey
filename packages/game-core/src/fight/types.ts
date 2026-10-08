@@ -19,8 +19,10 @@ export interface FightActionCommand {
   effectiveAtMs: number;
   kind: 'attack' | 'block';
   zone: FightZone;
+  actionId?: string;
 }
 export interface FightMoveCommand {
+  actionId?: string;
   player: FightPlayer;
   phaseId: number;
   seq: number;
@@ -28,15 +30,19 @@ export interface FightMoveCommand {
   kind: 'move';
   direction: -1 | 0 | 1;
 }
-export type FightCommand = FightActionCommand | FightMoveCommand;
+export type FightCommand = FightActionCommand | FightMoveCommand | FightInputCommand;
 export interface FightAction extends FightActionCommand {
-  outcome?: 'hit' | 'blocked' | 'miss';
+  actionId?: string;
+  crouch?: boolean;
+  cancelledAtMs?: number;
+  outcome?: 'hit' | 'blocked' | 'miss' | 'cancelled';
   activeAtMs: number;
   activeUntilMs: number;
   busyUntilMs: number;
   resolved: boolean;
 }
 export interface FightState {
+  responsive?: FightResponsiveState;
   endedAtMs?: number;
   moves?: FightMoveCommand[];
   rules: FightRules;
@@ -63,4 +69,25 @@ export type FightEvent =
 export interface FightTransition {
   state: FightState;
   events: FightEvent[];
+}
+
+export interface FightHeldInput { direction: -1 | 0 | 1; crouch: boolean; guard: boolean }
+export interface FightInputCommand {
+  player: FightPlayer; phaseId: number; seq: number; effectiveAtMs: number;
+  kind: 'input'; input: FightHeldInput; actionId?: string;
+}
+export interface FightPosture extends FightHeldInput {
+  guardUnits: number; readyAtMs: number; hitUntilMs: number; guardBreakUntilMs: number;
+}
+export interface FightFrame {
+  atMs: number; players: [FightPosture, FightPosture]; positions: [number,number];
+  leaseUntil: [number,number]; releasedAt: [number|null,number|null]; regenerated: [number,number];
+}
+export interface FightContact {
+  id: string; actionId: string; atMs: number; attacker: FightPlayer; defender: FightPlayer;
+  zone: FightZone; outcome: 'hit' | 'blocked' | 'miss'; guardBroken: boolean;
+}
+export interface FightResponsiveState {
+  commands: FightCommand[]; initialHp: [number,number]; timeline: FightFrame[];
+  contacts: FightContact[];
 }

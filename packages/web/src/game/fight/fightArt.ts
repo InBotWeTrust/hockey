@@ -10,6 +10,9 @@ export const FIGHT_ART = {
   },
   // Pose-specific landmarks in the normalized canvas, relative to the skate anchor.
   landmarks: {
+    crouch: { head:{x:27,y:-259},body:{x:6,y:-175},contact:{x:27,y:-259} },
+    crouch_block: { head:{x:25,y:-252},body:{x:5,y:-173},contact:{x:25,y:-252} },
+    crouch_attack: { head:{x:22,y:-257},body:{x:5,y:-175},contact:{x:170,y:-168} },
     idle: { head: { x: 34, y: -344 }, body: { x: 15, y: -222 }, contact: { x: 34, y: -344 } },
     attack_head: {
       head: { x: 11, y: -346 },
@@ -27,6 +30,9 @@ export const FIGHT_ART = {
     lose: { head: { x: 24, y: -224 }, body: { x: -12, y: -137 }, contact: { x: 24, y: -224 } },
   },
   frames: {
+    crouch: {x:0,y:0,width:384,height:512,offsetX:0,offsetY:0},
+    crouch_block: {x:384,y:0,width:384,height:512,offsetX:0,offsetY:0},
+    crouch_attack: {x:768,y:0,width:384,height:512,offsetX:0,offsetY:0},
     idle: {
       x: 62,
       y: 76,
