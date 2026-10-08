@@ -48,8 +48,14 @@ interface AmateurDuelStoreState {
   } | null>;
 }
 
+function retainFightProgress(current:AmateurDuelMatchState|null,incoming:AmateurDuelMatchState):AmateurDuelMatchState {
+  return current?.id===incoming.id && current.fight && current.fight.id===incoming.fight?.id &&
+    Number(current.fight?.revision??0)>Number(incoming.fight?.revision??0)
+    ? {...incoming,fight:current.fight} : incoming;
+}
+
 function retainNewerMatch(current:AmateurDuelMatchState|null,incoming:AmateurDuelMatchState):AmateurDuelMatchState {
-  return current?.id===incoming.id && (current.state_revision??0)>(incoming.state_revision??0)?current:incoming;
+  return current?.id===incoming.id && (current.state_revision??0)>(incoming.state_revision??0)?current:retainFightProgress(current,incoming);
 }
 
 function applyShotAcknowledgement(
@@ -158,6 +164,7 @@ function reconcilePolledMatch(
   polled: AmateurDuelMatchState,
 ): AmateurDuelMatchState {
   if (current.id !== polled.id) return current;
+  polled=retainFightProgress(current,polled);
   if ((current.state_revision ?? 0) > (polled.state_revision ?? 0)) return current;
   if ((polled.state_revision ?? 0) > (current.state_revision ?? 0)) return polled;
   const statusDelta = MATCH_STATUS_ORDER[polled.status] - MATCH_STATUS_ORDER[current.status];
@@ -314,7 +321,12 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   applyState: (next) => {
     const current=get().match;
     if(current?.id===next.id&&(current.state_revision??0)>(next.state_revision??0)) return;
-    set({match:next,loading:false,error:null});
+    let incoming=retainFightProgress(current,next);
+    if(current?.id===next.id && (current.state_revision??0)===(next.state_revision??0) && current.opponent && next.opponent) {
+      if(compareParticipantProgress(next.me,current.me)<0) incoming={...current,...newerServerTime(current,next),...(incoming.fight!==undefined?{fight:incoming.fight}:{})};
+      else if(compareParticipantProgress(next.opponent,current.opponent)<0) incoming={...incoming,opponent:current.opponent,opponent_recent_periods:current.opponent_recent_periods};
+    }
+    set({match:incoming,loading:false,error:null});
   },
 
   optimisticAddShot: (claimed) => {
@@ -393,7 +405,12 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       return {
         serverResult: acknowledgement.server_result,
         state: next,
-        isCurrent: () => get().match === resolvedAgainst,
+        isCurrent: () => {
+          const live=get().match;
+          return live?.id===current.id && live.me.current_period===resolvedAgainst.me.current_period &&
+            live.me.state===resolvedAgainst.me.state &&
+            live.current_period_shots<=Math.max(resolvedAgainst.current_period_shots,shotIndex);
+        },
       };
     } catch (err) {
       if (

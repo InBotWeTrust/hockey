@@ -4658,6 +4658,19 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 }> = async (app, opts) => {
   const fightAdapter: FightDuelAdapter = {
     transact: work => withTransaction(app, work),
+    // The authenticated socket already owns this immutable participant subscription.
+    // Read one committed fight row; avoid gameplay locks and inventory/score assembly per frame.
+    liveSnapshot: async (matchId, userId) => {
+      const { rows } = await app.pg.query(
+        `select f.* from amateur_duel_fight f join amateur_duel_match m on m.id=f.match_id
+         where m.id=$1 and m.status='active' and m.fight_paused_at is not null
+           and (m.challenger_user_id=$2 or m.opponent_user_id=$2)
+         order by f.offered_at desc,f.id desc limit 1`, [matchId,userId],
+      );
+      const fight=rows[0];
+      return fight && ['starting','fighting','sudden_death'].includes(fight.status)
+        ? {type:'fight:snapshot',matchId,fight,serverNow:new Date().toISOString()} : null;
+    },
     snapshot: async (client, matchId, userId) => buildMatchStateDto(client, await fetchMatchForUpdate(client, matchId), userId, new Date()),
     prepare: async (client, matchId, userId) => {
       await lockMatchGameplay(client, matchId);

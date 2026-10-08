@@ -19,6 +19,7 @@ export function registerFightSocket(
       const protocols = String(req.headers['sec-websocket-protocol'] ?? '')
         .split(',')
         .map((s) => s.trim());
+      const compactSnapshots=protocols.includes('hockey-fight-v2');
       const bearer = String(req.headers.authorization ?? '');
       const token = bearer.startsWith('Bearer ')
         ? bearer.slice(7)
@@ -59,6 +60,21 @@ export function registerFightSocket(
           [matchId, userId, connectionId, compensation],
         );
       };
+      let snapshotBusy = false;
+      let snapshotDirty = false;
+      const publishSnapshot = async () => {
+        snapshotDirty = true;
+        if (snapshotBusy || closed) return;
+        snapshotBusy = true;
+        try {
+          while (snapshotDirty && !closed) {
+            snapshotDirty = false;
+            const live = compactSnapshots ? await adapter.liveSnapshot?.(matchId, userId) : null;
+            if (live) send(live);
+            else send({ type: 'duel:snapshot', match: await snapshot() });
+          }
+        } finally { snapshotBusy = false; }
+      };
       let off: (() => Promise<void>) | null = null;
       const cleanup = () => {
         closed = true;
@@ -89,6 +105,7 @@ export function registerFightSocket(
         }
         if (++messages > 16 || raw.toString().length > 1024) {
           send({ type: 'fight:error', reason: 'rate_limit' });
+          void publishSnapshot().catch(() => undefined);
           return;
         }
         serial = serial
@@ -98,12 +115,13 @@ export function registerFightSocket(
               const ctx = await adapter.prepare(c, matchId, userId);
               await advancePersistedFight(c, ctx);
               const ack = await admitFightCommand(c, ctx, userId, body);
-              return { ack, match: await adapter.snapshot(c, matchId, userId) };
+              return { ack };
             });
             send({ type: 'fight:ack', actionId: body.actionId, ack: result.ack });
-            send({ type: 'duel:snapshot', match: result.match });
+            void publishSnapshot().catch(() => undefined);
           })
           .catch((error) => {
+            app.log.warn({matchId, reason: error instanceof AppError ? ((error.details as {reason?:string})?.reason ?? error.code) : 'bad_request'}, 'duel fight command rejected');
             send({
               type: 'fight:error',
               reason:
@@ -111,13 +129,12 @@ export function registerFightSocket(
                   ? ((error.details as { reason?: string })?.reason ?? error.code)
                   : 'bad_request',
             });
+            void publishSnapshot().catch(() => undefined);
           });
       });
       try {
         off = await app.realtime.subscribe(`duel:fight:${matchId}`, () => {
-          void snapshot()
-            .then((match) => send({ type: 'duel:snapshot', match }))
-            .catch(() => undefined);
+          void publishSnapshot().catch(() => undefined);
         });
         if (closed) {
           await off();
