@@ -22,6 +22,7 @@ export interface FightActionCommand {
   actionId?: string;
 }
 export interface FightMoveCommand {
+  actionId?: string;
   player: FightPlayer;
   phaseId: number;
   seq: number;

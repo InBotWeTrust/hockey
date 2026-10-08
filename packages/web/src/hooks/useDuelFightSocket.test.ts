@@ -56,9 +56,10 @@ afterEach(() => {
 describe('fight socket recovery', () => {
   it('replays the same pending action after reconnect', () => {
     vi.useFakeTimers();
+    const legacy=snapshot(); legacy.fight!.engine_state!.rules.version=2;useAmateurDuelStore.setState({match:legacy});
     const hook = renderHook(() => useDuelFightSocket('match', true));
     const first = Socket.instances[0]!;
-    first.message({ type: 'duel:snapshot', match: snapshot() });
+    first.message({ type: 'duel:snapshot', match: legacy });
     first.message({ type: 'connection:ready' });
     act(() => {
       expect(hook.result.current.sendAction('attack', 'head')).toBe(true);
@@ -67,7 +68,7 @@ describe('fight socket recovery', () => {
     act(() => first.close());
     act(() => vi.advanceTimersByTime(1000));
     const second = Socket.instances[1]!;
-    second.message({ type: 'duel:snapshot', match: snapshot() });
+    second.message({ type: 'duel:snapshot', match: legacy });
     second.message({ type: 'connection:ready' });
     expect(second.sent).toEqual([payload]);
     hook.unmount();
@@ -96,4 +97,14 @@ it('starts a new sequence and drops pending inputs for the second fight', () => 
  expect(JSON.parse(socket.sent[1]!).seq).toBe(1);
  expect(JSON.parse(socket.sent[1]!).fightId).toBe('second');
  hook.unmount();
+});
+it('v3 renews held input and reconnects neutral without replaying attacks',()=>{
+ vi.useFakeTimers();const hook=renderHook(()=>useDuelFightSocket('match',true));const first=Socket.instances[0]!;
+ first.message({type:'duel:snapshot',match:snapshot()});first.message({type:'connection:ready'});
+ act(()=>hook.result.current.sendInput({direction:0,crouch:true,guard:true}));
+ act(()=>vi.advanceTimersByTime(300));expect(first.sent.filter(p=>JSON.parse(p).kind==='input')).toHaveLength(3);
+ act(()=>hook.result.current.sendAttack());act(()=>first.close());act(()=>vi.advanceTimersByTime(1000));
+ const second=Socket.instances[1]!;second.message({type:'duel:snapshot',match:snapshot(2,0,4)});second.message({type:'connection:ready'});
+ expect(second.sent.map(p=>JSON.parse(p).kind)).toEqual(['input']);expect(JSON.parse(second.sent[0]!).input).toEqual({direction:0,crouch:false,guard:false});
+ hook.unmount(); const count=second.sent.length;act(()=>vi.advanceTimersByTime(1000));expect(second.sent).toHaveLength(count);
 });

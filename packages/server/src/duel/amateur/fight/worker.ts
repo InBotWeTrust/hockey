@@ -45,9 +45,12 @@ export function startFightWorker(
                     a.kind === 'attack' &&
                     !a.resolved &&
                     now >=
-                      Math.min(a.activeUntilMs, state.deadlineMs) + state.rules.deliveryGraceMs,
+                      Math.min(state.rules.version >= 3 ? a.activeAtMs : a.activeUntilMs, state.deadlineMs) + state.rules.deliveryGraceMs,
                 ));
-      if (!due && now - (checked.get(row.match_id) ?? 0) < 1000) continue;
+      const frame=state?.responsive?.timeline.at(-1);
+      const responsiveDue=state?.rules.version !== undefined && state.rules.version>=3 && frame &&
+        [...frame.leaseUntil,...frame.players.map(p=>p.readyAtMs)].some(t=> t>=state.phaseStartedAtMs && now>=t+state.rules.deliveryGraceMs && (checked.get(row.match_id)??0)<t+state.rules.deliveryGraceMs);
+      if (!due && !responsiveDue && now - (checked.get(row.match_id) ?? 0) < 1000) continue;
       checked.set(row.match_id, now);
       await adapter
         .transact(async (c) => {
