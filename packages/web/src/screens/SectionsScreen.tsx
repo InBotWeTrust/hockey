@@ -286,6 +286,14 @@ export function SectionsScreen(): JSX.Element {
               artworkSrc={SECTION_ARTWORK.shop}
               onClick={() => navigate('/inventory')}
             />
+            <QuickSectionCard
+              title="Бар"
+              meta="Трансляции и обсуждения"
+              tone="default"
+              size="wide"
+              artworkSrc={SECTION_ARTWORK.bar}
+              onClick={() => navigate('/bar')}
+            />
           </div>
         </section>
 
@@ -300,13 +308,6 @@ export function SectionsScreen(): JSX.Element {
               tone="default"
               artworkSrc={SECTION_ARTWORK.bonusGames}
               onClick={() => navigate('/bonus-games')}
-            />
-            <SectionCard
-              title="Бар"
-              supportingText="Трансляции и обсуждения"
-              tone="default"
-              artworkSrc={SECTION_ARTWORK.bar}
-              onClick={() => navigate('/bar')}
             />
             <SectionCard
               title="Любители"
