@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for challenge level flags after fight movement', () => {
-    expect(GAME_CORE_VERSION).toBe(79);
+  it('is bumped for responsive fight rules', () => {
+    expect(GAME_CORE_VERSION).toBe(80);
   });
 });
