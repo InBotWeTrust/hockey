@@ -268,6 +268,7 @@ export interface AmateurDuelMatch {
 }
 
 export interface AmateurDuelFight {
+  revision?:number|string;
   forced?:boolean;
   id:string; initiator_user_id:string; status:string; response_deadline_at:string;
   starts_at:string|null; resolved_at:string|null; winner_user_id:string|null; engine_state:FightState|null;

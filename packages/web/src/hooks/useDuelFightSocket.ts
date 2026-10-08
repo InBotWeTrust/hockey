@@ -8,6 +8,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
   const token = useAuthStore((s) => s.accessToken);
   const socketRef = useRef<WebSocket | null>(null);
   const sequence = useRef(0);
+  const recovering = useRef(false);
   const desiredInput = useRef<FightHeldInput>(neutralFightInput());
   const reconnecting = useRef(false);
   const pending = useRef(new Map<string, string>());
@@ -22,7 +23,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
       if (disposed) return;
       const socket = new WebSocket(
         `${getWebSocketBaseUrl()}/api/duel/amateur/matches/${matchId}/ws`,
-        ['hockey-fight-v1', `bearer.${token}`],
+        ['hockey-fight-v2', `bearer.${token}`],
       );
       socketRef.current = socket;
       socket.onmessage = (event) => {
@@ -31,11 +32,19 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
           const message = JSON.parse(String(event.data)) as {
             type: string;
             match?: AmateurDuelMatchState;
+            matchId?: string;
+            fight?: AmateurDuelMatchState['fight'];
+            serverNow?: string;
             actionId?: string;
             ack?: { accepted: boolean; seq: number };
+            reason?: string;
           };
           if (message.type === 'connection:ready') {
             setConnected(true);
+            if (recovering.current && pending.current.size===0) {
+              const match=useAmateurDuelStore.getState().match;
+              if (match?.id===matchId) { sequence.current=match.fight?.engine_state?.lastSeq[match.me.side==='challenger'?0:1]??0; recovering.current=false; }
+            }
             setError(null);
             if (reconnecting.current && (useAmateurDuelStore.getState().match?.fight?.engine_state?.rules.version ?? 0) >= 3) {
               reconnecting.current=false;
@@ -43,6 +52,20 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
               socket.send(JSON.stringify({type:'fight:action',fightId:fight.id,phaseId:fight.engine_state!.phaseId,seq:++sequence.current,actionId:crypto.randomUUID(),kind:'input',input:neutralFightInput()}));
             }
             for (const payload of pending.current.values()) socket.send(payload);
+          }
+          if (message.type === 'fight:snapshot' && message.matchId === matchId && message.fight) {
+            const current=useAmateurDuelStore.getState().match;
+            const fight=message.fight;
+            if (current?.id!==matchId || fight.id!==current.fight?.id || Number(fight.revision??0)<Number(current.fight.revision??0)) return;
+            const player=current.me.side==='challenger'?0:1;
+            const state=fight.engine_state;
+            if(state?.phaseId!==current.fight.engine_state?.phaseId) {
+              pending.current.clear();desiredInput.current=neutralFightInput();recovering.current=true;
+            }
+            sequence.current=recovering.current?(state?.lastSeq[player]??0):Math.max(sequence.current,state?.lastSeq[player]??0);
+            recovering.current=false;
+            useAmateurDuelStore.setState({match:{...current,fight,...(message.serverNow && Date.parse(message.serverNow)>=Date.parse(current.server_now) ? {server_now:message.serverNow,received_at_performance_ms:performance.now()} : {})}});
+            setError(null);
           }
           if (message.type === 'duel:snapshot' && message.match) {
             const next = { ...message.match, received_at_performance_ms: performance.now() };
@@ -53,6 +76,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
               (current.state_revision ?? 0) > (next.state_revision ?? 0)
             )
               return;
+            if(current?.fight && current.fight.id===next.fight?.id && Number(current?.fight?.revision??0)>Number(next.fight?.revision??0)) next.fight=current!.fight;
             const state = next.fight?.engine_state;
             const player = next.me.side === 'challenger' ? 0 : 1;
             if (
@@ -60,12 +84,14 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
               next.fight?.id !== current?.fight?.id ||
               state.phaseId !== current?.fight?.engine_state?.phaseId
             )
-              { pending.current.clear(); desiredInput.current=neutralFightInput(); }
+              { pending.current.clear(); desiredInput.current=neutralFightInput(); recovering.current=true; }
             sequence.current =
-              pending.current.size === 0
+              recovering.current
                 ? (state?.lastSeq[player] ?? 0)
                 : Math.max(sequence.current, state?.lastSeq[player] ?? 0);
+            recovering.current=false;
             useAmateurDuelStore.getState().applyState(next);
+            setError(null);
           }
           if (message.type === 'fight:ack' && message.actionId) {
             pending.current.delete(message.actionId);
@@ -76,8 +102,10 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
           }
           if (message.type === 'fight:error') {
             pending.current.clear();
+            desiredInput.current=neutralFightInput();
+            recovering.current=true;
             setPredictionReset((n) => n + 1);
-            setError('Действие не принято. Дождись обновления боя.');
+            setError('Восстанавливаем управление боем…');
             void useAmateurDuelStore.getState().refresh();
           }
         } catch {
@@ -86,7 +114,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
       };
       const resetHeld = () => {
         if ((useAmateurDuelStore.getState().match?.fight?.engine_state?.rules.version ?? 0) >= 3) {
-          desiredInput.current=neutralFightInput();pending.current.clear();reconnecting.current=true;
+          desiredInput.current=neutralFightInput();pending.current.clear();reconnecting.current=true;recovering.current=true;
           setPredictionReset(n=>n+1);
         }
       };
@@ -102,6 +130,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
       };
     };
     sequence.current = 0;
+    recovering.current=true;
     pending.current.clear();
     connect();
     return () => {
@@ -122,7 +151,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
     ) => {
       const socket = socketRef.current;
       const fight = useAmateurDuelStore.getState().match?.fight;
-      if (!connected || socket?.readyState !== WebSocket.OPEN || !fight?.engine_state) return false;
+      if (recovering.current || !connected || socket?.readyState !== WebSocket.OPEN || !fight?.engine_state) return false;
       const actionId = crypto.randomUUID();
       const payload = JSON.stringify({
         type: 'fight:action',

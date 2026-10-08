@@ -108,3 +108,41 @@ it('v3 renews held input and reconnects neutral without replaying attacks',()=>{
  expect(second.sent.map(p=>JSON.parse(p).kind)).toEqual(['input']);expect(JSON.parse(second.sent[0]!).input).toEqual({direction:0,crouch:false,guard:false});
  hook.unmount(); const count=second.sent.length;act(()=>vi.advanceTimersByTime(1000));expect(second.sent).toHaveLength(count);
 });
+
+it('never reuses an acknowledged sequence after a delayed equal-revision snapshot', () => {
+ const hook=renderHook(()=>useDuelFightSocket('match',true)); const socket=Socket.instances[0]!;
+ socket.message({type:'duel:snapshot',match:snapshot()}); socket.message({type:'connection:ready'});
+ act(()=>hook.result.current.sendAttack()); const first=JSON.parse(socket.sent[0]!);
+ socket.message({type:'fight:ack',actionId:first.actionId,ack:{accepted:true,seq:1}});
+ socket.message({type:'duel:snapshot',match:snapshot()});
+ act(()=>hook.result.current.sendAttack());
+ expect(JSON.parse(socket.sent[1]!).seq).toBe(2); hook.unmount();
+});
+it('stops held renewal and attacks until rejection recovery completes', () => {
+ vi.useFakeTimers(); const refresh=vi.spyOn(useAmateurDuelStore.getState(),'refresh').mockImplementation(()=>new Promise(()=>{}));
+ const hook=renderHook(()=>useDuelFightSocket('match',true)); const socket=Socket.instances[0]!;
+ socket.message({type:'connection:ready'});
+ act(()=>hook.result.current.sendInput({direction:1,crouch:false,guard:false}));
+ socket.message({type:'fight:error',reason:'sequence'});
+ act(()=>vi.advanceTimersByTime(600));
+ expect(socket.sent).toHaveLength(1);
+ act(()=>expect(hook.result.current.sendAttack()).toBe(false));
+ socket.message({type:'duel:snapshot',match:snapshot(2,0,0)});
+ act(()=>hook.result.current.sendAttack()); expect(JSON.parse(socket.sent[1]!).seq).toBe(1);
+ hook.unmount();refresh.mockRestore();
+});
+
+it('applies compact fight updates without rolling back shot progress or match revision',()=>{
+ const initial=snapshot(8,0,2); initial.current_period_goals=3;initial.fight!.revision=2;
+ useAmateurDuelStore.setState({match:initial});
+ const hook=renderHook(()=>useDuelFightSocket('match',true));const socket=Socket.instances[0]!;
+ socket.message({type:'connection:ready'});
+ const next=snapshot(9,0,3).fight!;next.revision=3;next.engine_state!.hp=[5,4];
+ socket.message({type:'fight:snapshot',matchId:'match',fight:next,serverNow:new Date(1000).toISOString()});
+ expect(useAmateurDuelStore.getState().match!.fight!.engine_state!.hp).toEqual([5,4]);
+ expect(useAmateurDuelStore.getState().match!.current_period_goals).toBe(3);
+ expect(useAmateurDuelStore.getState().match!.state_revision).toBe(8);
+ const old=snapshot(8,0,2).fight!;old.revision=2;
+ socket.message({type:'fight:snapshot',matchId:'match',fight:old,serverNow:new Date(900).toISOString()});
+ expect(useAmateurDuelStore.getState().match!.fight!.revision).toBe(3);hook.unmount();
+});

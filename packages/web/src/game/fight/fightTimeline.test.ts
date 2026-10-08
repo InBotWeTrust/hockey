@@ -28,3 +28,10 @@ it('prepares a crouching strike without raising a guard',()=>{
  expect(t.frame(s,0,101).pose).toBe('crouch');
  expect(t.frame(s,0,350).pose).toBe('crouch_attack');
 });
+
+it('shows a new confirmed hit even when its snapshot arrives more than 1500ms late',()=>{
+ const s=initial();const t=new FightTimeline(s);
+ const hit=advanceFight(s,[{kind:'attack',zone:'head',player:0,seq:1,phaseId:0,effectiveAtMs:0}],500).state;
+ t.observe(hit,3000);expect(t.frame(hit,1,3080).reaction?.kind).toBe('hit');
+ t.observe(hit,3300);expect(t.frame(hit,1,3300).reaction).toBeUndefined();
+});

@@ -17,6 +17,7 @@ export interface FightDuelAdapter {
   transact<T>(work: (client: PoolClient) => Promise<T>): Promise<T>;
   prepare(client: PoolClient, matchId: string, userId: string): Promise<FightDuelContext>;
   snapshot(client: PoolClient, matchId: string, userId: string): Promise<unknown>;
+  liveSnapshot?(matchId: string, userId: string): Promise<unknown | null>;
 }
 export function registerFightRoutes(app: FastifyInstance, adapter: FightDuelAdapter): void {
   const params = z.object({ matchId: z.string().uuid() });

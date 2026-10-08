@@ -21,7 +21,7 @@ export class FightTimeline {
     this.presentations=this.presentations.filter(e=>now<e.reactAt+200);
     for(const c of state.responsive?.contacts??[]){
       if(this.seen.has(c.id))continue;this.seen.add(c.id);
-      if(c.outcome==='miss'||now-c.atMs>1500)continue;
+      if(c.outcome==='miss')continue;
       const caughtUp=this.struck.has(c.actionId);
       this.presentations.push({id:c.id,attacker:c.attacker,defender:c.defender,zone:c.zone,blocked:c.outcome==='blocked',strikeAt:now,reactAt:now+(caughtUp?0:80)});
     }
