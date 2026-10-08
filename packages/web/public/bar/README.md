@@ -9,7 +9,7 @@ Prompt: Create one polished raster background illustration for a mobile hockey g
 Generated with the built-in imagegen tool, using restaurant.webp as the reference.
 
 - bar-card-v2.webp: square 512px, walnut counter with drinks, beer taps and a large hockey screen, composed for the 86px Sections card.
-- bar-interior-v2.webp: 1280px landscape background; retains the original warm lighting and materials, replaces the fireplace and lounge armchairs with ordinary tables and chairs for viewing matches.
+- bar-interior-v2.webp: portrait 9:16 background (948×1659px); retains the original warm lighting and materials, replaces the fireplace and lounge armchairs with ordinary tables and chairs for viewing matches.
 - Both outputs inspected and encoded as WebP at quality 82; the original artwork is retained.
 
 Prompt structure guidance: Image skill by Serge Shima (https://github.com/smixs/visual-skills), CC-BY-4.0.
