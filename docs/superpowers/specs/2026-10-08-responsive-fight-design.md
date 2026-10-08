@@ -31,13 +31,13 @@ Prototype hit reaction lasts 200 ms. During hit reaction attacks cannot start; h
 
 Remember only the latest attack press during the final 150 ms before readiness. Earlier presses do not accumulate into a series. Held block and crouch are desired states, not queued attacks. If an attack press is buffered while block is held, attack temporarily opens the guard and held guard returns afterward.
 
-## Unresolved product choice: crouch guard
+## Guard endurance in both stances
 
-With only head/body strikes, crouch plus body guard defeats both attack types indefinitely. One anti-turtle rule must be selected before implementing balance:
+With only head/body strikes, crouch plus body guard defeats both attack types indefinitely. Use the same guard endurance for standing and crouching guards. Changing stance does not reset endurance.
 
-Recommended: guard endurance decreases only on blocked contacts, not while holding. Start with three blocked contacts from full endurance; the third breaks guard, without removing HP, and opens a 300 ms recovery window. Endurance regenerates after 600 ms without guarding at one unit per 500 ms. Show a compact guard indicator near HP. These values require playtesting and user approval.
+Guard endurance decreases only on blocked contacts, not while holding. Both guard heights use the same pool. Start with three blocked contacts from full endurance; the third breaks guard, without removing HP, and opens a 300 ms recovery window. Endurance regenerates after 600 ms without guarding at one unit per 500 ms. Show a compact guard indicator near HP. These are initial prototype balance values and require playtesting.
 
-Alternative: holding attack prepares a stronger guard-breaking attack. This changes the already approved one-press attack model and requires extra animation and rules; it is not the preferred initial scope.
+Do not add a charged attack or another button in this version.
 
 ## Simulation and transport
 
@@ -81,4 +81,4 @@ New fights use a new fight rules version. Existing saved fights use their origin
 
 Use the existing isolated checkout because the primary checkout contains unrelated work. One feature branch based on current origin/dev; preserve parallel updates on integration. No database data reset, credentials changes or production deployment.
 
-After the anti-turtle choice and written design review, write the file-level implementation plan. Implement locally with observed regression failures before fixes, then show the two-player prototype.
+After written design review, write the file-level implementation plan. Implement locally with observed regression failures before fixes, then show the two-player prototype.
