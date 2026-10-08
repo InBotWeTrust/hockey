@@ -6086,6 +6086,8 @@ function AmateurDuelPlayView({
           nowMs={fightNow}
           onAction={fightSocket.sendAction}
           onMove={fightSocket.sendMove}
+          onInput={fightSocket.sendInput}
+          onAttack={fightSocket.sendAttack}
           predictionReset={fightSocket.predictionReset}
         />
       ) : <p>Восстанавливаем состояние боя…</p>}

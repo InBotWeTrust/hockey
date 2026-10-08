@@ -71,7 +71,7 @@ export async function admitFightCommand(
   const effectiveAtMs = ctx.nowMs - fight.compensation_ms[player];
   if (
     effectiveAtMs < state.phaseStartedAtMs ||
-    effectiveAtMs < state.finalizedThroughMs ||
+    (state.rules.version >= 3 ? effectiveAtMs <= state.finalizedThroughMs : effectiveAtMs < state.finalizedThroughMs) ||
     effectiveAtMs >= state.deadlineMs
   )
     denyFight('late_action');

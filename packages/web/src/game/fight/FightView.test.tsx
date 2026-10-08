@@ -1,7 +1,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { FightView } from './FightView.js';
-import { advanceFight, createFightState, DEFAULT_FIGHT_RULES } from '@hockey/game-core';
+import { advanceFight, createFightState, DEFAULT_FIGHT_RULES as RESPONSIVE_RULES } from '@hockey/game-core';
+const DEFAULT_FIGHT_RULES = {...RESPONSIVE_RULES,version:2,windupMs:500,attackRecoveryMs:300};
 vi.mock('../PixiStage.js', () => ({ PixiStage: () => null }));
 describe('fight mobile controls', () => {
   it.each([

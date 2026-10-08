@@ -442,3 +442,16 @@
 .fight-medical-timer .game-scoreboard__value {
   font-size: 72px;
 }
+
+.fight-responsive-controls { display:grid; grid-template-columns:1fr 1fr; gap:20px; padding-top:12px; flex:0 0 auto; }
+.fight-control-left { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.fight-control-right { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:stretch; }
+.fight-held.btn.btn--cta { min-height:54px; padding:0 6px; font-size:13px; touch-action:none; user-select:none; }
+.fight-control-left .fight-held { font-size:27px; }
+.fight-held--down { grid-column:1 / -1; width:50%; justify-self:center; }
+.fight-held[aria-pressed="true"] { transform:translateY(2px); opacity:.8; }
+.fight-guard-pips { display:flex; gap:4px; margin-top:4px; }
+.fight-guard-pips i { width:10px; height:3px; border-radius:2px; background:rgba(255,255,255,.22); }
+.fight-guard-pips i.is-filled { background:#a8dbf3; }
+.fight-scene--responsive .fight-health__pips i { box-shadow:none; }
+@media (max-width:360px) { .fight-responsive-controls { gap:12px; } .fight-control-right { grid-template-columns:1fr; } }

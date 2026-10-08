@@ -13,7 +13,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
     let reason:'phase'|'duplicate'|'time'|undefined;
     if(c.phaseId!==input.phaseId) reason='phase';
     else if(c.seq<=lastSeq[c.player]) reason='duplicate';
-    else { lastSeq[c.player]=c.seq; if(!Number.isSafeInteger(c.effectiveAtMs)||c.effectiveAtMs<input.phaseStartedAtMs||c.effectiveAtMs>=input.deadlineMs||c.effectiveAtMs<input.finalizedThroughMs||c.kind==='block'||c.kind==='move') reason='time'; }
+    else { lastSeq[c.player]=c.seq; if(!Number.isSafeInteger(c.effectiveAtMs)||c.effectiveAtMs<input.phaseStartedAtMs||c.effectiveAtMs>=input.deadlineMs||c.effectiveAtMs<=input.finalizedThroughMs||c.kind==='block'||c.kind==='move') reason='time'; }
     if(reason) events.push({type:'rejected',player:c.player,seq:c.seq,reason}); else history.push(c);
   }
   history.sort((a,b)=>a.effectiveAtMs-b.effectiveAtMs||a.player-b.player||a.seq-b.seq);

@@ -17,3 +17,9 @@ it('simultaneous lethal contacts enter sudden death once',()=>{
 it('completed contacts are never undone or repeated',()=>{
  const r=run([attack(0,0),attack(1,300)]);expect(r.state.hp).toEqual([3,3]);expect(advanceFight(r.state,[],1500).events.filter(e=>e.type==='damage')).toHaveLength(0);
 });
+it('late defence cannot rewrite an already sealed contact at the same timestamp',()=>{
+ const first=advanceFight(createFightState(DEFAULT_FIGHT_RULES,0),[attack(0,0)],250);
+ const late:FightCommand={kind:'input',input:{direction:0,crouch:true,guard:true},player:1,seq:1,phaseId:0,effectiveAtMs:250};
+ const next=advanceFight(first.state,[late],500);
+ expect(next.state.hp).toEqual([4,3]);expect(next.events).toContainEqual({type:'rejected',player:1,seq:1,reason:'time'});
+});

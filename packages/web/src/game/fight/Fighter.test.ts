@@ -4,6 +4,9 @@ import { Fighter, FIGHT_ASSETS, type FighterPose } from './Fighter.js';
 import { FIGHT_ART } from './fightArt.js';
 
 const poses: FighterPose[] = [
+  'crouch',
+  'crouch_block',
+  'crouch_attack',
   'idle',
   'attack_head',
   'attack_body',
@@ -17,10 +20,11 @@ function prepareAtlas() {
     source: new TextureSource({ width: FIGHT_ART.source.width, height: FIGHT_ART.source.height }),
   });
   Assets.cache.set(FIGHT_ASSETS[0], texture);
+  Assets.cache.set(FIGHT_ASSETS[1],new Texture({source:new TextureSource({width:1152,height:512})}));
 }
-afterEach(() => Assets.cache.remove(FIGHT_ASSETS[0]));
+afterEach(() => { Assets.cache.remove(FIGHT_ASSETS[0]); Assets.cache.remove(FIGHT_ASSETS[1]); });
 describe('prepared fight artwork', () => {
-  it('uses a separate complete frame for each of the seven fighting poses', () => {
+  it('uses a separate complete frame for each standing and crouched fighting pose', () => {
     prepareAtlas();
     const fighter = new Fighter(0);
     const frames = poses.map((pose) => {
@@ -33,7 +37,7 @@ describe('prepared fight artwork', () => {
         sprite.texture.frame.height,
       ];
     });
-    expect(new Set(frames.map((frame) => frame.join(','))).size).toBe(7);
+    expect(new Set(frames.map((frame) => frame.join(','))).size).toBe(10);
     expect(frames.every((frame) => frame[2]! > 0 && frame[3]! > 0)).toBe(true);
   });
   it('transitions from the hit frame into kneeling without blur or a second strike', () => {
@@ -106,4 +110,11 @@ describe('prepared fight artwork', () => {
       expect(b.rotation).toBe(0);
     }
   });
+});
+it('retracts authored strike into its guard pose during responsive recovery',()=>{
+ prepareAtlas();const f=new Fighter(0);
+ f.update('attack_head',384,512,false,undefined,undefined,undefined,0,.5);
+ const strike=f.view.children[0] as Sprite,guard=f.view.children[2] as Sprite;
+ expect(strike.alpha).toBe(.5);expect(guard.visible).toBe(true);expect(guard.alpha).toBe(.5);
+ f.update('idle',384,512,false);expect(strike.alpha).toBe(1);expect(guard.visible).toBe(false);
 });
