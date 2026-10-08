@@ -5,16 +5,18 @@ interface Presentation {id:string;attacker:0|1;defender:0|1;zone:FightZone;block
 /** Presentation clock never owns damage. Event IDs survive repeats; initial history is not replayed. */
 export class FightTimeline {
   private phase:number;
+  private rules:FightState['rules'];
   private seen:Set<string>;
   private struck=new Set<string>();
   private presentations:Presentation[]=[];
   private prediction:FightAction|null=null;
-  constructor(state:FightState){this.phase=state.phaseId;this.seen=new Set(state.responsive?.contacts.map(c=>c.id)??[]);}
+  constructor(state:FightState){this.rules=state.rules;this.phase=state.phaseId;this.seen=new Set(state.responsive?.contacts.map(c=>c.id)??[]);}
   predict(id:string,player:0|1,at:number,zone:FightZone,crouch:boolean):void{
-    this.prediction={actionId:id,player,phaseId:this.phase,seq:-1,effectiveAtMs:at,kind:'attack',zone,crouch,activeAtMs:at+250,activeUntilMs:at+350,busyUntilMs:at+500,resolved:false};
+    this.prediction={actionId:id,player,phaseId:this.phase,seq:-1,effectiveAtMs:at,kind:'attack',zone,crouch,activeAtMs:at+this.rules.windupMs,activeUntilMs:at+this.rules.windupMs+this.rules.activeMs,busyUntilMs:at+this.rules.windupMs+this.rules.activeMs+this.rules.attackRecoveryMs,resolved:false};
   }
   clearPrediction():void{this.prediction=null;}
   observe(state:FightState,now:number):void{
+    this.rules=state.rules;
     if(state.phaseId!==this.phase){this.phase=state.phaseId;this.prediction=null;this.seen=new Set(state.responsive?.contacts.map(c=>c.id)??[]);this.presentations=[];this.struck.clear();return;}
     this.presentations=this.presentations.filter(e=>now<e.reactAt+200);
     for(const c of state.responsive?.contacts??[]){
@@ -35,7 +37,7 @@ export class FightTimeline {
     if(action&&action.outcome!=='cancelled'){
       const wind=now<action.activeAtMs;
       progress=Math.max(0,Math.min(1,(now-action.effectiveAtMs)/(action.busyUntilMs-action.effectiveAtMs)));
-      pose=action.crouch?(wind?'crouch_block':'crouch_attack'):wind?`windup_${action.zone}`:`attack_${action.zone}`;
+      pose=action.crouch?(wind?'crouch':'crouch_attack'):wind?'idle':`attack_${action.zone}`;
       recovery=now>=action.activeUntilMs?Math.min(1,(now-action.activeUntilMs)/(action.busyUntilMs-action.activeUntilMs)):0;
       if(wind)motion=-6*Math.sin(Math.PI/2*Math.max(0,(now-action.effectiveAtMs)/(action.activeAtMs-action.effectiveAtMs)));
       else {this.struck.add(action.actionId??`${action.phaseId}:${action.player}:${action.seq}`);motion=12*Math.sin(Math.PI*Math.max(0,Math.min(1,(now-action.activeAtMs)/(action.busyUntilMs-action.activeAtMs))));}

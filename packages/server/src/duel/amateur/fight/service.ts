@@ -10,6 +10,7 @@ import {
   type FightCommand,
   type FightRules,
 } from '@hockey/game-core';
+import { fightNeedsAdvance } from './progression.js';
 import { AppError } from '../../../plugins/errors.js';
 import type { FightDuelContext } from './routes.js';
 import { fightWindowRemainingMs, FIGHT_RESPONSE_TIMEOUT_MS, FIGHT_MAX_CALLS, FIGHT_MAX_REFUSALS } from './window.js';
@@ -298,7 +299,7 @@ export async function advancePersistedFight(
   const through = ctx.nowMs - fight.rules.deliveryGraceMs;
   const hasWork =
     fight.status === 'starting' ||
-    through >= before.deadlineMs ||
+    fightNeedsAdvance(before,through) ||
     commands.some((c) => c.phaseId === before.phaseId && c.seq > before.lastSeq[c.player]) ||
     before.actions.some(
       (a) =>
@@ -358,7 +359,9 @@ export async function advancePersistedFight(
   } else if (
     before.status !== next.status ||
     JSON.stringify(before.hp) !== JSON.stringify(next.hp) ||
-    before.actions.length !== next.actions.length
+    before.actions.length !== next.actions.length ||
+    JSON.stringify(before.responsive?.contacts) !== JSON.stringify(next.responsive?.contacts) ||
+    JSON.stringify(before.responsive?.timeline.at(-1)?.players) !== JSON.stringify(next.responsive?.timeline.at(-1)?.players)
   )
     await queueFightSnapshot(client, ctx.id);
   fight = await getFight(client, ctx.id);

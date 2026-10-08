@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import { advanceFight, createFightState } from '../src/fight/engine.js';
-import { DEFAULT_FIGHT_RULES } from '../src/fight/config.js';
+import { DEFAULT_FIGHT_RULES as ONLINE_RULES } from '../src/fight/config.js';
 import { getFightPosture } from '../src/fight/responsiveInput.js';
 import { fightPositionsAt } from '../src/fight/movement.js';
 import type { FightCommand, FightHeldInput } from '../src/fight/types.js';
+const DEFAULT_FIGHT_RULES={...ONLINE_RULES,initialHp:4,windupMs:250};
 const hold = (player: 0|1, t: number, seq: number, input: Partial<FightHeldInput>): FightCommand => ({player, phaseId:0, seq, effectiveAtMs:t, kind:'input', input:{direction:0,crouch:false,guard:false,...input}});
 const attack = (player:0|1,t:number,seq:number): FightCommand => ({player, phaseId:0, seq,effectiveAtMs:t,kind:'attack',zone:'head'});
 const run = (commands: FightCommand[], t=1000) => advanceFight(createFightState(DEFAULT_FIGHT_RULES,0),commands,t).state;
@@ -19,9 +20,9 @@ describe('responsive held input', () => {
   expect(getFightPosture(s,0,899).guard).toBe(true); expect(getFightPosture(s,0,900).guard).toBe(false);
  });
  it('shared guard breaks on third contact without HP damage and cannot immediately rearm',()=>{
-  const cmds=[hold(1,0,1,{guard:true}),attack(0,0,1),hold(1,600,2,{guard:true}),attack(0,500,2),hold(1,1000,3,{guard:true}),attack(0,1000,3)];
-  const s=run(cmds,1250); expect(s.hp).toEqual([4,4]); expect(getFightPosture(s,1,1250).guardUnits).toBe(0);
-  expect(getFightPosture(s,1,1400).guard).toBe(false);
+  const cmds=[hold(1,0,1,{guard:true}),attack(0,0,1),hold(0,500,2,{direction:1}),hold(1,600,2,{guard:true}),attack(0,700,3),hold(0,1200,4,{direction:1}),hold(1,1200,3,{guard:true}),attack(0,1400,5)];
+  const s=run(cmds,1650); expect(s.hp).toEqual([4,4]); expect(getFightPosture(s,1,1650).guardUnits).toBe(0);
+  expect(getFightPosture(s,1,1800).guard).toBe(false);
  });
  it('regenerates only after release and the complete 600+500ms interval',()=>{
   const s=run([hold(1,0,1,{guard:true}),attack(0,0,1),hold(1,300,2,{})],1400);
@@ -51,8 +52,8 @@ describe('responsive held input', () => {
 });
 it('exhausted guard cannot block forever while held',()=>{
  const cmds:FightCommand[]=[];
- for(let i=0;i<4;i++) {cmds.push(hold(1,i*500,i+1,{guard:true}),attack(0,i*500,i+1));}
- const s=run(cmds,1750); expect(s.hp).toEqual([4,3]);
+ for(let i=0;i<4;i++) {if(i)cmds.push(hold(0,i*700-200,i*2,{direction:1}));cmds.push(hold(1,i*700,i+1,{guard:true}),attack(0,i*700,i*2+1));}
+ const s=run(cmds,2350); expect(s.hp).toEqual([4,3]);
 });
 it('posture intent applies after an unsealed attack recovery without a new snapshot',()=>{
  const s=run([attack(0,0,1),hold(0,300,2,{crouch:true,guard:true})],300);

@@ -111,10 +111,11 @@ describe('prepared fight artwork', () => {
     }
   });
 });
-it('retracts authored strike into its guard pose during responsive recovery',()=>{
+it('retracts authored strike into its neutral pose during responsive recovery',()=>{
  prepareAtlas();const f=new Fighter(0);
+ f.update('idle',384,512,true);const neutral=(f.view.children[0] as Sprite).texture;
  f.update('attack_head',384,512,false,undefined,undefined,undefined,0,.5);
  const strike=f.view.children[0] as Sprite,guard=f.view.children[2] as Sprite;
- expect(strike.alpha).toBe(.5);expect(guard.visible).toBe(true);expect(guard.alpha).toBe(.5);
+ expect(strike.alpha).toBe(.5);expect(guard.visible).toBe(true);expect(guard.alpha).toBe(.5);expect(guard.texture).toBe(neutral);
  f.update('idle',384,512,false);expect(strike.alpha).toBe(1);expect(guard.visible).toBe(false);
 });

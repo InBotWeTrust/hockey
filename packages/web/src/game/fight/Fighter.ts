@@ -125,7 +125,7 @@ export class Fighter {
     const retracting=recovery!==undefined&&recovery>0&&recovery<1&&!reducedMotion&&(pose==='attack_head'||pose==='attack_body'||pose==='crouch_attack');
     this.transitionSprite.visible=retracting;
     if(retracting){
-      this.transitionSprite.texture=this.textures[pose==='crouch_attack'?'crouch_block':pose==='attack_head'?'block_head':'block_body'];
+      this.transitionSprite.texture=this.textures[pose==='crouch_attack'?'crouch':'idle'];
       this.transitionSprite.scale.copyFrom(this.sprite.scale);this.transitionSprite.tint=this.sprite.tint;
       this.transitionSprite.position.copyFrom(this.sprite.position);this.transitionSprite.alpha=recovery!;this.sprite.alpha=1-recovery!;
     }

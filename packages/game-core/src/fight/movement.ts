@@ -1,3 +1,4 @@
+import { moveResponsivePositions } from './responsiveMovement.js';
 import { getFightPosture } from './responsiveInput.js';
 import type { FightState } from './types.js';
 // Normalized arena coordinates. Movement leases prevent skating after disconnect.
@@ -13,12 +14,11 @@ export function fightPositionsAt(state: FightState, atMs: number): [number, numb
     if (!frame) return [.32,.68];
     const positions: [number,number] = [...frame.positions];
     const end=Math.min(atMs,state.endedAtMs??state.deadlineMs);
-    for (const player of [0,1] as const) {
-      const p=getFightPosture(state,player,frame.atMs);
-      if (!p.crouch && frame.atMs>=p.readyAtMs) positions[player]+=p.direction*(player===0?1:-1)*SPEED*(p.guard?.5:1)*Math.max(0,Math.min(end,frame.leaseUntil[player])-frame.atMs);
-      positions[player]=Math.max(MIN,Math.min(MAX,positions[player]));
-    }
-    if (positions[1]-positions[0]<GAP) {const middle=(positions[0]+positions[1])/2;positions[0]=middle-GAP/2;positions[1]=middle+GAP/2;}
+    const velocities=([0,1] as const).map(player=>{const p=getFightPosture(state,player,frame.atMs);return !p.crouch&&frame.atMs>=p.readyAtMs?p.direction*(player===0?1:-1)*SPEED*(p.guard?.5:1):0;});
+    const duration=Math.max(0,end-frame.atMs);
+    // Stop each velocity at its input lease expiry before integrating the remaining segment.
+    const boundaries=[...new Set([0,duration,...frame.leaseUntil.map(t=>Math.max(0,Math.min(duration,t-frame.atMs)))])].sort((a,b)=>a-b);
+    for(let i=0;i<boundaries.length-1;i++){const start=boundaries[i]!;moveResponsivePositions(positions,velocities.map((v,p)=>frame.atMs+start<frame.leaseUntil[p]! ?v:0),boundaries[i+1]!-start);}
     return positions;
   }
   const positions: [number, number] = [0.32, 0.68];

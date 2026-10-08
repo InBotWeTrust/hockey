@@ -1,3 +1,4 @@
+import { moveResponsivePositions, MIN, MAX } from './responsiveMovement.js';
 import type { FightAction, FightActionCommand, FightCommand, FightEvent, FightFrame, FightPlayer, FightState, FightTransition } from './types.js';
 import { cloneFightFrame, FIGHT_INPUT_LEASE_MS, FIGHT_RESPONSIVE_HIT_MS, FIGHT_GUARD_BREAK_MS, neutralFightInput } from './responsiveInput.js';
 import { classifyFightContact, fightActionId } from './responsiveContacts.js';
@@ -37,18 +38,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
   while(times.size){
     const t=Math.min(...times);times.delete(t);if(t>end)continue;
     // Integrate motion using velocities fixed over this event segment and collision constraints.
-    let remaining=t-previous;
-    for(let n=0;remaining>1e-7&&n<6;n++){
-      const v=players.map(i=>{
-        const p=runtime.players[i];if(p.crouch||previous<p.readyAtMs)return 0;
-        let speed=p.direction*(i===0?1:-1)*.0003*(p.guard?.5:1);
-        if((runtime.positions[i]<=.25+1e-9&&speed<0)||(runtime.positions[i]>=.75-1e-9&&speed>0))speed=0;return speed;
-      });
-      if(runtime.positions[1]-runtime.positions[0]<=.34+1e-9&&v[0]!>v[1]!){const shared=v[0]!>0&&v[1]!>0?Math.min(v[0]!,v[1]!):v[0]!<0&&v[1]!<0?Math.max(v[0]!,v[1]!):0;v[0]=shared;v[1]=shared;}
-      let dt=remaining;players.forEach(i=>{if(v[i]!<0)dt=Math.min(dt,(.25-runtime.positions[i])/v[i]!);if(v[i]!>0)dt=Math.min(dt,(.75-runtime.positions[i])/v[i]!);});
-      if(v[0]!>v[1]!)dt=Math.min(dt,Math.max(0,(runtime.positions[1]-runtime.positions[0]-.34)/(v[0]!-v[1]!)));
-      players.forEach(i=>runtime.positions[i]+=v[i]!*dt);remaining-=dt;
-    }
+    moveResponsivePositions(runtime.positions,players.map(i=>{const p=runtime.players[i];return p.crouch||previous<p.readyAtMs?0:p.direction*(i===0?1:-1)*.0003*(p.guard?.5:1);}),t-previous);
     previous=t;runtime.atMs=t;
     for(const i of players){
       const p=runtime.players[i];
@@ -83,6 +73,12 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
     for(const contact of state.responsive!.contacts.filter(c=>c.atMs===t&&c.outcome==='blocked')){
       const p=runtime.players[contact.defender];p.guardUnits=Math.max(0,p.guardUnits-1);
       if(p.guardUnits===0){p.guard=false;p.guardBreakUntilMs=t+FIGHT_GUARD_BREAK_MS;p.readyAtMs=Math.max(p.readyAtMs,p.guardBreakUntilMs);times.add(p.readyAtMs);}
+    }
+    // Resolve the whole contact group before moving anyone: simultaneous strikes still trade.
+    for(const contact of state.responsive!.contacts.filter(c=>c.atMs===t)){
+      const target=contact.outcome==='hit'?contact.defender:contact.outcome==='blocked'?contact.attacker:null;
+      if(target!==null){const distance=contact.outcome==='hit'?.08:.04;
+        runtime.positions[target]=Math.max(MIN,Math.min(MAX,runtime.positions[target]+(target===0?-distance:distance)));}
     }
     for(const i of players)if(damage[i]){
       runtime.players[i].hitUntilMs=t+FIGHT_RESPONSIVE_HIT_MS;

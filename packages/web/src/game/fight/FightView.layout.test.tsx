@@ -16,7 +16,7 @@ const { app } = vi.hoisted(() => {
   };
   return { app };
 });
-const DEFAULT_FIGHT_RULES = {...RESPONSIVE_RULES,version:2,windupMs:500,attackRecoveryMs:300};
+const DEFAULT_FIGHT_RULES = {...RESPONSIVE_RULES,version:2,initialHp:4,mainDurationMs:15000,windupMs:500,attackRecoveryMs:300};
 vi.mock('pixi.js', () => ({ Assets: { load: () => Promise.resolve([]) } }));
 vi.mock('./Fighter.js', () => ({
   FIGHT_ASSETS: [],
