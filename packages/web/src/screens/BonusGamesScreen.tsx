@@ -1,4 +1,4 @@
-import { BonusRecordsModal } from '../profile/BonusRecordsModal.js';
+import { BonusRecordsModal, formatBonusRecord } from '../profile/BonusRecordsModal.js';
 import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -17,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
+  fetchBonusRecords,
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   purchaseBonusGame,
@@ -45,6 +46,11 @@ import { useDailyStore } from '../stores/dailyStore.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
+
+function isUnreleasedChallenge(game: BonusGameCard): boolean {
+  return game.skill_code === 'challenge' && game.slug !== 'challenge-beach' &&
+    !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true);
+}
 
 function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
@@ -123,6 +129,11 @@ export function BonusGamesScreen(): JSX.Element {
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
   const [previewGame, setPreviewGame] = useState<BonusGameCard | null>(null);
+  const previewRecords = useQuery({
+    queryKey: ['bonus-records-preview', previewGame?.id, currentUserId],
+    queryFn: () => fetchBonusRecords(previewGame!.id),
+    enabled: Boolean(previewGame?.is_completed && previewGame.skill_code !== 'challenge'),
+  });
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [developmentToast, setDevelopmentToast] = useState(false);
@@ -133,7 +144,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    if (stored === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) return 'speed';
+    if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
       ? stored
       : 'speed';
@@ -220,7 +231,7 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const openGame = (game: BonusGameCard): void => {
-    if (game.skill_code === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
+    if (isUnreleasedChallenge(game)) { setDevelopmentToast(true); return; }
     if (game.state === 'level_locked') {
       performGameAction(game);
       return;
@@ -262,7 +273,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
-    if (skill === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
+    if (skill !== 'speed' && skill !== 'accuracy' && competitionLevel === 'beginner') { guardAmateurMutation(amateurAccess, () => undefined); return; }
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
   };
@@ -448,7 +459,7 @@ export function BonusGamesScreen(): JSX.Element {
       </section>
       {developmentToast && <div role="status" style={{ position: 'fixed', bottom: 'calc(100px + var(--app-safe-bottom))',
         left: '50%', transform: 'translateX(-50%)', padding: '12px 18px', borderRadius: 16,
-        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Раздел в разработке</div>}
+        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Локация в разработке</div>}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {recordsGame !== null && <BonusRecordsModal gameId={recordsGame.id} title={recordsGame.arena.title} skillCode={recordsGame.skill_code} currentUserId={currentUserId} onClose={() => setRecordsGame(null)} />}
       {previewGame !== null ? (
@@ -481,7 +492,7 @@ export function BonusGamesScreen(): JSX.Element {
           <p className="modal-copy bonus-game-preview-modal__story">{previewGame.levels?.find((entry) => entry.level === selectedLevel)?.preview_story ?? (previewGame.challenge_environment?.cyberpunk ? CYBERPUNK_STORY : previewGame.preview_story)}</p>
           <p className="bonus-game-preview-modal__condition">
             {(previewGame.challenge_environment?.cyberpunk || previewGame.slug === 'challenge-beach' || (previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski)) && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
-            {qualificationDescription(previewGame.qualification_rules)}
+            {qualificationDescription(previewGame.qualification_rules).replace(/(\d+):(\d+)(?: мин)?/g, (_, minutes: string, seconds: string) => `${Number(minutes)} мин ${Number(seconds)} сек`)}
           </p>
           {previewGame.slug === 'challenge-beach' && previewGame.challenge_environment?.beach?.interactive && (
             <ul className="bonus-game-preview-modal__hints">
@@ -506,11 +517,18 @@ export function BonusGamesScreen(): JSX.Element {
             </p>
           ) : null}
           {previewGame.skill_code !== 'challenge' && <div className="bonus-records-entry">
+            <dl className="bonus-records-entry__summary">
+              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Пройди игру, чтобы установить свой рекорд' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Ещё не установлен'}</dd></div>
+              <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusRecord(previewGame.skill_code, previewRecords.data.rows[0]) : 'Ещё не установлен'}</dd></div>
+            </dl>
+            <div className="bonus-records-entry__action-row">
+            <p className="modal-copy bonus-records-entry__description">За новый рекорд – звёзды и опыт</p>
             {previewGame.is_completed ? (
-              <button type="button" className="bonus-records-entry__link" onClick={() => { setRecordsGame(previewGame); setPreviewGame(null); }}>
-                <span>Рекорды локации</span><span aria-hidden="true">→</span>
+              <button type="button" className="modal-primary btn btn--cta bonus-records-entry__button" onClick={() => { setRecordsGame(previewGame); setPreviewGame(null); }}>
+                Рейтинг игроков
               </button>
             ) : <p className="modal-copy">Рекорды откроются после прохождения.</p>}
+            </div>
           </div>}
           <div className="modal-actions">
             {previewGame.levels?.length ? <>
@@ -686,7 +704,7 @@ function BonusGameCard({
   const explainsLevelLock = game.state === 'level_locked';
   const isPurchasable = game.state === 'purchase_required';
   const canAct =
-    isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
+    isUnreleasedChallenge(game) || isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
   const showsChevron = isContinuable || (isPlayable(game) && canStartNewAttempt);
   const visibleActionLabel =
     !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;
