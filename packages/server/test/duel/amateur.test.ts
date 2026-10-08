@@ -24,6 +24,7 @@ import { observeCareerActivityStreak } from '../../src/achievements/service.js';
 
 interface QueryPlanNode {
   'Index Name'?: string;
+  'Index Cond'?: string;
   'Relation Name'?: string;
   'Actual Rows'?: number;
   'Actual Loops'?: number;
@@ -1554,8 +1555,13 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       const result = await client.query<{ 'QUERY PLAN': Array<{ Plan: QueryPlanNode }> }>(
         `explain (format json) ${countQuery}`, countParams,
       );
-      expect(queryPlanNodes(result.rows[0]!['QUERY PLAN'][0]!.Plan)
-        .some((node) => node['Index Name'] === 'shot_session_amateur_duel_idx')).toBe(true);
+      // Both partial indexes support this match-scoped count. The bar index may
+      // become cheaper; preserve the bounded index-access contract, not planner choice.
+      expect(queryPlanNodes(result.rows[0]!['QUERY PLAN'][0]!.Plan).some((node) =>
+        ['shot_session_amateur_duel_idx', 'shot_session_bar_recent_idx'].includes(node['Index Name'] ?? '')
+        && node['Index Cond']?.includes('amateur_duel_match_id')
+        && node['Index Cond']?.includes(matchId),
+      )).toBe(true);
     } finally {
       await client.query('rollback');
       client.release();
