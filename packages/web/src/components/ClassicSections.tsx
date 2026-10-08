@@ -1,7 +1,7 @@
 import { ChevronRight } from 'lucide-react';
 const SECTION_ARTWORK_SIZE = 86;
 const SECTION_ARTWORK = {
-  bar: '/bar/restaurant.webp',
+  bar: '/bar/bar-card-v2.webp',
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/training-evening.webp',
