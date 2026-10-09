@@ -7,26 +7,29 @@ import { OnboardingFlow } from './OnboardingFlow.js';
 import { ProfileStorySeriesScreen } from '../screens/ProfileStorySeriesScreen.js';
 import { ProfileStoryScreen } from '../screens/ProfileDestinationScreens.js';
 import { completeOnboarding, recordStepView } from '../api/onboarding.js';
+import type * as OnboardingApi from '../api/onboarding.js';
 vi.mock('../api/onboarding.js', async (original) => ({
-  ...(await original<typeof import('../api/onboarding.js')>()),
+  ...(await original<typeof OnboardingApi>()),
   completeOnboarding: vi.fn(),
   recordStepView: vi.fn(),
 }));
 vi.mock('./AmateurStoryFlow.js', () => ({
   AmateurStoryFlow: ({
+    unlockGoalsRequired,
     onCompleted,
     onClose,
     completing,
     completionError,
     onRetry,
   }: {
+    unlockGoalsRequired?: number;
     onCompleted: () => void;
     onClose?: () => void;
     completing?: boolean;
     completionError?: string;
     onRetry?: () => void;
   }) => (
-    <section aria-label="Вторая серия">
+    <section aria-label="Вторая серия" data-threshold={unlockGoalsRequired}>
       <button disabled={completing} onClick={onCompleted}>
         Завершить вторую серию
       </button>
@@ -87,8 +90,9 @@ describe('amateur cinematic integration', () => {
   });
   it('completes every published step only after the narrative finishes, including legacy seven-step versions', async () => {
     const done = vi.fn();
-    render(<OnboardingFlow runId="run" required={required} onCompleted={done} />);
+    render(<OnboardingFlow runId="run" required={required} unlockGoalsRequired={175} onCompleted={done} />);
     expect(screen.getByRole('region', { name: 'Вторая серия' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Вторая серия' })).toHaveAttribute('data-threshold', '175');
     expect(completeOnboarding).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Завершить вторую серию' }));
     await waitFor(() => expect(done).toHaveBeenCalledWith({ required: null }));
@@ -115,7 +119,9 @@ describe('amateur cinematic integration', () => {
   it('replays locally without completion or view writes', async () => {
     profile(true);
     page(<ProfileStorySeriesScreen series={2} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Завершить вторую серию' }));
+    const finish = await screen.findByRole('button', { name: 'Завершить вторую серию' });
+    expect(screen.getByRole('region', { name: 'Вторая серия' })).toHaveAttribute('data-threshold', '100');
+    fireEvent.click(finish);
     expect(await screen.findByText('Каталог')).toBeInTheDocument();
     expect(completeOnboarding).not.toHaveBeenCalled();
     expect(recordStepView).not.toHaveBeenCalled();

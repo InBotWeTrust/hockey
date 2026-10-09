@@ -17,6 +17,10 @@ describe('AmateurStoryFlow', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
+  it('renders the configured amateur threshold in the congratulation', () => {
+    render(<AmateurStoryFlow mode="replay" unlockGoalsRequired={175} onCompleted={vi.fn()} />);
+    expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Выбить 175 не каждый может.'));
+  });
   it('keeps required playback unclosable and replay local', () => {
     const onCompleted = vi.fn();
     const view = render(<AmateurStoryFlow mode="required" onCompleted={onCompleted} />);

@@ -45,7 +45,12 @@ export function ProfileStorySeriesScreen({ series = 1 }: { series?: 1 | 2 }): JS
   const returnToCatalog = () => navigate('/profile/story', { replace: true });
   if (series === 2)
     return (
-      <AmateurStoryFlow mode="replay" onClose={returnToCatalog} onCompleted={returnToCatalog} />
+      <AmateurStoryFlow
+        unlockGoalsRequired={profileQuery.data.amateurUnlockGoalsRequired}
+        mode="replay"
+        onClose={returnToCatalog}
+        onCompleted={returnToCatalog}
+      />
     );
   return (
     <BeginnerStoryFlow

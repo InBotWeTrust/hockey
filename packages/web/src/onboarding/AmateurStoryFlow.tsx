@@ -1,11 +1,12 @@
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, X } from 'lucide-react';
-import { amateurStoryScenes, type AmateurStoryScene } from './amateurStory.js';
+import { getAmateurStoryScenes, type AmateurStoryScene } from './amateurStory.js';
 import { prepareStoryImages, storyImagesReady, storyImageUrl } from './storyImages.js';
 import './onboarding.css';
 
 interface Props {
   mode: 'required' | 'replay';
+  unlockGoalsRequired?: number;
   onCompleted: () => void;
   onClose?: () => void;
   completing?: boolean;
@@ -15,12 +16,16 @@ interface Props {
 const images = (scene: AmateurStoryScene) => [scene.imageA, scene.imageB];
 
 export function AmateurStoryFlow(props: Props): JSX.Element {
+  const scenes = useMemo(
+    () => getAmateurStoryScenes(props.unlockGoalsRequired ?? 300),
+    [props.unlockGoalsRequired],
+  );
   const [index, setIndex] = useState(0);
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const active = useRef(true);
   const transitioning = useRef(false);
-  const scene = amateurStoryScenes[index]!;
+  const scene = scenes[index]!;
   useEffect(() => {
     active.current = true;
     return () => {
@@ -31,18 +36,18 @@ export function AmateurStoryFlow(props: Props): JSX.Element {
     let cancelled = false;
     void prepareStoryImages(images(scene))
       .then(() => {
-        const next = amateurStoryScenes[index + 1];
+        const next = scenes[index + 1];
         if (!cancelled && next) void prepareStoryImages(images(next)).catch(() => undefined);
       })
       .catch(() => undefined);
     return () => {
       cancelled = true;
     };
-  }, [index, scene]);
+  }, [index, scene, scenes]);
 
   async function advance(): Promise<void> {
     if (transitioning.current || props.completing) return;
-    const next = amateurStoryScenes[index + 1];
+    const next = scenes[index + 1];
     if (!next) {
       props.onCompleted();
       return;
@@ -65,7 +70,7 @@ export function AmateurStoryFlow(props: Props): JSX.Element {
   // A keyed scene owns typing and frame state. The next scene can never inherit frame B.
   return (
     <AmateurStorySceneView
-      key={scene.id}
+      key={`${scene.id}:${props.unlockGoalsRequired ?? 300}`}
       {...props}
       scene={scene}
       loading={loading}

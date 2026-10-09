@@ -113,6 +113,7 @@ export function OnboardingFlow({
   if (required.chain === 'amateur' && mode === 'required' && presentation === 'cinematic') {
     return (
       <AmateurStoryFlow
+        unlockGoalsRequired={unlockGoalsRequired}
         mode="required"
         onCompleted={() => void finish()}
         completing={completing}
