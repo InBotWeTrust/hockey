@@ -589,3 +589,13 @@
     background: linear-gradient(to bottom, transparent 12%, rgba(3, 9, 18, 0.55) 36%, rgba(3, 9, 18, 0.86) 66%, rgba(3, 9, 18, 0.97));
   }
 }
+
+/* The gradient follows the reserved full copy height, including while typing. */
+.amateur-story--long-copy .beginner-story__copy::before {
+  content: '';
+  position: absolute;
+  inset: -40px -24px -92px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(3, 9, 18, 0.64) 16%, rgba(3, 9, 18, 0.88) 68%, rgba(3, 9, 18, 0.96));
+}

@@ -21,6 +21,12 @@ describe('AmateurStoryFlow', () => {
     render(<AmateurStoryFlow mode="replay" unlockGoalsRequired={175} onCompleted={vi.fn()} />);
     expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Выбить 175 не каждый может.'));
   });
+  it('adds stronger copy shading for long scenes only', () => {
+    render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
+    expect(screen.getByTestId('amateur-story')).not.toHaveClass('amateur-story--long-copy');
+    fireEvent.click(screen.getByRole('button', { name: amateurStoryScenes[0]!.action }));
+    expect(screen.getByTestId('amateur-story')).toHaveClass('amateur-story--long-copy');
+  });
   it('keeps required playback unclosable and replay local', () => {
     const onCompleted = vi.fn();
     const view = render(<AmateurStoryFlow mode="required" onCompleted={onCompleted} />);

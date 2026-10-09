@@ -178,7 +178,7 @@ function AmateurStorySceneView({
   });
   return (
     <main
-      className="beginner-story amateur-story"
+      className={`beginner-story amateur-story${scene.copy.length > 180 ? ' amateur-story--long-copy' : ''}`}
       aria-label={mode === 'required' ? 'Обязательный онбординг' : 'Обещанный разговор'}
       data-testid="amateur-story"
       data-scene={scene.id}
