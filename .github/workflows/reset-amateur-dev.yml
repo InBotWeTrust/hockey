@@ -1,0 +1,36 @@
+name: Reset Amateur Onboarding Dev
+on:
+  workflow_dispatch:
+concurrency:
+  group: deploy-dev
+  cancel-in-progress: false
+jobs:
+  reset:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - name: Backup and reset dev amateur onboarding
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER: ${{ secrets.DEPLOY_USER }}
+          REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/id_ed25519 "$USER@$HOST" REMOTE_PATH="$REMOTE_PATH" bash -s <<'REMOTE'
+          set -euo pipefail
+          cd "$REMOTE_PATH"
+          mkdir -p backups
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          backup="backups/amateur-onboarding-dev-$stamp.dump"
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T postgres-dev \
+            sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup"
+          test -s "$backup"
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T postgres-dev \
+            sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "update users set amateur_onboarding_completed = false, amateur_onboarding_reset_at = now(); select count(*) as total, count(*) filter (where amateur_onboarding_completed) as completed from users;"' < /dev/null
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml ps server-dev push-worker-dev web-dev
+          printf 'Backup saved: %s\n' "$backup"
+          REMOTE
