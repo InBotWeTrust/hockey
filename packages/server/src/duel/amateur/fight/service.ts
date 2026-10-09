@@ -19,6 +19,13 @@ export const FIGHT_RESULT_HOLD_MS = FIGHT_FINISH_ANIMATION_MS + FIGHT_RESULT_DIS
 
 export interface PersistedFight {
   id: string;
+  revision: number;
+  runtime_version?: number;
+  runtime_owner?: string | null;
+  runtime_revision_limit?: number;
+  runtime_generation?: number;
+  runtime_lease_until?: Date | null;
+  call_refunded?: boolean;
   match_id: string;
   initiator_user_id: string;
   request_id: string;
@@ -56,14 +63,14 @@ export async function getFightHistory(client: PoolClient, matchId: string): Prom
   )).rows;
 }
 export function remainingFightCalls(history: PersistedFight[], userId: string): number {
-  return Math.max(0, FIGHT_MAX_CALLS - history.filter(f => f.initiator_user_id === userId).length);
+  return Math.max(0, FIGHT_MAX_CALLS - history.filter(f => f.initiator_user_id === userId && !f.call_refunded).length);
 }
 function mustAcceptFight(history: PersistedFight[], userId: string): boolean {
   return history.filter(f => f.initiator_user_id !== userId && f.status === 'declined' &&
     (f.reason === 'decline' || f.reason === 'timeout')).length >= FIGHT_MAX_REFUSALS;
 }
 
-export async function queueFightSnapshot(client: PoolClient, matchId: string): Promise<void> {
+export async function queueFightSnapshot(client: PoolClient, matchId: string): Promise<number> {
   const result = await client.query<{ state_revision: string }>(
     'update amateur_duel_match set state_revision=state_revision+1,updated_at=now() where id=$1 returning state_revision',
     [matchId],
@@ -72,6 +79,7 @@ export async function queueFightSnapshot(client: PoolClient, matchId: string): P
     'insert into amateur_duel_fight_outbox(match_id,revision) values($1,$2) on conflict do nothing',
     [matchId, result.rows[0]!.state_revision],
   );
+  return Number(result.rows[0]!.state_revision);
 }
 export async function resumeDuel(
   client: PoolClient,
@@ -171,28 +179,32 @@ export async function createChallenge(
   );
   if (enabled.rows[0]?.enabled !== true) denyFight('disabled');
   if (!ctx.canExtend) denyFight('system_limit');
-  const presence = await client.query<{ user_id: string; compensation_ms: number }>(
-    'select user_id,compensation_ms from amateur_duel_fight_presence where match_id=$1 and expires_at>$2',
+  const presence = await client.query<{ user_id: string; compensation_ms: number; protocol_version: number }>(
+    'select user_id,compensation_ms,protocol_version from amateur_duel_fight_presence where match_id=$1 and expires_at>$2',
     [ctx.id, new Date(ctx.nowMs)],
   );
   if (ctx.participants.some((p) => !presence.rows.some((r) => r.user_id === p.userId)))
     denyFight('protocol_unavailable');
+  const runtimeSetting=await client.query<{enabled:boolean}>("select value='true'::jsonb as enabled from game_settings where key='duels.fights.runtime.enabled'");
+  const useRuntime=runtimeSetting.rows[0]?.enabled===true && presence.rows.every(p=>p.protocol_version>=3);
+  const runtimeRules={...DEFAULT_FIGHT_RULES,version:6,deliveryGraceMs:0};
   const result = await client.query<PersistedFight>(
-    `insert into amateur_duel_fight(match_id,initiator_user_id,request_id,status,offered_at,response_deadline_at,rules,compensation_ms,forced)
-    values($1,$2,$3,'offered',$4,$5,$6,$7,$8) returning *`,
+    `insert into amateur_duel_fight(match_id,initiator_user_id,request_id,status,offered_at,response_deadline_at,rules,compensation_ms,forced,runtime_version)
+    values($1,$2,$3,'offered',$4,$5,$6,$7,$8,$9) returning *`,
     [
       ctx.id,
       userId,
       requestId,
       new Date(ctx.nowMs),
       new Date(ctx.nowMs + FIGHT_RESPONSE_TIMEOUT_MS),
-      JSON.stringify(DEFAULT_FIGHT_RULES),
+      JSON.stringify(useRuntime?runtimeRules:DEFAULT_FIGHT_RULES),
       JSON.stringify(
         ctx.participants.map(
           (p) => presence.rows.find((r) => r.user_id === p.userId)!.compensation_ms,
         ),
       ),
       mustAcceptFight(history, opponent.userId),
+      useRuntime?1:0,
     ],
   );
   await queueFightSnapshot(client, ctx.id);
@@ -249,9 +261,9 @@ export async function advancePersistedFight(
   ctx: FightDuelContext,
 ): Promise<PersistedFight | null> {
   await advanceMedicalAid(client,ctx.id,ctx.nowMs,ctx.status !== 'active' || ctx.mandatoryBlocked === true);
-  let fight = await getFight(client, ctx.id);
+  const fight = await getFight(client, ctx.id);
   if (!fight) return null;
-  if (fight.status === 'resolved' || (fight.status === 'cancelled' && fight.reason === 'sudden_death_timeout')) {
+  if (fight.status === 'resolved' || (fight.status === 'cancelled' && ['sudden_death_timeout', 'runtime_interrupted'].includes(fight.reason ?? ''))) {
     if (ctx.paused && fight.resolved_at &&
         (ctx.nowMs >= fight.resolved_at.getTime() + FIGHT_RESULT_HOLD_MS || ctx.status !== 'active' || ctx.mandatoryBlocked)) {
       if (fight.status === 'resolved' && ctx.status === 'active' && !ctx.mandatoryBlocked && fight.winner_user_id !== null) {
@@ -266,7 +278,7 @@ export async function advancePersistedFight(
   if (ctx.status !== 'active' || ctx.mandatoryBlocked ||
       (fight.status === 'offered' && (ctx.participants.some(p => p.state !== 'period_active' || fightWindowRemainingMs(p) <= 0) || !ctx.canExtend))) {
     await client.query(
-      "update amateur_duel_fight set status='cancelled',reason='system_interruption',resolved_at=$2,revision=revision+1 where id=$1",
+      "update amateur_duel_fight set status='cancelled',reason='system_interruption',resolved_at=$2,revision=greatest(revision,runtime_revision_limit)+1 where id=$1",
       [fight.id, new Date(ctx.nowMs)],
     );
     await resumeDuel(client, ctx, ctx.nowMs, null, 0);
@@ -287,6 +299,7 @@ export async function advancePersistedFight(
     }
     return getFight(client, ctx.id);
   }
+  if (fight.runtime_version === 1) return fight;
   if (!fight.engine_state || !fight.starts_at || ctx.nowMs < fight.starts_at.getTime())
     return fight;
   const commands = (
@@ -323,6 +336,11 @@ export async function advancePersistedFight(
       next.finalizedThroughMs = ctx.nowMs - 1;
     }
   }
+  return persistAdvancedFight(client, ctx, fight, next);
+}
+
+export async function persistAdvancedFight(client: PoolClient, ctx: FightDuelContext, fight: PersistedFight, next: FightState): Promise<PersistedFight | null> {
+  const before = fight.engine_state!;
   const terminal = next.status === 'resolved' || next.status === 'cancelled';
   const winner = next.winner === null ? null : ctx.participants[next.winner]!.userId;
   // Main-phase admission and result writes are under the same match/gameplay locks.
@@ -363,6 +381,5 @@ export async function advancePersistedFight(
     JSON.stringify(before.responsive?.timeline.at(-1)?.players) !== JSON.stringify(next.responsive?.timeline.at(-1)?.players)
   )
     await queueFightSnapshot(client, ctx.id);
-  fight = await getFight(client, ctx.id);
-  return fight;
+  return getFight(client, ctx.id);
 }

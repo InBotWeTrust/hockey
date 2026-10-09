@@ -19,7 +19,8 @@ export function registerFightSocket(
       const protocols = String(req.headers['sec-websocket-protocol'] ?? '')
         .split(',')
         .map((s) => s.trim());
-      const compactSnapshots = protocols.includes('hockey-fight-v2');
+      const runtimeProtocol = protocols.includes('hockey-fight-v3');
+      const compactSnapshots = runtimeProtocol || protocols.includes('hockey-fight-v2');
       const bearer = String(req.headers.authorization ?? '');
       const token = bearer.startsWith('Bearer ')
         ? bearer.slice(7)
@@ -43,7 +44,10 @@ export function registerFightSocket(
       const samples: number[] = [];
       let heartbeat: ReturnType<typeof setInterval> | null = null;
       const send = (v: unknown) => {
-        if (!closed && socket.readyState === socket.OPEN) socket.send(JSON.stringify(v));
+        if (!closed && socket.readyState === socket.OPEN) {
+          if(socket.bufferedAmount>262144){socket.close(1013,'slow consumer');return;}
+          socket.send(JSON.stringify(v));
+        }
       };
       let publishedFightId: string | undefined;
       const snapshot = () =>
@@ -56,9 +60,9 @@ export function registerFightSocket(
         const compensation =
           samples.length < 3 ? 0 : Math.min(150, Math.floor(Math.min(...samples) / 2));
         await app.pg.query(
-          `insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at,compensation_ms) values($1,$2,$3,now()+interval '3 seconds',$4)
-      on conflict(match_id,user_id) do update set connection_id=excluded.connection_id,expires_at=excluded.expires_at,compensation_ms=excluded.compensation_ms`,
-          [matchId, userId, connectionId, compensation],
+          `insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at,compensation_ms,protocol_version) values($1,$2,$3,now()+interval '3 seconds',$4,$5)
+      on conflict(match_id,user_id) do update set connection_id=excluded.connection_id,expires_at=excluded.expires_at,compensation_ms=excluded.compensation_ms,protocol_version=excluded.protocol_version`,
+          [matchId, userId, connectionId, compensation, runtimeProtocol ? 3 : 2],
         );
       };
       let snapshotBusy = false;
@@ -121,13 +125,23 @@ export function registerFightSocket(
           .then(async () => {
             body = fightActionSchema.parse(JSON.parse(raw.toString()));
             const command = body;
+            if(runtimeProtocol && adapter.runtimeCommand){
+              const ack=await adapter.runtimeCommand(matchId,userId,command);
+              if(ack){send({type:'fight:ack',actionId:command.actionId,ack});void publishSnapshot().catch(()=>undefined);return;}
+            }
             const result = await adapter.transact(async (c) => {
               const ctx = await adapter.prepare(c, matchId, userId);
               await advancePersistedFight(c, ctx);
-              const ack = await admitFightCommand(c, ctx, userId, command);
-              return { ack };
+              const { notificationRevision, ...ack } = await admitFightCommand(c, ctx, userId, command);
+              return { ack, notificationRevision };
             });
             send({ type: 'fight:ack', actionId: command.actionId, ack: result.ack });
+            // Only announce committed state; the durable outbox retries failures.
+            if (result.notificationRevision !== undefined) {
+              void app.realtime.publish(`duel:fight:${matchId}`, {
+                type: 'duel:fight_update', matchId, revision: result.notificationRevision,
+              }).catch(() => undefined);
+            }
             void publishSnapshot().catch(() => undefined);
           })
           .catch((error) => {
@@ -165,6 +179,11 @@ export function registerFightSocket(
         const initial = await snapshot();
         publishedFightId = (initial as { fight?: { id: string } })?.fight?.id;
         send({ type: 'duel:snapshot', match: initial });
+        // The checkpoint may lag the active room. Resync before accepting renewed held input.
+        if (runtimeProtocol) {
+          const live = await adapter.liveSnapshot?.(matchId, userId);
+          if (live) send(live);
+        }
         send({ type: 'connection:ready' });
         heartbeat = setInterval(() => {
           if (closed || busy) return;

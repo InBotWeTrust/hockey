@@ -31,7 +31,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
       if (disposed) return;
       const socket = new WebSocket(
         `${getWebSocketBaseUrl()}/api/duel/amateur/matches/${matchId}/ws`,
-        ['hockey-fight-v2', `bearer.${token}`],
+        ['hockey-fight-v3', `bearer.${token}`],
       );
       socketRef.current = socket;
       ready.current = false;

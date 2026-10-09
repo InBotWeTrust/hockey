@@ -1,3 +1,5 @@
+import { FIGHT_MOVE_SPEED, fightMoveSpeed } from './movementSpeed.js';
+export { FIGHT_MOVE_SPEED, fightMoveSpeed } from './movementSpeed.js';
 import { moveResponsivePositions } from './responsiveMovement.js';
 export { moveResponsivePositions, GAP as FIGHT_MIN_DISTANCE } from './responsiveMovement.js';
 import { getFightPosture } from './responsiveInput.js';
@@ -5,7 +7,6 @@ import type { FightState } from './types.js';
 // Normalized arena coordinates. Movement leases prevent skating after disconnect.
 export const FIGHT_MOVE_LEASE_MS = 450;
 export const FIGHT_REACH = 0.4;
-export const FIGHT_MOVE_SPEED = 0.0003;
 const SPEED = FIGHT_MOVE_SPEED;
 const MIN = 0.25;
 const MAX = 0.75;
@@ -16,7 +17,7 @@ export function fightPositionsAt(state: FightState, atMs: number): [number, numb
     if (!frame) return [.32,.68];
     const positions: [number,number] = [...frame.positions];
     const end=Math.min(atMs,state.endedAtMs??state.deadlineMs);
-    const velocities=([0,1] as const).map(player=>{const p=getFightPosture(state,player,frame.atMs);return !p.crouch&&frame.atMs>=p.readyAtMs?p.direction*(player===0?1:-1)*SPEED*(p.guard?.5:1):0;});
+    const velocities=([0,1] as const).map(player=>{const p=getFightPosture(state,player,frame.atMs);return !p.crouch&&frame.atMs>=p.readyAtMs?p.direction*(player===0?1:-1)*fightMoveSpeed(state.rules.version)*(p.guard?.5:1):0;});
     const duration=Math.max(0,end-frame.atMs);
     // Stop each velocity at its input lease expiry before integrating the remaining segment.
     const boundaries=[...new Set([0,duration,...frame.leaseUntil.map(t=>Math.max(0,Math.min(duration,t-frame.atMs)))])].sort((a,b)=>a-b);

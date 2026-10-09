@@ -50,6 +50,7 @@ import { arsenichAdminRoutes } from './arsenich/adminRoutes.js';
 
 export interface BuildAppOptions {
   duelFightWorkerEnabled?: boolean;
+  duelFightRuntimeRecoveryEnabled?: boolean;
   config?: AppConfig;
   yookassaClient?: YooKassaClient;
   pushSchedulerEnabled?: boolean;
@@ -245,6 +246,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(amateurDuelRoutes, {
     accessSecret: config.JWT_SECRET,
     fightWorkerEnabled: options.duelFightWorkerEnabled ?? config.NODE_ENV !== 'test',
+    fightRuntimeRecoveryEnabled: options.duelFightRuntimeRecoveryEnabled ?? config.NODE_ENV !== 'test',
     duelSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });

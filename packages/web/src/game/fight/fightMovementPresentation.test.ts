@@ -38,3 +38,11 @@ it('does not predict skating forever without confirmation and resets at fight en
  expect(p.positions(s,0,2500,0)[0]).toBeCloseTo(.32,1);
  s.status='resolved';expect(p.positions(s,0,2516,0)).toEqual([.32,.68]);
 });
+
+it('predicts the faster runtime movement while retaining saved legacy speed',()=>{
+ for(const version of [5,6]){
+  const state=createFightState({...DEFAULT_FIGHT_RULES,version},0),p=new FightMovementPresentation();
+  p.input(state,0,1000,{direction:-1,crouch:false,guard:false},'held');
+  expect(p.positions(state,0,1100,0)[0]).toBeCloseTo(.32-(version===6?.04:.03));
+ }
+});

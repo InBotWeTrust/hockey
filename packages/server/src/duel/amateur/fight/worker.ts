@@ -1,3 +1,4 @@
+import { drainFightOutbox } from './outbox.js';
 import type { FightState } from '@hockey/game-core';
 import type { FastifyInstance } from 'fastify';
 import type { FightDuelAdapter } from './routes.js';
@@ -26,6 +27,7 @@ export function startFightWorker(
        where (f.status in ('offered','starting','fighting','sudden_death') or
         (f.status in ('resolved','cancelled') and (m.fight_paused_at is not null or exists
           (select 1 from amateur_duel_participant p where p.match_id=f.match_id and p.fight_aid_until is not null))))
+       and (f.runtime_version=0 or f.status not in ('starting','fighting','sudden_death'))
        and f.id=(select latest.id from amateur_duel_fight latest where latest.match_id=f.match_id
          order by latest.offered_at desc,latest.id desc limit 1)
        order by f.offered_at`,
@@ -65,19 +67,7 @@ export function startFightWorker(
     }
     for (const id of checked.keys())
       if (!pending.rows.some((row) => row.match_id === id)) checked.delete(id);
-    const outbox = await app.pg.query<{ id: string; match_id: string; revision: string }>(
-      'select id,match_id,revision from amateur_duel_fight_outbox where published_at is null order by id limit 100',
-    );
-    for (const row of outbox.rows) {
-      await app.realtime.publish(`duel:fight:${row.match_id}`, {
-        type: 'duel:fight_update',
-        matchId: row.match_id,
-        revision: Number(row.revision),
-      });
-      await app.pg.query('update amateur_duel_fight_outbox set published_at=now() where id=$1', [
-        row.id,
-      ]);
-    }
+
   };
   const timer = setInterval(() => {
     if (stopped || running) return;
@@ -88,9 +78,18 @@ export function startFightWorker(
       });
   }, 10);
   timer.unref();
+  let publishing: Promise<void> | null = null;
+  const publishTimer = setInterval(() => {
+    if (stopped || publishing) return;
+    publishing = drainFightOutbox(app)
+      .catch(err => app.log.error({ err }, 'duel fight outbox failed'))
+      .finally(() => { publishing = null; });
+  }, 10);
+  publishTimer.unref();
   return async () => {
     stopped = true;
     clearInterval(timer);
-    await running;
+    clearInterval(publishTimer);
+    await Promise.all([running, publishing]);
   };
 }

@@ -29,11 +29,12 @@ export async function admitFightCommand(
   ctx: FightDuelContext,
   userId: string,
   body: FightActionPayload,
-): Promise<{ accepted: boolean; seq: number; reason?: string }> {
+): Promise<{ accepted: boolean; seq: number; reason?: string; notificationRevision?: number }> {
   const fight = await getFight(client, ctx.id);
   const player = ctx.participants.findIndex((p) => p.userId === userId);
   if (player !== 0 && player !== 1) denyFight('forbidden');
   if (!fight || fight.id !== body.fightId) denyFight('unknown_fight');
+  if(fight.runtime_version===1)denyFight('owner_unavailable');
   const duplicate = (
     await client.query<{
       ack: { accepted: boolean; seq: number; reason?: string };
@@ -120,6 +121,6 @@ export async function admitFightCommand(
     'update amateur_duel_fight set engine_state=$2,revision=revision+1 where id=$1',
     [fight.id, JSON.stringify(transition.state)],
   );
-  await queueFightSnapshot(client, ctx.id);
-  return ack;
+  const notificationRevision = await queueFightSnapshot(client, ctx.id);
+  return { ...ack, ...(notificationRevision !== undefined ? { notificationRevision } : {}) };
 }

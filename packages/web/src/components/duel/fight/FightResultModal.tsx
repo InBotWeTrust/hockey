@@ -7,9 +7,11 @@ import '../../../game/fight/fight.css';
 export function FightResultModal({
   won,
   draw = false,
+  interrupted = false,
 }: {
   won: boolean;
   draw?: boolean;
+  interrupted?: boolean;
 }): JSX.Element {
   // Let the fight dialog acquire its background/focus lock first, including on reconnect.
   const [open, setOpen] = useState(false);
@@ -17,7 +19,7 @@ export function FightResultModal({
     const timer = setTimeout(() => setOpen(true), FIGHT_FINISH_ANIMATION_MS);
     return () => clearTimeout(timer);
   }, []);
-  const title = draw ? 'Ничья' : won ? 'Вы победили' : 'Вы проиграли';
+  const title = interrupted ? 'Драка прервана' : draw ? 'Ничья' : won ? 'Вы победили' : 'Вы проиграли';
   return (
     <AccessibleModal
       open={open}
@@ -32,7 +34,9 @@ export function FightResultModal({
         WebkitBackdropFilter: 'none',
       }}
     >
-      {draw ? (
+      {interrupted ? (
+        <p className="modal-copy">Вызов возвращён</p>
+      ) : draw ? (
         <p className="modal-copy">Драка завершена без победителя</p>
       ) : (
         <p className="modal-copy fight-result-rewards">

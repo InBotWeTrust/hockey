@@ -1,3 +1,4 @@
+import { fightMoveSpeed } from './movementSpeed.js';
 import { moveResponsivePositions, MIN, MAX } from './responsiveMovement.js';
 import type { FightAction, FightActionCommand, FightCommand, FightEvent, FightFrame, FightPlayer, FightState, FightTransition } from './types.js';
 import { cloneFightFrame, FIGHT_INPUT_LEASE_MS, FIGHT_RESPONSIVE_HIT_MS, FIGHT_GUARD_BREAK_MS, neutralFightInput } from './responsiveInput.js';
@@ -38,7 +39,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
   while(times.size){
     const t=Math.min(...times);times.delete(t);if(t>end)continue;
     // Integrate motion using velocities fixed over this event segment and collision constraints.
-    moveResponsivePositions(runtime.positions,players.map(i=>{const p=runtime.players[i];return p.crouch||previous<p.readyAtMs?0:p.direction*(i===0?1:-1)*.0003*(p.guard?.5:1);}),t-previous);
+    moveResponsivePositions(runtime.positions,players.map(i=>{const p=runtime.players[i];return p.crouch||previous<p.readyAtMs?0:p.direction*(i===0?1:-1)*fightMoveSpeed(state.rules.version)*(p.guard?.5:1);}),t-previous);
     previous=t;runtime.atMs=t;
     for(const i of players){
       const p=runtime.players[i];
