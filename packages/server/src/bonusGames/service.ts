@@ -39,7 +39,11 @@ import {
   type BalanceSnapshot,
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
-import { BONUS_SHOT_RESULT_PAUSE_MS, nextEnduranceGoalWindow } from './endurance.js';
+import {
+  BONUS_SHOT_RESULT_PAUSE_MS,
+  nextEnduranceGoalWindow,
+  pauseEnduranceGoalWindow,
+} from './endurance.js';
 import {
   toMarksmanshipScoreDetails,
   type MarksmanshipScoreDetails,
@@ -1543,6 +1547,22 @@ export async function submitBonusShot(
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else if (isEndurance) {
+              const pausedWindow = attempt.goal_window_ends_at === null
+                ? null
+                : pauseEnduranceGoalWindow({
+                    goalWindowEndsAt: attempt.goal_window_ends_at,
+                    shotStartedAt: authoritativeShotStartedAt,
+                    flightMs: (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
+                  });
+              if (pausedWindow !== null) {
+                const windowUpdate = await client.query<BonusGameAttemptRow>(
+                  `update bonus_game_attempt
+                      set goal_window_started_at = $2, goal_window_ends_at = $3, updated_at = $4
+                    where id = $1 returning *`,
+                  [attempt.id, pausedWindow.startsAt, pausedWindow.endsAt, input.now],
+                );
+                attempt = windowUpdate.rows[0]!;
+              }
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else if (!isEndurance) {
