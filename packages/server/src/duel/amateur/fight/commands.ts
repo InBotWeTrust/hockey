@@ -68,11 +68,16 @@ export async function admitFightCommand(
   if (body.kind === 'move' && state.rules.version < 2) denyFight('unsupported_action');
   if (body.phaseId !== state.phaseId) denyFight('old_phase');
   if (body.seq !== state.lastSeq[player] + 1) denyFight('sequence');
-  const effectiveAtMs = ctx.nowMs - fight.compensation_ms[player];
+  const compensatedAtMs = ctx.nowMs - fight.compensation_ms[player];
+  // Newly received intent cannot precede phase start or rewrite a sealed instant.
+  // At the maximum compensation these bounds otherwise reject every command.
+  const effectiveAtMs = state.rules.version >= 3
+    ? Math.max(compensatedAtMs, state.phaseStartedAtMs, state.finalizedThroughMs + 1)
+    : compensatedAtMs;
   if (
     effectiveAtMs < state.phaseStartedAtMs ||
     (state.rules.version >= 3 ? effectiveAtMs <= state.finalizedThroughMs : effectiveAtMs < state.finalizedThroughMs) ||
-    effectiveAtMs >= state.deadlineMs
+    effectiveAtMs >= state.deadlineMs || effectiveAtMs > ctx.nowMs
   )
     denyFight('late_action');
   const command: FightCommand = {

@@ -6078,7 +6078,7 @@ function AmateurDuelPlayView({
   const fightOverlay = fightPaused && fight?.status !== 'offered' ? (
     <FightModal {...(medicalAid ? {medicalAidUntilMs,nowMs:fightNow} : {})}>
       {fight?.engine_state ? (
-        <FightView
+        <FightView key={`${fight.id}:scene`}
           state={fight.engine_state}
           player={match.me.side === 'challenger' ? 0 : 1}
           currentPlayer={{ name: match.me.display_name, avatarUrl: match.me.avatar_url }}
@@ -6091,7 +6091,7 @@ function AmateurDuelPlayView({
           predictionReset={fightSocket.predictionReset}
         />
       ) : <p>Восстанавливаем состояние боя…</p>}
-      {fight?.status === 'resolved' && <FightResultModal won={fight.winner_user_id === match.me.user_id} />}
+      {(fight?.status === 'resolved' || fight?.status === 'cancelled') && <FightResultModal key={`${fight.id}:result`} won={fight.winner_user_id === match.me.user_id} draw={fight.status === 'cancelled'} />}
       {!fightSocket.connected && fight?.status !== 'resolved' && <p className="fight-connection" role="status">Восстанавливаем связь…</p>}
       {fightSocket.error && fight?.status !== 'resolved' && <p className="fight-connection" role="status">{fightSocket.error}</p>}
     </FightModal>
@@ -6346,7 +6346,6 @@ function AmateurDuelPlayView({
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <>
-            {match.fight?.status==='cancelled'&&match.fight.resolved_at&&fightNow-Date.parse(match.fight.resolved_at)<1500&&<p role="status">Драка завершена без победителя</p>}
             {match.fight?.status==='resolved'&&match.fight.resolved_at&&fightNow-Date.parse(match.fight.resolved_at)<1500&&<p role="status">{match.fight.winner_user_id===match.me.user_id?'Победа в драке! +1 ⭐ · +1 опыт':'Поражение · +1 опыт'}</p>}
             <DuelInventoryMiniHud
               match={match}

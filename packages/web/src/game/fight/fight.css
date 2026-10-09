@@ -208,8 +208,14 @@
   font-size: 13px;
 }
 .duel-fight-card .fight-connection {
-  position: static;
-  margin: 8px 0 0;
+  position: absolute;
+  bottom: auto;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  margin: 0;
+  pointer-events: none;
+  z-index: 3;
 }
 .duel-fight-card .fight-offer .modal-title {
   font-size: 18px;
@@ -481,7 +487,7 @@
 .fight-health--1 .fight-player-identity { flex-direction:row-reverse; }
 .fight-health--0 .fight-health__name { text-align:left; }
 .fight-health--1 .fight-health__name { text-align:right; }
-.fight-reserve--guard .is-filled svg { fill:rgba(168,219,243,.28); stroke:#a8dbf3; stroke-width:1.8; }
+.fight-reserve--guard .is-filled svg { fill:currentColor; stroke:#a8dbf3; stroke-width:1.8; }
 
 .fight-scene--responsive .fight-reserve { width:100%; }
 

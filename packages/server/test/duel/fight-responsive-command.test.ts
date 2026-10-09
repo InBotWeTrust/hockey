@@ -24,3 +24,27 @@ it('admits held input through real schema and engine using bounded server time',
  const update=query.mock.calls.find(c=>String(c[0]).startsWith('update amateur_duel_fight set'))!;
  expect(JSON.parse(update[1][1]).responsive.commands).toHaveLength(1);
 });
+
+it.each([0, 1, 149, 150])('admits an input at fight start with %ims delivery compensation', async compensation => {
+  const state = createFightState(DEFAULT_FIGHT_RULES, 1000);
+  vi.mocked(getFight).mockResolvedValue({id:base.fightId,status:'fighting',engine_state:state,rules:state.rules,compensation_ms:[compensation,0]} as never);
+  const query = vi.fn().mockResolvedValue({rows:[]});
+  const body = fightActionSchema.parse({...base,kind:'input',input:{direction:1,crouch:false,guard:true}});
+  const ctx = {id:'match',nowMs:1000,participants:[{userId:'a'},{userId:'b'}]} as never;
+  expect(await admitFightCommand({query} as unknown as PoolClient,ctx,'a',body)).toMatchObject({accepted:true});
+  const saved = JSON.parse(query.mock.calls.find(call => String(call[0]).startsWith('update amateur_duel_fight set'))![1][1]);
+  expect(saved.responsive.commands[0].effectiveAtMs).toBe(1000);
+});
+
+it('admits current input at maximum compensation without rewriting the sealed past', async () => {
+  const state = createFightState(DEFAULT_FIGHT_RULES, 1000);
+  state.finalizedThroughMs = 1850;
+  vi.mocked(getFight).mockResolvedValue({id:base.fightId,status:'fighting',engine_state:state,rules:state.rules,compensation_ms:[150,0]} as never);
+  const query = vi.fn().mockResolvedValue({rows:[]});
+  const body = fightActionSchema.parse({...base,kind:'input',input:{direction:1,crouch:false,guard:true}});
+  const ctx = {id:'match',nowMs:2000,participants:[{userId:'a'},{userId:'b'}]} as never;
+  expect(await admitFightCommand({query} as unknown as PoolClient,ctx,'a',body)).toMatchObject({accepted:true});
+  const saved = JSON.parse(query.mock.calls.find(call => String(call[0]).startsWith('update amateur_duel_fight set'))![1][1]);
+  expect(saved.responsive.commands[0].effectiveAtMs).toBeGreaterThan(1850);
+  expect(saved.responsive.commands[0].effectiveAtMs).toBeLessThanOrEqual(2000);
+});

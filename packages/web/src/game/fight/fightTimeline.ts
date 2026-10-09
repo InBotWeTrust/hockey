@@ -1,7 +1,7 @@
 import { getFightPosture, type FightAction, type FightState, type FightZone } from '@hockey/game-core';
 import type { FighterPose } from './Fighter.js';
 export interface FightVisualFrame { pose:FighterPose; progress:number; motion:number; recovery?:number; reaction?:{kind:'hit'|'guard'|'strike'|'blocked';progress:number} }
-interface Presentation {id:string;attacker:0|1;defender:0|1;zone:FightZone;blocked:boolean;strikeAt:number;reactAt:number}
+interface Presentation {id:string;attacker:0|1;defender:0|1;zone:FightZone;blocked:boolean;showStrike:boolean;strikeAt:number;reactAt:number}
 /** Presentation clock never owns damage. Event IDs survive repeats; initial history is not replayed. */
 export class FightTimeline {
   private phase:number;
@@ -17,13 +17,19 @@ export class FightTimeline {
   clearPrediction():void{this.prediction=null;}
   observe(state:FightState,now:number):void{
     this.rules=state.rules;
-    if(state.phaseId!==this.phase){this.phase=state.phaseId;this.prediction=null;this.seen=new Set(state.responsive?.contacts.map(c=>c.id)??[]);this.presentations=[];this.struck.clear();return;}
+    if(state.phaseId!==this.phase){
+      this.phase=state.phaseId;this.prediction=null;this.presentations=[];this.struck.clear();
+      // A coalesced snapshot can contain both the new phase and its first hit.
+      // Ignore inherited contacts, but still present contacts of this phase's actions.
+      const actions=new Set(state.actions.map(a=>a.actionId??`${a.phaseId}:${a.player}:${a.seq}`));
+      this.seen=new Set((state.responsive?.contacts??[]).filter(c=>!actions.has(c.actionId)).map(c=>c.id));
+    }
     this.presentations=this.presentations.filter(e=>now<e.reactAt+200);
     for(const c of state.responsive?.contacts??[]){
       if(this.seen.has(c.id))continue;this.seen.add(c.id);
       if(c.outcome==='miss')continue;
       const caughtUp=this.struck.has(c.actionId);
-      this.presentations.push({id:c.id,attacker:c.attacker,defender:c.defender,zone:c.zone,blocked:c.outcome==='blocked',strikeAt:now,reactAt:now+(caughtUp?0:80)});
+      this.presentations.push({id:c.id,attacker:c.attacker,defender:c.defender,zone:c.zone,blocked:c.outcome==='blocked',showStrike:!caughtUp,strikeAt:now,reactAt:now+(caughtUp||state.rules.version>=5?0:80)});
     }
   }
   frame(state:FightState,player:0|1,now:number):FightVisualFrame{
@@ -44,7 +50,7 @@ export class FightTimeline {
     }
     const event=[...this.presentations].reverse().find(e=>(e.attacker===player||e.defender===player)&&now<e.reactAt+200);
     if(event){
-      if(event.attacker===player&&now<event.reactAt){pose=event.zone==='body'?'crouch_attack':'attack_head';motion=12;}
+      if(event.attacker===player&&(state.rules.version<5||event.showStrike)&&now<(state.rules.version>=5?event.strikeAt+state.rules.activeMs:event.reactAt)){pose=event.zone==='body'?'crouch_attack':'attack_head';motion=12;}
       if(now>=event.reactAt){
         const reaction={kind:event.defender===player?(event.blocked?'guard':'hit'):(event.blocked?'blocked':'strike'),progress:(now-event.reactAt)/200} as NonNullable<FightVisualFrame['reaction']>;
         if(event.defender===player){pose=event.blocked?(posture.crouch?'crouch_block':'block_head'):'hit';}

@@ -19,7 +19,7 @@ export function registerFightSocket(
       const protocols = String(req.headers['sec-websocket-protocol'] ?? '')
         .split(',')
         .map((s) => s.trim());
-      const compactSnapshots=protocols.includes('hockey-fight-v2');
+      const compactSnapshots = protocols.includes('hockey-fight-v2');
       const bearer = String(req.headers.authorization ?? '');
       const token = bearer.startsWith('Bearer ')
         ? bearer.slice(7)
@@ -45,6 +45,7 @@ export function registerFightSocket(
       const send = (v: unknown) => {
         if (!closed && socket.readyState === socket.OPEN) socket.send(JSON.stringify(v));
       };
+      let publishedFightId: string | undefined;
       const snapshot = () =>
         adapter.transact(async (c) => {
           const ctx = await adapter.prepare(c, matchId, userId);
@@ -70,10 +71,17 @@ export function registerFightSocket(
           while (snapshotDirty && !closed) {
             snapshotDirty = false;
             const live = compactSnapshots ? await adapter.liveSnapshot?.(matchId, userId) : null;
-            if (live) send(live);
-            else send({ type: 'duel:snapshot', match: await snapshot() });
+            const liveFightId = (live as { fight?: { id: string } } | null)?.fight?.id;
+            if (live && liveFightId === publishedFightId) send(live);
+            else {
+              const match = await snapshot();
+              publishedFightId = (match as { fight?: { id: string } })?.fight?.id;
+              send({ type: 'duel:snapshot', match });
+            }
           }
-        } finally { snapshotBusy = false; }
+        } finally {
+          snapshotBusy = false;
+        }
       };
       let off: (() => Promise<void>) | null = null;
       const cleanup = () => {
@@ -108,22 +116,35 @@ export function registerFightSocket(
           void publishSnapshot().catch(() => undefined);
           return;
         }
+        let body: ReturnType<typeof fightActionSchema.parse> | undefined;
         serial = serial
           .then(async () => {
-            const body = fightActionSchema.parse(JSON.parse(raw.toString()));
+            body = fightActionSchema.parse(JSON.parse(raw.toString()));
+            const command = body;
             const result = await adapter.transact(async (c) => {
               const ctx = await adapter.prepare(c, matchId, userId);
               await advancePersistedFight(c, ctx);
-              const ack = await admitFightCommand(c, ctx, userId, body);
+              const ack = await admitFightCommand(c, ctx, userId, command);
               return { ack };
             });
-            send({ type: 'fight:ack', actionId: body.actionId, ack: result.ack });
+            send({ type: 'fight:ack', actionId: command.actionId, ack: result.ack });
             void publishSnapshot().catch(() => undefined);
           })
           .catch((error) => {
-            app.log.warn({matchId, reason: error instanceof AppError ? ((error.details as {reason?:string})?.reason ?? error.code) : 'bad_request'}, 'duel fight command rejected');
+            app.log.warn(
+              {
+                matchId,
+                ...(body ? { fightId: body.fightId, actionId: body.actionId, seq: body.seq } : {}),
+                reason:
+                  error instanceof AppError
+                    ? ((error.details as { reason?: string })?.reason ?? error.code)
+                    : 'bad_request',
+              },
+              'duel fight command rejected',
+            );
             send({
               type: 'fight:error',
+              ...(body ? { fightId: body.fightId, actionId: body.actionId, seq: body.seq } : {}),
               reason:
                 error instanceof AppError
                   ? ((error.details as { reason?: string })?.reason ?? error.code)
@@ -141,7 +162,9 @@ export function registerFightSocket(
           return;
         }
         await presence();
-        send({ type: 'duel:snapshot', match: await snapshot() });
+        const initial = await snapshot();
+        publishedFightId = (initial as { fight?: { id: string } })?.fight?.id;
+        send({ type: 'duel:snapshot', match: initial });
         send({ type: 'connection:ready' });
         heartbeat = setInterval(() => {
           if (closed || busy) return;

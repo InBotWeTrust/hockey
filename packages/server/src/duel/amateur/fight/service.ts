@@ -251,10 +251,10 @@ export async function advancePersistedFight(
   await advanceMedicalAid(client,ctx.id,ctx.nowMs,ctx.status !== 'active' || ctx.mandatoryBlocked === true);
   let fight = await getFight(client, ctx.id);
   if (!fight) return null;
-  if (fight.status === 'resolved') {
+  if (fight.status === 'resolved' || (fight.status === 'cancelled' && fight.reason === 'sudden_death_timeout')) {
     if (ctx.paused && fight.resolved_at &&
         (ctx.nowMs >= fight.resolved_at.getTime() + FIGHT_RESULT_HOLD_MS || ctx.status !== 'active' || ctx.mandatoryBlocked)) {
-      if (ctx.status === 'active' && !ctx.mandatoryBlocked && fight.winner_user_id !== null) {
+      if (fight.status === 'resolved' && ctx.status === 'active' && !ctx.mandatoryBlocked && fight.winner_user_id !== null) {
         await beginMedicalAid(client,ctx,fight);
       } else {
         await resumeDuel(client,ctx,ctx.nowMs,null,0);
@@ -354,8 +354,7 @@ export async function advancePersistedFight(
         }
       }
     }
-    if (winner === null) await resumeDuel(client, ctx, ctx.nowMs, null, 0);
-    else await queueFightSnapshot(client, ctx.id);
+    await queueFightSnapshot(client, ctx.id);
   } else if (
     before.status !== next.status ||
     JSON.stringify(before.hp) !== JSON.stringify(next.hp) ||

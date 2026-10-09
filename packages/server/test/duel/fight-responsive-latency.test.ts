@@ -4,7 +4,7 @@ import { fightActionSchema,admitFightCommand } from '../../src/duel/amateur/figh
 import type { PoolClient } from 'pg';
 vi.mock('../../src/duel/amateur/fight/service.js',()=>({getFight:vi.fn(),queueFightSnapshot:vi.fn(),denyFight:(reason:string)=>{throw Error(reason)}}));
 import { getFight } from '../../src/duel/amateur/fight/service.js';
-it.each([50,100,200])('allows a150ms defensive response at RTT%i plus20ms one-way jitter',async rtt=>{
+it.each([50,100,200].flatMap(rtt=>[true,false].map(held=>({rtt,held}))))('instant contact respects held=$held guard at RTT$rtt plus20ms jitter',async ({rtt,held})=>{
  let state:FightState=createFightState(DEFAULT_FIGHT_RULES,0);
  const oneWay=rtt/2+20,compensation=rtt/2;
  vi.mocked(getFight).mockImplementation(async()=>({id:'00000000-0000-4000-8000-000000000001',status:'fighting',engine_state:state,rules:state.rules,compensation_ms:[compensation,compensation]}) as never);
@@ -13,11 +13,12 @@ it.each([50,100,200])('allows a150ms defensive response at RTT%i plus20ms one-wa
  const context=(nowMs:number)=>({id:'match',nowMs,participants:[{userId:'a'},{userId:'b'}]}) as never;
  const command=(kind:'attack'|'input',seq:number)=>fightActionSchema.parse({type:'fight:action',fightId:'00000000-0000-4000-8000-000000000001',actionId:`00000000-0000-4000-8000-${String(seq).padStart(12,'0')}`,phaseId:0,seq:1,...(kind==='attack'?{kind,zone:'head'}:{kind,input:{direction:0,crouch:false,guard:true}})});
  const attackSent=1000,attackReceived=attackSent+oneWay,visible=attackReceived+oneWay;
+ if(held)await admitFightCommand(client,context(attackReceived-100),'b',command('input',3));
  await admitFightCommand(client,context(attackReceived),'a',command('attack',2));
  const guardPressed=visible+150,guardReceived=guardPressed+oneWay;
  state=advanceFight(state,[],guardReceived-state.rules.deliveryGraceMs).state;
- await admitFightCommand(client,context(guardReceived),'b',command('input',3));
+ if(!held)await admitFightCommand(client,context(guardReceived),'b',command('input',3));
  state=advanceFight(state,[],2000).state;
- expect(state.hp,{rtt,oneWay,visible,guardPressed,guardReceived}).toEqual([5,5]);
- expect(state.actions[0]?.outcome).toBe('blocked');
+ expect(state.hp,{rtt,oneWay,visible,guardPressed,guardReceived}).toEqual(held?[5,5]:[5,4]);
+ expect(state.actions[0]?.outcome).toBe(held?'blocked':'hit');
 });
