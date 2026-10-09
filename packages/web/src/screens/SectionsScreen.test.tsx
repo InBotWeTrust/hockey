@@ -1025,14 +1025,14 @@ describe('SectionsScreen', () => {
       within(quickAccess)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин']);
+    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин', 'Бар']);
 
     const modes = screen.getByRole('region', { name: 'Игровые режимы' });
     expect(
       within(modes)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Бонусные игры', 'Бар', 'Любители', 'Профессионалы']);
+    ).toEqual(['Бонусные игры', 'Любители', 'Профессионалы']);
     within(quickAccess)
       .getAllByRole('button')
       .forEach((button) => expect(button).toHaveClass('section-card-surface'));
@@ -1071,6 +1071,9 @@ describe('SectionsScreen', () => {
 
     const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
     expect(within(quickAccess).getByRole('button', { name: 'Ежедневная игра' })).toHaveClass(
+      'sections-quick-card--wide',
+    );
+    expect(within(quickAccess).getByRole('button', { name: 'Бар' })).toHaveClass(
       'sections-quick-card--wide',
     );
     expect(within(quickAccess).getByRole('button', { name: 'Магазин' })).toHaveClass(
