@@ -999,10 +999,9 @@ describe('SectionsScreen', () => {
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
 
-  it('opens the bar page from its card', async () => {
+  it('hides the bar entry while broadcasts are unavailable', () => {
     renderSections();
-    fireEvent.click(screen.getByRole('button', { name: 'Бар' }));
-    expect(screen.getByTestId('location')).toHaveTextContent('/bar');
+    expect(screen.queryByRole('button', { name: 'Бар' })).not.toBeInTheDocument();
   });
 
   it('groups frequent actions before the longer game modes', async () => {
@@ -1015,7 +1014,7 @@ describe('SectionsScreen', () => {
       within(quickAccess)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин', 'Бар']);
+    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин']);
 
     const modes = screen.getByRole('region', { name: 'Игровые режимы' });
     expect(
@@ -1061,9 +1060,6 @@ describe('SectionsScreen', () => {
 
     const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
     expect(within(quickAccess).getByRole('button', { name: 'Ежедневная игра' })).toHaveClass(
-      'sections-quick-card--wide',
-    );
-    expect(within(quickAccess).getByRole('button', { name: 'Бар' })).toHaveClass(
       'sections-quick-card--wide',
     );
     expect(within(quickAccess).getByRole('button', { name: 'Магазин' })).toHaveClass(
