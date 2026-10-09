@@ -113,9 +113,8 @@ const ProfileStorySeriesScreen = lazy(() =>
     default: module.ProfileStorySeriesScreen,
   })),
 );
-const BarScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarScreen })));
-const BarMatchScreen = lazy(() =>
-  import('../bar/BarScreen.js').then((m) => ({ default: m.BarMatchScreen })),
+const BarMaintenanceScreen = lazy(() =>
+  import('../bar/BarMaintenanceScreen.js').then((m) => ({ default: m.BarMaintenanceScreen })),
 );
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
@@ -355,7 +354,7 @@ function AppExperience(): JSX.Element {
                 path="/bar"
                 element={
                   <PrivateRoute>
-                    <BarScreen />
+                    <BarMaintenanceScreen />
                   </PrivateRoute>
                 }
               />
@@ -363,7 +362,7 @@ function AppExperience(): JSX.Element {
                 path="/bar/:kind/:id"
                 element={
                   <PrivateRoute>
-                    <BarMatchScreen />
+                    <BarMaintenanceScreen />
                   </PrivateRoute>
                 }
               />

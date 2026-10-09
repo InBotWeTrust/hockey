@@ -13,3 +13,12 @@ Generated with the built-in imagegen tool, using restaurant.webp as the referenc
 - Both outputs inspected and encoded as WebP at quality 82; the original artwork is retained.
 
 Prompt structure guidance: Image skill by Serge Shima (https://github.com/smixs/visual-skills), CC-BY-4.0.
+
+## Maintenance artwork (2026-10-09)
+
+- `bar-repair-card-v1.webp`: generated square sports-bar counter under renovation,
+  resized to 512 × 512, WebP quality 82.
+- `bar-repair-interior-v1.webp`: generated portrait sports pub under renovation,
+  resized to 900 × 1600, WebP quality 82.
+- Generated using the built-in imagegen tool; no lettering is baked into either asset.
+  Versioned filenames avoid reusing the previous production artwork cache.

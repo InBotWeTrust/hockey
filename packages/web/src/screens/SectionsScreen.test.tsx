@@ -999,9 +999,12 @@ describe('SectionsScreen', () => {
     expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
   });
 
-  it('hides the bar entry while broadcasts are unavailable', () => {
+  it('opens the bar maintenance page from its card', () => {
     renderSections();
-    expect(screen.queryByRole('button', { name: 'Бар' })).not.toBeInTheDocument();
+    const card = screen.getByRole('button', { name: 'Бар' });
+    expect(card.querySelector('img')).toHaveAttribute('src', '/bar/bar-repair-card-v1.webp');
+    fireEvent.click(card);
+    expect(screen.getByTestId('location')).toHaveTextContent('/bar');
   });
 
   it('groups frequent actions before the longer game modes', async () => {
@@ -1014,7 +1017,7 @@ describe('SectionsScreen', () => {
       within(quickAccess)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин']);
+    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин', 'Бар']);
 
     const modes = screen.getByRole('region', { name: 'Игровые режимы' });
     expect(

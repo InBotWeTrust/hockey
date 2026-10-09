@@ -8966,7 +8966,8 @@ button.daily-calendar__day:active {
   grid-template-areas:
     'daily daily'
     'training shop'
-    'tasks shop';
+    'tasks shop'
+    'bar bar';
   gap: 10px;
 }
 
@@ -8984,6 +8985,10 @@ button.daily-calendar__day:active {
 
 .sections-quick-grid > :nth-child(4) {
   grid-area: shop;
+}
+
+.sections-quick-grid > :nth-child(5) {
+  grid-area: bar;
 }
 
 .sections-quick-card {
