@@ -27,10 +27,10 @@ jobs:
           stamp="$(date -u +%Y%m%dT%H%M%SZ)"
           backup="backups/amateur-onboarding-dev-$stamp.dump"
           docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T postgres-dev \
-            sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup"
+            sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$backup" < /dev/null
           test -s "$backup"
           docker compose -f docker-compose.yml -f docker-compose.staging.yml exec -T postgres-dev \
             sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c "update users set amateur_onboarding_completed = false, amateur_onboarding_reset_at = now(); select count(*) as total, count(*) filter (where amateur_onboarding_completed) as completed from users;"' < /dev/null
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml ps server-dev push-worker-dev web-dev
+          docker compose -f docker-compose.yml -f docker-compose.staging.yml ps server-dev push-worker-dev web-dev < /dev/null
           printf 'Backup saved: %s\n' "$backup"
           REMOTE
