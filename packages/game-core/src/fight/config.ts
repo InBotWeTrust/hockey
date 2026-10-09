@@ -1,10 +1,10 @@
 import type { FightRules } from './types.js';
 export const DEFAULT_FIGHT_RULES: Readonly<FightRules> = Object.freeze({
-  version: 4,
+  version: 5,
   initialHp: 5,
   mainDurationMs: 20_000,
   suddenDeathDurationMs: 10_000,
-  windupMs: 80,
+  windupMs: 0,
   activeMs: 100,
   attackRecoveryMs: 150,
   blockMs: 700,

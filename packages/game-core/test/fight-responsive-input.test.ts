@@ -71,3 +71,27 @@ it.each([3,4])('preserves saved v3 and prevents rearming an exhausted guard in v
   expect(state.hp).toEqual(version>=4?[4,3]:[4,4]);
   expect(state.responsive!.contacts.at(-1)?.outcome).toBe(version>=4?'hit':'blocked');
 });
+
+
+it.each([0,1] as const)('live rules preserve low strike after crouch release for player %i', player => {
+  const opponent = (1-player) as 0|1;
+  const state = advanceFight(createFightState(ONLINE_RULES,0),[
+    hold(player,0,1,{crouch:true}), attack(player,1,2), hold(player,2,3,{}),
+  ],600).state;
+  expect(state.actions).toHaveLength(1);
+  expect(state.actions[0]?.zone).toBe('body');
+  expect(state.hp[player]).toBe(5);
+  expect(state.hp[opponent]).toBe(4);
+});
+
+it.each([0,1] as const)('live rules crouch and guard block a low strike for player %i', defender => {
+  const attacker = (1-defender) as 0|1;
+  const state = advanceFight(createFightState(ONLINE_RULES,0),[
+    hold(defender,0,1,{crouch:true,guard:true}),
+    hold(attacker,0,1,{crouch:true}), attack(attacker,1,2),
+  ],200).state;
+  expect(state.hp).toEqual([5,5]);
+  expect(state.responsive!.contacts.at(-1)?.outcome).toBe('blocked');
+  expect(getFightPosture(state,defender,200).guardUnits).toBe(2);
+  expect(getFightPosture(state,defender,200).crouch).toBe(true);
+});

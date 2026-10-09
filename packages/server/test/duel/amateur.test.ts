@@ -7744,13 +7744,25 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         await app.realtime.publish(`duel:fight:${id}`,{type:'duel:fight_update'});
         await vi.waitFor(()=>expect(otherMessages.some(m=>m.type==='fight:snapshot'&&m.fight?.engine_state?.hp[1]===4)).toBe(true),{timeout:2000});
         const moving={type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000005',phaseId:0,seq:2,kind:'input',input:{direction:-1,crouch:false,guard:false}};
+        otherSocket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:randomUUID(),phaseId:0,seq:1,kind:'input',input:{direction:0,crouch:true,guard:true}}));
         socket.send(JSON.stringify(moving));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.seq===2&&m.ack.accepted===true)).toBe(true),{timeout:2000});
-        const command=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and seq=2',[c.json().fight.id])).rows[0].payload;
+        await vi.waitFor(async()=>{
+          const other=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=1',[c.json().fight.id,userB])).rows;
+          expect(other).toHaveLength(1);
+          expect(other[0].payload).toMatchObject({player:1,kind:'input',input:{direction:0,crouch:true,guard:true}});
+        },{timeout:2000});
+        otherSocket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:randomUUID(),phaseId:0,seq:2,kind:'input',input:{direction:0,crouch:false,guard:false}}));
+        await vi.waitFor(async()=>{
+          const released=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=2',[c.json().fight.id,userB])).rows;
+          expect(released).toHaveLength(1);
+          expect(released[0].payload.input).toEqual({direction:0,crouch:false,guard:false});
+        },{timeout:2000});
+        const command=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=2',[c.json().fight.id,userA])).rows[0].payload;
         expect(command).toMatchObject({kind:'input',input:{direction:-1,crouch:false,guard:false},player:0});
         socket.send(JSON.stringify(moving));
         await vi.waitFor(()=>expect(messages.filter(m=>m.type==='fight:ack'&&m.ack?.seq===2)).toHaveLength(2),{timeout:2000});
-        expect((await pool.query('select count(*)::int as n from amateur_duel_fight_command where fight_id=$1 and seq=2',[c.json().fight.id])).rows[0].n).toBe(1);
+        expect((await pool.query('select count(*)::int as n from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=2',[c.json().fight.id,userA])).rows[0].n).toBe(1);
         socket.send(JSON.stringify({...moving,input:{direction:1,crouch:false,guard:false}}));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:error')).toBe(true),{timeout:2000});
         socket.send(JSON.stringify({...moving,actionId:'00000000-0000-4000-8000-000000000006',seq:3,input:{direction:0,crouch:false,guard:false}}));

@@ -392,3 +392,69 @@ it('ignores a previous socket closing after its replacement becomes ready', () =
   act(() => expect(hook.result.current.sendInput({direction:1,crouch:false,guard:true})).not.toBe(false));
   hook.unmount();
 });
+
+
+it('keeps release during rejection recovery neutral after resynchronization', () => {
+  vi.useFakeTimers();
+  const hook = renderHook(() => useDuelFightSocket('match', true));
+  const socket = Socket.instances[0]!;
+  socket.message({ type: 'connection:ready' });
+  act(() => hook.result.current.sendInput({ direction: 1, crouch: true, guard: true }));
+  const pending = JSON.parse(socket.sent[0]!);
+  socket.message({ type: 'fight:error', fightId: 'fight', actionId: pending.actionId, reason: 'sequence' });
+  act(() => hook.result.current.sendInput({ direction: 0, crouch: false, guard: false }));
+  socket.message({ type: 'duel:snapshot', match: snapshot(2) });
+  expect(socket.sent).toHaveLength(2);
+  const release = JSON.parse(socket.sent[1]!);
+  expect(release.input).toEqual({ direction: 0, crouch: false, guard: false });
+  socket.message({ type: 'fight:ack', actionId: release.actionId, ack: { accepted: true, seq: release.seq } });
+  act(() => vi.advanceTimersByTime(1000));
+  expect(socket.sent).toHaveLength(2);
+  hook.unmount();
+});
+
+it('does not revive queued attacks or held block when reconnecting to a finished fight', () => {
+  vi.useFakeTimers();
+  const hook = renderHook(() => useDuelFightSocket('match', true));
+  const first = Socket.instances[0]!;
+  first.message({ type: 'connection:ready' });
+  act(() => hook.result.current.sendInput({ direction: 1, crouch: false, guard: true }));
+  act(() => hook.result.current.sendAttack());
+  act(() => first.close());
+  act(() => vi.advanceTimersByTime(1000));
+  const second = Socket.instances[1]!;
+  const ended = snapshot(2);
+  ended.fight!.status = 'resolved';
+  ended.fight!.engine_state!.status = 'resolved';
+  second.message({ type: 'duel:snapshot', match: ended });
+  second.message({ type: 'connection:ready' });
+  act(() => vi.advanceTimersByTime(1000));
+  expect(second.sent).toHaveLength(0);
+  const next = snapshot(3);
+  next.fight!.id = 'next-fight';
+  second.message({ type: 'duel:snapshot', match: next });
+  act(() => vi.advanceTimersByTime(500));
+  expect(second.sent).toHaveLength(0);
+  act(() => hook.result.current.sendAttack());
+  expect(second.sent).toHaveLength(1);
+  expect(JSON.parse(second.sent[0]!)).toMatchObject({ fightId: 'next-fight', seq: 1, kind: 'attack' });
+  hook.unmount();
+});
+
+it('releases held controls on blur even while a previous command is awaiting ACK', () => {
+  vi.useFakeTimers();
+  const hook = renderHook(() => useDuelFightSocket('match', true));
+  const socket = Socket.instances[0]!;
+  socket.message({ type: 'connection:ready' });
+  act(() => hook.result.current.sendInput({ direction: -1, crouch: true, guard: true }));
+  act(() => window.dispatchEvent(new Event('blur')));
+  const held = JSON.parse(socket.sent[0]!);
+  socket.message({ type: 'fight:ack', actionId: held.actionId, ack: { accepted: true, seq: held.seq } });
+  expect(socket.sent).toHaveLength(2);
+  const release = JSON.parse(socket.sent[1]!);
+  expect(release.input).toEqual({ direction: 0, crouch: false, guard: false });
+  socket.message({ type: 'fight:ack', actionId: release.actionId, ack: { accepted: true, seq: release.seq } });
+  act(() => vi.advanceTimersByTime(1000));
+  expect(socket.sent).toHaveLength(2);
+  hook.unmount();
+});

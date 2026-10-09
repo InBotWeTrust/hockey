@@ -8,6 +8,6 @@ describe('GAME_CORE_VERSION', () => {
   });
 
   it('is bumped for responsive fight rules', () => {
-    expect(GAME_CORE_VERSION).toBe(82);
+    expect(GAME_CORE_VERSION).toBe(83);
   });
 });

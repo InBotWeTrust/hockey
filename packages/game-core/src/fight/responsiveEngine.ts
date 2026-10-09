@@ -32,7 +32,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
     const a:FightAction={...c,effectiveAtMs:t,zone:p.crouch?'body':'head',crouch:p.crouch,actionId:fightActionId(c),activeAtMs:t+state.rules.windupMs,activeUntilMs:t+state.rules.windupMs+state.rules.activeMs,busyUntilMs:t+state.rules.windupMs+state.rules.activeMs+state.rules.attackRecoveryMs,resolved:false};
     state.actions.push(a);p.guard=false;p.direction=0;p.readyAtMs=a.busyUntilMs;
     if(runtime.releasedAt[c.player]===null){runtime.releasedAt[c.player]=t;runtime.regenerated[c.player]=0;}
-    times.add(a.activeAtMs);times.add(a.busyUntilMs);
+    if(a.activeAtMs>t||state.rules.version<5)times.add(a.activeAtMs);times.add(a.busyUntilMs);
   };
   let previous=runtime.atMs;
   while(times.size){

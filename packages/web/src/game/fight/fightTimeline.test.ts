@@ -1,7 +1,7 @@
 import { it, expect } from 'vitest';
 import { createFightState, DEFAULT_FIGHT_RULES as ONLINE_RULES, advanceFight } from '@hockey/game-core';
 import { FightTimeline } from './fightTimeline.js';
-const DEFAULT_FIGHT_RULES={...ONLINE_RULES,windupMs:250};
+const DEFAULT_FIGHT_RULES={...ONLINE_RULES,version:4,windupMs:250};
 const initial=()=>createFightState(DEFAULT_FIGHT_RULES,0);
 it('immediately predicts windup then shows unresolved strike and recovery without restart on ack',()=>{
  const s=initial();const t=new FightTimeline(s);t.predict('local',0,100,'head',false);
@@ -64,4 +64,31 @@ it('does not replay inherited main-phase contacts on the sudden-death transition
   timeline.observe(main,now);
   expect(timeline.frame(main,0,now).reaction).toBeUndefined();
   expect(timeline.frame(main,1,now).reaction).toBeUndefined();
+});
+
+
+it('instant rules show the strike immediately and a late confirmed hit reacts without extra delay', () => {
+  const state=createFightState({...ONLINE_RULES,version:5,windupMs:0},0);
+  const timeline=new FightTimeline(state);
+  timeline.predict('instant',0,10,'head',false);
+  expect(timeline.frame(state,0,10).pose).toBe('attack_head');
+  timeline.clearPrediction();
+  const hit=advanceFight(state,[{kind:'attack',zone:'head',player:0,seq:1,phaseId:0,effectiveAtMs:10}],400).state;
+  timeline.observe(hit,1000);
+  expect(timeline.frame(hit,0,1000).pose).toBe('attack_head');
+  expect(timeline.frame(hit,1,1000).reaction?.kind).toBe('hit');
+  timeline.observe(hit,1300);
+  expect(timeline.frame(hit,1,1300).reaction).toBeUndefined();
+});
+
+
+it('does not replay an instant local strike when its confirmation arrives after recovery', () => {
+  const state=createFightState({...ONLINE_RULES,version:5,windupMs:0},0);
+  const timeline=new FightTimeline(state);
+  timeline.predict('already-shown',0,10,'head',false);
+  expect(timeline.frame(state,0,10).pose).toBe('attack_head');
+  const hit=advanceFight(state,[{kind:'attack',zone:'head',player:0,seq:1,phaseId:0,effectiveAtMs:10,actionId:'already-shown'}],400).state;
+  timeline.observe(hit,1000);
+  expect(timeline.frame(hit,0,1000).pose).toBe('idle');
+  expect(timeline.frame(hit,1,1000).reaction?.kind).toBe('hit');
 });

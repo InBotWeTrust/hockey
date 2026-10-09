@@ -68,3 +68,50 @@ Final checks:
 - Diff reviewed; `git diff --check` passed. No remote push, merge or deployment.
 
 The earlier live Rengo shot-button incident remains not conclusively reproduced. The baseline reactive-block latency contract (150 ms after seeing an attack, with 80 ms attack startup) remains unresolved; timings were not silently changed. Real two-phone latency/reconnect acceptance remains open.
+
+
+## Third local audit (2026-10-09)
+
+Added three transport regressions: releasing controls during rejection recovery, reconnecting to a terminal result before the next fight, and releasing held controls on blur while an ACK is pending. All passed immediately; these scenarios did not reproduce another production defect. No production code was changed in this audit.
+
+- Four targeted client files: 30 passed, including the three new regressions.
+- Isolated local server integration: 9 passed, 195 intentionally filtered out. Covered active-period overlap ending, the loser's last three seconds during assistance, assistance deadline on reconnect, recovery clearing on the next period, old-result worker isolation, result hold/resume, terminal match cancellation, and no-winner result after downtime.
+- Logs: `/private/tmp/hockey-fight-third-web.log`, `/private/tmp/hockey-fight-third-server.log`.
+- No push, merge, or deployment. Real-device multiplayer latency and the original Rengo shot-button incident remain unverified; this audit does not close those gaps.
+
+
+## Full mechanics follow-up and combined controls (2026-10-09)
+
+No production behavior changed. Added client multi-pointer regressions, current-rule combined-action tests for both player indices, and expanded the real localhost two-socket scenario so both participants send held input concurrently. Its existing command assertions now scope sequence numbers to the user: sequences are per participant, so querying seq=2 without a user selected the newly added counterpart command. The initial expanded test failed on that fixture ambiguity; the scoped assertions passed afterward.
+
+Coverage and results:
+
+- Client fight components, controls, transport and store: 92 passed in 19 files. New cases cover independent crouch/guard/movement release, attack while other fingers remain held, rapid re-press before a tap-release timer, and resetting held controls between fights.
+- Core fight suites: 57 passed. Four new cases use actual default rules (5 HP, 80 ms startup), checking crouch+attack with immediate crouch release and crouch+guard against a low strike for both player sides.
+- All ordinary-duel fight integration cases: 27 passed (177 unrelated cases filtered out), covering invitation concurrency, allowance, decline/timeout/forced start, pause boundaries, rewards, assistance, draw and resumed shooting. Two WebSocket cases at 0/150 ms compensation now also verify both participants' concurrent commands and independent releases.
+- Combined filtered server run: 55 passed, 184 skipped. Unfiltered seven server fight-unit files: 35 passed and 3 failed, no skips. These three are the already identified 150 ms reactive-block contract at RTT 50/100/200 ms; current 80 ms startup does not satisfy it. This is unresolved, not a green full suite.
+- DailyScreen incoming invitation, draw/resumed shooting and defeat/medical aid: 3 passed (214 unrelated cases filtered out).
+- Root typecheck passed; diff whitespace check passed.
+- Browser QA: outgoing invitation shows a 10-second timer, allowance drops from 3 to 2, hockey stays playable until acceptance. Incoming invitation hides allowance and presents accept. Accepted fight disables shooting and exposes controls after countdown. After fight return, a shot increased the rendered shot counter from 00/30 to 01/30 and the shot button became enabled again; no captured browser warnings/errors. Screenshot: `/private/tmp/hockey-fight-resumed-shot.jpg`. This preview is synthetic, not a real authenticated multiplayer browser session. Multi-touch combinations were exercised in component tests; physical phone touch acceptance remains open.
+
+Logs: `/private/tmp/hockey-fight-complete-*.log`, `/private/tmp/hockey-fight-dual-controls.log`. No remote writes or deployment. Two-phone behavior and the exact original Rengo incident remain unverified.
+
+
+## Approved instant-hit timing (2026-10-09)
+
+The user approved removing attack startup, keeping visible attacks and short recovery. New fights now store rules v5: startup 0 ms, active 100 ms, recovery 150 ms, maximum normal attack cadence 250 ms. Existing saved fight rules retain their startup; game-core version is 83. Delivery grace and transport latency are not removed or claimed absent.
+
+Observed RED before fixes:
+- Default attack did not hit at its press timestamp.
+- Zero-startup processing revisited the same event timestamp and spent two shields/reapplied recoil for one contact. v5 does not schedule the current instant twice; older rules preserve replay behavior.
+- Late contact presentation imposed another 80 ms reaction delay.
+- Removing that delay initially replayed a locally predicted strike on late confirmation. A regression reproduced it; presentation now shows a missing strike only if that action was not already shown.
+
+GREEN:
+- 63 targeted core/version tests, including instant contact, single shield/recoil, simultaneous trades, split-step deterministic replay and explicit saved-v4 startup.
+- 89 client fight tests and 3 DailyScreen invitation/result/assistance cases.
+- 27 ordinary-duel fight integrations, including both real localhost sockets and resumed shots (177 unrelated tests filtered out).
+- 41 server fight-unit tests, no skips. The six network-defense cases now express the newly approved contract: guard already held blocks, reaction after contact cannot undo damage, at RTT 50/100/200 ms plus jitter. The former 150 ms reactive-defense requirement has been intentionally superseded, not fixed under its old semantics.
+- Root typecheck and lint passed. Local browser click reduced the opponent from 5 to 4 HP; screenshot `/private/tmp/hockey-instant-hit.jpg`.
+
+No deployment. Real-phone latency remains unverified. Logs: `/private/tmp/hockey-instant-*.log`.
