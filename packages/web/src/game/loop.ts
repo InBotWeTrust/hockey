@@ -73,7 +73,7 @@ export interface GameLoopOpts {
 
 export interface GameLoop {
   attach: (ticker: Ticker) => void;
-  detach: () => void;
+  detach: (freezeClock?: boolean) => void;
   // Resets accumulated simulation time so the scene picks up from the active
   // session's base elapsed time. For daily periods this is usually t=0; for
   // persisted training sessions it is derived from the server's started_at.
@@ -376,6 +376,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
 
   let attachedTo: Ticker | null = null;
   let isAttached = false;
+  let frozenWhileDetached = false;
 
   const detachFromTicker = (): void => {
     const ticker = attachedTo;
@@ -418,11 +419,15 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     attach(ticker) {
       if (isAttached && attachedTo === ticker) return;
       detachFromTicker();
+      // Detached scenes are paused: exclude modal time from the next frame delta.
+      if (frozenWhileDetached) lastRealNowMs = performance.now();
+      frozenWhileDetached = false;
       ticker.add(onTick);
       attachedTo = ticker;
       isAttached = true;
     },
-    detach() {
+    detach(freezeClock = false) {
+      frozenWhileDetached ||= freezeClock;
       detachFromTicker();
     },
     resetTime(elapsedMs) {

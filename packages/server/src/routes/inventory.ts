@@ -231,6 +231,7 @@ function transactionCategory(reason: string): TransactionCategory {
   if (
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_reward' ||
+    reason === 'duel_fight_reward' ||
     reason === 'achievement_reward' ||
     reason === 'bonus_game_reward' ||
     reason === 'tournament_reward'
@@ -254,6 +255,7 @@ export function transactionTitle(reason: string, metadata: Record<string, unknow
   if (reason === 'tournament_reward') return 'Награда за турнир';
   if (reason === 'tournament_entry_fee') return 'Взнос за турнир';
   if (reason === 'tournament_entry_refund') return 'Возврат взноса за турнир';
+  if (reason === 'duel_fight_reward') return metadata.won === true ? 'Победа в драке' : 'Поражение в драке';
   if (reason === 'duel_reward') return 'Награда за дуэль';
   if (reason === 'achievement_reward') return 'Награда за достижение';
   if (reason === 'duel_stake_hold') return 'Ставка дуэли заморожена';
@@ -285,6 +287,7 @@ function transactionSubtitle(
     if (recoveryMinutes > 0) parts.push(`−${recoveryMinutes} минут`);
   } else if (
     reason === 'weekly_challenge_reward' ||
+    reason === 'duel_fight_reward' ||
     reason === 'achievement_reward' ||
     reason === 'bonus_game_reward' ||
     reason === 'tournament_reward'

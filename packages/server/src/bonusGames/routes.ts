@@ -1,3 +1,4 @@
+import { listBonusRecords } from './records.js';
 import { assertBonusChallengeRouteAccess } from './challengeAccess.js';
 import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z, type ZodType } from 'zod';
@@ -263,9 +264,11 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     best_goal_streak: attempt.bestGoalStreak,
     preview_required: attempt.previewRequired,
     current_loadout: attempt.currentLoadout,
+    record: attempt.record ?? null,
     reward_granted: attempt.rewardGranted,
     attempt_seed: attempt.attemptSeed,
     game_core_version: attempt.gameCoreVersion,
+    challenge_level: attempt.rules.challengeLevel ?? null,
     definition_revision: attempt.rules.revision,
     server_now: now.toISOString(),
     rules: {
@@ -344,6 +347,11 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     await assertBonusChallengeRouteAccess(app.pg, opts.challengesEnabled === true, request.user.id,
       gameId.success ? gameId.data : attemptId.success ? attemptId.data : {});
   };
+  app.get('/bonus-games/:gameId/records', { preHandler: [app.authenticate] }, async (request) => {
+    const { gameId } = gameParamsSchema.parse(request.params);
+    const { offset } = z.object({ offset: z.coerce.number().int().min(0).max(99).default(0) }).strict().parse(request.query);
+    return listBonusRecords(app.pg, request.user.id, gameId, offset);
+  });
   app.get('/bonus-games', { preHandler: [app.authenticate, challengeAccessGuard] }, async (request) =>
     runBonusRoute(async () => {
       const now = new Date();
@@ -428,9 +436,11 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
       try {
         const params = parseRequest(gameParamsSchema, request.params);
         const now = new Date();
+        const body = parseRequest(z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional() }).strict(), request.body ?? {});
         const result = await startOrResumeBonusAttempt(app.pg, {
           userId: request.user.id,
           gameId: params.gameId,
+          ...(body.level === undefined ? {} : { level: body.level }),
           now,
           seedSecret: opts.bonusSeedSecret,
           dailyAttemptLimit: opts.dailyAttemptLimit,

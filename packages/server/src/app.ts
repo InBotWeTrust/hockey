@@ -35,6 +35,7 @@ import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 import { tournamentRoutes } from './tournament/routes.js';
+import { barRoutes } from './bar/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
 import { coinPackageRoutes } from './payments/routes.js';
@@ -48,6 +49,8 @@ import { arsenichRoutes } from './arsenich/routes.js';
 import { arsenichAdminRoutes } from './arsenich/adminRoutes.js';
 
 export interface BuildAppOptions {
+  duelFightWorkerEnabled?: boolean;
+  duelFightRuntimeRecoveryEnabled?: boolean;
   config?: AppConfig;
   yookassaClient?: YooKassaClient;
   pushSchedulerEnabled?: boolean;
@@ -239,7 +242,11 @@ export async function buildApp(options: BuildAppOptions = {}) {
     trainingSeedSecret: config.DAILY_SEED_SECRET,
   });
   await app.register(openWindowCourseRoutes);
+  await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(amateurDuelRoutes, {
+    accessSecret: config.JWT_SECRET,
+    fightWorkerEnabled: options.duelFightWorkerEnabled ?? config.NODE_ENV !== 'test',
+    fightRuntimeRecoveryEnabled: options.duelFightRuntimeRecoveryEnabled ?? config.NODE_ENV !== 'test',
     duelSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });
@@ -252,7 +259,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
-  await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
   await app.register(

@@ -36,6 +36,7 @@ export function sampleSkiPlayer(
   offset = 0,
   pauses: readonly BonusChallengeShotPause[] = [],
   events: readonly SkiSlip[] = [],
+  fatigueEnabled = true,
 ) {
   const end = Math.max(0, time),
     period = 1000 / frequency,
@@ -70,7 +71,7 @@ export function sampleSkiPlayer(
       cursor = Math.min(end, paused.tapTime + paused.flightMs);
       continue;
     }
-    if (local === 0 && climbs >= 14) {
+    if (fatigueEnabled && local === 0 && climbs >= 14) {
       restUntil = cursor + 4000;
       continue;
     }
@@ -83,7 +84,7 @@ export function sampleSkiPlayer(
     }
     if (slip && cursor >= slip.endMs - 1e-8) slip = null;
     const uphill = local < half;
-    const rate = uphill ? 0.65 - 0.05 * Math.min(6, Math.floor(climbs / 2)) : 1.25;
+    const rate = uphill ? 0.65 - 0.05 * Math.min(6, Math.floor((fatigueEnabled ? climbs : 0) / 2)) : 1.25;
     let span = Math.min(end - cursor, ((uphill ? half : period) - local) / rate);
     if (event && event.startMs > cursor + 1e-8) span = Math.min(span, event.startMs - cursor);
     for (const p of pauses)
@@ -101,7 +102,7 @@ export function sampleSkiPlayer(
   }
   if (slip && end >= slip.endMs - 1e-8) slip = null;
   const resting = restUntil > end + 1e-8;
-  const stage = Math.min(6, Math.floor(climbs / 2));
+  const stage = Math.min(6, Math.floor((fatigueEnabled ? climbs : 0) / 2));
   const uphillMultiplier = 0.65 - 0.05 * stage,
     slowdownPercent = Math.round((1 - uphillMultiplier) * 100);
   const fatigue = getPlayerFatigueState(
@@ -109,7 +110,7 @@ export function sampleSkiPlayer(
     timing,
   );
   const recovering = end - lastRestEnd < 2000 && climbs < 2;
-  const notice = resting
+  const notice = !fatigueEnabled ? '' : resting
     ? 'Передышка · бросок недоступен'
     : `${recovering ? 'Силы восстановлены' : stage >= 4 ? 'Сильная усталость' : 'Тяжело подниматься'} · замедление ${slowdownPercent}%`;
   return {
@@ -153,6 +154,7 @@ export function createSkiSlips(
     speeds: Record<SkiTarget, number>;
     offsets: Record<SkiTarget, number>;
     pauses?: readonly BonusChallengeShotPause[];
+    fatigueEnabled?: boolean;
   },
 ): SkiSlip[] {
   const rng = createRng(seed);
@@ -198,7 +200,7 @@ export function createSkiSlips(
           candidate = paused.tapTime + paused.flightMs;
           continue;
         }
-        const sample = sampleSkiPlayer(candidate, f, o, config?.pauses ?? [], events);
+        const sample = sampleSkiPlayer(candidate, f, o, config?.pauses ?? [], events, config?.fatigueEnabled !== false);
         const local = mod(sample.clock + o, period);
         if (!sample.canShoot || sample.direction !== 'uphill' || local > desired) {
           candidate += 10;
@@ -261,6 +263,8 @@ export interface SkiEnvironmentRules {
   version: 1;
   seed: string;
   durationMs: number;
+  slipsEnabled?: boolean | undefined;
+  fatigueEnabled?: boolean | undefined;
 }
 export function createSkiAttemptSampler(
   rules: SkiEnvironmentRules,
@@ -270,6 +274,7 @@ export function createSkiAttemptSampler(
   let key: string | null = null,
     cached: SkiSlip[] = [];
   const events = (pauses: readonly BonusChallengeShotPause[]) => {
+    if (rules.slipsEnabled === false) return [];
     const next = JSON.stringify(pauses);
     if (next !== key) {
       key = next;
@@ -277,6 +282,7 @@ export function createSkiAttemptSampler(
         speeds,
         offsets: { goal: offsets.goal, goalie: offsets.goalie, player: offsets.shooter },
         pauses,
+        fatigueEnabled: rules.fatigueEnabled !== false,
       });
     }
     return cached;
@@ -284,7 +290,7 @@ export function createSkiAttemptSampler(
   return {
     events,
     player: (time: number, pauses: readonly BonusChallengeShotPause[]) =>
-      sampleSkiPlayer(time, speeds.player, offsets.shooter, pauses, events(pauses)),
+      sampleSkiPlayer(time, speeds.player, offsets.shooter, pauses, events(pauses), rules.fatigueEnabled !== false),
     court: (target: 'goal' | 'goalie', time: number, pauses: readonly BonusChallengeShotPause[]) =>
       skiGoalClock(
         time,

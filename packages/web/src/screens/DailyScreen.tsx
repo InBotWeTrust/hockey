@@ -1,3 +1,9 @@
+import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from '../game/matchCourt.js';
+import { useDuelFightSocket } from '../hooks/useDuelFightSocket.js';
+import { FightControls } from '../components/duel/fight/FightControls.js';
+import { FightView } from '../game/fight/FightView.js';
+import { FightResultModal } from '../components/duel/fight/FightResultModal.js';
+import { FightModal } from '../components/duel/fight/FightModal.js';
 import {
   useCallback,
   useEffect,
@@ -284,8 +290,6 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
   }
 }
 
-const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
-const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 
 export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
   return usesAmateurCourt
@@ -1495,13 +1499,16 @@ function GameHub({
         const isReady = game.state === 'ready_check' && readinessRemaining > 0;
         const isExpiredReadyCheck = game.state === 'ready_check' && readinessRemaining === 0;
         const isActive = game.state === 'active';
+        const waitingForOpponent = (isReady && game.my_ready === true) || (isActive && game.my_completed === true);
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
           kind: 'duel',
           eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
           title: game.tournament_title,
-          subtitle: isPaused
+          subtitle: waitingForOpponent
+            ? 'Ждём соперника'
+            : isPaused
             ? 'Игра ожидает решения администратора.'
             : isBreak
               ? 'Перерыв между играми серии'
@@ -1512,7 +1519,9 @@ function GameHub({
                   : isExpiredReadyCheck
                     ? 'Время подтверждения истекло.'
                     : 'Игра серии ожидает готовности.',
-          meta: isBreak
+          meta: isActive && game.my_completed === true
+            ? 'Вы завершили свою игру'
+            : isBreak
             ? `Следующая игра через ${formatMs(breakRemaining)}`
             : isPaused
               ? 'Расписание ожидает решения'
@@ -1543,7 +1552,9 @@ function GameHub({
             <DailyHubScoreboard
               activePeriod={0}
               ariaLabel={
-                isPaused
+                isActive && game.my_completed === true
+                  ? `${game.tournament_title}. Вы завершили свою игру. Ждём соперника.`
+                  : isPaused
                   ? `${game.tournament_title}. Игра ожидает решения администратора.`
                   : isBreak
                     ? `${game.tournament_title}. Перерыв между играми серии. До конца ${formatMs(breakRemaining)}`
@@ -1557,7 +1568,9 @@ function GameHub({
               }
               periodsTotal={game.total_periods}
               timer={
-                isPaused
+                isActive && game.my_completed === true
+                  ? '—'
+                  : isPaused
                   ? '—'
                   : isBreak
                     ? formatMs(breakRemaining)
@@ -1570,7 +1583,9 @@ function GameHub({
                           : formatEventRemaining(startsAtRemaining)
               }
               timerLabel={
-                isPaused
+                isActive && game.my_completed === true
+                  ? 'Ожидание'
+                  : isPaused
                   ? 'Пауза'
                   : isBreak
                     ? 'Перерыв'
@@ -5735,6 +5750,7 @@ function AmateurDuelPlayView({
     guardAmateurMutation(amateurAccess, () => undefined);
   };
   const match = useAmateurDuelStore((s) => s.match);
+  const fightSocket=useDuelFightSocket(matchId,match?.id===matchId&&(match.fight_enabled===true||!!match.fight_paused_at)&&match.source!=='tournament');
   const loading = useAmateurDuelStore((s) => s.loading);
   const error = useAmateurDuelStore((s) => s.error);
   const inFlight = useAmateurDuelStore((s) => s.inFlight);
@@ -5818,9 +5834,9 @@ function AmateurDuelPlayView({
   }, [matchId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 1000);
+    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [match?.fight?.status, match?.fight_paused_at, match?.me.fight_aid_until, match?.me.recovery_until]);
 
   useEffect(() => {
     const inventory = inventoryQuery.data;
@@ -6054,6 +6070,34 @@ function AmateurDuelPlayView({
       tournamentAttempt.data?.attempt?.duelMatchId === match.id &&
       !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
+  const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
+  const fight = match.fight;
+  const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
+  const medicalAid = medicalAidUntilMs !== undefined;
+  const fightPaused = medicalAid || (!!match.fight_paused_at && fight?.status !== 'offered');
+  const fightOverlay = fightPaused && fight?.status !== 'offered' ? (
+    <FightModal {...(medicalAid ? {medicalAidUntilMs,nowMs:fightNow} : {})}>
+      {fight?.engine_state ? (
+        <FightView key={`${fight.id}:scene`}
+          state={fight.engine_state}
+          player={match.me.side === 'challenger' ? 0 : 1}
+          currentPlayer={{ name: match.me.display_name, avatarUrl: match.me.avatar_url }}
+          opponent={{ name: match.opponent.display_name, avatarUrl: match.opponent.avatar_url }}
+          nowMs={fightNow}
+          onAction={fightSocket.sendAction}
+          onMove={fightSocket.sendMove}
+          onInput={fightSocket.sendInput}
+          onAttack={fightSocket.sendAttack}
+          predictionReset={fightSocket.predictionReset}
+        />
+      ) : <p>Восстанавливаем состояние боя…</p>}
+      {(fight?.status === 'resolved' || fight?.status === 'cancelled') && <FightResultModal key={`${fight.id}:result`} won={fight.winner_user_id === match.me.user_id} draw={fight.status === 'cancelled'} interrupted={fight.reason === 'runtime_interrupted'} />}
+      {!fightSocket.connected && fight?.status !== 'resolved' && <p className="fight-connection" role="status">Восстанавливаем связь…</p>}
+      {fightSocket.error && fight?.status !== 'resolved' && <p className="fight-connection" role="status">{fightSocket.error}</p>}
+    </FightModal>
+  ) : null;
+  const fightRecovery=match.me.recovery_until?Math.max(0,Date.parse(match.me.recovery_until)-fightNow):0;
+  const fightAction = fight?.status === 'offered' || (match.fight_enabled && match.fight_availability?.allowed) ? <FightControls match={match} nowMs={fightNow} iconStyle={DUEL_INVENTORY_ICON_GLASS_STYLE}/> : null;
   if (directPlayOnly && match.me.state !== 'period_active') {
     const timing = duelEventTiming(match, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
@@ -6100,7 +6144,7 @@ function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
-          primaryActionBlocked={duelBlocked}
+          primaryActionBlocked={duelBlocked || fightRecovery>0}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
@@ -6111,7 +6155,7 @@ function AmateurDuelPlayView({
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          duelCondition={duelCondition}
+          duelCondition={(elapsed,speeds)=>{const condition=duelCondition(elapsed,speeds);return condition&&fightRecovery>0?{...condition,canShoot:false}:condition;}}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
@@ -6262,7 +6306,8 @@ function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          suppressedByModal={false}
+          suppressedByModal={!!fightOverlay}
+          preserveSceneOnModalReturn
           showIceCar={false}
           playEntranceOnMount={playEntranceOnMount}
           onEntranceConsumed={onEntranceConsumed}
@@ -6270,7 +6315,7 @@ function AmateurDuelPlayView({
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
           active={match.status === 'active' && !duelBlocked && amateurAccess.hasFullAccess}
-          primaryActionBlocked={duelBlocked}
+          primaryActionBlocked={duelBlocked || fightRecovery>0 || fightPaused}
           {...(!amateurAccess.hasFullAccess ? { inactiveAction: showAmateurRestriction } : {})}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
@@ -6288,23 +6333,31 @@ function AmateurDuelPlayView({
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
           }
           periodEndsAt={periodEndsAt}
-          onTimerExpired={refresh}
+          {...(fightPaused ? { timer: formatMs(match.me.clock?.remainingMs ?? Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
           backLabel={duelBackLabel(match.source, false)}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          duelCondition={duelCondition}
+          duelCondition={(elapsed, speeds) => {
+            const condition = duelCondition(elapsed, speeds);
+            if (!condition || fightRecovery <= 0) return condition;
+            return { ...condition, canShoot: false };
+          }}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
+            <>
+            {match.fight?.status==='resolved'&&match.fight.resolved_at&&fightNow-Date.parse(match.fight.resolved_at)<1500&&<p role="status">{match.fight.winner_user_id===match.me.user_id?'Победа в драке! +1 ⭐ · +1 опыт':'Поражение · +1 опыт'}</p>}
             <DuelInventoryMiniHud
               match={match}
               liveCondition={liveDuelCondition}
-              {...(loadoutEditable ? { onSelectKind: setSelectedLoadoutKind } : {})}
-            />
+              {...(loadoutEditable && !fightPaused ? { onSelectKind: setSelectedLoadoutKind } : {})}
+            /></>
           }
+          rightHudAddon={fightAction}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {loadoutEditable && selectedLoadoutKind === 'stick' && (
+        {fightOverlay}
+        {!fightPaused && loadoutEditable && selectedLoadoutKind === 'stick' && (
           <DuelRinkLoadoutModal
             kind="stick"
             match={match}
@@ -6405,7 +6458,7 @@ function AmateurDuelPlayView({
   );
 }
 
-function DuelResultModal({
+export function DuelResultModal({
   match,
   onClose,
   closeLabel = 'Понятно',
@@ -6572,6 +6625,12 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
+  const fightRewardRow = match.fight_rewards?.map((reward) => (
+    <div key={reward.fight_id} aria-label="Результат драки" className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
+      <span><strong>Драка:</strong> {reward.won ? 'победа' : 'поражение'}</span>
+      <DuelEarnedRewards reward={reward} />
+    </div>
+  )) ?? null;
 
   return (
     <div
@@ -6600,6 +6659,7 @@ function DuelResultCard({
                 <DuelResultCompactFact label="Очки" value={pointsText} />
                 <DuelEarnedRewards reward={match.earned_reward ?? null} />
               </div>
+              {fightRewardRow}
               <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
             <section className="duel-result-card__compact-summary">
@@ -6723,7 +6783,7 @@ function DuelResultCard({
                   {match.me.goals}:{match.opponent.goals}
                 </strong>
               </div>
-              <div className="tournament-duel-result__meta">
+              <div className="tournament-duel-result__meta" style={match.fight_rewards?.length ? {flexDirection:'column',alignItems:'stretch',gap:6} : undefined}>
                 {match.source !== 'tournament' ? (
                   <span className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
                     <span>
@@ -6745,6 +6805,7 @@ function DuelResultCard({
                     <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
                   </span>
                 )}
+                {fightRewardRow}
                 {series !== null && series.winsRequired > 1 && (
                   <span>
                     <strong>Счёт в серии:</strong>{' '}
@@ -8682,7 +8743,7 @@ function createDuelConditionForMatch(
   };
 }
 
-function DuelInventoryMiniHud({
+export function DuelInventoryMiniHud({
   match,
   liveCondition,
   onSelectKind,
@@ -9255,6 +9316,8 @@ function DailyPlayView({
         receivedAtPerformanceMs={data.received_at_performance_ms}
         goals={isBreak || isClosed ? data.daily_total_goals : data.current_period_goals}
         shots={isBreak || isClosed ? data.daily_total_shots : data.current_period_shots}
+        scoreboardShots={data.daily_total_shots}
+        scoreboardShotsTotal={data.shots_per_period * (isClosed ? data.total_periods : periodNumber)}
         shotsTotal={
           isBreak || isClosed ? data.shots_per_period * data.total_periods : data.shots_per_period
         }
@@ -9852,6 +9915,8 @@ function ClassicTournamentPlayView({
         goals={active ? data.current_period_goals : data.daily_total_goals}
         scoreboardGoals={data.daily_total_goals}
         shots={active ? data.current_period_shots : data.daily_total_shots}
+        scoreboardShots={data.daily_total_shots}
+        scoreboardShotsTotal={data.shots_per_period * (data.state === 'closed' ? data.total_periods : Math.max(1, periodNumber))}
         shotsTotal={active ? data.shots_per_period : data.shots_per_period * data.total_periods}
         periodsTotal={data.total_periods}
         scoreboardPeriodsTotal={data.total_periods}

@@ -15,7 +15,7 @@ function renderIntro(): void {
   render(
     <QueryClientProvider client={client}>
       <button type="button">Кнопка раздела</button>
-      <DestinationIntroduction destination="training" />
+      <DestinationIntroduction destination="training-course" />
     </QueryClientProvider>,
   );
 }
@@ -28,7 +28,7 @@ describe('DestinationIntroduction', () => {
   it('starts as a blocking compact prompt and expands the explanation on request', async () => {
     vi.mocked(api.fetchArsenichDestinationIntroduction).mockResolvedValue({
       intro: {
-        destinationKey: 'training',
+        destinationKey: 'training-course',
         revision: 1,
         speaker: 'stranger',
         windows: [
@@ -91,7 +91,10 @@ describe('DestinationIntroduction', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
     await waitFor(() =>
-      expect(api.completeArsenichDestinationIntroduction).toHaveBeenCalledWith('training', 1),
+      expect(api.completeArsenichDestinationIntroduction).toHaveBeenCalledWith(
+        'training-course',
+        1,
+      ),
     );
   });
 });

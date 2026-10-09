@@ -1,6 +1,6 @@
 import { createRng } from './rng.js';
 import type { BeachPuckFlight, BeachFlightSegment } from './beachEnvironment.js';
-export interface CyberpunkRules { version: 1; seed: string; durationMs: number }
+export interface CyberpunkRules { version: 1; seed: string; durationMs: number; outagesEnabled?: boolean | undefined; fatigueEnabled?: boolean | undefined }
 export interface CyberpunkPanelEvent { id: string; eventId: string; tapTime: number }
 export interface CyberpunkEvent { id: string; kind: 'strip' | 'outage'; strip: number; startMs: number; endMs: number }
 export const CYBERPUNK_STRIPS = [
@@ -26,7 +26,7 @@ export function createCyberpunkSchedule(rules: CyberpunkRules): CyberpunkEvent[]
     if (endMs > rules.durationMs) break;
     events.push({ id: `strip-${slot}`, kind: 'strip', strip: Math.floor(rng.next()*CYBERPUNK_STRIPS.length), startMs, endMs });
   }
-  for (let slot = 0; slot < Math.floor(rules.durationMs / 15000); slot++) {
+  for (let slot = 0; rules.outagesEnabled !== false && slot < Math.floor(rules.durationMs / 15000); slot++) {
     const startMs = slot * 15000 + 500 + Math.floor(lights.next()*7000);
     events.push({id:`outage-${slot}`,kind:'outage',strip:-1,startMs,endMs:startMs+6000});
   }
@@ -88,6 +88,7 @@ import {beachWindMotion} from './beachWind.js';
 /** Reconstruct deferred stumble times solely from immutable rules and accepted pauses. */
 export function cyberpunkEnvironmentForHistory(environment:BonusChallengeEnvironmentRules,pauses:readonly BonusChallengeShotPause[]):BonusChallengeEnvironmentRules {
  if(!environment.cyberpunk) return environment;
+ if(environment.cyberpunk.fatigueEnabled === false) return {...environment, stumbleWindows: []};
  const windows:{startMs:number;durationMs:number}[]=[];
  const fatigue=environment.fatigue;
  const cycle=fatigue?fatigue.stopStartMs+fatigue.stopDurationMs+fatigue.recoveryDurationMs:46000;

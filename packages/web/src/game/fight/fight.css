@@ -1,0 +1,504 @@
+.duel-fight-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  color: var(--ink, #18334c);
+  background: radial-gradient(ellipse at 50% 60%, #f4faff 0%, #dbeaf7 52%, #acc9e2 100%);
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+}
+.duel-fight-back.icon-btn {
+  position: absolute;
+  top: max(12px, env(safe-area-inset-top));
+  left: 12px;
+  z-index: 2;
+  font-size: 28px;
+}
+.fight-scene {
+  width: 100%;
+  max-width: 430px;
+  margin: auto;
+}
+.fight-scoreboard {
+  position: relative;
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  margin: 0 28px;
+  min-height: 54px;
+}
+.fight-health__name {
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0.65;
+}
+.fight-health--1 {
+  text-align: right;
+}
+.fight-health__pips {
+  display: flex;
+  gap: 5px;
+  margin-top: 7px;
+}
+.fight-health__pips i {
+  width: 20px;
+  height: 5px;
+  border-radius: 5px;
+  background: rgba(24, 51, 76, 0.13);
+}
+.fight-health__pips i.is-filled {
+  background: #3b789e;
+}
+.fight-health--1 .fight-health__pips i.is-filled {
+  background: #b96562;
+}
+.fight-timer {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.fight-timer strong {
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 650;
+}
+.fight-timer small {
+  display: block;
+  font-size: 10px;
+  margin-top: 5px;
+  white-space: nowrap;
+  opacity: 0.65;
+}
+.fight-arena {
+  position: relative;
+  overflow: hidden;
+  height: min(52dvh, 360px);
+  min-height: 240px;
+}
+.fight-notice,
+.fight-connection {
+  font-size: 12px;
+  text-align: center;
+  margin: 8px 20px;
+}
+.fight-connection {
+  position: absolute;
+  bottom: max(16px, env(safe-area-inset-bottom));
+  left: 0;
+  right: 0;
+}
+
+.modal-card.duel-fight-card {
+  width: min(100%, 480px);
+  padding: 14px 12px 16px;
+  overflow: hidden;
+  height: 90dvh;
+  max-height: calc(100dvh - 40px - var(--app-safe-top) - var(--app-safe-bottom));
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+}
+.duel-fight-card > .modal-title {
+  display: none;
+}
+.duel-fight-card > div {
+  margin-top: 0 !important;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+/* Share the same surface, typography and separators as every game scoreboard. */
+.fight-scoreboard.game-scoreboard {
+  display: block;
+  margin: 0;
+  min-height: 0;
+}
+.fight-scoreboard__row {
+  grid-template-columns: minmax(0, 1fr) 72px minmax(0, 1fr);
+  min-height: 88px;
+}
+.fight-scoreboard .fight-health {
+  min-width: 0;
+}
+.fight-scoreboard .fight-health--0 {
+  grid-column: 1;
+  grid-row: 1;
+}
+.fight-scoreboard .fight-health--1 {
+  grid-column: 3;
+  grid-row: 1;
+}
+.fight-scoreboard .fight-health__name {
+  width: 100%;
+  text-align: center;
+  opacity: 1;
+}
+.fight-scoreboard .fight-health__pips {
+  margin-top: 1px;
+}
+.fight-scoreboard .fight-health__pips i {
+  width: 14px;
+  height: 4px;
+  background: rgba(205, 232, 255, 0.2);
+}
+.fight-scoreboard .fight-health__pips i.is-filled {
+  background: #edf8ff;
+  box-shadow: 0 0 5px rgba(167, 220, 255, 0.28);
+}
+.fight-scoreboard .fight-timer {
+  position: relative;
+  left: auto;
+  grid-column: 2;
+  grid-row: 1;
+  transform: none;
+}
+.fight-scoreboard .fight-timer strong {
+  font-weight: 900;
+}
+.fight-scoreboard .fight-timer small {
+  white-space: normal;
+  font-size: 9px;
+  margin-top: 0;
+}
+.duel-fight-card .fight-scene {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  margin: 0 auto;
+}
+.fight-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+.duel-fight-card .fight-scoreboard {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: calc(100% - 24px);
+  z-index: 2;
+}
+.duel-fight-card .fight-arena {
+  flex: 1;
+  height: auto;
+  min-height: 120px;
+  background: #a8bbd0 url('/sprites/fight/amateur-fight-background-v1.png') center / cover no-repeat;
+  border-radius: 18px;
+}
+.fight-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  padding-top: 12px;
+  flex: 0 0 auto;
+}
+.fight-action.btn.btn--cta {
+  width: 100%;
+  min-height: 58px;
+  padding: 0 8px;
+  letter-spacing: 0.06em;
+  font-size: 13px;
+}
+.duel-fight-card .fight-connection {
+  position: absolute;
+  bottom: auto;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  margin: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.duel-fight-card .fight-offer .modal-title {
+  font-size: 18px;
+}
+
+.fight-feedback-layer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.fight-feedback {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: 58px;
+  height: 58px;
+  color: #fbd475;
+
+}
+.fight-feedback--hit {
+  color: #ef7771;
+}
+.fight-feedback--guard {
+  color: #7dcaff;
+}
+.fight-feedback--blocked {
+  color: #f6ce87;
+}
+.fight-feedback > span {
+  position: absolute;
+  inset: 8px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  background: radial-gradient(circle, currentColor, transparent 65%);
+  animation: fight-contact 520ms ease-out both;
+}
+.fight-feedback--guard > span {
+  border-radius: 45% 45% 55% 55%;
+  border-width: 3px;
+}
+.fight-feedback > i {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 12px;
+  border-radius: 2px;
+  background: currentColor;
+  animation: fight-spark 440ms ease-out both;
+}
+@keyframes fight-contact {
+  0% {
+    opacity: 0.95;
+    transform: scale(0.4);
+  }
+  35% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.45);
+  }
+}
+@keyframes fight-spark {
+  0% {
+    opacity: 1;
+    transform: rotate(var(--spark-angle)) translateY(-8px);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(var(--spark-angle)) translateY(-38px) scaleY(0.3);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .fight-feedback > span {
+    animation-name: fight-contact-reduced;
+  }
+  .fight-feedback > i {
+    display: none;
+  }
+}
+@keyframes fight-contact-reduced {
+  0%,
+  40% {
+    opacity: 0.8;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.fight-challenge__timer {
+  position: absolute;
+  right: 43px;
+  top: 0;
+  height: 31px;
+  min-width: 31px;
+  padding: 0 7px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .76);
+  border: 1px solid rgba(255, 255, 255, .82);
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.fight-challenge__pulse {
+  animation: fight-challenge-pulse 600ms ease-in-out infinite;
+}
+@keyframes fight-challenge-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.24); opacity: .65; }
+}
+.fight-challenge__error {
+  position: absolute;
+  right: 0;
+  bottom: 38px;
+  width: 180px;
+  font-size: 12px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fight-challenge__pulse { animation: none; }
+}
+
+.modal-card.fight-result-card {
+  width: min(calc(100vw - 48px), 300px);
+  text-align: center;
+  padding: 20px;
+}
+.fight-result-card .modal-header {
+  justify-content: center;
+}
+.fight-result-card .modal-title {
+  font-size: 22px;
+}
+.fight-result-rewards {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+  margin: 12px 0 0;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.fight-challenge__label {
+  position: absolute;
+  left: 50%;
+  bottom: -16px;
+  min-width: max-content;
+  transform: translateX(-50%);
+  display: block;
+  color: #16233b;
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 950;
+  line-height: 1;
+  letter-spacing: 0;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(255,255,255,.92), 0 0 6px rgba(255,255,255,.78);
+  pointer-events: none;
+}
+
+.fight-movement { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding-top:8px; flex:0 0 auto; }
+.fight-move.btn.btn--cta { min-height:38px; padding:0; font-size:26px; touch-action:none; user-select:none; }
+.fight-move[aria-pressed="true"] { background:#386589; }
+.fight-action { position:relative; overflow:hidden; }
+.fight-action > span { position:relative; z-index:1; }
+.fight-action__progress { position:absolute; left:0; bottom:0; width:var(--fight-ready); height:4px; background:#b8e7ff; }
+.fight-action.is-active { outline:2px solid #b8e7ff; outline-offset:-3px; }
+.fight-action.is-in-range:not(:disabled) { border-color:#b8e7ff; }
+.fight-action.btn.btn--cta:disabled { opacity:0.65; }
+
+.fight-challenge__count {
+  position: absolute;
+  right: -5px;
+  top: -5px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  display: grid;
+  place-items: center;
+  border-radius: 999px;
+  color: #16233b;
+  background: rgba(255,255,255,.88);
+  border: 1px solid rgba(255,255,255,.95);
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-weight: 950;
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Medical assistance uses the standard light modal surface and heading. */
+.modal-card.fight-medical-card {
+  width: min(100%, 480px);
+  height: auto;
+  max-height: 90dvh;
+  overflow-y: auto;
+}
+.fight-medical-card > .modal-title {
+  text-align: left;
+}
+.fight-medical-art {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  margin: 14px 0 0;
+  overflow: hidden;
+  border-radius: 18px;
+}
+.fight-medical-art img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.fight-medical-timer.game-scoreboard {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 112px;
+  height: 112px;
+  text-align: center;
+}
+.fight-medical-timer .game-scoreboard__value {
+  font-size: 72px;
+}
+
+.fight-responsive-controls { display:grid; grid-template-columns:1fr 1fr; gap:20px; padding-top:12px; flex:0 0 auto; }
+.fight-control-left { display:grid; grid-template-columns:1fr 1fr; gap:8px; justify-items:center; align-content:center; }
+.fight-control-right { display:grid; grid-template-columns:1fr 1fr; gap:8px; align-items:center; justify-items:center; }
+.fight-held.btn.btn--cta { width:100%; aspect-ratio:1; min-height:0; border-radius:50%; padding:0; font-size:13px; touch-action:none; user-select:none; }
+.fight-control-left .fight-held.btn.btn--cta { width:min(100%,54px); font-size:27px; }
+.fight-control-right .fight-held { max-width:88px; }
+.fight-held--down { grid-column:1 / -1; justify-self:center; }
+.fight-held.btn.btn--cta[aria-pressed="true"] { transform:scale(.96); background:rgba(94,157,196,.82); border-color:rgba(202,237,255,.9); opacity:1; }
+.fight-guard-pips { display:flex; gap:4px; margin-top:4px; }
+.fight-guard-pips i { width:10px; height:3px; border-radius:2px; background:rgba(255,255,255,.22); }
+.fight-guard-pips i.is-filled { background:#a8dbf3; }
+.fight-scene--responsive .fight-health__pips i { box-shadow:none; }
+@media (max-width:360px) { .fight-responsive-controls { gap:12px; }  }
+
+.fight-guard-reserve { display:flex; align-items:center; justify-content:center; gap:4px; margin-top:5px; color:#a8dbf3; font-size:12px; line-height:14px; font-weight:700; }
+.fight-guard-reserve.is-empty { color:#ff9b91; }
+
+.fight-scene--responsive .fight-health { min-width:0; }
+.fight-player-identity { display:flex; align-items:center; justify-content:center; gap:6px; width:100%; min-width:0; }
+.fight-player-identity > :first-child { flex-shrink:0; }
+.fight-player-identity .fight-health__name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; margin:0; }
+.fight-reserve { display:flex; align-items:center; justify-content:center; gap:4px; margin-top:5px; }
+.fight-reserve--health { color:#ff858c; }
+.fight-reserve--guard { color:#a8dbf3; }
+.fight-reserve span { display:flex; }
+.fight-reserve .is-filled svg { fill:currentColor; }
+.fight-reserve .is-empty { opacity:.28; }
+.fight-reserve .is-changing { animation:fight-reserve-change 300ms ease-out; }
+@keyframes fight-reserve-change { 0% { transform:scale(1.3); opacity:1; } 50% { transform:scale(.85); } 100% { transform:scale(1); } }
+.fight-responsive-flash { position:absolute; width:38px; height:38px; background:#ffd47c; clip-path:polygon(50% 0,60% 32%,85% 15%,68% 40%,100% 50%,68% 60%,85% 85%,60% 68%,50% 100%,40% 68%,15% 85%,32% 60%,0 50%,32% 40%,15% 15%,40% 32%); }
+.fight-responsive-flash[data-kind="guard"] { background:#8bd9ff; }
+@media (prefers-reduced-motion:reduce) { .fight-reserve .is-changing { animation:none; } }
+
+.fight-health--0 .fight-player-identity, .fight-health--0 .fight-reserve { justify-content:flex-start; }
+.fight-health--1 .fight-player-identity, .fight-health--1 .fight-reserve { justify-content:flex-end; }
+.fight-health--1 .fight-player-identity { flex-direction:row-reverse; }
+.fight-health--0 .fight-health__name { text-align:left; }
+.fight-health--1 .fight-health__name { text-align:right; }
+.fight-reserve--guard .is-filled svg { fill:currentColor; stroke:#a8dbf3; stroke-width:1.8; }
+
+.fight-scene--responsive .fight-reserve { width:100%; }
+
+.fight-scene--responsive .fight-reserve { gap:2px; }
+
+/* Health and guard share icon sizes and align to the outside of each player section. */
+.fight-scene--responsive .fight-health { gap:3px; }
+.fight-scene--responsive .fight-reserve { width:min(100%,116px); margin-top:0; gap:4px; }
+.fight-scene--responsive .fight-health--0 .fight-reserve { align-self:flex-start; }
+.fight-scene--responsive .fight-health--1 .fight-reserve { align-self:flex-end; }
+.fight-scene--responsive .fight-reserve > span { width:calc((100% - 16px) / 5); flex-shrink:0; }
+.fight-scene--responsive .fight-reserve svg { width:100%; height:auto; }
+.fight-scene--responsive .fight-health--0 .fight-reserve--guard { justify-content:flex-start; }
+.fight-scene--responsive .fight-health--1 .fight-reserve--guard { justify-content:flex-end; }

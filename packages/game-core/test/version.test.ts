@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for server-validated ski slope clocks', () => {
-    expect(GAME_CORE_VERSION).toBe(76);
+  it('is bumped for responsive fight rules', () => {
+    expect(GAME_CORE_VERSION).toBe(84);
   });
 });

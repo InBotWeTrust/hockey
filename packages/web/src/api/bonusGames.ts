@@ -125,6 +125,7 @@ export interface BonusGameCardAttempt {
 }
 
 export interface BonusGameCard {
+  levels?: { preview_story?: string; preview_artwork_url?: string; level: 1 | 2 | 3; is_unlocked: boolean; is_completed: boolean; reward: BonusReward }[] | null;
   id: string;
   slug: string;
   title: string;
@@ -188,7 +189,15 @@ export interface BonusAttemptRules {
   challenge_environment?: BonusChallengeEnvironmentRules | null;
 }
 
+export interface BonusRecordMetrics { elapsedMs: number; shots: number; goals: number; points: number }
+export interface BonusRecordResult extends BonusRecordMetrics { personalImproved: boolean; globalImproved: boolean; personalBest: BonusRecordMetrics; place: number; stars: number; experience: number }
+export interface BonusRecordPlayer extends BonusRecordMetrics { place: number; userId: string; displayName: string; avatarUrl: string | null }
+export interface BonusRecordPage { rows: BonusRecordPlayer[]; currentUser: BonusRecordPlayer | null; skillCode: BonusSkillCode; nextOffset: number | null }
+export const fetchBonusRecords = (gameId: string, offset = 0): Promise<BonusRecordPage> => apiFetch(`/bonus-games/${gameId}/records?offset=${offset}`);
+
 export interface BonusGameAttempt {
+  record?: BonusRecordResult | null;
+  challenge_level?: 1 | 2 | 3 | null;
   id: string;
   game_id: string;
   game_slug: string;
@@ -452,9 +461,9 @@ export const purchaseBonusGame = ({
     }),
   );
 
-export const startBonusAttempt = (gameId: string): Promise<BonusAttemptResponse> =>
+export const startBonusAttempt = (gameId: string, level?: 1 | 2 | 3): Promise<BonusAttemptResponse> =>
   bonusMutation(
-    apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST' }),
+    apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST', ...(level === undefined ? {} : { body: JSON.stringify({ level }) }) }),
   );
 
 export const startBonusPeriod = (

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { useEffect, useState } from 'react';
@@ -11,6 +11,8 @@ import {
 } from './BottomNav.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useChatStore } from '../chat/chatStore.js';
+import { chatKeys } from '../lib/queryKeys.js';
+import type { ChatDTO } from '../chat/api.js';
 
 function LocationProbe(): JSX.Element {
   const location = useLocation();
@@ -115,6 +117,24 @@ describe('BottomNav remembered navigation', () => {
     );
   });
 
+  it('keeps the chat badge consistent with refreshed list counts and clears it after reading', async () => {
+    const client = renderBottomNav('/chat');
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
+    const chat = {
+      id: 'direct-1', type: 'direct', name: 'Opponent', avatarUrl: null,
+      entityType: null, entityId: null, lastMessageAt: null, lastMessage: null,
+      lastMessageSenderName: null, unreadCount: 2, memberCount: 2,
+      pinnedAt: null, dmCounterpart: null,
+    } satisfies ChatDTO;
+    act(() => { client.setQueryData(chatKeys.list(), [chat]); });
+    expect(await screen.findByLabelText('Непрочитанные: 1')).toBeInTheDocument();
+    act(() => {
+      client.setQueryData(chatKeys.list(), [{ ...chat, unreadCount: 0 }]);
+      useChatStore.getState().resetUnread(chat.id);
+    });
+    await waitFor(() => expect(screen.queryByLabelText('Непрочитанные: 1')).toBeNull());
+  });
+
   it('resets the active game section to the arena', () => {
     renderBottomNav('/?view=amateur&match=m1');
 
@@ -131,6 +151,11 @@ describe('BottomNav remembered navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Игра' }));
 
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+  });
+
+  it('keeps bar and spectator pages within the second tab', () => {
+    renderBottomNav('/bar/duel/11111111-1111-4111-8111-111111111111');
+    expect(screen.getByRole('button', { name: 'Разделы' })).toHaveAttribute('aria-current', 'page');
   });
 
   it('opens sections from the second tab', () => {

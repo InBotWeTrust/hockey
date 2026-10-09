@@ -55,9 +55,13 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative ski attempts', () => {
       "insert into user_bonus_game_completion(user_id,bonus_game_id,attempt_id,reward_snapshot) values($1,$2,$3,'{}'::jsonb)",
       [userId, beachId, beach.attempt.id],
     );
+    await pool.query(`insert into user_bonus_game_level_completion
+      (user_id,bonus_game_id,level,reward_snapshot,completed_at,source)
+      select $1,$2,level,'{}'::jsonb,$3,'legacy_credit' from generate_series(1,2) levels(level)`, [userId,gameId,NOW]);
     const created = await startOrResumeBonusAttempt(pool, {
       userId,
       gameId,
+      level: 3,
       now: NOW,
       seedSecret: 'local-ski-test',
     });

@@ -1,3 +1,4 @@
+import { BonusRecordsModal, formatBonusRecord } from '../profile/BonusRecordsModal.js';
 import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +17,7 @@ import { useNavigate } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
+  fetchBonusRecords,
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   purchaseBonusGame,
@@ -44,6 +46,11 @@ import { useDailyStore } from '../stores/dailyStore.js';
 
 const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
+
+function isUnreleasedChallenge(game: BonusGameCard): boolean {
+  return game.skill_code === 'challenge' && game.slug !== 'challenge-beach' &&
+    !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true);
+}
 
 function formatAttemptResetCountdown(resetsAt: string, nowMs: number): string | null {
   const resetMs = Date.parse(resetsAt);
@@ -99,6 +106,8 @@ export function bonusGameVisualStatus(game: BonusGameCard): 'completed' | 'avail
 
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
+  const currentUserId = useAuthStore((state) => state.user?.id ?? '');
+  const [recordsGame, setRecordsGame] = useState<BonusGameCard | null>(null);
   const queryClient = useQueryClient();
   const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
   const dailyData = useDailyStore((state) => state.data);
@@ -118,7 +127,13 @@ export function BonusGamesScreen(): JSX.Element {
   });
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
+  const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
   const [previewGame, setPreviewGame] = useState<BonusGameCard | null>(null);
+  const previewRecords = useQuery({
+    queryKey: ['bonus-records-preview', previewGame?.id, currentUserId],
+    queryFn: () => fetchBonusRecords(previewGame!.id),
+    enabled: Boolean(previewGame?.is_completed && previewGame.skill_code !== 'challenge'),
+  });
   const switchAttemptRequestRef = useRef(false);
   const [rulesOpen, setRulesOpen] = useState(false);
   const [developmentToast, setDevelopmentToast] = useState(false);
@@ -129,7 +144,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    if (stored === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) return 'speed';
+    if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
       ? stored
       : 'speed';
@@ -139,7 +154,7 @@ export function BonusGamesScreen(): JSX.Element {
   const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
   const startMutation = useMutation({
     mutationFn: async (gameId: string) => {
-      const response = await startBonusAttempt(gameId);
+      const response = await startBonusAttempt(gameId, previewGame?.id === gameId && previewGame.levels?.length ? selectedLevel : undefined);
       if (!response.attempt.preview_required) return response;
       return await acknowledgeBonusPreview(response.attempt.id, false);
     },
@@ -150,6 +165,11 @@ export function BonusGamesScreen(): JSX.Element {
         `/bonus-games/${response.attempt.game_id}/play?attempt=${encodeURIComponent(response.attempt.id)}`,
       );
       void queryClient.invalidateQueries({ queryKey: ['bonus-games'], refetchType: 'none' });
+    },
+    onError: async (error) => {
+      if (!(error instanceof ApiError) || error.code !== 'bonus_previous_level_required') return;
+      const refreshed = await catalogQuery.refetch();
+      setPreviewGame((current) => current === null ? null : refreshed.data?.games.find((game) => game.id === current.id) ?? current);
     },
   });
   const purchaseMutation = useMutation({
@@ -188,7 +208,7 @@ export function BonusGamesScreen(): JSX.Element {
       );
       return;
     }
-    if (isPlayable(game)) setPreviewGame(game);
+    if (isPlayable(game)) { setSelectedLevel(1); setPreviewGame(game); }
   };
 
   const switchAttemptMutation = useMutation({
@@ -211,7 +231,7 @@ export function BonusGamesScreen(): JSX.Element {
   };
 
   const openGame = (game: BonusGameCard): void => {
-    if (game.skill_code === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
+    if (isUnreleasedChallenge(game)) { setDevelopmentToast(true); return; }
     if (game.state === 'level_locked') {
       performGameAction(game);
       return;
@@ -253,7 +273,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
-    if (skill === 'challenge' && !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true)) { setDevelopmentToast(true); return; }
+    if (skill !== 'speed' && skill !== 'accuracy' && competitionLevel === 'beginner') { guardAmateurMutation(amateurAccess, () => undefined); return; }
     setSelectedSkill(skill);
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
   };
@@ -290,7 +310,7 @@ export function BonusGamesScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/?view=amateur&from=sections')}
+            onClick={() => navigate('/sections')}
             aria-label="Назад"
             title="Назад"
           >
@@ -439,8 +459,9 @@ export function BonusGamesScreen(): JSX.Element {
       </section>
       {developmentToast && <div role="status" style={{ position: 'fixed', bottom: 'calc(100px + var(--app-safe-bottom))',
         left: '50%', transform: 'translateX(-50%)', padding: '12px 18px', borderRadius: 16,
-        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Раздел в разработке</div>}
+        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Локация в разработке</div>}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
+      {recordsGame !== null && <BonusRecordsModal gameId={recordsGame.id} title={recordsGame.arena.title} skillCode={recordsGame.skill_code} currentUserId={currentUserId} onClose={() => setRecordsGame(null)} />}
       {previewGame !== null ? (
         <AccessibleModal
           title={previewGame.preview_title || previewGame.title}
@@ -465,41 +486,74 @@ export function BonusGamesScreen(): JSX.Element {
         >
           <img
             className="bonus-game-preview-modal__artwork"
-            src={versionBonusGameArtwork(previewGame.preview_artwork_url)}
+            src={versionBonusGameArtwork(previewGame.levels?.find((entry) => entry.level === selectedLevel)?.preview_artwork_url ?? previewGame.preview_artwork_url)}
             alt={`Локация «${previewGame.arena.title}» и её вратарь`}
           />
-          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.challenge_environment?.cyberpunk ? CYBERPUNK_STORY : previewGame.preview_story}</p>
+          <p className="modal-copy bonus-game-preview-modal__story">{previewGame.levels?.find((entry) => entry.level === selectedLevel)?.preview_story ?? (previewGame.challenge_environment?.cyberpunk ? CYBERPUNK_STORY : previewGame.preview_story)}</p>
           <p className="bonus-game-preview-modal__condition">
             {(previewGame.challenge_environment?.cyberpunk || previewGame.slug === 'challenge-beach' || (previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski)) && <Target size={20} className="bonus-game-preview-modal__condition-icon" aria-hidden="true" />}
-            {qualificationDescription(previewGame.qualification_rules)}
+            {qualificationDescription(previewGame.qualification_rules).replace(/(\d+):(\d+)(?: мин)?/g, (_, minutes: string, seconds: string) => `${Number(minutes)} мин ${Number(seconds)} сек`)}
           </p>
           {previewGame.slug === 'challenge-beach' && previewGame.challenge_environment?.beach?.interactive && (
             <ul className="bonus-game-preview-modal__hints">
-              <li>Лужи замедляют шайбу. В глубокой воде она застревает.</li>
-              <li>Тапай по лужам, чтобы убрать воду. Большой луже нужно больше тапов, но со временем она появится снова.</li>
+              {(!previewGame.levels || selectedLevel >= 2) && <li>Лужи замедляют шайбу. В глубокой воде она застревает.</li>}
+              {(!previewGame.levels || selectedLevel >= 2) && <li>Тапай по лужам, чтобы убрать воду. Большой луже нужно больше тапов, но со временем она появится снова.</li>}
               <li>Ветер периодически сносит игрока, вратаря или ворота назад.</li>
-              <li>На мокром льду игрок спотыкается, устаёт и берёт передышки.</li>
+              {(!previewGame.levels || selectedLevel === 3) && <li>На мокром льду игрок спотыкается, устаёт и берёт передышки.</li>}
             </ul>
           )}
           {previewGame.slug === 'challenge-ski-resort' && previewGame.challenge_environment?.ski && (
             <ul className="bonus-game-preview-modal__hints">
-              <li>На подъёме игрок устаёт и едет всё медленнее. После передышки силы восстановятся.</li>
+              {(!previewGame.levels || selectedLevel === 3) && <li>На подъёме игрок устаёт и едет всё медленнее. После передышки силы восстановятся.</li>}
               <li>С горы игрок, вратарь и ворота движутся быстрее, чем в гору.</li>
-              <li>На снегу все трое могут поскользнуться и съехать вниз.</li>
-              <li>Во время соскальзывания и передышки игрок не может бросать.</li>
+              {(!previewGame.levels || selectedLevel >= 2) && <li>На снегу все трое могут поскользнуться и съехать вниз.</li>}
+              {(!previewGame.levels || selectedLevel >= 2) && <li>{previewGame.levels && selectedLevel === 2 ? 'Во время соскальзывания игрок не может бросать.' : 'Во время соскальзывания и передышки игрок не может бросать.'}</li>}
             </ul>
           )}
-          {previewGame.slug==='challenge-cyberpunk-yard' && previewGame.challenge_environment?.cyberpunk && <CyberpunkHints/>}
+          {previewGame.slug==='challenge-cyberpunk-yard' && previewGame.challenge_environment?.cyberpunk && <CyberpunkHints level={previewGame.levels ? selectedLevel : 3}/>}
           {startMutation.isError ? (
             <p role="alert" className="bonus-game-abandon-error">
               {safeUiError(startMutation.error)}
             </p>
           ) : null}
+          {previewGame.skill_code !== 'challenge' && <div className="bonus-records-entry">
+            <dl className="bonus-records-entry__summary">
+              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Пройди игру, чтобы установить свой рекорд' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Ещё не установлен'}</dd></div>
+              <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusRecord(previewGame.skill_code, previewRecords.data.rows[0]) : 'Ещё не установлен'}</dd></div>
+            </dl>
+            <div className="bonus-records-entry__action-row">
+            <p className="modal-copy bonus-records-entry__description">За новый рекорд – звёзды и опыт</p>
+            {previewGame.is_completed ? (
+              <button type="button" className="modal-primary btn btn--cta bonus-records-entry__button" onClick={() => { setRecordsGame(previewGame); setPreviewGame(null); }}>
+                Рейтинг игроков
+              </button>
+            ) : <p className="modal-copy">Рекорды откроются после прохождения.</p>}
+            </div>
+          </div>}
           <div className="modal-actions">
+            {previewGame.levels?.length ? <>
+            {(() => { const entry = previewGame.levels.find((item) => item.level === selectedLevel)!; return <>
+              {!entry.is_unlocked && <p className="modal-copy">Сначала пройди уровень {selectedLevel - 1}</p>}
+              <div className={`bonus-game-level-reward${entry.is_completed ? ' bonus-game-level-reward--received' : ''}`} aria-label={`Награда: ${entry.reward.stars} звёзд · ${entry.reward.experience} опыта`}>
+                <span style={{ color: rewardColor('star') }}><Star aria-hidden="true" fill="currentColor" />{entry.reward.stars}</span>
+                <span style={{ color: rewardColor('experience') }}><TrendingUp aria-hidden="true" />{entry.reward.experience}</span>
+              </div>
+            </>; })()}
+            <div className="bonus-game-levels__choices" role="group" aria-label="Уровень сложности">
+              {previewGame.levels.map((entry) => <button key={entry.level} type="button"
+                className={`btn btn--ghost bonus-game-level-choice--${entry.is_completed ? 'completed' : entry.is_unlocked ? 'available' : 'locked'}`} aria-pressed={selectedLevel === entry.level}
+                disabled={!entry.is_unlocked}
+                onClick={() => { if (entry.is_unlocked) setSelectedLevel(entry.level); }}>
+                {entry.is_unlocked && <span className="bonus-game-level-choice__check" data-selected={selectedLevel === entry.level} aria-hidden="true">{selectedLevel === entry.level && <Check size={12} strokeWidth={3} />}</span>}
+                Уровень {entry.level}
+                <span className="bonus-game-levels__status">{entry.is_completed ? 'Пройден' : !entry.is_unlocked ? 'Закрыт' : 'Доступен'}</span>
+              </button>)}
+            </div>
+            </> : null}
             <button
               type="button"
               className="modal-primary btn btn--cta"
-              disabled={startMutation.isPending}
+              disabled={startMutation.isPending || previewGame.levels?.find((entry) => entry.level === selectedLevel)?.is_unlocked === false}
               onClick={() => startMutation.mutate(previewGame.id)}
             >
               {startMutation.isPending ? 'Подготавливаем…' : 'К игре'}
@@ -650,7 +704,7 @@ function BonusGameCard({
   const explainsLevelLock = game.state === 'level_locked';
   const isPurchasable = game.state === 'purchase_required';
   const canAct =
-    isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
+    isUnreleasedChallenge(game) || isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
   const showsChevron = isContinuable || (isPlayable(game) && canStartNewAttempt);
   const visibleActionLabel =
     !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;
@@ -739,6 +793,7 @@ function BonusGameCard({
           <p className="bonus-game-card__description">{game.description}</p>
         ) : null}
         <p className="bonus-game-card__details">
+          {game.levels?.length ? <span className="bonus-game-card__details-secondary">Уровни: {game.levels.filter((entry) => entry.is_completed).length} из 3</span> : null}
           <span className="bonus-game-card__details-primary">
             {enduranceDetails?.[0] ?? qualificationDescription(game.qualification_rules)}
           </span>

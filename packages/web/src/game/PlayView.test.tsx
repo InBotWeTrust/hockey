@@ -164,6 +164,20 @@ const beachGoalie: GoalieConfig = {
 };
 
 describe('PlayView', () => {
+  it('displays cumulative quota counters without disabling a playable period', () => {
+    render(
+      <PlayView active seed="quota" goalieId="rookie" periodNumber={3}
+        suppressedByModal={false} showIceCar={false} onBack={vi.fn()}
+        optimisticAddShot={vi.fn()} submitShot={async () => ({ serverResult: 'miss', state: {} })}
+        applyState={vi.fn()}
+        goals={0} shots={0} shotsTotal={30}
+        scoreboardShots={60} scoreboardShotsTotal={90}
+      />,
+    );
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('БРОСКИ60/90');
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).toBeEnabled();
+  });
+
   beforeEach(() => {
     tickerCallbacks.length = 0;
     tickerEvents.length = 0;
@@ -176,6 +190,52 @@ describe('PlayView', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('resumes the duel shot from the same scene time after fight and medical aid', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    const props = {showIceCar:false,onBack:()=>undefined,active:true,seed:'fight-return',
+      goalieId:null,goalieConfig:beachGoalie,periodNumber:1,goals:0,shots:0,
+      preserveSceneOnModalReturn:true,playEntranceOnMount:false,
+      initialSceneElapsedMs:0,initialShooterElapsedMs:0,shotResolver,
+      optimisticAddShot:()=>undefined,submitShot:()=>new Promise<null>(()=>{}),applyState:()=>undefined} as const;
+    const view=render(<PlayView {...props} suppressedByModal={false}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    view.rerender(<PlayView {...props} suppressedByModal/>);
+    now=31500;
+    view.rerender(<PlayView {...props} suppressedByModal={false}/>);
+    act(()=>tickerCallbacks.at(-1)?.());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({tapTime:500,shooterTapTime:500})}));
+  });
+
+  it('reenables shooting after a shot confirmation arrives underneath fight and medical aid', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    vi.useFakeTimers();
+    let confirm: (v:{serverResult:'miss';state:object})=>void=()=>{};const pending=new Promise<{serverResult:'miss';state:object}>(resolve=>{confirm=resolve;});
+    const props = {showIceCar:false,onBack:()=>undefined,active:true,seed:'fight-return',
+      goalieId:null,goalieConfig:beachGoalie,periodNumber:1,goals:0,shots:0,
+      preserveSceneOnModalReturn:true,playEntranceOnMount:false,
+      initialSceneElapsedMs:0,initialShooterElapsedMs:0,shotResolver,
+      optimisticAddShot:()=>undefined,submitShot:()=>pending,applyState:()=>undefined} as const;
+    const view=render(<PlayView {...props} suppressedByModal={false}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    view.rerender(<PlayView {...props} suppressedByModal/>);
+    await act(async()=>{confirm({serverResult:'miss',state:{}});await Promise.resolve();vi.advanceTimersByTime(10000);});
+    now=31500;
+    view.rerender(<PlayView {...props} suppressedByModal={false}/>);
+    act(()=>tickerCallbacks.at(-1)?.());
+    expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));await Promise.resolve();});
+    expect(shotResolver).toHaveBeenCalledTimes(2);
+    expect(shotResolver).toHaveBeenLastCalledWith(expect.objectContaining({input:expect.objectContaining({tapTime:500})}));
   });
 
   it('keeps the upright transparent goal asset scoped to the initial training course', () => {
@@ -1876,4 +1936,16 @@ it('stops a beach shot in deep water without a rebound or a second tap', async (
       expect(screen.getAllByRole('status')).toHaveLength(1);
     });
 
+});
+
+it('keeps shots available with a separate right-side fight challenge', async () => {
+  render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+    active seed="fight-offer" goalieId={null} goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+    hudAddon={<span>Inventory</span>} rightHudAddon={<button>Fight</button>}
+    optimisticAddShot={() => undefined} submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+  await waitFor(() => expect(playerContainers.length).toBeGreaterThan(0));
+  expect(playerContainers.at(-1)?.visible).toBe(true);
+  expect(goalieContainers.at(-1)?.visible).toBe(true);
+  expect(screen.getByRole('button', { name: 'Fight' }).parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
+  expect(screen.getByRole('button', { name: /БРОСОК/ })).not.toBeDisabled();
 });

@@ -1,3 +1,7 @@
+import { renewRuntimeLease } from '../../src/duel/amateur/fight/runtime/persistence.js';
+import { randomUUID } from 'node:crypto';
+import { startFightWorker } from '../../src/duel/amateur/fight/worker.js';
+import { WebSocket } from 'ws';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, afterEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,6 +24,19 @@ import { waitForBlockedWriter } from '../helpers/postgresLocks.js';
 import { reconcileCompletedMonthlyRating } from '../../src/duel/amateur/monthlyRewards.js';
 import { getBlockedPlayoffOpponentIds } from '../../src/duel/amateur/playoffOpponentLock.js';
 import { rescheduleTournamentFixture } from '../../src/tournament/service.js';
+import { observeCareerActivityStreak } from '../../src/achievements/service.js';
+
+interface QueryPlanNode {
+  'Index Name'?: string;
+  'Relation Name'?: string;
+  'Actual Rows'?: number;
+  'Actual Loops'?: number;
+  Plans?: QueryPlanNode[];
+}
+
+function queryPlanNodes(node: QueryPlanNode): QueryPlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(queryPlanNodes)];
+}
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
@@ -67,6 +84,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     redis.disconnect();
 
     app = await buildApp({
+      duelFightRuntimeRecoveryEnabled: true,
       config: {
         NODE_ENV: 'test',
         HOST: '0.0.0.0',
@@ -437,8 +455,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
   }
 
-  async function createActiveMatch(startPeriod = false): Promise<string> {
-    const matchId = String((await challenge(await createTemplate())).json().match.id);
+  async function createActiveMatch(startPeriod = false, totalPeriods = 1): Promise<string> {
+    const matchId = String((await challenge(await createTemplate({totalPeriods}))).json().match.id);
     const accepted = await app.inject({
       method: 'POST',
       url: `/duel/amateur/matches/${matchId}/accept`,
@@ -1430,6 +1448,12 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   it('keeps an invitation readable after its template is soft deleted', async () => {
     const templateId = await createTemplate();
     const matchId = (await challenge(templateId)).json().match.id;
+    // Wait for the real activity write from the challenge response before
+    // installing the historical opponent timestamp used by this assertion.
+    await vi.waitFor(async () => {
+      const pending = await pool.query('select last_seen_at from users where id = $1', [userA]);
+      expect(pending.rows[0]?.last_seen_at).not.toBeNull();
+    });
     await pool.query("update users set last_seen_at = '2026-09-30T12:34:56.000Z' where id = $1", [
       userA,
     ]);
@@ -1490,6 +1514,103 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       headers: auth(tokenA),
     });
     expect(next.json().match.duel_lock?.blocked).toBe(true);
+  });
+
+  it('uses the duel shot index for first-shot detection and records acceptance only once', async () => {
+    const matchId = (await challenge(await createTemplate({
+      periodRules: [{ periodNumber: 1, mode: 'quota', durationMs: 1_200_000, shotsLimit: 3 }],
+    }))).json().match.id;
+    expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+    const queries = vi.spyOn(Client.prototype, 'query');
+    let countQuery: string;
+    let countParams: unknown[];
+    try {
+      for (const shotIndex of [1, 2]) {
+        const shot = await app.inject({
+          method: 'POST',
+          url: `/duel/amateur/matches/${matchId}/shot`,
+          headers: auth(tokenA),
+          payload: { shot_index: shotIndex, input: { tapTime: shotIndex * 1000 }, claimed_result: 'goal' },
+        });
+        expect(shot.statusCode, shot.body).toBe(200);
+      }
+      const call = queries.mock.calls.find(([sql]) =>
+        /select count\(\*\)::int as total from shot_session\s+where/.test(String(sql)),
+      );
+      expect(call).toBeDefined();
+      countQuery = String(call![0]);
+      countParams = call![1] as unknown as unknown[];
+    } finally {
+      queries.mockRestore();
+    }
+    const events = await pool.query(
+      `select 1 from event_log where type='amateur_duel_challenge_accepted'
+        and payload->>'match_id'=$1`, [matchId],
+    );
+    expect(events.rowCount).toBe(1);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      // Test index eligibility, not machine-dependent elapsed time or table size.
+      await client.query('set local enable_seqscan=off');
+      const result = await client.query<{ 'QUERY PLAN': Array<{ Plan: QueryPlanNode }> }>(
+        `explain (format json) ${countQuery}`, countParams,
+      );
+      expect(queryPlanNodes(result.rows[0]!['QUERY PLAN'][0]!.Plan)
+        .some((node) => node['Index Name'] === 'shot_session_amateur_duel_idx')).toBe(true);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
+
+  it('limits career streak history work to the observed player and preserves local-day deduplication', async () => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    await pool.query(
+      `insert into shot_session
+         (user_id,mode,amateur_duel_match_id,period_number,shot_index,seed,input_payload,server_result,game_core_version,created_at)
+       select $1::uuid,'amateur_duel',$3::uuid,1,n+1,'streak-test','{}'::jsonb,'goal',1,
+              '2026-09-30T21:30:00Z'::timestamptz + n * interval '1 day'
+         from generate_series(0,6) n
+       union all
+       select $1::uuid,'amateur_duel',$3::uuid,1,8,'streak-test','{}'::jsonb,'goal',1,'2026-10-07T10:00:00Z'::timestamptz
+       union all
+       select $2::uuid,'amateur_duel',$3::uuid,1,n+1,'streak-test','{}'::jsonb,'goal',1,
+              '2026-09-28T21:30:00Z'::timestamptz + n * interval '1 day'
+         from generate_series(0,8) n`, [userA,userB,matchId],
+    );
+    const queries = vi.spyOn(pool, 'query');
+    let streakQuery: string;
+    let streakParams: unknown[];
+    try {
+      await observeCareerActivityStreak(pool, userA, new Date('2026-10-07T10:00:00Z'));
+      const call = queries.mock.calls.find(([sql]) => String(sql).includes('historical_streaks.best_days'));
+      expect(call).toBeDefined();
+      streakQuery = String(call![0]);
+      streakParams = call![1] as unknown as unknown[];
+    } finally {
+      queries.mockRestore();
+    }
+    const result = await pool.query<{ activity_day: string; best_days: number }>(streakQuery,streakParams);
+    expect(result.rows).toEqual([{ activity_day: '2026-10-07', best_days: 7 }]);
+    const plan = await pool.query<{ 'QUERY PLAN': Array<{ Plan: QueryPlanNode }> }>(
+      `explain (analyze,format json) ${streakQuery}`,streakParams,
+    );
+    const scans = queryPlanNodes(plan.rows[0]!['QUERY PLAN'][0]!.Plan)
+      .filter((node) => node['Relation Name'] === 'shot_session');
+    expect(scans.length).toBeGreaterThan(0);
+    expect(scans.reduce((total,node) => total + (node['Actual Rows'] ?? 0) * (node['Actual Loops'] ?? 1),0))
+      .toBeLessThanOrEqual(8);
+    await observeCareerActivityStreak(pool,userA,new Date('2026-10-07T11:00:00Z'));
+    const events = await pool.query(
+      `select 1 from achievement_stage_events where user_id=$1 and achievement_id='career-streak'
+        and event_key='activity-day:2026-10-07'`,[userA],
+    );
+    expect(events.rowCount).toBe(1);
+    const stages = await pool.query<{ progress: { days: number } }>(
+      `select progress from user_achievement_stages where user_id=$1 and achievement_id='career-streak'`,[userA],
+    );
+    expect(stages.rows[0]?.progress.days).toBe(7);
   });
 
   it('timestamps an accepted ordinary shot after the gameplay-lock wait and recovers exactly one hour later', async () => {
@@ -1589,6 +1710,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       'participant',
       'server_result',
       'settled',
+      'state_revision',
     ]);
     expect(payload).toMatchObject({
       match_id: matchId,
@@ -1602,6 +1724,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       current_period_inventory: { periodNumber: 1, consumed: [] },
       settled: false,
     });
+    expect(Number.isSafeInteger(payload.state_revision)).toBe(true);
+    expect(payload.state_revision).toBeGreaterThan(0);
     expect(payload).not.toHaveProperty('match');
     expect(Buffer.byteLength(shot.body, 'utf8')).toBeLessThan(1024);
   });
@@ -7181,4 +7305,607 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       duration_ms: 180000,
     });
   });
+  describe('ordinary duel fight challenge', () => {
+    async function preparedFightMatch(totalPeriods = 1) {
+      const id = await createActiveMatch(true,totalPeriods);
+      const started = await app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/period/start`, headers: auth(tokenB) });
+      expect(started.statusCode).toBe(200);
+      await pool.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fight test','Test-only setting') on conflict(key) do update set value=excluded.value");
+      await pool.query("update amateur_duel_participant set period_started_at=now()-interval '31 seconds' where match_id=$1", [id]);
+      await pool.query("insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at) values ($1,$2,gen_random_uuid(),now()+interval '1 minute'),($1,$3,gen_random_uuid(),now()+interval '1 minute')", [id,userA,userB]);
+      return id;
+    }
+    function fightChallenge(id: string, token=tokenA, requestId='00000000-0000-4000-8000-000000000001') {
+      return app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/fight/challenge`, headers: auth(token), payload: { requestId } });
+    }
+    it('fight allows a caller in the middle of a period when both players are on ice', async () => {
+      const id = await preparedFightMatch();
+      await pool.query("update amateur_duel_participant set period_started_at=now()-interval '60 seconds' where match_id=$1 and user_id=$2", [id,userA]);
+      const response = await fightChallenge(id);
+      expect(response.statusCode).toBe(200);
+      expect(response.json().fight.status).toBe('offered');
+    });
+    it('fight rejects opponent not on ice and does not consume an attempt', async () => {
+      const id = await preparedFightMatch();
+      await pool.query("update amateur_duel_participant set state='completed',period_started_at=null where match_id=$1 and user_id=$2", [id,userB]);
+      const response = await fightChallenge(id);
+      expect(response.statusCode).toBe(409);
+      expect(response.json().error.details?.reason).toBe('opponent_unavailable');
+    });
+    it('fight creates one offer without pausing hockey for concurrent callers', async () => {
+      const id = await preparedFightMatch();
+      const [a,b] = await Promise.all([fightChallenge(id),fightChallenge(id,tokenB)]);
+      expect(a.statusCode,JSON.stringify(a.json().error)).toBe(200); expect(b.statusCode,JSON.stringify(b.json().error)).toBe(200);
+      expect(a.json().fight.id).toBe(b.json().fight.id);
+      const { rows } = await pool.query('select fight_paused_at from amateur_duel_match where id=$1',[id]);
+      expect(rows[0].fight_paused_at).toBeNull();
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight where match_id=$1',[id])).rows[0].n).toBe(1);
+    });
+    it('fight permits hockey shots during an offer and pauses only on acceptance', async () => {
+      const id = await preparedFightMatch();
+      await pool.query("update amateur_duel_match set rules_snapshot=jsonb_set(jsonb_set(rules_snapshot, '{shotsPerPeriod}', '30'::jsonb), '{periodRules,0,shotsLimit}', '30'::jsonb) where id=$1", [id]);
+      // Stay before both equipped-skates and fallback stumble windows.
+      await pool.query("update amateur_duel_participant set period_started_at=now()-interval '2 seconds' where match_id=$1", [id]);
+      const before = (await pool.query('select ends_at from amateur_duel_match where id=$1', [id])).rows[0].ends_at;
+      const c = await fightChallenge(id);
+      expect(c.statusCode).toBe(200);
+      expect(c.json().match.fight_paused_at).toBeNull();
+      // Keep this storage-heavy scenario separate from the deadline expiry test.
+      await pool.query("update amateur_duel_fight set response_deadline_at=now()+interval '30 seconds' where match_id=$1", [id]);
+      for (const [token, userId] of [[tokenA, userA], [tokenB, userB]]) {
+        const started = (await pool.query('select period_started_at from amateur_duel_participant where match_id=$1 and user_id=$2', [id, userId])).rows[0].period_started_at;
+        const tapTime = Date.now() - started.getTime();
+        const shot = await app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/shot`, headers: auth(token), payload: { shot_index: 1, input: { tapTime }, claimed_result: 'goal' } });
+        expect(shot.statusCode, JSON.stringify(shot.json().error)).toBe(200);
+      }
+      const accepted = await app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/fight/respond`, headers: auth(tokenB), payload: { fightId: c.json().fight.id, requestId: '00000000-0000-4000-8000-000000000002', decision: 'accept' } });
+      expect(accepted.statusCode, JSON.stringify(accepted.json().error)).toBe(200);
+      expect(accepted.json().match.fight_paused_at).not.toBeNull();
+      const rows = (await pool.query('select period_paused_at from amateur_duel_participant where match_id=$1', [id])).rows;
+      expect(rows.every(p => p.period_paused_at !== null)).toBe(true);
+      expect((await pool.query('select ends_at from amateur_duel_match where id=$1', [id])).rows[0].ends_at).toEqual(before);
+      const blocked = await app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/shot`, headers: auth(tokenA), payload: { shot_index: 2, input: { tapTime: 2000 }, claimed_result: 'goal' } });
+      expect(blocked.statusCode).toBe(409);
+    });
+    it('fight cannot be accepted after a participant leaves the active period', async () => {
+      const id = await preparedFightMatch();
+      const c = await fightChallenge(id);
+      await pool.query("update amateur_duel_participant set state='break_active' where match_id=$1 and user_id=$2", [id, userA]);
+      const accepted = await app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/fight/respond`, headers: auth(tokenB), payload: { fightId: c.json().fight.id, requestId: '00000000-0000-4000-8000-000000000002', decision: 'accept' } });
+      expect(accepted.statusCode).toBe(409);
+      expect((await pool.query('select fight_paused_at from amateur_duel_match where id=$1', [id])).rows[0].fight_paused_at).toBeNull();
+    });
+    it('fight decline consumes the attempt, grants no rewards and resumes with two second recovery', async () => {
+      const id = await preparedFightMatch();
+      const challenge = await fightChallenge(id); expect(challenge.statusCode,JSON.stringify(challenge.json().error)).toBe(200);
+      const response = await app.inject({ method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:challenge.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'decline'} });
+      expect(response.statusCode).toBe(200); expect(response.json().fight.status).toBe('declined');
+      const { rows } = await pool.query('select user_id,period_paused_at,recovery_until from amateur_duel_participant where match_id=$1',[id]);
+      expect(rows.every(p => p.period_paused_at === null)).toBe(true);
+      const recovery = rows.find(p=>p.user_id===userB).recovery_until.getTime();
+      expect(recovery-Date.now()).toBeGreaterThan(1500); expect(recovery-Date.now()).toBeLessThanOrEqual(2000);
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(0);
+      const second = await fightChallenge(id,tokenA,'00000000-0000-4000-8000-000000000003');
+      expect(second.statusCode).toBe(200);
+    });
+    it('fight allows three challenges each and deduplicates any previous request', async () => {
+      const id = await preparedFightMatch();
+      const requests = [randomUUID(), randomUUID(), randomUUID()];
+      const ids: string[] = [];
+      for (const request of requests) {
+        const challenge = await fightChallenge(id, tokenA, request);
+        expect(challenge.statusCode, JSON.stringify(challenge.json().error)).toBe(200);
+        ids.push(challenge.json().fight.id);
+        // Completed fights still consume a call; no decline counters in this scenario.
+        await pool.query("update amateur_duel_fight set status='cancelled',resolved_at=now(),reason='system_interruption' where id=$1", [challenge.json().fight.id]);
+      }
+      const state = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(state.json().match.fight_availability.reason).toBe('attempt_used');
+      const fourth = await fightChallenge(id, tokenA, randomUUID());
+      expect(fourth.statusCode).toBe(409);
+      expect(fourth.json().error.details.reason).toBe('attempt_used');
+      for (const [index, request] of requests.entries()) {
+        const retry = await fightChallenge(id, tokenA, request);
+        expect(retry.statusCode).toBe(200);
+        expect(retry.json().fight.id).toBe(ids[index]);
+      }
+      for (let call = 0; call < 3; call++) {
+        const opposite = await fightChallenge(id, tokenB, randomUUID());
+        expect(opposite.statusCode).toBe(200);
+        expect(opposite.json().fight.forced).toBe(false);
+        expect(opposite.json().match.fight_availability.remainingCalls).toBe(2-call);
+        await pool.query("update amateur_duel_fight set status='cancelled',resolved_at=now(),reason='system_interruption' where id=$1", [opposite.json().fight.id]);
+      }
+      expect((await fightChallenge(id, tokenB, randomUUID())).statusCode).toBe(409);
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight where match_id=$1', [id])).rows[0].n).toBe(6);
+    });
+    it('fight counts explicit and timeout refusals then starts a forced offer at the deadline', async () => {
+      const id = await preparedFightMatch();
+      const first = await fightChallenge(id, tokenA, randomUUID());
+      expect(first.statusCode).toBe(200);
+      const decline = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:first.json().fight.id,requestId:randomUUID(),decision:'decline'}});
+      expect(decline.statusCode).toBe(200);
+      const second = await fightChallenge(id, tokenA, randomUUID());
+      expect(second.statusCode).toBe(200);
+      await pool.query("update amateur_duel_fight set response_deadline_at=now()-interval '1 second' where id=$1", [second.json().fight.id]);
+      const expired = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(expired.json().fight.status).toBe('declined');
+      const third = await fightChallenge(id, tokenA, randomUUID());
+      expect(third.statusCode, JSON.stringify(third.json().error)).toBe(200);
+      expect(third.json().fight.forced).toBe(true);
+      expect(third.json().fight.status).toBe('offered');
+      expect(third.json().match.fight_paused_at).toBeNull();
+      expect(Date.parse(third.json().fight.response_deadline_at)-Date.parse(third.json().fight.offered_at)).toBe(10000);
+      const denied = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:third.json().fight.id,requestId:randomUUID(),decision:'decline'}});
+      expect(denied.statusCode).toBe(409);
+      expect(denied.json().error.details.reason).toBe('forced_fight');
+      await pool.query("update amateur_duel_fight set response_deadline_at=now()-interval '1 second' where id=$1", [third.json().fight.id]);
+      const started = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(started.statusCode).toBe(200);
+      expect(started.json().fight.status).toBe('starting');
+      expect(started.json().fight.engine_state.hp).toEqual([5,5]);
+      expect(started.json().match.fight_paused_at).not.toBeNull();
+      const repeated = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(repeated.json().fight.starts_at).toBe(started.json().fight.starts_at);
+    });
+
+    it('fight accepts a forced invitation before the countdown ends', async () => {
+      const id = await preparedFightMatch();
+      const c = await fightChallenge(id);
+      expect(c.statusCode).toBe(200);
+      await pool.query('update amateur_duel_fight set forced=true where id=$1', [c.json().fight.id]);
+      const response = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:randomUUID(),decision:'accept'}});
+      expect(response.statusCode).toBe(200);
+      expect(response.json().fight.status).toBe('starting');
+      expect(response.json().match.fight_paused_at).not.toBeNull();
+    });
+    it('fight cancels a forced invitation when active time no longer overlaps', async () => {
+      const id = await preparedFightMatch(2);
+      const c = await fightChallenge(id);
+      expect(c.statusCode).toBe(200);
+      await pool.query("update amateur_duel_fight set forced=true,response_deadline_at=now()-interval '1 second' where id=$1", [c.json().fight.id]);
+      await pool.query("update amateur_duel_participant set state='break_active',break_started_at=now() where match_id=$1 and user_id=$2", [id, userB]);
+      const state = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(state.statusCode).toBe(200);
+      expect(state.json().fight.status).toBe('cancelled');
+      expect(state.json().match.fight_paused_at).toBeNull();
+      expect(state.json().match.fight_availability.remainingCalls).toBe(2);
+    });
+
+    async function resolvedAidMatch(remainingMs = 149000) {
+      const id = await preparedFightMatch(2);
+      const c = await fightChallenge(id);
+      const accepted = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:randomUUID(),decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      const pausedAt = new Date(Date.now()-20000);
+      const resultAt = new Date(Date.now()-3000);
+      await pool.query('update amateur_duel_match set fight_paused_at=$2 where id=$1', [id, pausedAt]);
+      await pool.query("update amateur_duel_participant set period_paused_at=$2,period_started_at=$2::timestamptz-($3::int*interval '1 millisecond') where match_id=$1", [id,pausedAt,1200000-remainingMs]);
+      await pool.query("update amateur_duel_fight set status='resolved',winner_user_id=$2,resolved_at=$3 where id=$1", [c.json().fight.id,userA,resultAt]);
+      return {id,pausedAt,resultAt};
+    }
+    it('fight replaces loser ice recovery with ten seconds of assistance while winner plays', async () => {
+      const {id,resultAt} = await resolvedAidMatch();
+      const state = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(state.statusCode).toBe(200);
+      const match = state.json().match;
+      expect(match.fight_paused_at).toBeNull();
+      expect(match.me.recovery_until).toBeNull();
+      expect(Date.parse(match.me.fight_aid_until)-resultAt.getTime()).toBe(12700);
+      expect(match.me.clock.running).toBe(false);
+      expect(match.me.clock.remainingMs).toBe(149000);
+      expect(match.opponent.fight_aid_until).toBeNull();
+      expect(match.opponent.clock.running).toBe(true);
+      const denied = await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/shot`,headers:auth(tokenB),payload:{shot_index:1,input:{tapTime:31000},claimed_result:'goal'}});
+      expect(denied.statusCode).toBe(409);
+      const winner = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(winner.json().match.me.clock.running).toBe(true);
+      const retry = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(retry.json().match.me.fight_aid_until).toBe(match.me.fight_aid_until);
+    });
+    it('fight preserves the last three seconds of the loser period throughout assistance', async () => {
+      const {id} = await resolvedAidMatch(3000);
+      const first = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(first.statusCode).toBe(200);
+      const second = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(second.json().match.me.state).toBe('period_active');
+      expect(second.json().match.me.clock.remainingMs).toBe(3000);
+      expect(second.json().match.me.clock.running).toBe(false);
+    });
+    it('fight ends assistance at its deadline on reconnect without adding another ten seconds', async () => {
+      const {id,pausedAt} = await resolvedAidMatch();
+      const resultAt = new Date(Date.now()-14000);
+      await pool.query('update amateur_duel_fight set resolved_at=$2 where match_id=$1', [id,resultAt]);
+      const state = await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(state.statusCode).toBe(200);
+      expect(state.json().match.me.fight_aid_until).toBeNull();
+      expect(state.json().match.me.clock.running).toBe(true);
+      const participants = (await pool.query('select user_id,period_paused_ms,period_paused_at,recovery_until from amateur_duel_participant where match_id=$1',[id])).rows;
+      expect(participants.find(p=>p.user_id===userB).period_paused_ms).toBe(resultAt.getTime()+12700-pausedAt.getTime());
+      expect(participants.find(p=>p.user_id===userA).period_paused_ms).toBe(resultAt.getTime()+2700-pausedAt.getTime());
+      expect(participants.every(p=>p.period_paused_at===null&&p.recovery_until===null)).toBe(true);
+    });
+
+    it('fight acceptance creates a shared future start and five HP', async () => {
+      const id = await preparedFightMatch(); const challenge = await fightChallenge(id);
+      expect(challenge.statusCode,JSON.stringify(challenge.json().error)).toBe(200);
+      const response=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:challenge.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      expect(response.statusCode).toBe(200); expect(response.json().fight.status).toBe('starting');
+      expect(response.json().fight.engine_state.hp).toEqual([5,5]);
+      expect(Date.parse(response.json().fight.starts_at)-Date.now()).toBeGreaterThan(500);
+    });
+
+    it('fight auto refusal at the response deadline resumes the duel without rewards', async()=>{
+      const id=await preparedFightMatch(); const challenge=await fightChallenge(id); expect(challenge.statusCode).toBe(200);
+      await pool.query("update amateur_duel_fight set response_deadline_at=now()-interval '1 second' where match_id=$1",[id]);
+      const state=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(state.statusCode).toBe(200); expect(state.json().fight.status).toBe('declined');
+      expect((await pool.query('select fight_paused_at from amateur_duel_match where id=$1',[id])).rows[0].fight_paused_at).toBeNull();
+    });
+    it('fight recovery is cleared when a rested player starts the next period', async () => {
+      const id = await preparedFightMatch(2);
+      await pool.query("update amateur_duel_participant set state='accepted',current_period=1,period_started_at=null,ready_at=now(),recovery_until=now()+interval '5 seconds' where match_id=$1 and user_id=$2", [id,userA]);
+      const started = await app.inject({ method:'POST',url:`/duel/amateur/matches/${id}/period/start`,headers:auth(tokenA) });
+      expect(started.statusCode,JSON.stringify(started.json().error)).toBe(200);
+      expect(started.json().match.me.current_period).toBe(2);
+      expect(started.json().match.me.recovery_until).toBeNull();
+      expect((await pool.query('select recovery_until from amateur_duel_participant where match_id=$1 and user_id=$2',[id,userA])).rows[0].recovery_until).toBeNull();
+    });
+
+    it('fight preserves each player challenge allowance and returns both rewards', async () => {
+      const id=await preparedFightMatch();
+      const first=await fightChallenge(id); expect(first.statusCode).toBe(200);
+      async function finish(fightId:string,token:string) {
+        const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(token),payload:{fightId,requestId:randomUUID(),decision:'accept'}});
+        expect(accepted.statusCode,JSON.stringify(accepted.json().error)).toBe(200);
+        const engine=accepted.json().fight.engine_state;
+        engine.hp=[2,1]; if(engine.responsive)engine.responsive.initialHp=[2,1]; engine.phaseStartedAtMs=Date.now()-16000; engine.deadlineMs=Date.now()-1000; engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
+        await pool.query("update amateur_duel_fight set status='fighting',starts_at=now()-interval '16 seconds',engine_state=$2 where id=$1",[fightId,JSON.stringify(engine)]);
+        const state=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect(state.json().fight.status).toBe('resolved');
+        await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where id=$1",[fightId]);
+        await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        await pool.query("update amateur_duel_participant set fight_aid_until=now()-interval '1 millisecond' where match_id=$1 and fight_aid_until is not null",[id]);
+        await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      }
+      await finish(first.json().fight.id,tokenB);
+      const bState=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenB)});
+      expect(bState.json().match.fight_availability.allowed,JSON.stringify({availability:bState.json().match.fight_availability,me:bState.json().match.me.clock,opponent:bState.json().match.opponent.clock})).toBe(true);
+      const aState=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(aState.json().match.fight_availability.allowed).toBe(true);
+      const second=await fightChallenge(id,tokenB,randomUUID()); expect(second.statusCode).toBe(200);
+      expect(second.json().fight.id).not.toBe(first.json().fight.id);
+      const retry=await fightChallenge(id); expect(retry.json().fight.id).toBe(first.json().fight.id);
+      const stale=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:first.json().fight.id,requestId:randomUUID(),decision:'accept'}});
+      expect(stale.statusCode).toBe(409);
+      await finish(second.json().fight.id,tokenA);
+      const final=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(final.json().match.fight_rewards).toHaveLength(2);
+      expect(final.json().match.fight_availability.allowed).toBe(true);
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(4);
+      expect((await pool.query("select count(*)::int as n from currency_ledger where reason='duel_fight_reward' and duel_match_id=$1",[id])).rows[0].n).toBe(4);
+    });
+
+    it('fight worker does not continuously revisit an old result during the next fight', async()=>{
+      const id=await preparedFightMatch();const first=await fightChallenge(id);
+      await pool.query("update amateur_duel_fight set status='resolved',winner_user_id=$2,resolved_at=now()-interval '5 seconds' where id=$1",[first.json().fight.id,userA]);
+      const offer=await fightChallenge(id,tokenB,'00000000-0000-4000-8000-000000000003');
+      expect(offer.statusCode).toBe(200);
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenA),payload:{fightId:offer.json().fight.id,requestId:'00000000-0000-4000-8000-000000000004',decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      const engine=accepted.json().fight.engine_state;engine.phaseStartedAtMs=Date.now()+30000;engine.deadlineMs=engine.phaseStartedAtMs+20000;engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
+      await pool.query("update amateur_duel_fight set starts_at=now()+interval '30 seconds',engine_state=$2 where id=$1",[offer.json().fight.id,JSON.stringify(engine)]);
+      const prepare=vi.fn(async(client:PoolClient)=>{
+        const match=(await client.query('select status,fight_paused_at,ends_at from amateur_duel_match where id=$1 for update',[id])).rows[0];
+        return {id,source:'challenge',status:match.status,paused:match.fight_paused_at!==null,endsAtMs:match.ends_at.getTime(),nowMs:Date.now(),canExtend:true,
+          participants:[userA,userB].map(userId=>({userId,state:'period_active',totalActiveMs:31000,periodElapsedMs:31000,remainingMs:149000,running:true}))};
+      });
+      const stop=startFightWorker(app,{prepare,snapshot:async()=>null,transact:async work=>{
+        const client=await pool.connect();try{await client.query('begin');const result=await work(client);await client.query('commit');return result;}
+        catch(error){await client.query('rollback');throw error;}finally{client.release();}
+      }});
+      try{await new Promise(resolve=>setTimeout(resolve,300));}finally{await stop();}
+      expect(prepare).toHaveBeenCalledTimes(1);
+    });
+
+    it('fight rewards each participant once and only the winner gets a star', async()=>{
+      const id=await preparedFightMatch(); const c=await fightChallenge(id); expect(c.statusCode).toBe(200);
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      const engine=accepted.json().fight.engine_state; engine.hp=[2,1]; if(engine.responsive)engine.responsive.initialHp=[2,1]; engine.phaseStartedAtMs=Date.now()-16000; engine.deadlineMs=Date.now()-1000; engine.finalizedThroughMs=engine.phaseStartedAtMs-1;
+      await pool.query("update amateur_duel_fight set status='fighting',starts_at=now()-interval '16 seconds',engine_state=$2 where match_id=$1",[id,JSON.stringify(engine)]);
+      const before=(await pool.query('select id,xp,experience from users where id=any($1::uuid[]) order by id',[[userA,userB]])).rows;
+      for(let i=0;i<2;i++) {
+        const state=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect(state.statusCode).toBe(200); expect(state.json().fight.winner_user_id).toBe(userA);
+        expect(state.json().match.fight_paused_at).not.toBeNull();
+      }
+      const after=(await pool.query('select id,xp,experience from users where id=any($1::uuid[]) order by id',[[userA,userB]])).rows;
+      for(let i=0;i<2;i++) { expect(after[i].experience-before[i].experience).toBe(1); expect(after[i].xp-before[i].xp).toBe(after[i].id===userA?1:0); }
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(2);
+      await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where match_id=$1", [id]);
+      await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      const loser=(await pool.query('select recovery_until,period_paused_at,fight_aid_until from amateur_duel_participant where match_id=$1 and user_id=$2',[id,userB])).rows[0];
+      expect(loser.period_paused_at).not.toBeNull();expect(loser.recovery_until).toBeNull();
+      expect(loser.fight_aid_until.getTime()-Date.now()).toBeGreaterThan(9000);
+    });
+
+    it('fight keeps the result paused then resumes the winner and starts medical assistance once', async () => {
+      const id=await preparedFightMatch(); const c=await fightChallenge(id);
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      const engine=accepted.json().fight.engine_state;
+      engine.hp=[2,0];engine.status='resolved';engine.winner=0;
+      await pool.query("update amateur_duel_fight set status='resolved',winner_user_id=$2,engine_state=$3,resolved_at=now() where match_id=$1", [id,userA,JSON.stringify(engine)]);
+      const getState=()=>app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      const held=await getState();
+      expect(held.statusCode).toBe(200);
+      expect(held.json().match.fight_paused_at).not.toBeNull();
+      await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where match_id=$1", [id]);
+      const stopWorker = startFightWorker(app, {
+        transact: async work => {
+          const client = await pool.connect();
+          try { await client.query('begin'); const value=await work(client); await client.query('commit'); return value; }
+          catch (error) { await client.query('rollback'); throw error; }
+          finally { client.release(); }
+        },
+        prepare: async client => {
+          const match=(await client.query('select status,fight_paused_at,ends_at from amateur_duel_match where id=$1 for update',[id])).rows[0];
+          return { id, source:'challenge',status:match.status,paused:match.fight_paused_at!==null,
+            endsAtMs:match.ends_at.getTime(),nowMs:Date.now(),canExtend:true,
+            participants:[{userId:userA,state:'period_active',totalActiveMs:31000,periodElapsedMs:31000,remainingMs:149000,running:true},{userId:userB,state:'period_active',totalActiveMs:31000,periodElapsedMs:31000,remainingMs:149000,running:true}] };
+        },
+        snapshot: async () => null,
+      });
+      try {
+        // Resume must happen from the background worker, without a client state request.
+        await vi.waitFor(async () => {
+          expect((await pool.query('select fight_paused_at from amateur_duel_match where id=$1',[id])).rows[0].fight_paused_at).toBeNull();
+        }, { timeout: 3000 });
+      } finally { await stopWorker(); }
+      const resumed=await getState();
+      expect(resumed.json().match.fight_paused_at).toBeNull();
+      const before=(await pool.query('select user_id,period_paused_ms,recovery_until,fight_aid_until from amateur_duel_participant where match_id=$1 order by user_id', [id])).rows;
+      expect(before.find(p=>p.user_id===userB).recovery_until).toBeNull();
+      expect(before.find(p=>p.user_id===userB).fight_aid_until.getTime()-Date.now()).toBeGreaterThan(9000);
+      await getState();
+      const after=(await pool.query('select user_id,period_paused_ms,recovery_until,fight_aid_until from amateur_duel_participant where match_id=$1 order by user_id', [id])).rows;
+      expect(after).toEqual(before);
+    });
+    it('fight cancels without rewards when its hockey match becomes terminal', async()=>{
+      const id=await preparedFightMatch(); await fightChallenge(id);
+      await pool.query("update amateur_duel_match set status='cancelled' where id=$1",[id]);
+      const response=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(response.statusCode).toBe(200);expect(response.json().fight.status).toBe('cancelled');
+      expect(response.json().match.fight_paused_at).toBeNull();
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(0);
+    });
+    it('fight advances hockey revisions on ordinary participant mutations',async()=>{
+      const id=await preparedFightMatch();
+      const before=(await pool.query('select state_revision from amateur_duel_match where id=$1',[id])).rows[0];
+      await pool.query('update amateur_duel_participant set shots_taken=shots_taken+1 where match_id=$1 and user_id=$2',[id,userA]);
+      const after=(await pool.query('select state_revision from amateur_duel_match where id=$1',[id])).rows[0];
+      expect(Number(after.state_revision)).toBeGreaterThan(Number(before.state_revision));
+    });
+    it('fight holds the no-winner result after downtime without restarting sudden death',async()=>{
+      const id=await preparedFightMatch();const c=await fightChallenge(id);
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      const state=accepted.json().fight.engine_state;
+      state.phaseStartedAtMs=Date.now()-60000;state.deadlineMs=state.phaseStartedAtMs+15000;state.finalizedThroughMs=state.phaseStartedAtMs-1;
+      await pool.query("update amateur_duel_fight set starts_at=now()-interval '60 seconds',engine_state=$2 where match_id=$1",[id,JSON.stringify(state)]);
+      const response=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(response.statusCode).toBe(200);expect(response.json().fight.status).toBe('cancelled');
+      expect(response.json().match.fight_paused_at).not.toBeNull();
+      await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where match_id=$1",[id]);
+      const resumed=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect(resumed.json().match.fight_paused_at).toBeNull();
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward')).rows[0].n).toBe(0);
+    });
+
+    it('fight cannot accept an offer already cancelled by a system interruption',async()=>{
+      const id=await preparedFightMatch();const c=await fightChallenge(id);
+      await pool.query("update amateur_duel_match set status='cancelled' where id=$1",[id]);
+      await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      const response=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      expect(response.statusCode).toBe(409);
+    });
+    it('fight can finish after disabling new challenges',async()=>{
+      const id=await preparedFightMatch();const c=await fightChallenge(id);
+      await pool.query("update game_settings set value='false'::jsonb where key='duels.fights.enabled'");
+      const response=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      expect(response.statusCode).toBe(200);expect(response.json().fight.status).toBe('starting');
+      expect(response.json().match.fight_enabled).toBe(false);expect(response.json().match.fight_paused_at).not.toBeNull();
+    });
+
+    it.each([false,true])('measures paired socket delivery with runtime=%s', async enabled => {
+      const id=await preparedFightMatch();
+      await pool.query("insert into game_settings(key,value,label,description) values('duels.fights.runtime.enabled',$1,'Runtime test','Synthetic only') on conflict(key) do update set value=excluded.value",[JSON.stringify(enabled)]);
+      await pool.query('update amateur_duel_fight_presence set protocol_version=3 where match_id=$1',[id]);
+      const offer=await fightChallenge(id);const fightId=offer.json().fight.id;
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId,requestId:randomUUID(),decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      const engine=accepted.json().fight.engine_state;
+      const listening=app.server.address();
+      const address=listening&&typeof listening!=='string'?`http://127.0.0.1:${listening.port}`:await app.listen({host:'127.0.0.1',port:0});
+      const sockets=[tokenA,tokenB].map(token=>new WebSocket(address.replace('http:','ws:')+`/duel/amateur/matches/${id}/ws`,['hockey-fight-v3'],{headers:auth(token)}));
+      const ready=new Set<number>();const sent=new Map<number,number>();const delays:number[]=[];const seen=new Set<number>();
+      sockets.forEach((socket,i)=>socket.on('message',data=>{
+        const message=JSON.parse(String(data));
+        if(message.type==='connection:ready')ready.add(i);
+        const seq=message.fight?.engine_state?.lastSeq?.[0]??message.match?.fight?.engine_state?.lastSeq?.[0];
+        if(i===1&&sent.has(seq)&&!seen.has(seq)){seen.add(seq);delays.push(performance.now()-sent.get(seq)!);}
+      }));
+      try{
+        await vi.waitFor(()=>expect(ready.size).toBe(2),{timeout:3000});
+        await vi.waitFor(()=>expect(Date.now()).toBeGreaterThan(engine.phaseStartedAtMs+20),{timeout:3000});
+        for(let seq=1;seq<=12;seq++){
+          sent.set(seq,performance.now());
+          sockets[0]!.send(JSON.stringify({type:'fight:action',fightId,actionId:randomUUID(),seq,phaseId:0,kind:'input',input:{direction:0,crouch:seq%2===0,guard:false}}));
+          await vi.waitFor(()=>expect(seen.has(seq)).toBe(true),{timeout:3000,interval:5});
+          await new Promise(resolve=>setTimeout(resolve,85));
+        }
+        const sorted=delays.sort((a,b)=>a-b);
+        console.info('LOCAL_FIGHT_DELIVERY',JSON.stringify({runtime:enabled,samples:sorted.length,p50:sorted[5],p95:sorted[11]}));
+        expect(sorted).toHaveLength(12);
+      }finally{
+        for(const socket of sockets)socket.terminate();
+        await pool.query("update game_settings set value='false' where key='duels.fights.runtime.enabled'");
+      }
+    });
+
+    it('fences stale owners and never revives an expired runtime lease in PostgreSQL', async () => {
+      const id=await preparedFightMatch();const offer=await fightChallenge(id);const fightId=offer.json().fight.id;
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId,requestId:randomUUID(),decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      const owner=randomUUID();
+      await pool.query("update amateur_duel_fight set runtime_owner=$2,runtime_generation=2,runtime_lease_until=now()+interval '1 minute' where id=$1",[fightId,owner]);
+      const client=await pool.connect();
+      try {
+        expect(await renewRuntimeLease(client,fightId,owner,1)).toBe(false);
+        expect(await renewRuntimeLease(client,fightId,randomUUID(),2)).toBe(false);
+        expect(await renewRuntimeLease(client,fightId,owner,2)).toBe(true);
+        await client.query("update amateur_duel_fight set runtime_lease_until=now()-interval '1 second' where id=$1",[fightId]);
+        expect(await renewRuntimeLease(client,fightId,owner,2)).toBe(false);
+      } finally {client.release();}
+    });
+
+    it('expired runtime owner refunds once, clears the engine and resumes hockey without rewards', async () => {
+      const id=await preparedFightMatch();
+      const offer=await fightChallenge(id); const fightId=offer.json().fight.id;
+      const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId,requestId:randomUUID(),decision:'accept'}});
+      expect(accepted.statusCode).toBe(200);
+      await pool.query("update amateur_duel_fight set runtime_version=1,runtime_owner=gen_random_uuid(),runtime_generation=1,runtime_revision_limit=1000000,runtime_lease_until=now()-interval '1 second' where id=$1",[fightId]);
+      await vi.waitFor(async()=>expect((await pool.query('select status from amateur_duel_fight where id=$1',[fightId])).rows[0].status).toBe('cancelled'),{timeout:4000});
+      const first=(await pool.query('select * from amateur_duel_fight where id=$1',[fightId])).rows[0];
+      expect(first).toMatchObject({reason:'runtime_interrupted',call_refunded:true,engine_state:{status:'cancelled'}});
+      // Frames emitted since the last checkpoint must never hide the cancellation.
+      expect(Number(first.revision)).toBeGreaterThan(1000000);
+      expect((await pool.query('select fight_paused_at from amateur_duel_match where id=$1',[id])).rows[0].fight_paused_at).not.toBeNull();
+      expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward where fight_id=$1',[fightId])).rows[0].n).toBe(0);
+      await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where id=$1",[fightId]);
+      for(let n=0;n<2;n++)await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+      expect((await pool.query('select fight_paused_at from amateur_duel_match where id=$1',[id])).rows[0].fight_paused_at).toBeNull();
+      const again=(await pool.query('select revision,call_refunded from amateur_duel_fight where id=$1',[fightId])).rows[0];
+      expect(again).toEqual({revision:first.revision,call_refunded:true});
+    });
+
+    it('runtime room processes two sockets without per-command persistence and commits the result', async () => {
+      const id=await preparedFightMatch();
+      await pool.query("insert into game_settings(key,value,label,description) values('duels.fights.runtime.enabled','true','Runtime test','Synthetic only') on conflict(key) do update set value=excluded.value");
+      await pool.query('update amateur_duel_fight_presence set protocol_version=3 where match_id=$1',[id]);
+      expect((await pool.query("select value from game_settings where key='duels.fights.runtime.enabled'")).rows).toEqual([{value:true}]);
+      expect((await pool.query('select protocol_version from amateur_duel_fight_presence where match_id=$1',[id])).rows).toEqual([{protocol_version:3},{protocol_version:3}]);
+      const offer=await fightChallenge(id);const fightId=offer.json().fight.id;
+      expect(offer.json().fight.runtime_version).toBe(1);
+      const response=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId,requestId:randomUUID(),decision:'accept'}});
+      expect(response.statusCode,response.body).toBe(200);
+      const engine=response.json().fight.engine_state;
+      expect(engine.rules.deliveryGraceMs).toBe(0);
+      engine.deadlineMs=engine.phaseStartedAtMs+2500;
+      await pool.query('update amateur_duel_fight set engine_state=$2 where id=$1',[fightId,JSON.stringify(engine)]);
+      const listening=app.server.address();
+      const address=listening&&typeof listening!=='string'?`http://127.0.0.1:${listening.port}`:await app.listen({host:'127.0.0.1',port:0});
+      const sockets=[tokenA,tokenB].map(token=>new WebSocket(address.replace('http:','ws:')+`/duel/amateur/matches/${id}/ws`,['hockey-fight-v3'],{headers:auth(token)}));
+      const received:Array<Array<{type:string;ack?:{seq:number;accepted:boolean};fight?:{engine_state?:{hp:number[]}}}>>=[[],[]];
+      sockets.forEach((socket,i)=>socket.on('message',data=>received[i]!.push(JSON.parse(String(data)))));
+      const send=(player:number,seq:number,body:object)=>sockets[player]!.send(JSON.stringify({type:'fight:action',fightId,actionId:randomUUID(),seq,phaseId:0,...body}));
+      try{
+        await vi.waitFor(()=>expect(received.every(m=>m.some(v=>v.type==='connection:ready'))).toBe(true),{timeout:3000});
+        await vi.waitFor(()=>expect(Date.now()).toBeGreaterThan(engine.phaseStartedAtMs+20),{timeout:3000});
+        send(0,1,{kind:'input',input:{direction:0,crouch:true,guard:false}});
+        send(1,1,{kind:'input',input:{direction:0,crouch:true,guard:false}});
+        await vi.waitFor(()=>expect(received.every(m=>m.some(v=>v.ack?.seq===1&&v.ack.accepted))).toBe(true),{timeout:3000});
+        send(0,2,{kind:'attack',zone:'head'});
+        await vi.waitFor(()=>expect(received[1]!.some(v=>v.fight?.engine_state?.hp[1]===4)).toBe(true),{timeout:3000});
+        expect((await pool.query('select count(*)::int as n from amateur_duel_fight_command where fight_id=$1',[fightId])).rows[0].n).toBe(0);
+        await vi.waitFor(async()=>expect((await pool.query('select status from amateur_duel_fight where id=$1',[fightId])).rows[0].status).toBe('resolved'),{timeout:6000});
+        expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward where fight_id=$1',[fightId])).rows[0].n).toBe(2);
+        await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where id=$1",[fightId]);
+        const resumed=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect(resumed.json().match.fight_paused_at).toBeNull();
+        await pool.query("update amateur_duel_fight set runtime_lease_until=now()-interval '1 minute' where id=$1",[fightId]);
+        await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect((await pool.query('select status,call_refunded from amateur_duel_fight where id=$1',[fightId])).rows[0]).toMatchObject({status:'resolved',call_refunded:false});
+        expect((await pool.query('select count(*)::int as n from amateur_duel_fight_reward where fight_id=$1',[fightId])).rows[0].n).toBe(2);
+      }finally{
+        await Promise.all(sockets.map(socket=>new Promise<void>(resolve=>{if(socket.readyState===WebSocket.CLOSED)resolve();else{socket.once('close',resolve);socket.close();}})));
+        await pool.query("update game_settings set value='false' where key='duels.fights.runtime.enabled'");
+      }
+    });
+
+    it.each([0,150])('fight websocket authenticates, applies hits and resumes shots at %ims compensation', async compensation=>{
+      const id=await preparedFightMatch();
+      await pool.query("update amateur_duel_participant set period_started_at=now()-interval '2 seconds' where match_id=$1",[id]);
+      const c=await fightChallenge(id);
+      await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/fight/respond`,headers:auth(tokenB),payload:{fightId:c.json().fight.id,requestId:'00000000-0000-4000-8000-000000000002',decision:'accept'}});
+      const row=(await pool.query('select engine_state from amateur_duel_fight where match_id=$1',[id])).rows[0];
+      row.engine_state.phaseStartedAtMs=Date.now()-1000; row.engine_state.deadlineMs=Date.now()+14000; row.engine_state.finalizedThroughMs=row.engine_state.phaseStartedAtMs-1;
+      await pool.query("update amateur_duel_fight set starts_at=now()-interval '1 second',engine_state=$2 where match_id=$1",[id,JSON.stringify(row.engine_state)]);
+      const listening=app.server.address();
+      const address=listening && typeof listening!=='string' ? `http://127.0.0.1:${listening.port}` : await app.listen({port:0,host:'127.0.0.1'});
+      const socket=new WebSocket(address.replace('http:','ws:')+`/duel/amateur/matches/${id}/ws`,['hockey-fight-v2'],{headers:auth(tokenA)});
+      const otherSocket=new WebSocket(address.replace('http:','ws:')+`/duel/amateur/matches/${id}/ws`,['hockey-fight-v2'],{headers:auth(tokenB)});
+      const otherMessages:Array<{type?:string;fight?:{engine_state?:{hp:number[]}}}> = [];
+      otherSocket.on('message',data=>otherMessages.push(JSON.parse(String(data))));
+      otherSocket.on('error',()=>undefined);
+      const messages:Array<{type?:string;ack?:{accepted?:boolean;seq?:number}}>=[];
+      let connectionError:Error|null=null; socket.on('error',e=>{connectionError=e;}); socket.on('message',data=>messages.push(JSON.parse(String(data))));
+      try {
+        await vi.waitFor(()=>{if(connectionError) throw connectionError; expect(messages.some(m=>m.type==='connection:ready')).toBe(true);},{timeout:3000});
+        await vi.waitFor(()=>expect(otherMessages.some(m=>m.type==='connection:ready')).toBe(true),{timeout:3000});
+        await pool.query('update amateur_duel_fight set compensation_ms=$2 where id=$1',[c.json().fight.id,JSON.stringify([compensation,compensation])]);
+        socket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000004',phaseId:0,seq:1,kind:'attack',zone:'head'}));
+        await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.accepted===true)).toBe(true),{timeout:2000});
+        await new Promise(resolve=>setTimeout(resolve,650));
+        const contact=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect(contact.json().fight.engine_state.hp).toEqual([5,4]);
+        await app.realtime.publish(`duel:fight:${id}`,{type:'duel:fight_update'});
+        await vi.waitFor(()=>expect(otherMessages.some(m=>m.type==='fight:snapshot'&&m.fight?.engine_state?.hp[1]===4)).toBe(true),{timeout:2000});
+        const moving={type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000005',phaseId:0,seq:2,kind:'input',input:{direction:-1,crouch:false,guard:false}};
+        otherSocket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:randomUUID(),phaseId:0,seq:1,kind:'input',input:{direction:0,crouch:true,guard:true}}));
+        socket.send(JSON.stringify(moving));
+        await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.seq===2&&m.ack.accepted===true)).toBe(true),{timeout:2000});
+        await vi.waitFor(async()=>{
+          const other=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=1',[c.json().fight.id,userB])).rows;
+          expect(other).toHaveLength(1);
+          expect(other[0].payload).toMatchObject({player:1,kind:'input',input:{direction:0,crouch:true,guard:true}});
+        },{timeout:2000});
+        otherSocket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:randomUUID(),phaseId:0,seq:2,kind:'input',input:{direction:0,crouch:false,guard:false}}));
+        await vi.waitFor(async()=>{
+          const released=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=2',[c.json().fight.id,userB])).rows;
+          expect(released).toHaveLength(1);
+          expect(released[0].payload.input).toEqual({direction:0,crouch:false,guard:false});
+        },{timeout:2000});
+        const command=(await pool.query('select payload from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=2',[c.json().fight.id,userA])).rows[0].payload;
+        expect(command).toMatchObject({kind:'input',input:{direction:-1,crouch:false,guard:false},player:0});
+        socket.send(JSON.stringify(moving));
+        await vi.waitFor(()=>expect(messages.filter(m=>m.type==='fight:ack'&&m.ack?.seq===2)).toHaveLength(2),{timeout:2000});
+        expect((await pool.query('select count(*)::int as n from amateur_duel_fight_command where fight_id=$1 and user_id=$2 and seq=2',[c.json().fight.id,userA])).rows[0].n).toBe(1);
+        socket.send(JSON.stringify({...moving,input:{direction:1,crouch:false,guard:false}}));
+        await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:error')).toBe(true),{timeout:2000});
+        socket.send(JSON.stringify({...moving,actionId:'00000000-0000-4000-8000-000000000006',seq:3,input:{direction:0,crouch:false,guard:false}}));
+        await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.seq===3&&m.ack.accepted===true)).toBe(true),{timeout:2000});
+
+        const finalEngine=(await pool.query('select engine_state from amateur_duel_fight where match_id=$1',[id])).rows[0].engine_state;
+        finalEngine.deadlineMs=Date.now()-200;
+        await pool.query('update amateur_duel_fight set engine_state=$2 where match_id=$1',[id,JSON.stringify(finalEngine)]);
+        const finished=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect(finished.json().fight.status).toBe('resolved');
+        expect(finished.json().fight.winner_user_id).toBe(userA);
+        await pool.query("update amateur_duel_fight set resolved_at=now()-interval '3 seconds' where match_id=$1",[id]);
+        const resumedFight=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}/fight/state`,headers:auth(tokenA)});
+        expect(resumedFight.json().match.fight_paused_at).toBeNull();
+        const tapTime=Date.now()-Date.parse(resumedFight.json().match.period_started_at);
+        const shot=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/shot`,headers:auth(tokenA),payload:{shot_index:1,input:{tapTime},claimed_result:'goal'}});
+        expect(shot.statusCode,shot.body).toBe(200);
+        const expectedGoals=shot.json().server_result==='goal'?1:0;
+        expect(shot.json().participant.goals).toBe(expectedGoals);
+        const resumed=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}`,headers:auth(tokenA)});
+        expect(resumed.statusCode,resumed.body).toBe(200);
+        expect(resumed.json().match.me.goals).toBe(expectedGoals);
+      } finally {await Promise.all([socket,otherSocket].map(current=>new Promise<void>(resolve=>{if(current.readyState===WebSocket.CLOSED)resolve();else{current.once('close',resolve);current.close();}})));}
+    });
+
+  });
+
 });

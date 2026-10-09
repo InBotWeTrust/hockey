@@ -1207,6 +1207,10 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         reward_granted: true,
       },
     });
+    expect(final.response.json().attempt.record).toMatchObject({shots:3,goals:1,stars:0,experience:0,place:1});
+    const rating = await app.inject({method:'GET',url:`/bonus-games/${game.id}/records`,headers});
+    expect(rating.statusCode).toBe(200);
+    expect(rating.json().currentUser).toMatchObject({userId,place:1,shots:3,goals:1});
     const period = await pool.query<{ closed_reason: string }>(
       'select closed_reason from bonus_game_period_log where attempt_id = $1',
       [attempt.id],
@@ -1228,6 +1232,15 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       attempt: { status: 'completed', state: 'closed', reward_granted: true },
     });
     expect(await shotMutationSnapshot(attempt.id)).toEqual(beforeDuplicate);
+  });
+
+  it('requires auth and completion for records and validates page offsets', async () => {
+    const game=await createGame();
+    expect((await app.inject({method:'GET',url:`/bonus-games/${game.id}/records`})).statusCode).toBe(401);
+    const locked=await app.inject({method:'GET',url:`/bonus-games/${game.id}/records`,headers});
+    expect(locked.statusCode).toBe(403);
+    expect(locked.json().error.code).toBe('bonus_records_locked');
+    for (const offset of ['-1','100','1.5','nope']) expect((await app.inject({method:'GET',url:`/bonus-games/${game.id}/records?offset=${offset}`,headers})).statusCode).toBe(400);
   });
 
   it('uses UUID and strict Zod request schemas', async () => {

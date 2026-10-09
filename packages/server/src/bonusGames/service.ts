@@ -1,3 +1,5 @@
+import { getBonusRecordResult, settleBonusRecord } from './records.js';
+import { challengeLevelPreview, buildChallengeLevelEnvironment, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
 import {cyberpunkEarliestTap,cyberpunkEnvironmentForHistory,cyberpunkShooterMotion} from '@hockey/game-core';
 import {sampleCyberpunkEnvironment,cyberpunkCrossings,resolveCyberpunkCourtShot,type CyberpunkPanelEvent} from '@hockey/game-core';
 import { assertVersionedSkiEnvironment } from './skiShot.js';
@@ -37,7 +39,11 @@ import {
   type BalanceSnapshot,
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
-import { BONUS_SHOT_RESULT_PAUSE_MS, nextEnduranceGoalWindow } from './endurance.js';
+import {
+  BONUS_SHOT_RESULT_PAUSE_MS,
+  nextEnduranceGoalWindow,
+  pauseEnduranceGoalWindow,
+} from './endurance.js';
 import {
   toMarksmanshipScoreDetails,
   type MarksmanshipScoreDetails,
@@ -110,7 +116,7 @@ interface BonusAttemptVersionRow {
 export const BONUS_GAME_CORE_VERSION_MISMATCH_CODE = 'bonus_game_core_version_mismatch';
 export const BONUS_SHOT_TIME_INVALID_CODE = 'bonus_shot_time_invalid';
 export const BONUS_SHOT_TIME_STALE_CODE = 'bonus_shot_time_stale';
-const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73, 74, 75] as const;
+const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73, 74, 75, 76, 77] as const;
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
@@ -259,6 +265,7 @@ export async function loadBonusAttemptDto(
     rewardGranted: derived.reward_granted,
     currentLoadout: derived.current_loadout,
   });
+  dto.record = await getBonusRecordResult(client, attempt.id);
   if (Number(attempt.game_core_version) >= 71 && attempt.rules_snapshot.challengeEnvironment) {
     dto.currentPeriodShotPauses = (await fetchBonusPeriodShotState(client, attempt.id, Number(attempt.current_period))).shotPauses;
   }
@@ -588,6 +595,7 @@ export async function startOrResumeBonusAttempt(
     gameId: string;
     now: Date;
     seedSecret: string;
+    level?: ChallengeLevel;
     dailyAttemptLimit?: number;
   },
 ): Promise<{ attempt: BonusGameAttemptDTO; created: boolean }> {
@@ -632,6 +640,19 @@ export async function startOrResumeBonusAttempt(
         throw new AppError('bonus_purchase_required', 'bonus game purchase required', 409);
       }
 
+      const challengeLevel = supportsChallengeLevels(game.slug) ? input.level ?? 1 : null;
+      if (input.level !== undefined && challengeLevel === null) {
+        throw new AppError('bonus_level_not_supported', 'game does not support levels', 400);
+      }
+      if (challengeLevel !== null && ![1, 2, 3].includes(challengeLevel)) {
+        throw new AppError('bonus_invalid_level', 'invalid challenge level', 400);
+      }
+      if (challengeLevel !== null && challengeLevel > 1) {
+        const previous = await client.query(`select id from user_bonus_game_level_completion
+          where user_id = $1 and bonus_game_id = $2 and level = $3`,
+          [input.userId, game.id, challengeLevel - 1]);
+        if (previous.rows.length === 0) throw new AppError('bonus_previous_level_required', 'previous level completion required', 409);
+      }
       const periods = parseGameRules(game);
       const qualificationRules = normalizeBonusQualificationRules(game.qualification_rules, {
         targetGoals: Number(game.target_goals),
@@ -645,6 +666,7 @@ export async function startOrResumeBonusAttempt(
         thumbnailUrl: game.arena_thumbnail_url,
       };
       const rulesSnapshot = {
+        ...(challengeLevel === null ? {} : { challengeLevel }),
         gameId: game.id,
         slug: game.slug,
         title: game.title,
@@ -665,12 +687,20 @@ export async function startOrResumeBonusAttempt(
         goalkeeperSaveUrl: game.goalkeeper_save_url,
         arena,
       };
+      if (challengeLevel !== null) {
+        const preview = challengeLevelPreview(game.slug, challengeLevel, game.preview_artwork_url);
+        rulesSnapshot.previewStory = preview.preview_story;
+        rulesSnapshot.previewArtworkUrl = preview.preview_artwork_url;
+      }
+      if (challengeLevel !== null && rulesSnapshot.challengeEnvironment) {
+        rulesSnapshot.challengeEnvironment = buildChallengeLevelEnvironment(game.slug, challengeLevel, rulesSnapshot.challengeEnvironment);
+      }
       assertVersionedBeachEnvironment(rulesSnapshot.challengeEnvironment, rulesSnapshot.slug, GAME_CORE_VERSION);
       assertVersionedSkiEnvironment(rulesSnapshot.challengeEnvironment, rulesSnapshot.slug, GAME_CORE_VERSION);
       const rewardSnapshot = {
         coins: Number(game.reward_coins),
-        stars: Number(game.reward_stars),
-        experience: Number(game.reward_experience),
+        stars: Number(game.reward_stars) * (challengeLevel ?? 1),
+        experience: Number(game.reward_experience) * (challengeLevel ?? 1),
       };
       const attemptId = randomUUID();
       await reserveDailyAttemptSlot(client, {
@@ -702,11 +732,11 @@ export async function startOrResumeBonusAttempt(
             shots_taken, goals, attempt_seed, game_core_version,
             definition_revision, rules_snapshot, reward_snapshot,
             arena_theme_id_snapshot, arena_snapshot, goalkeeper_ready_url,
-            goalkeeper_save_url, preview_acknowledged_at, created_at, updated_at)
+            goalkeeper_save_url, preview_acknowledged_at, created_at, updated_at, challenge_level)
          values ($1, $2, $3, 'active', 'idle', 0,
                  0, 0, $4, $5,
                  $6, $7::jsonb, $8::jsonb,
-                 $9, $10::jsonb, $11, $12, $13, $14, $14)
+                 $9, $10::jsonb, $11, $12, $13, $14, $14, $15)
          returning *`,
         [
           attemptId,
@@ -726,6 +756,7 @@ export async function startOrResumeBonusAttempt(
             ? input.now
             : null,
           input.now,
+          challengeLevel,
         ],
       );
       const attempt = await loadBonusAttemptDto(client, rows[0]!);
@@ -1516,9 +1547,26 @@ export async function submitBonusShot(
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else if (isEndurance) {
+              const pausedWindow = attempt.goal_window_ends_at === null
+                ? null
+                : pauseEnduranceGoalWindow({
+                    goalWindowEndsAt: attempt.goal_window_ends_at,
+                    shotStartedAt: authoritativeShotStartedAt,
+                    flightMs: (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
+                  });
+              if (pausedWindow !== null) {
+                const windowUpdate = await client.query<BonusGameAttemptRow>(
+                  `update bonus_game_attempt
+                      set goal_window_started_at = $2, goal_window_ends_at = $3, updated_at = $4
+                    where id = $1 returning *`,
+                  [attempt.id, pausedWindow.startsAt, pausedWindow.endsAt, input.now],
+                );
+                attempt = windowUpdate.rows[0]!;
+              }
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else if (!isEndurance) {
+              const recordElapsedMs = await activeElapsedMs(client, attempt, isMarksmanship ? authoritativeShotStartedAt : input.now);
               const qualification = evaluateBonusQualification(qualificationRules, {
                 goals: Number(attempt.goals),
                 shotsTaken: Number(attempt.shots_taken),
@@ -1537,6 +1585,7 @@ export async function submitBonusShot(
                   gameId: attempt.bonus_game_id,
                   attemptId: attempt.id,
                   reward: attempt.reward_snapshot,
+                  challengeLevel: attempt.rules_snapshot.challengeLevel ?? null,
                   now: input.now,
                 });
                 balances = reward.balances;
@@ -1551,6 +1600,8 @@ export async function submitBonusShot(
                   [input.now, attempt.id],
                 );
                 attempt = completed.rows[0]!;
+                await settleBonusRecord(client, attempt, recordElapsedMs, input.now);
+                balances = await lockBonusEconomyBalances(client, input.userId, input.now);
               } else if (
                 isMarksmanship ||
                 (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit)

@@ -1,3 +1,4 @@
+import { challengeLevelPreview, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
 import type { Pool, PoolClient } from 'pg';
 import { assertFullAmateurAccess, resolveAmateurAccess } from '../profile/amateurAccess.js';
 import { normalizeBonusQualificationRules, type BonusQualificationRules } from './qualification.js';
@@ -44,10 +45,10 @@ export async function assertBonusGameAccessibleToUser(
   const access = await resolveAmateurAccess(db, userId);
   if (access.hasFullAccess) return;
 
-  const { rows } = await db.query<{ category_position: number }>(
-    `select category_position
+  const { rows } = await db.query<{ category_position: number; skill_code: string }>(
+    `select category_position, skill_code
        from (
-         select id,
+         select id, skill_code,
                 row_number() over (partition by skill_code order by sort_order, id)::int
                   as category_position
            from bonus_game
@@ -57,7 +58,7 @@ export async function assertBonusGameAccessibleToUser(
     [gameId],
   );
   const position = rows[0]?.category_position;
-  if (position === undefined || Number(position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL) {
+  if (position === undefined || !['speed', 'accuracy'].includes(rows[0]!.skill_code) || Number(position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL) {
     await assertFullAmateurAccess(db, userId);
   }
 }
@@ -85,6 +86,7 @@ export interface BonusGameCardAttemptDto {
 }
 
 export interface BonusGameCardDto {
+  levels: { preview_story: string; preview_artwork_url: string; level: ChallengeLevel; is_unlocked: boolean; is_completed: boolean; reward: BonusRewardSnapshot }[] | null;
   id: string;
   slug: string;
   title: string;
@@ -169,6 +171,7 @@ interface CatalogRow {
   attempt_rules_snapshot: BonusRulesSnapshot | null;
   attempt_reward_snapshot: BonusRewardSnapshot | null;
   category_position: number | null;
+  completed_levels: number[];
 }
 
 function toIso(value: Date | null): string | null {
@@ -179,7 +182,7 @@ function deriveCardState(row: CatalogRow, hasAmateurAccess: boolean): BonusGameC
   if (row.status === 'archived') return 'archived';
   if (
     !hasAmateurAccess &&
-    (row.category_position === null ||
+    (!['speed', 'accuracy'].includes(row.skill_code) || row.category_position === null ||
       Number(row.category_position) > BEGINNER_BONUS_GAME_LIMIT_PER_SKILL)
   ) {
     return 'level_locked';
@@ -290,7 +293,9 @@ export async function listBonusGameCards(
             attempt.goals as attempt_goals,
             attempt.rules_snapshot as attempt_rules_snapshot,
             attempt.reward_snapshot as attempt_reward_snapshot,
-            game.category_position
+            game.category_position,
+            array(select lc.level from user_bonus_game_level_completion lc
+              where lc.user_id = $1 and lc.bonus_game_id = game.id) as completed_levels
        from catalog_games game
        join arena_theme arena on arena.id = game.arena_theme_id
        left join user_bonus_game_completion predecessor_completion
@@ -349,6 +354,15 @@ export async function listBonusGameCards(
         activeRules?.challengeEnvironment ??
         parseBonusChallengeEnvironmentRules(row.challenge_environment),
       reward,
+      levels: supportsChallengeLevels(row.slug) ? ([1, 2, 3] as const).map((level) => ({
+        level,
+        ...challengeLevelPreview(row.slug, level, row.preview_artwork_url),
+        is_unlocked: ['available', 'completed', 'in_progress'].includes(state) &&
+          (level === 1 || row.completed_levels.includes(level - 1)),
+        is_completed: row.completed_levels.includes(level),
+        reward: { coins: Number(row.reward_coins), stars: Number(row.reward_stars) * level,
+          experience: Number(row.reward_experience) * level },
+      })) : null,
       goalkeeper_ready_url: activeRules?.goalkeeperReadyUrl ?? row.goalkeeper_ready_url,
       goalkeeper_save_url: activeRules?.goalkeeperSaveUrl ?? row.goalkeeper_save_url,
       arena: activeArena

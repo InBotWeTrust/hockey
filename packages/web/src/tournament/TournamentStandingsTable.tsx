@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type { TournamentRegularSource } from '../api/tournament.js';
 import { UserAvatar } from '../chat/components/UserAvatar.js';
 
@@ -46,6 +47,7 @@ export function TournamentStandingsTable(props: {
   currentUserId?: string | null;
   onPlayerClick?: (row: Record<string, unknown>) => void;
   resultHeading?: string;
+  resultValue?: (row: Record<string, unknown>) => ReactNode;
   variant?:
     | 'default'
     | 'duel-rating'
@@ -208,7 +210,7 @@ export function TournamentStandingsTable(props: {
                   <td>{displayNumber(row.losses, 0)}</td>
                 </>
               ) : null}
-              {!isProfileStatRating ? <td>{result.value(row)}</td> : null}
+              {!isProfileStatRating ? <td>{props.resultValue ? props.resultValue(row) : result.value(row)}</td> : null}
             </tr>
           );
         })}

@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { ChatEvent } from '../chat/types.js';
 import type { TournamentRealtimeEvent } from '../tournament/live.js';
 
-export type RealtimeEvent = ChatEvent | TournamentRealtimeEvent;
+export type RealtimeEvent = ChatEvent | TournamentRealtimeEvent | { type: 'duel:fight_update'; matchId: string; revision: number };
 export type RealtimeHandler = (event: RealtimeEvent) => void;
 export type Unsubscribe = () => Promise<void>;
 

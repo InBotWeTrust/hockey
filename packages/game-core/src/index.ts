@@ -210,3 +210,11 @@ export * from './skiEnvironment.js';
 export * from "./cyberpunkEnvironment.js";
 
 export * from "./cyberpunkCourtShot.js";
+
+export * from './fight/types.js';
+export * from './fight/config.js';
+export * from './fight/engine.js';
+
+export * from './fight/movement.js';
+
+export * from './fight/responsiveInput.js';
