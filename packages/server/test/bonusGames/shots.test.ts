@@ -789,6 +789,24 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     });
   });
 
+  it('pauses the endurance goal window for a miss and does not repeat the pause on retry', async () => {
+    const userId = await createUser();
+    const game = await createEnduranceGame();
+    const attemptId = await createActiveAttempt(userId, game.id);
+    const request = {
+      userId, attemptId, claimedShotIndex: 1,
+      input: { ...GOAL_INPUT, tapTime: 0, shooterTapTime: 0 },
+      claimedResult: 'miss' as const,
+      now: new Date(NOW.getTime() + 1_000),
+    };
+    const response = await submitBonusShot(pool, request);
+    expect(response.serverResult).toBe('miss');
+    expect(response.attempt.goalWindowEndsAt).toBe(new Date(NOW.getTime() + 8_000).toISOString());
+    const retry = await submitBonusShot(pool, request);
+    expect(retry.attempt.goalWindowEndsAt).toBe(response.attempt.goalWindowEndsAt);
+    expect(retry.attempt.shotsTaken).toBe(1);
+  });
+
   it('does not extend an expired endurance window with a non-goal', async () => {
     const userId = await createUser();
     const game = await createEnduranceGame();
@@ -980,7 +998,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
     ['save', 500],
     ['miss', 0],
   ] as const)(
-    'keeps the current endurance goal window after a %s',
+    'pauses the unspent endurance goal window after a %s',
     async (claimedResult, tapTime) => {
       const userId = await createUser();
       const game = await createEnduranceGame();
@@ -997,8 +1015,10 @@ describe.skipIf(!hasIntegrationEnv)('bonus game deterministic shots and rewards'
 
       expect(response.attempt).toMatchObject({
         status: 'active',
-        goalWindowStartedAt: NOW.toISOString(),
-        goalWindowEndsAt: new Date(NOW.getTime() + 7_000).toISOString(),
+        goalWindowStartedAt: new Date(
+          NOW.getTime() + tapTime + (PUCK_START.y - GOAL_OPENING.y) / ENDURANCE_PERIOD.puckSpeedPerMs + 1_000,
+        ).toISOString(),
+        goalWindowEndsAt: new Date(NOW.getTime() + 8_000).toISOString(),
       });
     },
   );

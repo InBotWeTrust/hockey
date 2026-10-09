@@ -3,6 +3,7 @@ import {
   BONUS_SHOT_RESULT_PAUSE_MS,
   evaluateEnduranceDeadlines,
   nextEnduranceGoalWindow,
+  pauseEnduranceGoalWindow,
 } from '../../src/bonusGames/endurance.js';
 
 describe('evaluateEnduranceDeadlines', () => {
@@ -48,7 +49,29 @@ describe('nextEnduranceGoalWindow', () => {
       goalWindowMs: 7_000,
     });
 
-    expect(window.startsAt.getTime()).toBe(Date.parse('2026-09-20T10:00:06.750Z'));
+    expect(window.startsAt.getTime()).toBe(Date.parse('2026-09-20T10:00:05.750Z') + BONUS_SHOT_RESULT_PAUSE_MS);
     expect(window.endsAt.getTime()).toBe(Date.parse('2026-09-20T10:00:13.750Z'));
+  });
+});
+
+describe('pauseEnduranceGoalWindow', () => {
+  it('preserves the remaining goal time across a missed-shot result modal', () => {
+    const window = pauseEnduranceGoalWindow({
+      goalWindowEndsAt: new Date('2026-09-20T10:00:07.000Z'),
+      shotStartedAt: new Date('2026-09-20T10:00:03.000Z'),
+      flightMs: 750,
+    });
+    expect(window).toEqual({
+      startsAt: new Date('2026-09-20T10:00:04.750Z'),
+      endsAt: new Date('2026-09-20T10:00:08.000Z'),
+    });
+    expect(window!.endsAt.getTime() - window!.startsAt.getTime()).toBe(3_250);
+  });
+  it('does not revive a goal window that expired during puck flight', () => {
+    expect(pauseEnduranceGoalWindow({
+      goalWindowEndsAt: new Date('2026-09-20T10:00:07.000Z'),
+      shotStartedAt: new Date('2026-09-20T10:00:06.500Z'),
+      flightMs: 750,
+    })).toBeNull();
   });
 });

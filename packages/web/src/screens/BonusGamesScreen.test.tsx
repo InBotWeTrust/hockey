@@ -982,13 +982,13 @@ describe('BonusGamesScreen', () => {
     expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
   });
 
-  it('returns a legacy bonus catalog route to the amateur Sections stack', async () => {
+  it('returns from bonus games to the Sections tab', async () => {
     mockCatalog([]);
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Назад' }));
 
-    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&from=sections');
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/sections$/);
   });
 
   it('explains the bonus game rules in an accessible modal', async () => {
