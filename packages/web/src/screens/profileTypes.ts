@@ -47,6 +47,7 @@ export interface ProfileData {
   grip: 'right' | 'left';
   competitionLevel: CompetitionLevel;
   beginnerOnboardingCompleted: boolean;
+  amateurOnboardingCompleted?: boolean;
   amateurUnlockGoalsRequired: number;
   stats: ProfileStats;
   achievements: ProfileAchievement[];

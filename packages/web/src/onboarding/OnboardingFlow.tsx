@@ -9,12 +9,14 @@ import './onboarding.css';
 import { OnboardingCopy } from './OnboardingCopy.js';
 import { TutorialShotStep } from './TutorialShotStep.js';
 import { BeginnerStoryFlow } from './BeginnerStoryFlow.js';
+import { AmateurStoryFlow } from './AmateurStoryFlow.js';
 
 interface OnboardingFlowProps {
   runId: string;
   required: OnboardingRequired;
   onCompleted: (result: OnboardingRequiredResponse) => void;
   mode?: 'required' | 'preview';
+  presentation?: 'cinematic' | 'published';
   tutorialApi?: ComponentProps<typeof TutorialShotStep>['tutorialApi'];
   unlockGoalsRequired?: number;
 }
@@ -24,6 +26,7 @@ export function OnboardingFlow({
   required,
   onCompleted,
   mode = 'required',
+  presentation = 'cinematic',
   tutorialApi,
   unlockGoalsRequired = 300,
 }: OnboardingFlowProps): JSX.Element {
@@ -80,7 +83,7 @@ export function OnboardingFlow({
         return;
       }
       const reached =
-        required.chain === 'beginner'
+        presentation === 'cinematic'
           ? required.steps.map((requiredStep) => requiredStep.id)
           : [...reachedSteps.current];
       await Promise.allSettled(reached.map(ensureStepView));
@@ -107,7 +110,27 @@ export function OnboardingFlow({
     setStepIndex((current) => current + 1);
   }
 
-  if (required.chain === 'beginner' && mode === 'required') {
+  if (required.chain === 'amateur' && mode === 'required' && presentation === 'cinematic') {
+    return (
+      <AmateurStoryFlow
+        unlockGoalsRequired={unlockGoalsRequired}
+        mode="required"
+        onCompleted={() => void finish()}
+        completing={completing}
+        {...(lifecycleError
+          ? {
+              completionError:
+                lifecycleError === 'view'
+                  ? 'Не удалось сохранить прогресс. Проверьте соединение.'
+                  : 'Не удалось завершить онбординг. Проверьте соединение.',
+            }
+          : {})}
+        onRetry={() => void finish()}
+      />
+    );
+  }
+
+  if (required.chain === 'beginner' && mode === 'required' && presentation === 'cinematic') {
     return (
       <BeginnerStoryFlow
         mode="required"

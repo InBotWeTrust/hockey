@@ -42,6 +42,9 @@ const BeginnerOnboardingPreviewScreen = import.meta.env.DEV
       default: module.BeginnerOnboardingPreviewScreen,
     })))
   : null;
+const AmateurOnboardingPreviewScreen = import.meta.env.DEV
+  ? lazy(() => import('../onboarding/AmateurOnboardingPreviewScreen.js').then(module => ({ default: module.AmateurOnboardingPreviewScreen })))
+  : null;
 const DestinationIntroductionPreviewScreen = import.meta.env.DEV
   ? lazy(() =>
       import('../arsenich/DestinationIntroductionPreviewScreen.js').then((module) => ({
@@ -555,6 +558,7 @@ function AppExperience(): JSX.Element {
                   </PrivateRoute>
                 }
               />
+              <Route path="/profile/story/series-2" element={<PrivateRoute><ProfileStorySeriesScreen series={2} /></PrivateRoute>} />
               <Route
                 path="/profile/achievements"
                 element={
@@ -653,6 +657,9 @@ function AppFrame(): JSX.Element {
 
   if (BeginnerOnboardingPreviewScreen && location.pathname === '/dev/beginner-onboarding') {
     return <Suspense fallback={<RouteLoading />}><BeginnerOnboardingPreviewScreen /></Suspense>;
+  }
+  if (AmateurOnboardingPreviewScreen && location.pathname === '/dev/amateur-onboarding') {
+    return <Suspense fallback={<RouteLoading />}><AmateurOnboardingPreviewScreen /></Suspense>;
   }
   if (DestinationIntroductionPreviewScreen && location.pathname === '/dev/arsenich-introductions') {
     return <Suspense fallback={<RouteLoading />}><DestinationIntroductionPreviewScreen /></Suspense>;

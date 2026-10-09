@@ -173,6 +173,32 @@
   pointer-events: auto;
 }
 
+.amateur-story__loading {
+  position: absolute;
+  z-index: 5;
+  right: 24px;
+  bottom: calc(var(--app-safe-bottom, 20px) + 86px);
+  left: 24px;
+  color: rgba(248, 250, 253, 0.94);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.story-replay__nav {
+  position: absolute;
+  z-index: 6;
+  top: 38%;
+  width: 44px;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(10, 20, 34, 0.22);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.story-replay__nav--previous { left: 8px; }
+.story-replay__nav--next { right: 8px; }
+.story-replay__nav:disabled { opacity: 0.2; }
+
 .beginner-story__completion-error {
   position: absolute;
   z-index: 5;
@@ -573,4 +599,64 @@
 @media (prefers-reduced-motion: reduce) {
   .beginner-story--court .beginner-story__media,
   .beginner-story__court-empty { transition: none; }
+}
+
+.amateur-story__frame-b {
+  opacity: 0;
+  transition: opacity 700ms ease-in-out;
+}
+.amateur-story__frame-b--visible { opacity: 1; }
+@media (prefers-reduced-motion: reduce) {
+  .amateur-story__frame-b { transition: none; }
+}
+@media (max-height: 650px) {
+  .amateur-story .beginner-story__copy p { font-size: 18px; line-height: 1.4; }
+  .amateur-story .beginner-story__shade {
+    background: linear-gradient(to bottom, transparent 12%, rgba(3, 9, 18, 0.55) 36%, rgba(3, 9, 18, 0.86) 66%, rgba(3, 9, 18, 0.97));
+  }
+}
+
+/* The gradient follows the reserved full copy height, including while typing. */
+.amateur-story--long-copy .beginner-story__copy::before {
+  content: '';
+  position: absolute;
+  inset: -40px -24px -92px;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(3, 9, 18, 0.64) 16%, rgba(3, 9, 18, 0.88) 68%, rgba(3, 9, 18, 0.96));
+}
+
+.story-progress {
+  position: absolute;
+  z-index: 1506;
+  top: calc(var(--app-safe-top, 0px) + 26px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+.story-progress__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: background-color 180ms ease-out;
+}
+.story-progress__dot--active { background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .story-progress__dot { transition: none; }
+}
+
+
+.beginner-story__close.icon-btn,
+.story-replay__nav.icon-btn {
+  width: 44px;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(10, 20, 34, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: none;
+  box-shadow: none;
 }
