@@ -229,7 +229,7 @@ function AmateurStorySceneView({
           <p className={done ? undefined : 'is-typing'}>{lines}</p>
         </section>
       ) : (
-        <div className="beginner-story__completion-error" role="status">
+        <div className={imageError ? 'beginner-story__completion-error' : 'amateur-story__loading'} role={imageError ? 'alert' : 'status'}>
           {imageError ? (
             <button type="button" onClick={() => setRetry((value) => value + 1)}>
               Повторить загрузку изображения

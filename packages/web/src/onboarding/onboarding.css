@@ -173,6 +173,18 @@
   pointer-events: auto;
 }
 
+.amateur-story__loading {
+  position: absolute;
+  z-index: 5;
+  right: 24px;
+  bottom: calc(var(--app-safe-bottom, 20px) + 86px);
+  left: 24px;
+  color: rgba(248, 250, 253, 0.94);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+}
+
 .beginner-story__completion-error {
   position: absolute;
   z-index: 5;

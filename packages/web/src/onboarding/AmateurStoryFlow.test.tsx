@@ -9,6 +9,14 @@ vi.mock('./storyImages.js', () => ({
   storyImageUrl: (url: string) => url,
 }));
 describe('AmateurStoryFlow', () => {
+  it('shows initial loading as a neutral status rather than an error', () => {
+    vi.mocked(storyImagesReady).mockReturnValue(false);
+    vi.mocked(prepareStoryImages).mockReturnValue(new Promise(() => {}));
+    render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
+    const status = screen.getByRole('status');
+    expect(status).toHaveTextContent('Загружаем сюжет');
+    expect(status).not.toHaveClass('beginner-story__completion-error');
+  });
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
     vi.mocked(storyImagesReady).mockReturnValue(true);
