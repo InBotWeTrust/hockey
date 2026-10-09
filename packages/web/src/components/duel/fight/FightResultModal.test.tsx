@@ -31,3 +31,12 @@ it('shows a fight without a winner without claiming loss or rewards', () => {
   expect(within(dialog).getByText('Драка завершена без победителя')).toBeInTheDocument();
   expect(within(dialog).queryByRole('group')).not.toBeInTheDocument();
 });
+
+it('explains a technical cancellation without inventing a draw or rewards', () => {
+ vi.useFakeTimers();
+ render(<FightResultModal won={false} draw interrupted />);
+ act(() => vi.advanceTimersByTime(700));
+ const dialog=screen.getByRole('dialog',{name:'Драка прервана'});
+ expect(within(dialog).getByText('Вызов возвращён')).toBeInTheDocument();
+ expect(within(dialog).queryByRole('group')).not.toBeInTheDocument();
+});

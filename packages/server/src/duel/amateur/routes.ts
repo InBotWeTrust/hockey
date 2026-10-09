@@ -1,3 +1,4 @@
+import { FightRuntime } from './fight/runtime/manager.js';
 import { fightWindowRemainingMs } from './fight/window.js';
 import { startFightWorker } from './fight/worker.js';
 import { getFight, getFightHistory, remainingFightCalls, advanceMedicalAid, type PersistedFight } from './fight/service.js';
@@ -4653,14 +4654,17 @@ async function isSettled(client: PoolClient, matchId: string): Promise<boolean> 
 export const amateurDuelRoutes: FastifyPluginAsync<{
   accessSecret?: string;
   fightWorkerEnabled?: boolean;
+  fightRuntimeRecoveryEnabled?: boolean;
   duelSeedSecret: string;
   systemUserId?: string;
 }> = async (app, opts) => {
   const fightAdapter: FightDuelAdapter = {
+    runtimeCommand: (matchId,userId,body) => runtime?.command(matchId,userId,body) ?? Promise.resolve(null),
     transact: work => withTransaction(app, work),
     // The authenticated socket already owns this immutable participant subscription.
     // Read one committed fight row; avoid gameplay locks and inventory/score assembly per frame.
     liveSnapshot: async (matchId, userId) => {
+      const live=runtime?.view(matchId,userId);if(live)return live;
       const { rows } = await app.pg.query(
         `select f.* from amateur_duel_fight f join amateur_duel_match m on m.id=f.match_id
          where m.id=$1 and m.status='active' and m.fight_paused_at is not null
@@ -4695,6 +4699,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           ...getParticipantClock(p, getDuelPeriodRule(rules, Math.max(1, p.current_period)).durationMs, now.getTime()) })) };
     },
   };
+  const runtime = new FightRuntime(app,fightAdapter);
+  app.addHook('onReady',async()=>{runtime.start(opts.fightRuntimeRecoveryEnabled ?? true);});
+  app.addHook('preClose',async()=>{await runtime!.close();});
   registerFightRoutes(app, fightAdapter);
   if (opts.accessSecret) registerFightSocket(app, fightAdapter, opts.accessSecret);
   if (opts.fightWorkerEnabled) {

@@ -151,3 +151,58 @@ it('publishes full match state when the latest fight changes on an existing sock
     await app.close();
   }
 });
+
+it.each([false,true])('notifies the other player after commit and tolerates publish failure=%s', async fail => {
+  const app=Fastify(); await app.register(websocket);
+  app.decorate('pg',{query:async()=>({rows:[]})});
+  const published=vi.fn(async()=>{if(fail)throw Error('synthetic unavailable');});
+  app.decorate('realtime',{subscribe:async()=>async()=>{},publish:published});
+  let release!:()=>void;
+  const committed=new Promise<void>(resolve=>{release=resolve;});
+  let commandStarted=false;
+  const adapter={
+    transact:async(work:(c:PoolClient)=>Promise<unknown>)=>{const result=await work({} as PoolClient);if(commandStarted)await committed;return result;},
+    prepare:async()=>({}),snapshot:async()=>({id:'match',fight:{id:'fight'}}),
+    liveSnapshot:async()=>({type:'fight:snapshot',matchId:'match',fight:{id:'fight'}}),
+  } as unknown as FightDuelAdapter;
+  registerFightSocket(app,adapter,'synthetic');
+  const address=await app.listen({host:'127.0.0.1',port:0});
+  const socket=new WebSocket(address.replace('http:','ws:')+'/duel/amateur/matches/match/ws',['hockey-fight-v2'],{headers:{authorization:'Bearer synthetic'}});
+  const messages:Array<{type:string;ack?:Record<string,unknown>}> = [];
+  socket.on('message',data=>messages.push(JSON.parse(String(data))));
+  try{
+    await vi.waitFor(()=>expect(messages.some(m=>m.type==='connection:ready')).toBe(true));
+    admit.mockImplementationOnce(async()=>{commandStarted=true;return {accepted:true,seq:1,notificationRevision:17};});
+    socket.send(JSON.stringify({actionId:'notify'}));
+    await vi.waitFor(()=>expect(commandStarted).toBe(true));
+    expect(published).not.toHaveBeenCalled();
+    expect(messages.some(m=>m.type==='fight:ack')).toBe(false);
+    release();
+    await vi.waitFor(()=>expect(published).toHaveBeenCalledWith('duel:fight:match',{type:'duel:fight_update',matchId:'match',revision:17}));
+    await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack')).toBe(true));
+    expect(messages.some(m=>m.type==='fight:error')).toBe(false);
+    expect(messages.find(m=>m.type==='fight:ack')?.ack).not.toHaveProperty('notificationRevision');
+  }finally{release();socket.terminate();await app.close();}
+});
+
+it('sends the live runtime sequence before reconnect is allowed to submit input', async () => {
+  const app=Fastify();await app.register(websocket);
+  app.decorate('pg',{query:async()=>({rows:[]})});
+  app.decorate('realtime',{subscribe:async()=>async()=>{}});
+  const adapter={
+    transact:async(work:(c:PoolClient)=>Promise<unknown>)=>work({} as PoolClient),
+    prepare:async()=>({}),
+    snapshot:async()=>({id:'match',fight:{id:'fight',revision:1,engine_state:{lastSeq:[0,0]}}}),
+    liveSnapshot:async()=>({type:'fight:snapshot',matchId:'match',fight:{id:'fight',revision:9,engine_state:{lastSeq:[2,1]}}}),
+  } as unknown as FightDuelAdapter;
+  registerFightSocket(app,adapter,'synthetic');
+  const address=await app.listen({host:'127.0.0.1',port:0});
+  const socket=new WebSocket(address.replace('http:','ws:')+'/duel/amateur/matches/match/ws',['hockey-fight-v3'],{headers:{authorization:'Bearer synthetic'}});
+  const messages:Array<{type:string;fight?:{engine_state:{lastSeq:number[]}}}>=[];
+  socket.on('message',data=>messages.push(JSON.parse(String(data))));
+  try{
+    await vi.waitFor(()=>expect(messages.some(m=>m.type==='connection:ready')).toBe(true));
+    const ready=messages.findIndex(m=>m.type==='connection:ready');
+    expect(messages.slice(0,ready).find(m=>m.type==='fight:snapshot')?.fight?.engine_state.lastSeq).toEqual([2,1]);
+  }finally{socket.terminate();await app.close();}
+});

@@ -12,11 +12,14 @@ import {
 } from '@hockey/game-core';
 import './src/app/global.css';
 import './src/app/design-system.css';
+const qaRules = new URLSearchParams(location.search).has('runtime')
+  ? {...DEFAULT_FIGHT_RULES, version: 6, deliveryGraceMs: 0}
+  : DEFAULT_FIGHT_RULES;
 function Scene() {
   const [now, setNow] = useState(Date.now());
   const [mode, setMode] = useState('idle');
   const [player, setPlayer] = useState<0 | 1>(0);
-  const fight = useRef(createFightState(DEFAULT_FIGHT_RULES, now + 1000));
+  const fight = useRef(createFightState(qaRules, now + 1000));
   const botAt = useRef(now + 2000);
   const send = (
     command:
@@ -79,7 +82,7 @@ function Scene() {
   }, [mode, player]);
   const restart = () => {
     const time = Date.now();
-    const next = createFightState(DEFAULT_FIGHT_RULES, time + 1000);
+    const next = createFightState(qaRules, time + 1000);
     fight.current = next;
     botAt.current = time + 2000;
     setNow(time);

@@ -6091,7 +6091,7 @@ function AmateurDuelPlayView({
           predictionReset={fightSocket.predictionReset}
         />
       ) : <p>Восстанавливаем состояние боя…</p>}
-      {(fight?.status === 'resolved' || fight?.status === 'cancelled') && <FightResultModal key={`${fight.id}:result`} won={fight.winner_user_id === match.me.user_id} draw={fight.status === 'cancelled'} />}
+      {(fight?.status === 'resolved' || fight?.status === 'cancelled') && <FightResultModal key={`${fight.id}:result`} won={fight.winner_user_id === match.me.user_id} draw={fight.status === 'cancelled'} interrupted={fight.reason === 'runtime_interrupted'} />}
       {!fightSocket.connected && fight?.status !== 'resolved' && <p className="fight-connection" role="status">Восстанавливаем связь…</p>}
       {fightSocket.error && fight?.status !== 'resolved' && <p className="fight-connection" role="status">{fightSocket.error}</p>}
     </FightModal>

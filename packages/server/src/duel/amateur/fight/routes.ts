@@ -1,3 +1,5 @@
+import type { FightActionPayload } from './commands.js';
+import type { RoomAck } from './runtime/room.js';
 import type { FastifyInstance } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
@@ -14,6 +16,7 @@ export interface FightDuelContext {
   participants: Array<{ userId: string; state: string; totalActiveMs: number; periodElapsedMs: number; remainingMs: number; running: boolean }>;
 }
 export interface FightDuelAdapter {
+  runtimeCommand?(matchId: string, userId: string, body: FightActionPayload): Promise<RoomAck | null>;
   transact<T>(work: (client: PoolClient) => Promise<T>): Promise<T>;
   prepare(client: PoolClient, matchId: string, userId: string): Promise<FightDuelContext>;
   snapshot(client: PoolClient, matchId: string, userId: string): Promise<unknown>;

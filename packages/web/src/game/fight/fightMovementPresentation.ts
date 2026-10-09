@@ -1,4 +1,4 @@
-import {fightPositionsAt,getFightPosture,moveResponsivePositions,FIGHT_MOVE_SPEED,FIGHT_MIN_DISTANCE,neutralFightInput,type FightState,type FightHeldInput} from '@hockey/game-core';
+import {fightPositionsAt,getFightPosture,moveResponsivePositions,fightMoveSpeed,FIGHT_MIN_DISTANCE,neutralFightInput,type FightState,type FightHeldInput} from '@hockey/game-core';
 /** Only the local sprite is predicted; authoritative positions still decide every contact. */
 export class FightMovementPresentation {
  private position:number|null=null;
@@ -25,7 +25,7 @@ export class FightMovementPresentation {
   const ready=Math.max(posture.readyAtMs,predictedReady,state.phaseStartedAtMs);
   const movingMs=this.desired.crouch?0:Math.max(0,Math.min(dt,now-ready));
   const positions:[number,number]=[...authoritative];positions[player]=player===0?Math.min(this.position,positions[1]-FIGHT_MIN_DISTANCE):Math.max(this.position,positions[0]+FIGHT_MIN_DISTANCE);
-  moveResponsivePositions(positions,player===0?[this.desired.direction*FIGHT_MOVE_SPEED*(this.desired.guard?.5:1),0]:[0,-this.desired.direction*FIGHT_MOVE_SPEED*(this.desired.guard?.5:1)],movingMs);
+  moveResponsivePositions(positions,player===0?[this.desired.direction*fightMoveSpeed(state.rules.version)*(this.desired.guard?.5:1),0]:[0,-this.desired.direction*fightMoveSpeed(state.rules.version)*(this.desired.guard?.5:1)],movingMs);
   this.position=positions[player];
   if(!this.pendingId){this.position+=(authoritative[player]-this.position)*(1-Math.exp(-dt/70));positions[player]=this.position;}
   this.previous=now;return positions;

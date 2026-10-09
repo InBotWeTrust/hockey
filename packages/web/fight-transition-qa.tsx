@@ -34,12 +34,13 @@ function accept(automatic=false){
 const originalFetch=window.fetch.bind(window);
 window.fetch=async(input,init)=>{const url=input instanceof Request?input.url:String(input);if(url.includes('/duel/amateur/matches/transition-preview/fight/')){if(url.endsWith('/challenge'))offer(false);if(url.endsWith('/respond'))accept();return new Response(JSON.stringify({match:useAmateurDuelStore.getState().match}),{headers:{'content-type':'application/json'}});}return originalFetch(input,init);};
 useAmateurDuelStore.setState({match:initial()});
-const holdDrawPreview=new URLSearchParams(location.search).has('draw');
+const holdInterruptedPreview=new URLSearchParams(location.search).has('interrupted');
+const holdDrawPreview=holdInterruptedPreview||new URLSearchParams(location.search).has('draw');
 function Scene(){
  const match=useAmateurDuelStore(s=>s.match)!;
  const [now,setNow]=useState(Date.now());
  const [recovering,setRecovering]=useState(false);
- useEffect(()=>{if(holdDrawPreview){offer(true);accept(true);demoResult(null);}},[]);
+ useEffect(()=>{if(holdDrawPreview){offer(true);accept(true);demoResult(null);if(holdInterruptedPreview){const current=useAmateurDuelStore.getState().match!;write({...current,fight:{...current.fight!,reason:'runtime_interrupted'}});}}},[]);
  const paused=!!match.fight_paused_at;
  const aidUntil=match.me.fight_aid_until?Date.parse(match.me.fight_aid_until):undefined;
  const assisting=aidUntil!==undefined;
@@ -99,7 +100,7 @@ function Scene(){
   />
   {showResult&&<DuelResultModal match={resultPreviewMatch} onClose={()=>setShowResult(false)}/>}
   {assisting&&<FightModal medicalAidUntilMs={aidUntil!} nowMs={now}/> }
-  {paused&&match.fight?.engine_state&&<FightModal><FightView key={`${match.fight.id}:scene`} onInput={input=>send({kind:'input',input})} onAttack={()=>send({kind:'attack',zone:'head'})} currentPlayer={{name:'Александр',avatarUrl:'/sprites/advanced-training-coach-avatar.webp'}} opponent={{name:'Михаил',avatarUrl:null}} state={match.fight.engine_state} player={0} nowMs={now} onAction={action}/>{['resolved','cancelled'].includes(match.fight.status)?<FightResultModal key={`${match.fight.id}:result`} won={match.fight.winner_user_id==='me'} draw={match.fight.status==='cancelled'}/>:<div aria-label="Проверка результата" style={{display:'flex',gap:8,justifyContent:'center',paddingTop:4,fontSize:10}}><button onClick={()=>demoResult(true)}>Проверить победу</button><button onClick={()=>demoResult(false)}>Проверить поражение</button><button onClick={()=>demoResult(null)}>Без победителя</button><button onClick={()=>setRecovering(v=>!v)}>Сообщение восстановления</button></div>}{recovering&&<p className="fight-connection" role="status">Восстанавливаем управление боем…</p>}</FightModal>}
+  {paused&&match.fight?.engine_state&&<FightModal><FightView key={`${match.fight.id}:scene`} onInput={input=>send({kind:'input',input})} onAttack={()=>send({kind:'attack',zone:'head'})} currentPlayer={{name:'Александр',avatarUrl:'/sprites/advanced-training-coach-avatar.webp'}} opponent={{name:'Михаил',avatarUrl:null}} state={match.fight.engine_state} player={0} nowMs={now} onAction={action}/>{['resolved','cancelled'].includes(match.fight.status)?<FightResultModal key={`${match.fight.id}:result`} won={match.fight.winner_user_id==='me'} draw={match.fight.status==='cancelled'} interrupted={match.fight.reason==='runtime_interrupted'}/>:<div aria-label="Проверка результата" style={{display:'flex',gap:8,justifyContent:'center',paddingTop:4,fontSize:10}}><button onClick={()=>demoResult(true)}>Проверить победу</button><button onClick={()=>demoResult(false)}>Проверить поражение</button><button onClick={()=>demoResult(null)}>Без победителя</button><button onClick={()=>setRecovering(v=>!v)}>Сообщение восстановления</button></div>}{recovering&&<p className="fight-connection" role="status">Восстанавливаем управление боем…</p>}</FightModal>}
  </main>
 }
 createRoot(document.getElementById('root')!).render(<Scene/>);
