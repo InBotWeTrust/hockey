@@ -93,7 +93,7 @@ describe('AmateurStoryFlow', () => {
     render(<AmateurStoryFlow mode="replay" unlockGoalsRequired={175} onCompleted={vi.fn()} />);
     expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Выбить 175 не каждый может.'));
   });
-  it('opens the wicket before the player enters', () => {
+  it('uses two invitation frames and reveals the open wicket at the cue', () => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
     render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
@@ -114,10 +114,9 @@ describe('AmateurStoryFlow', () => {
     expect(story).toHaveAttribute('data-frame', 'a');
     advanceTo(scene.cue);
     expect(story).toHaveAttribute('data-frame', 'b');
-    advanceTo(scene.cueC!, -1);
+    expect(scene.imageC).toBeUndefined();
+    act(() => vi.advanceTimersByTime(30000));
     expect(story).toHaveAttribute('data-frame', 'b');
-    advanceTo(scene.cueC!);
-    expect(story).toHaveAttribute('data-frame', 'c');
   });
   it('adds stronger copy shading for long scenes only', () => {
     render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
@@ -172,7 +171,7 @@ describe('AmateurStoryFlow', () => {
         .map((s) => s.copy)
         .join(' '),
     ).not.toMatch(/Арсен/);
-    expect(amateurStoryScenes[2]!.copy).toContain('Арсений Ильич');
+    expect(amateurStoryScenes[2]!.copy).toContain('Владимир Арсеньевич');
     expect(amateurStoryScenes.map((s) => s.copy).join(' ')).not.toMatch(
       /—|тренер|асинхрон|инвентарь/,
     );

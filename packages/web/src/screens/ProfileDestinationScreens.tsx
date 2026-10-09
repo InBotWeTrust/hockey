@@ -77,7 +77,9 @@ export function ProfileStoryScreen(): JSX.Element {
           const series = index + 1;
           const unlocked =
             (series === 1 && profileQuery.data.beginnerOnboardingCompleted) ||
-            (series === 2 && profileQuery.data.amateurOnboardingCompleted);
+            (series === 2 &&
+              (profileQuery.data.amateurOnboardingCompleted ||
+                import.meta.env.VITE_DEV_AMATEUR_STORY_UNLOCKED === 'true'));
           const title = series === 2 ? 'Обещанный разговор' : 'Путь со двора';
           return (
             <section

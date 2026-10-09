@@ -36,7 +36,8 @@ export function ProfileStorySeriesScreen({ series = 1 }: { series?: 1 | 2 }): JS
   }
   if (
     !(series === 2
-      ? profileQuery.data.amateurOnboardingCompleted
+      ? profileQuery.data.amateurOnboardingCompleted ||
+        import.meta.env.VITE_DEV_AMATEUR_STORY_UNLOCKED === 'true'
       : profileQuery.data.beginnerOnboardingCompleted)
   ) {
     return <Navigate to="/profile/story" replace />;
