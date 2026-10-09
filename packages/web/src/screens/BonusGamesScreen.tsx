@@ -310,7 +310,7 @@ export function BonusGamesScreen(): JSX.Element {
           <button
             type="button"
             className="icon-btn"
-            onClick={() => navigate('/?view=amateur&from=sections')}
+            onClick={() => navigate('/sections')}
             aria-label="Назад"
             title="Назад"
           >
