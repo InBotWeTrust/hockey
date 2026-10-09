@@ -8433,6 +8433,47 @@ describe('DailyScreen', () => {
 
   });
 
+  it('holds a fight without a winner in the result modal then resumes shooting', async () => {
+    const now = Date.now();
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch, status: 'active', outcome: null, winner_user_id: null, settled_at: null,
+      settled_reason: null, earned_reward: null, server_now: new Date(now).toISOString(),
+      period_started_at: new Date(now - 31000).toISOString(), period_ends_at: new Date(now + 180000).toISOString(),
+      ends_at: new Date(now + 600000).toISOString(), fight_enabled: true, fight_paused_at: null,
+      fight_availability: { allowed: false, reason: 'attempt_used', remainingMs: 0 },
+      fight: { id: 'fight-1', status: 'offered', initiator_user_id: settledDuelMatch.opponent.user_id,
+        response_deadline_at: new Date(now + 3000).toISOString(), starts_at: null, engine_state: null, resolved_at: null, winner_user_id: null },
+      me: { ...settledDuelMatch.me, state: 'period_active', current_period: 1 },
+      opponent: { ...settledDuelMatch.opponent, state: 'period_active', current_period: 1 },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const payload = url.includes('/duel/amateur/matches/match-1') ? { match: activeMatch }
+        : url.includes('/duel/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+    const accept = await screen.findByRole('button', { name: 'Принять драку' });
+    expect(accept.parentElement?.parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
+    expect(screen.queryByRole('dialog', { name: 'Драка' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'БРОСОК' })).not.toBeDisabled();
+    expect(screen.getByRole('timer')).toBeInTheDocument();
+    const engine=createFightState(DEFAULT_FIGHT_RULES, now - 1000);
+    engine.status='cancelled';engine.winner=null;engine.hp=[1,1];
+    const resultMatch: AmateurDuelMatchState={...activeMatch,state_revision:1,fight_paused_at:new Date(now).toISOString(),
+      me:{...activeMatch.me,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}},
+      fight:{...activeMatch.fight!,status:'cancelled',engine_state:engine,winner_user_id:null,resolved_at:new Date(now).toISOString()}};
+    act(()=>useAmateurDuelStore.getState().applyState(resultMatch));
+    expect(within(await screen.findByRole('dialog',{name:'Ничья'})).getByText('Драка завершена без победителя')).toBeInTheDocument();
+    expect(screen.queryByRole('group',{name:'+1 опыт'})).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog',{name:'Драка',hidden:true})).toBeInTheDocument();
+    expect(screen.getByText('02:29')).toBeInTheDocument();
+    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null}));
+    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
+
+  });
+
   it('shows medical assistance after defeat then returns directly to hockey', async () => {
     const now = Date.now();
     const activeMatch: AmateurDuelMatchState = {

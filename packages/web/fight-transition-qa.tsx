@@ -1,7 +1,7 @@
 import {resultPreviewMatch} from './fight-result-qa-match';
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
-import {advanceFight,createFightState,DEFAULT_FIGHT_RULES,FIGHT_MEDICAL_AID_MS,FIGHT_FINISH_ANIMATION_MS,FIGHT_RESULT_DISPLAY_MS} from '@hockey/game-core';
+import {advanceFight,createFightState,DEFAULT_FIGHT_RULES,FIGHT_MEDICAL_AID_MS,FIGHT_FINISH_ANIMATION_MS,FIGHT_RESULT_DISPLAY_MS,type FightHeldInput} from '@hockey/game-core';
 import {fightWindowRemainingMs,FIGHT_RESPONSE_TIMEOUT_MS} from '../server/src/duel/amateur/fight/window';
 import {PlayView} from './src/game/PlayView';
 import {FightResultModal} from './src/components/duel/fight/FightResultModal';
@@ -34,9 +34,12 @@ function accept(automatic=false){
 const originalFetch=window.fetch.bind(window);
 window.fetch=async(input,init)=>{const url=input instanceof Request?input.url:String(input);if(url.includes('/duel/amateur/matches/transition-preview/fight/')){if(url.endsWith('/challenge'))offer(false);if(url.endsWith('/respond'))accept();return new Response(JSON.stringify({match:useAmateurDuelStore.getState().match}),{headers:{'content-type':'application/json'}});}return originalFetch(input,init);};
 useAmateurDuelStore.setState({match:initial()});
+const holdDrawPreview=new URLSearchParams(location.search).has('draw');
 function Scene(){
  const match=useAmateurDuelStore(s=>s.match)!;
  const [now,setNow]=useState(Date.now());
+ const [recovering,setRecovering]=useState(false);
+ useEffect(()=>{if(holdDrawPreview){offer(true);accept(true);demoResult(null);}},[]);
  const paused=!!match.fight_paused_at;
  const aidUntil=match.me.fight_aid_until?Date.parse(match.me.fight_aid_until):undefined;
  const assisting=aidUntil!==undefined;
@@ -49,20 +52,28 @@ function Scene(){
   if(current.me.fight_aid_until&&time>=Date.parse(current.me.fight_aid_until)){write({...current,me:{...current.me,fight_aid_until:null}});}
   if(current.fight?.status==='offered'&&time>=Date.parse(current.fight.response_deadline_at)){if(current.fight.forced)accept(true);else write({...current,fight_availability:{...current.fight_availability!,allowed:(current.fight_availability?.remainingCalls??0)>0},fight:{...current.fight,status:'declined'}});lastOfferEnded.current=time;}
   else if(repeatRef.current&&!current.fight_paused_at&&current.fight?.status!=='offered'&&time-lastOfferEnded.current>=1000)offer(true);
-  else if(current.fight?.status==='resolved'&&current.fight_paused_at){
+  else if(['resolved','cancelled'].includes(current.fight?.status??'')&&current.fight_paused_at){
+   if(holdDrawPreview)return;
    if(time-Date.parse(current.fight.resolved_at!)>=FIGHT_FINISH_ANIMATION_MS+FIGHT_RESULT_DISPLAY_MS){const resultEnd=Date.parse(current.fight.resolved_at!)+FIGHT_FINISH_ANIMATION_MS+FIGHT_RESULT_DISPLAY_MS;const lost=current.fight.winner_user_id==='other';ends+=resultEnd-Date.parse(current.fight_paused_at)+(lost?FIGHT_MEDICAL_AID_MS:0);write({...current,fight_paused_at:null,me:{...current.me,recovery_until:null,fight_aid_until:lost?new Date(resultEnd+FIGHT_MEDICAL_AID_MS).toISOString():null}});}
   }
   else if(current.fight?.engine_state&&current.fight_paused_at){
    const state=advanceFight(current.fight.engine_state,[],time-150).state;
    if(state.status==='resolved'){write({...current,fight:{...current.fight,status:state.status,engine_state:state,winner_user_id:state.winner===0?'me':'other',resolved_at:new Date(time).toISOString()}});}
-   else if(state.status==='cancelled'){ends+=time-Date.parse(current.fight_paused_at);write({...current,fight_paused_at:null,fight:{...current.fight,status:state.status,engine_state:state}});}
+   else if(state.status==='cancelled'){write({...current,fight:{...current.fight,status:state.status,engine_state:state,winner_user_id:null,resolved_at:new Date(time).toISOString()}});}
    else {repeatRef.current=false;setRepeat(false);write({...current,fight:{...current.fight,engine_state:state}});}
   }
   setNow(time);
  },32);return()=>clearInterval(id)},[]);
 
- const demoResult=(won:boolean)=>{const current=useAmateurDuelStore.getState().match!;if(!current.fight?.engine_state)return;write({...current,fight:{...current.fight,status:'resolved',winner_user_id:won?'me':'other',resolved_at:new Date().toISOString(),engine_state:{...current.fight.engine_state,status:'resolved',winner:won?0:1,hp:won?[2,0]:[0,2]}}});};
- const action=(kind:'attack'|'block',zone:'head'|'body')=>{const current=useAmateurDuelStore.getState().match!;const state=current.fight!.engine_state!;write({...current,fight:{...current.fight!,engine_state:advanceFight(state,[{player:0,kind,zone,phaseId:state.phaseId,seq:state.lastSeq[0]+1,effectiveAtMs:Date.now()}],Date.now()).state}});};
+ const demoResult=(won:boolean|null)=>{const current=useAmateurDuelStore.getState().match!;if(!current.fight?.engine_state)return;write({...current,fight:{...current.fight,status:won===null?'cancelled':'resolved',winner_user_id:won===null?null:won?'me':'other',resolved_at:new Date().toISOString(),engine_state:{...current.fight.engine_state,...(won===null?{phaseStartedAtMs:Date.now()-30000,deadlineMs:Date.now(),phaseId:1}:{}),status:won===null?'cancelled':'resolved',winner:won===null?null:won?0:1,hp:won===null?[1,1]:won?[2,0]:[0,2]}}});};
+ const send=(command:{kind:'input';input:FightHeldInput}|{kind:'attack'|'block';zone:'head'|'body'})=>{
+  const current=useAmateurDuelStore.getState().match!;const state=current.fight!.engine_state!;
+  const actionId=crypto.randomUUID();const time=Math.max(Date.now(),state.finalizedThroughMs+1);
+  const next=advanceFight(state,[{...command,actionId,player:0,phaseId:state.phaseId,seq:state.lastSeq[0]+1,effectiveAtMs:time}],time);
+  write({...current,fight:{...current.fight!,engine_state:next.state}});
+  return next.events.some(e=>e.type==='rejected')?false:actionId;
+ };
+ const action=(kind:'attack'|'block',zone:'head'|'body')=>{send({kind,zone});};
  return <main style={{height:'100dvh',maxWidth:480,margin:'auto',display:'flex',flexDirection:'column'}}>
   <div style={{display:'flex',gap:6,justifyContent:'center',padding:'4px 8px',fontSize:11,flexWrap:'wrap',width:'max-content',maxWidth:'94vw',position:'fixed',top:3,left:'50%',transform:'translateX(-50%)',zIndex:90,background:'rgba(255,255,255,.8)',borderRadius:12}} aria-label="Управление предпросмотром">
    <button onClick={()=>{write(initial());ends=Date.now()+180000;}}>Сброс</button>
@@ -70,6 +81,7 @@ function Scene(){
    <button onClick={()=>{ends=Date.now()+45000;write(initial());}} disabled={paused||assisting}>Последние 45 сек.</button>
    <button onClick={()=>{ends=Date.now()+3000;write(initial());}} disabled={paused||assisting}>Осталось 3 сек.</button>
    <button onClick={()=>{const deadline=Date.now()+FIGHT_MEDICAL_AID_MS;ends+=FIGHT_MEDICAL_AID_MS;write({...initial(),me:{...initial().me,fight_aid_until:new Date(deadline).toISOString()}});}}>Оказание помощи</button>
+   <button onClick={()=>setRecovering(v=>!v)}>Сообщение восстановления</button>
    <button onClick={()=>setShowResult(true)}>Итог дуэли</button>
    <button onClick={()=>offer(true)} disabled={paused||assisting}>Входящий вызов</button>
    <button onClick={()=>offer(true,true)} disabled={paused||assisting}>Обязательная драка</button>
@@ -87,7 +99,7 @@ function Scene(){
   />
   {showResult&&<DuelResultModal match={resultPreviewMatch} onClose={()=>setShowResult(false)}/>}
   {assisting&&<FightModal medicalAidUntilMs={aidUntil!} nowMs={now}/> }
-  {paused&&match.fight?.engine_state&&<FightModal><FightView currentPlayer={{name:'Александр',avatarUrl:'/sprites/advanced-training-coach-avatar.webp'}} opponent={{name:'Михаил',avatarUrl:null}} state={match.fight.engine_state} player={0} nowMs={now} onAction={action}/>{match.fight.status==='resolved'?<FightResultModal won={match.fight.winner_user_id==='me'}/>:<div aria-label="Проверка результата" style={{display:'flex',gap:8,justifyContent:'center',paddingTop:4,fontSize:10}}><button onClick={()=>demoResult(true)}>Проверить победу</button><button onClick={()=>demoResult(false)}>Проверить поражение</button></div>}</FightModal>}
+  {paused&&match.fight?.engine_state&&<FightModal><FightView key={`${match.fight.id}:scene`} onInput={input=>send({kind:'input',input})} onAttack={()=>send({kind:'attack',zone:'head'})} currentPlayer={{name:'Александр',avatarUrl:'/sprites/advanced-training-coach-avatar.webp'}} opponent={{name:'Михаил',avatarUrl:null}} state={match.fight.engine_state} player={0} nowMs={now} onAction={action}/>{['resolved','cancelled'].includes(match.fight.status)?<FightResultModal key={`${match.fight.id}:result`} won={match.fight.winner_user_id==='me'} draw={match.fight.status==='cancelled'}/>:<div aria-label="Проверка результата" style={{display:'flex',gap:8,justifyContent:'center',paddingTop:4,fontSize:10}}><button onClick={()=>demoResult(true)}>Проверить победу</button><button onClick={()=>demoResult(false)}>Проверить поражение</button><button onClick={()=>demoResult(null)}>Без победителя</button><button onClick={()=>setRecovering(v=>!v)}>Сообщение восстановления</button></div>}{recovering&&<p className="fight-connection" role="status">Восстанавливаем управление боем…</p>}</FightModal>}
  </main>
 }
 createRoot(document.getElementById('root')!).render(<Scene/>);

@@ -23,16 +23,18 @@ export function startFightWorker(
       `select f.match_id,f.initiator_user_id,f.status,f.response_deadline_at,f.starts_at,f.resolved_at,f.engine_state,
         (select max(p.fight_aid_until) from amateur_duel_participant p where p.match_id=f.match_id) as aid_until
        from amateur_duel_fight f join amateur_duel_match m on m.id=f.match_id
-       where f.status in ('offered','starting','fighting','sudden_death') or
-        (f.status='resolved' and (m.fight_paused_at is not null or exists
-          (select 1 from amateur_duel_participant p where p.match_id=f.match_id and p.fight_aid_until is not null)))
+       where (f.status in ('offered','starting','fighting','sudden_death') or
+        (f.status in ('resolved','cancelled') and (m.fight_paused_at is not null or exists
+          (select 1 from amateur_duel_participant p where p.match_id=f.match_id and p.fight_aid_until is not null))))
+       and f.id=(select latest.id from amateur_duel_fight latest where latest.match_id=f.match_id
+         order by latest.offered_at desc,latest.id desc limit 1)
        order by f.offered_at`,
     );
     for (const row of pending.rows) {
       const now = Date.now();
       const state = row.engine_state;
       const due =
-        row.status === 'resolved'
+        ['resolved','cancelled'].includes(row.status)
           ? now >= (row.aid_until?.getTime() ?? ((row.resolved_at?.getTime() ?? Infinity) + FIGHT_RESULT_HOLD_MS))
           : row.status === 'offered'
           ? now >= row.response_deadline_at.getTime()

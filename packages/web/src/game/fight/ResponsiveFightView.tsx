@@ -50,7 +50,7 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
    const index=(side===0?p.player:1-p.player) as 0|1;
    const visual=timeline.current.frame(p.state,index,time);
    const posture=getFightPosture(p.state,index,time);
-   if(index===p.player&&time>=Math.max(posture.readyAtMs,predictedReady.current)&&p.state.hp[index]>0&&!visual.reaction){
+   if(index===p.player&&time>=Math.max(posture.readyAtMs,predictedReady.current)&&p.state.hp[index]>0&&!visual.reaction&&!visual.pose.includes('attack')){
      visual.pose=held.current.crouch?(held.current.guard&&posture.guardUnits>0?'crouch_block':'crouch'):(held.current.guard&&posture.guardUnits>0?'block_head':'idle');
    }
    const x=a.screen.width*(p.player===0?positions[index]:1-positions[index])+(side===0?-8:8);

@@ -208,8 +208,14 @@
   font-size: 13px;
 }
 .duel-fight-card .fight-connection {
-  position: static;
-  margin: 8px 0 0;
+  position: absolute;
+  bottom: auto;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  margin: 0;
+  pointer-events: none;
+  z-index: 3;
 }
 .duel-fight-card .fight-offer .modal-title {
   font-size: 18px;

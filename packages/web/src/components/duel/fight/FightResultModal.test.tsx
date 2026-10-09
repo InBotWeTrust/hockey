@@ -22,3 +22,12 @@ describe('fight result rewards', () => {
     },
   );
 });
+
+it('shows a fight without a winner without claiming loss or rewards', () => {
+  vi.useFakeTimers();
+  render(<FightResultModal won={false} draw />);
+  act(() => vi.advanceTimersByTime(700));
+  const dialog = screen.getByRole('dialog', { name: 'Ничья' });
+  expect(within(dialog).getByText('Драка завершена без победителя')).toBeInTheDocument();
+  expect(within(dialog).queryByRole('group')).not.toBeInTheDocument();
+});
