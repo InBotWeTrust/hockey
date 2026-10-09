@@ -13,7 +13,8 @@ interface Props {
   completionError?: string;
   onRetry?: () => void;
 }
-const images = (scene: AmateurStoryScene) => [scene.imageA, scene.imageB];
+const images = (scene: AmateurStoryScene) =>
+  scene.imageC ? [scene.imageA, scene.imageB, scene.imageC] : [scene.imageA, scene.imageB];
 
 export function AmateurStoryFlow(props: Props): JSX.Element {
   const scenes = useMemo(
@@ -126,7 +127,7 @@ function AmateurStorySceneView({
       setCount(current);
       if (current >= scene.copy.length) return;
       const prefix = scene.copy.slice(0, current);
-      const pause = prefix.endsWith(scene.cue)
+      const pause = prefix.endsWith(scene.cue) || (scene.cueC && prefix.endsWith(scene.cueC))
         ? 850
         : /[.!?]$/.test(prefix)
           ? 420
@@ -139,16 +140,19 @@ function AmateurStorySceneView({
     return () => window.clearTimeout(timer);
   }, [ready, reducedMotion, scene]);
   const revealed = reducedMotion || count >= scene.copy.indexOf(scene.cue) + scene.cue.length;
+  const thirdRevealed = Boolean(scene.imageC && scene.cueC &&
+    (reducedMotion || count >= scene.copy.indexOf(scene.cueC) + scene.cueC.length));
   const done = ready && count === scene.copy.length;
   let position = 0;
   const lines = scene.copy.split('\n').map((line, lineIndex) => {
     const words = line.split(/(\s+)/);
     if (words.length >= 3) words.splice(-3, 3, words.slice(-3).join(''));
     const dialogue = line.startsWith('–');
+    const speaker = dialogue ? (scene.playerReplies?.includes(line) ? 'player' : 'mentor') : undefined;
     return (
       <Fragment key={lineIndex}>
         {lineIndex > 0 ? '\n' : null}
-        <span className={dialogue ? 'beginner-story__dialogue' : undefined}>
+        <span data-speaker={speaker} className={speaker === 'mentor' ? 'beginner-story__dialogue' : undefined}>
           {words.map((word, wordIndex) => {
             const start = position;
             position += word.length;
@@ -182,7 +186,7 @@ function AmateurStorySceneView({
       aria-label={mode === 'required' ? 'Обязательный онбординг' : 'Обещанный разговор'}
       data-testid="amateur-story"
       data-scene={scene.id}
-      data-frame={revealed ? 'b' : 'a'}
+      data-frame={thirdRevealed ? 'c' : revealed ? 'b' : 'a'}
       data-typed={count}
     >
       {mode === 'replay' && (
@@ -209,6 +213,14 @@ function AmateurStorySceneView({
             alt=""
             decoding="async"
           />
+          {scene.imageC && (
+            <img
+              className={`beginner-story__image amateur-story__frame-b${thirdRevealed ? ' amateur-story__frame-b--visible' : ''}`}
+              src={storyImageUrl(scene.imageC)}
+              alt=""
+              decoding="async"
+            />
+          )}
         </div>
       )}
       <div className="beginner-story__shade" aria-hidden="true" />

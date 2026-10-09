@@ -73,38 +73,56 @@
   },
   {
     "frame": "05a",
-    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-8345b18d-5946-42d2-9a8e-e880aec9cc05.png",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-e26ed449-cff4-442c-8bc6-bff82b681ba5.png",
     "file": "packages/web/public/onboarding/amateur/scene-05-a.webp",
     "width": 941,
     "height": 1672,
-    "bytes": 305558,
-    "hash": "d39bab59d1cc"
+    "bytes": 240658,
+    "hash": "18518aa28904"
   },
   {
     "frame": "05b",
-    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-41668644-957f-4ca6-a6af-5ef48ebe4908.png",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-430ac9f3-8725-4b92-ac8c-16f460412411.png",
     "file": "packages/web/public/onboarding/amateur/scene-05-b.webp",
     "width": 941,
     "height": 1672,
-    "bytes": 296150,
-    "hash": "076afc31b0c8"
+    "bytes": 241270,
+    "hash": "fd5e45926941"
   },
   {
     "frame": "06a",
-    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-6c10bf1f-6f51-4541-afce-0a49ba19d73b.png",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-2d5967a4-b15a-4a6e-8fae-91bddede4b1a.png",
     "file": "packages/web/public/onboarding/amateur/scene-06-a.webp",
     "width": 941,
     "height": 1672,
-    "bytes": 312964,
-    "hash": "7b1bd39846eb"
+    "bytes": 242664,
+    "hash": "168c0d6a36d6"
   },
   {
     "frame": "06b",
-    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-1aa4b490-f44a-4b48-b62c-9cde2ae17345.png",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-2a79e35c-75fe-430e-998a-db0849309054.png",
     "file": "packages/web/public/onboarding/amateur/scene-06-b.webp",
     "width": 941,
     "height": 1672,
-    "bytes": 321136,
-    "hash": "b0bfe548dd8c"
+    "bytes": 238012,
+    "hash": "d8bcbf151530"
+  },
+  {
+    "frame": "04c",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-d1efbb27-0000-4bbe-b759-7822e2cb7877.png",
+    "file": "packages/web/public/onboarding/amateur/scene-04-c.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 267180,
+    "hash": "7a094287b05c"
+  },
+  {
+    "frame": "06c",
+    "source": "/Users/egorgumenyuk/.codex/generated_images/01a0fd71-eee3-7dc3-b925-2c7399fd1919/exec-d96d9c6e-1059-4660-b4fc-ae2baab28967.png",
+    "file": "packages/web/public/onboarding/amateur/scene-06-c.webp",
+    "width": 941,
+    "height": 1672,
+    "bytes": 236026,
+    "hash": "dca5ff9cad42"
   }
 ]

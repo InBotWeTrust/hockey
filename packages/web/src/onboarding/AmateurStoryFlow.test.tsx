@@ -17,9 +17,75 @@ describe('AmateurStoryFlow', () => {
   afterEach(() => {
     vi.useRealTimers();
   });
+  it('distinguishes player replies from mentor dialogue', () => {
+    render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: amateurStoryScenes[0]!.action }));
+    const region = screen.getByRole('region');
+    const player = region.querySelector('[data-speaker="player"]');
+    const mentor = region.querySelector('[data-speaker="mentor"]');
+    expect(player).toHaveTextContent('– А почему вы тогда остановились?');
+    expect(player).not.toHaveClass('beginner-story__dialogue');
+    expect(mentor).toHaveClass('beginner-story__dialogue');
+  });
+  it('reveals the arena and shoulder pat at their exact text cues', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
+    for (const scene of amateurStoryScenes.slice(0, 3)) {
+      act(() => vi.advanceTimersByTime(30000));
+      fireEvent.click(screen.getByRole('button', { name: scene.action }));
+    }
+    const story = screen.getByTestId('amateur-story');
+    expect(story).toHaveAttribute('data-frame', 'a');
+    const advanceTo = (count: number) => {
+      while (Number(story.getAttribute('data-typed')) < count) {
+        act(() => vi.advanceTimersToNextTimer());
+      }
+    };
+    advanceTo('Ты вспоминаешь'.length - 1);
+    expect(story).toHaveAttribute('data-frame', 'a');
+    advanceTo('Ты вспоминаешь'.length);
+    expect(story).toHaveAttribute('data-frame', 'b');
+    const copy = amateurStoryScenes[3]!.copy;
+    const pat = copy.indexOf('тебе пока рано') + 'тебе пока рано'.length;
+    advanceTo(pat - 1);
+    expect(story).toHaveAttribute('data-frame', 'b');
+    advanceTo(pat);
+    expect(story).toHaveAttribute('data-frame', 'c');
+    expect(prepareStoryImages).toHaveBeenCalledWith(expect.arrayContaining(['/onboarding/amateur/scene-04-c.webp']));
+    act(() => vi.advanceTimersByTime(30000));
+    fireEvent.click(screen.getByRole('button', { name: amateurStoryScenes[3]!.action }));
+    expect(screen.getByTestId('amateur-story')).toHaveAttribute('data-frame', 'a');
+  });
   it('renders the configured amateur threshold in the congratulation', () => {
     render(<AmateurStoryFlow mode="replay" unlockGoalsRequired={175} onCompleted={vi.fn()} />);
     expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Выбить 175 не каждый может.'));
+  });
+  it('opens the wicket before the player enters', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+    render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
+    for (const scene of amateurStoryScenes.slice(0, 5)) {
+      act(() => vi.advanceTimersByTime(30000));
+      fireEvent.click(screen.getByRole('button', { name: scene.action }));
+    }
+    const story = screen.getByTestId('amateur-story');
+    const scene = amateurStoryScenes[5]!;
+    const advanceTo = (cue: string, offset = 0) => {
+      const count = scene.copy.indexOf(cue) + cue.length + offset;
+      while (Number(story.getAttribute('data-typed')) < count) {
+        act(() => vi.advanceTimersToNextTimer());
+      }
+    };
+    expect(story).toHaveAttribute('data-frame', 'a');
+    advanceTo(scene.cue, -1);
+    expect(story).toHaveAttribute('data-frame', 'a');
+    advanceTo(scene.cue);
+    expect(story).toHaveAttribute('data-frame', 'b');
+    advanceTo(scene.cueC!, -1);
+    expect(story).toHaveAttribute('data-frame', 'b');
+    advanceTo(scene.cueC!);
+    expect(story).toHaveAttribute('data-frame', 'c');
   });
   it('adds stronger copy shading for long scenes only', () => {
     render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);

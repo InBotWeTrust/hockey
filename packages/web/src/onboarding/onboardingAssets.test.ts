@@ -52,6 +52,12 @@ describe('approved onboarding reference assets', () => {
 });
 
 describe('amateur story frame pairs', () => {
+  it.each(['04', '06'])('scene %s has an optimized third animation frame', async (scene) => {
+    const path = resolve(process.cwd(), `public/onboarding/amateur/scene-${scene}-c.webp`);
+    expect(await sharp(path).metadata()).toMatchObject({ format: 'webp', width: 941, height: 1672 });
+    expect(statSync(path).size).toBeLessThan(400 * 1024);
+    expect((await sharp(path).raw().toBuffer()).byteLength).toBeGreaterThan(0);
+  });
   it.each(Array.from({ length: 6 }, (_, i) => String(i + 1).padStart(2, '0')))('scene %s has two optimized portrait WebP frames', async (scene) => {
     for (const frame of ['a', 'b']) {
       const path = resolve(process.cwd(), `public/onboarding/amateur/scene-${scene}-${frame}.webp`);
