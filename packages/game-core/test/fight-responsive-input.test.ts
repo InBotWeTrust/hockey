@@ -59,3 +59,15 @@ it('posture intent applies after an unsealed attack recovery without a new snaps
  const s=run([attack(0,0,1),hold(0,300,2,{crouch:true,guard:true})],300);
  expect(getFightPosture(s,0,499).guard).toBe(false);expect(getFightPosture(s,0,500).guard).toBe(true);expect(getFightPosture(s,0,500).crouch).toBe(true);
 });
+
+it.each([3,4])('preserves saved v3 and prevents rearming an exhausted guard in v4 (version %i)', version => {
+  const commands: FightCommand[] = [];
+  for (let index = 0; index < 4; index++) {
+    if (index) commands.push(hold(0, index * 700 - 200, index * 2, {direction:1}));
+    commands.push(attack(0, index * 700, index * 2 + 1));
+    commands.push(hold(1, index < 3 ? index * 700 : index * 700 + 250, index + 1, {guard:true}));
+  }
+  const state = advanceFight(createFightState({...DEFAULT_FIGHT_RULES,version},0),commands,2350).state;
+  expect(state.hp).toEqual(version>=4?[4,3]:[4,4]);
+  expect(state.responsive!.contacts.at(-1)?.outcome).toBe(version>=4?'hit':'blocked');
+});

@@ -53,7 +53,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
       const p=runtime.players[c.player];
       if(c.kind==='input'){
         held[c.player]={...c.input};runtime.leaseUntil[c.player]=t+FIGHT_INPUT_LEASE_MS;
-        if(t>=p.readyAtMs){Object.assign(p,c.input);if(t<p.hitUntilMs||t<p.guardBreakUntilMs)p.guard=false;}
+        if(t>=p.readyAtMs){Object.assign(p,c.input);if(t<p.hitUntilMs||t<p.guardBreakUntilMs||(state.rules.version>=4&&p.guardUnits===0))p.guard=false;}
       }else if(c.kind==='attack'){
         if(t>=p.readyAtMs)startAttack(c,t);
         else if(p.readyAtMs-t<=150)buffered[c.player]=c;

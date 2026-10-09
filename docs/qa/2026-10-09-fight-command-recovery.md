@@ -46,3 +46,25 @@ Each newly reproduced logic defect had an observed failing regression followed b
 - Full shields currently have a weak 28-percent blue fill; the user was informed. No shield-style redesign was requested in this turn.
 
 Logs are local under `/private/tmp/hockey-fight-recovery-*.log`; the result screenshot is `/private/tmp/hockey-fight-recovery-draw.jpg`.
+
+## Second local audit (2026-10-09)
+
+User requested another fight regression audit and explicitly kept dev deployment prohibited. Four additional defects were reproduced with observed failing tests and then fixed:
+
+1. Delivery compensation could place a newly received command before phase start or exactly on the sealed time boundary. At maximum 150 ms compensation, progression before admission made every such command late. Responsive admission now clamps server-owned effective time to the current phase and strictly after the sealed instant, never past receipt time. Existing contacts cannot be rewritten.
+2. Events from a replaced WebSocket could mark its replacement ready prematurely, or close/reset it after it became ready. Message/close/error handlers now require the socket to be the current connection.
+3. A held-input command at the exact contact instant could rearm an exhausted guard and block a fourth hit with zero reserve. New fight rules v4 prevent this. Saved rules v3 retain their deterministic replay behavior. `GAME_CORE_VERSION` is now 82. No shot simulation or attack-duration change was made; consumers were checked after rebuilding game-core.
+4. A combined snapshot containing the sudden-death transition and its first hit marked that hit already seen. The presentation timeline now excludes inherited contacts while presenting contacts belonging to the new phase's actions. Regression covers strike, defender reaction, defeat pose and no duplicate presentation; another check prevents replaying old main-phase hits.
+
+Final checks:
+
+- All targeted game-core fight/version tests: 55 passed.
+- Full game-core: 395 passed, 4 failed in two observation-scene files. The same four failed on unchanged base version 81; this full suite is not green.
+- Server regression (ordinary-duel integration plus fight units): 60 passed, 179 skipped by the explicit filter. Unfiltered fight-unit run separately: 35 passed, no skips.
+- Real localhost WebSocket connections at 0 and 150 ms compensation: both passed hit/damage, counterpart state delivery, movement, duplicate delivery, malformed duplicate rejection, recovery and resumed-shot/count verification. This is a synthetic integration scenario, not two physical phones.
+- Client regression: 125 passed; after adding the inherited-contact regression, final timeline target: 7 passed.
+- DailyScreen win, loss/medical aid and draw/resumed-shot flows: 3 passed.
+- Root typecheck, lint and build passed. Final web rebuild was performed after the timeline change.
+- Diff reviewed; `git diff --check` passed. No remote push, merge or deployment.
+
+The earlier live Rengo shot-button incident remains not conclusively reproduced. The baseline reactive-block latency contract (150 ms after seeing an attack, with 80 ms attack startup) remains unresolved; timings were not silently changed. Real two-phone latency/reconnect acceptance remains open.

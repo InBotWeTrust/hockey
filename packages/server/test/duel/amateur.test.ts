@@ -7715,7 +7715,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       expect(response.json().match.fight_enabled).toBe(false);expect(response.json().match.fight_paused_at).not.toBeNull();
     });
 
-    it('fight websocket authenticates, restores snapshot and acknowledges an action', async()=>{
+    it.each([0,150])('fight websocket authenticates, applies hits and resumes shots at %ims compensation', async compensation=>{
       const id=await preparedFightMatch();
       await pool.query("update amateur_duel_participant set period_started_at=now()-interval '2 seconds' where match_id=$1",[id]);
       const c=await fightChallenge(id);
@@ -7723,7 +7723,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       const row=(await pool.query('select engine_state from amateur_duel_fight where match_id=$1',[id])).rows[0];
       row.engine_state.phaseStartedAtMs=Date.now()-1000; row.engine_state.deadlineMs=Date.now()+14000; row.engine_state.finalizedThroughMs=row.engine_state.phaseStartedAtMs-1;
       await pool.query("update amateur_duel_fight set starts_at=now()-interval '1 second',engine_state=$2 where match_id=$1",[id,JSON.stringify(row.engine_state)]);
-      const address=await app.listen({port:0,host:'127.0.0.1'});
+      const listening=app.server.address();
+      const address=listening && typeof listening!=='string' ? `http://127.0.0.1:${listening.port}` : await app.listen({port:0,host:'127.0.0.1'});
       const socket=new WebSocket(address.replace('http:','ws:')+`/duel/amateur/matches/${id}/ws`,['hockey-fight-v2'],{headers:auth(tokenA)});
       const otherSocket=new WebSocket(address.replace('http:','ws:')+`/duel/amateur/matches/${id}/ws`,['hockey-fight-v2'],{headers:auth(tokenB)});
       const otherMessages:Array<{type?:string;fight?:{engine_state?:{hp:number[]}}}> = [];
@@ -7734,6 +7735,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       try {
         await vi.waitFor(()=>{if(connectionError) throw connectionError; expect(messages.some(m=>m.type==='connection:ready')).toBe(true);},{timeout:3000});
         await vi.waitFor(()=>expect(otherMessages.some(m=>m.type==='connection:ready')).toBe(true),{timeout:3000});
+        await pool.query('update amateur_duel_fight set compensation_ms=$2 where id=$1',[c.json().fight.id,JSON.stringify([compensation,compensation])]);
         socket.send(JSON.stringify({type:'fight:action',fightId:c.json().fight.id,actionId:'00000000-0000-4000-8000-000000000004',phaseId:0,seq:1,kind:'attack',zone:'head'}));
         await vi.waitFor(()=>expect(messages.some(m=>m.type==='fight:ack'&&m.ack?.accepted===true)).toBe(true),{timeout:2000});
         await new Promise(resolve=>setTimeout(resolve,650));
@@ -7771,7 +7773,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         const resumed=await app.inject({method:'GET',url:`/duel/amateur/matches/${id}`,headers:auth(tokenA)});
         expect(resumed.statusCode,resumed.body).toBe(200);
         expect(resumed.json().match.me.goals).toBe(expectedGoals);
-      } finally {socket.close();otherSocket.close();}
+      } finally {await Promise.all([socket,otherSocket].map(current=>new Promise<void>(resolve=>{if(current.readyState===WebSocket.CLOSED)resolve();else{current.once('close',resolve);current.close();}})));}
     });
 
   });

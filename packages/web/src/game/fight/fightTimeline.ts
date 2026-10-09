@@ -17,7 +17,13 @@ export class FightTimeline {
   clearPrediction():void{this.prediction=null;}
   observe(state:FightState,now:number):void{
     this.rules=state.rules;
-    if(state.phaseId!==this.phase){this.phase=state.phaseId;this.prediction=null;this.seen=new Set(state.responsive?.contacts.map(c=>c.id)??[]);this.presentations=[];this.struck.clear();return;}
+    if(state.phaseId!==this.phase){
+      this.phase=state.phaseId;this.prediction=null;this.presentations=[];this.struck.clear();
+      // A coalesced snapshot can contain both the new phase and its first hit.
+      // Ignore inherited contacts, but still present contacts of this phase's actions.
+      const actions=new Set(state.actions.map(a=>a.actionId??`${a.phaseId}:${a.player}:${a.seq}`));
+      this.seen=new Set((state.responsive?.contacts??[]).filter(c=>!actions.has(c.actionId)).map(c=>c.id));
+    }
     this.presentations=this.presentations.filter(e=>now<e.reactAt+200);
     for(const c of state.responsive?.contacts??[]){
       if(this.seen.has(c.id))continue;this.seen.add(c.id);

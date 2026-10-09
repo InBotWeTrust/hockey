@@ -36,7 +36,7 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
       socketRef.current = socket;
       ready.current = false;
       socket.onmessage = (event) => {
-        if (disposed) return;
+        if (disposed || socketRef.current !== socket) return;
         try {
           const message = JSON.parse(String(event.data)) as {
             type: string;
@@ -219,13 +219,14 @@ export function useDuelFightSocket(matchId: string, enabled: boolean) {
         }
       };
       socket.onclose = () => {
-        if (disposed) return;
+        if (disposed || socketRef.current !== socket) return;
         ready.current = false;
         resetHeld();
         setConnected(false);
         timer = setTimeout(connect, 1000);
       };
       socket.onerror = () => {
+        if (disposed || socketRef.current !== socket) return;
         ready.current = false;
         resetHeld();
         setConnected(false);

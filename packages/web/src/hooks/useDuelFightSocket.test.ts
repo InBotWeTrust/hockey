@@ -359,3 +359,36 @@ it('preserves crouch before a buffered attack when the player releases it while 
   expect(JSON.parse(socket.sent[3]!).input.crouch).toBe(false);
   hook.unmount();
 });
+
+it('ignores readiness from a previous connection while the replacement subscription is not ready', () => {
+  vi.useFakeTimers();
+  const hook = renderHook(() => useDuelFightSocket('match', true));
+  const first = Socket.instances[0]!;
+  first.message({ type: 'connection:ready' });
+  act(() => first.close());
+  act(() => vi.advanceTimersByTime(1000));
+  const second = Socket.instances[1]!;
+  first.message({ type: 'connection:ready' });
+  act(() => expect(hook.result.current.sendAttack()).toBe(false));
+  expect(second.sent).toHaveLength(0);
+  second.message({ type: 'duel:snapshot', match: snapshot() });
+  second.message({ type: 'connection:ready' });
+  act(() => expect(hook.result.current.sendAttack()).not.toBe(false));
+  hook.unmount();
+});
+
+it('ignores a previous socket closing after its replacement becomes ready', () => {
+  vi.useFakeTimers();
+  const hook = renderHook(() => useDuelFightSocket('match', true));
+  const first = Socket.instances[0]!;
+  first.message({ type: 'connection:ready' });
+  act(() => first.close());
+  act(() => vi.advanceTimersByTime(1000));
+  const second = Socket.instances[1]!;
+  second.message({ type: 'duel:snapshot', match: snapshot() });
+  second.message({ type: 'connection:ready' });
+  act(() => first.close());
+  expect(hook.result.current.connected).toBe(true);
+  act(() => expect(hook.result.current.sendInput({direction:1,crouch:false,guard:true})).not.toBe(false));
+  hook.unmount();
+});
