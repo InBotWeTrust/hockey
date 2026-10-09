@@ -14,3 +14,5 @@ User corrections:
 Public assets: packages/web/public/onboarding/amateur/. Narrative and precise text cues: packages/web/src/onboarding/amateurStory.ts. Deployment not authorized for this task.
 
 - Pointing stadium frame rejected for elongated arm. Regenerated from accepted scene-05-a only, with bent elbow close to torso and proportional glove; original rejected frame was not used as input.
+
+- 2026-10-09: both stadium frames rejected for identity drift and arm proportions. New base generated exclusively from approved original mentor portrait and arena references. New gesture derived only from the new inspected base: mature gray-stubbled profile, compact bent elbow and open palm. Previous rejected pair not used as input.
