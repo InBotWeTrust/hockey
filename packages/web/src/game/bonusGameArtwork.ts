@@ -6,6 +6,7 @@ type BonusGameCatalogArtworkKind = 'featured' | 'compact';
 
 export function versionBonusGameArtwork(url: string): string {
   if (!url.startsWith('/bonus-games/') || url.includes('?')) return url;
+  if (url === '/bonus-games/nhl-cities/previews/philadelphia.webp') return `${url}?v=20261009-philadelphia-v2`;
   if (url.startsWith('/bonus-games/level-previews/') || url.startsWith('/bonus-games/finales/')) {
     return `${url}?v=${CHALLENGE_STORY_ARTWORK_VERSION}`;
   }
