@@ -1,8 +1,10 @@
+import { StoryProgress } from './StoryProgress.js';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, X } from 'lucide-react';
 import { getAmateurStoryScenes, type AmateurStoryScene } from './amateurStory.js';
 import { prepareStoryImages, storyImagesReady, storyImageUrl } from './storyImages.js';
 import './onboarding.css';
+import { StoryReplayNavigation } from './StoryReplayNavigation.js';
 
 interface Props {
   mode: 'required' | 'replay';
@@ -26,6 +28,7 @@ export function AmateurStoryFlow(props: Props): JSX.Element {
   const [loadError, setLoadError] = useState(false);
   const active = useRef(true);
   const transitioning = useRef(false);
+  const pendingTarget = useRef(1);
   const scene = scenes[index]!;
   useEffect(() => {
     active.current = true;
@@ -46,21 +49,22 @@ export function AmateurStoryFlow(props: Props): JSX.Element {
     };
   }, [index, scene, scenes]);
 
-  async function advance(): Promise<void> {
+  async function navigate(target: number): Promise<void> {
     if (transitioning.current || props.completing) return;
-    const next = scenes[index + 1];
+    const next = scenes[target];
     if (!next) {
       props.onCompleted();
       return;
     }
     transitioning.current = true;
+    pendingTarget.current = target;
     setLoadError(false);
     try {
       if (!storyImagesReady(images(next))) {
         setLoading(true);
         await prepareStoryImages(images(next));
       }
-      if (active.current) setIndex(index + 1);
+      if (active.current) setIndex(target);
     } catch {
       if (active.current) setLoadError(true);
     } finally {
@@ -70,14 +74,18 @@ export function AmateurStoryFlow(props: Props): JSX.Element {
   }
   // A keyed scene owns typing and frame state. The next scene can never inherit frame B.
   return (
+    <>
+      <StoryProgress index={index} count={scenes.length} />
     <AmateurStorySceneView
       key={`${scene.id}:${props.unlockGoalsRequired ?? 300}`}
       {...props}
       scene={scene}
       loading={loading}
       loadError={loadError}
-      advance={() => void advance()}
+      advance={() => void navigate(loadError ? pendingTarget.current : index + 1)}
+      navigation={props.mode === 'replay' ? <StoryReplayNavigation previousDisabled={index === 0 || loading} nextDisabled={index === scenes.length - 1 || loading} onPrevious={() => void navigate(index - 1)} onNext={() => void navigate(index + 1)} /> : null}
     />
+    </>
   );
 }
 
@@ -91,11 +99,13 @@ function AmateurStorySceneView({
   loading,
   loadError,
   advance,
+  navigation,
 }: Props & {
   scene: AmateurStoryScene;
   loading: boolean;
   loadError: boolean;
   advance: () => void;
+  navigation: React.ReactNode;
 }): JSX.Element {
   const reducedMotion =
     typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -189,6 +199,7 @@ function AmateurStorySceneView({
       data-frame={thirdRevealed ? 'c' : revealed ? 'b' : 'a'}
       data-typed={count}
     >
+      {navigation}
       {mode === 'replay' && (
         <button
           className="icon-btn beginner-story__close"

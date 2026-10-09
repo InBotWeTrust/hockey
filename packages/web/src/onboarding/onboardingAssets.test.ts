@@ -58,7 +58,7 @@ describe('amateur story frame pairs', () => {
     expect(statSync(path).size).toBeLessThan(400 * 1024);
     expect((await sharp(path).raw().toBuffer()).byteLength).toBeGreaterThan(0);
   });
-  it.each(Array.from({ length: 6 }, (_, i) => String(i + 1).padStart(2, '0')))('scene %s has two optimized portrait WebP frames', async (scene) => {
+  it.each(Array.from({ length: 9 }, (_, i) => String(i + 1).padStart(2, '0')))('scene %s has two optimized portrait WebP frames', async (scene) => {
     for (const frame of ['a', 'b']) {
       const path = resolve(process.cwd(), `public/onboarding/amateur/scene-${scene}-${frame}.webp`);
       const metadata = await sharp(path).metadata();

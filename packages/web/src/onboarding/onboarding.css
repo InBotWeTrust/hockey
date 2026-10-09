@@ -185,6 +185,20 @@
   text-align: center;
 }
 
+.story-replay__nav {
+  position: absolute;
+  z-index: 6;
+  top: 38%;
+  width: 44px;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(10, 20, 34, 0.22);
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.story-replay__nav--previous { left: 8px; }
+.story-replay__nav--next { right: 8px; }
+.story-replay__nav:disabled { opacity: 0.2; }
+
 .beginner-story__completion-error {
   position: absolute;
   z-index: 5;
@@ -610,4 +624,39 @@
   z-index: -1;
   pointer-events: none;
   background: linear-gradient(to bottom, transparent, rgba(3, 9, 18, 0.64) 16%, rgba(3, 9, 18, 0.88) 68%, rgba(3, 9, 18, 0.96));
+}
+
+.story-progress {
+  position: absolute;
+  z-index: 1506;
+  top: calc(var(--app-safe-top, 0px) + 26px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 6px;
+  pointer-events: none;
+}
+.story-progress__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: background-color 180ms ease-out;
+}
+.story-progress__dot--active { background: #fff; }
+@media (prefers-reduced-motion: reduce) {
+  .story-progress__dot { transition: none; }
+}
+
+
+.beginner-story__close.icon-btn,
+.story-replay__nav.icon-btn {
+  width: 44px;
+  height: 44px;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(10, 20, 34, 0.22);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: none;
+  box-shadow: none;
 }

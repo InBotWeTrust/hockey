@@ -9,11 +9,35 @@ vi.mock('./storyImages.js', () => ({
   storyImageUrl: (url: string) => url,
 }));
 describe('AmateurStoryFlow', () => {
+  it('visits the garage and equips the player before the amateur stadium', () => {
+    const ids = amateurStoryScenes.map(scene => scene.id);
+    expect(ids.slice(4, 7)).toEqual(['garage-trip', 'uniform-gift', 'equipment-gift']);
+    expect(ids.slice(7)).toEqual(['amateur-stadium', 'invitation']);
+    expect(amateurStoryScenes[5]!.copy).toContain('красно-синюю форму');
+    expect(amateurStoryScenes[6]!.copy).toContain('дуэлях и турнирах');
+  });
+  it('shows progress dots in required onboarding and updates the active screen', () => {
+    render(<AmateurStoryFlow mode="required" onCompleted={vi.fn()} />);
+    expect(screen.getByRole('status', { name: 'Экран 1 из 9' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: amateurStoryScenes[0]!.action }));
+    expect(screen.getByRole('status', { name: 'Экран 2 из 9' })).toBeInTheDocument();
+  });
+  it('allows replay navigation in both directions but hides it in required onboarding', () => {
+    const view = render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Предыдущий экран' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Следующий экран' }));
+    expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Да, спрашивай'));
+    fireEvent.click(screen.getByRole('button', { name: 'Предыдущий экран' }));
+    expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Logan'));
+    view.unmount();
+    render(<AmateurStoryFlow mode="required" onCompleted={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Следующий экран' })).toBeNull();
+  });
   it('shows initial loading as a neutral status rather than an error', () => {
     vi.mocked(storyImagesReady).mockReturnValue(false);
     vi.mocked(prepareStoryImages).mockReturnValue(new Promise(() => {}));
     render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
-    const status = screen.getByRole('status');
+    const status = screen.getByText('Загружаем сюжет…');
     expect(status).toHaveTextContent('Загружаем сюжет');
     expect(status).not.toHaveClass('beginner-story__completion-error');
   });
@@ -73,12 +97,12 @@ describe('AmateurStoryFlow', () => {
     vi.useFakeTimers();
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
     render(<AmateurStoryFlow mode="replay" onCompleted={vi.fn()} />);
-    for (const scene of amateurStoryScenes.slice(0, 5)) {
+    for (const scene of amateurStoryScenes.slice(0, -1)) {
       act(() => vi.advanceTimersByTime(30000));
       fireEvent.click(screen.getByRole('button', { name: scene.action }));
     }
     const story = screen.getByTestId('amateur-story');
-    const scene = amateurStoryScenes[5]!;
+    const scene = amateurStoryScenes[amateurStoryScenes.length - 1]!;
     const advanceTo = (cue: string, offset = 0) => {
       const count = scene.copy.indexOf(cue) + cue.length + offset;
       while (Number(story.getAttribute('data-typed')) < count) {
