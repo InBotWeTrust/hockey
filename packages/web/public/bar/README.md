@@ -16,9 +16,14 @@ Prompt structure guidance: Image skill by Serge Shima (https://github.com/smixs/
 
 ## Maintenance artwork (2026-10-09)
 
-- `bar-repair-card-v1.webp`: generated square sports-bar counter under renovation,
+- `bar-repair-card-v3.webp`: generated square gutted future sports bar with unfinished walls and floor,
   resized to 512 × 512, WebP quality 82.
-- `bar-repair-interior-v1.webp`: generated portrait sports pub under renovation,
+- `bar-repair-interior-v3.webp`: generated portrait empty construction site inside a future sports pub,
   resized to 900 × 1600, WebP quality 82.
 - Generated using the built-in imagegen tool; no lettering is baked into either asset.
   Versioned filenames avoid reusing the previous production artwork cache.
+
+Style references: existing shop and evening-training menu artwork.
+Prompt: an empty future sports bar undergoing complete renovation, unfinished walls and floor,
+construction tools and materials; polished game environment rendering with cool blue shadows
+and warm temporary work lights, without furniture, people or lettering.

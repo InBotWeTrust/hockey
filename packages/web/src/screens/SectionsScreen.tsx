@@ -38,7 +38,7 @@ const MONTHLY_RATING_CONGRATULATIONS_KEY = [
 ] as const;
 
 const SECTION_ARTWORK = {
-  bar: '/bar/bar-repair-card-v1.webp',
+  bar: '/bar/bar-repair-card-v3.webp',
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/training-evening.webp',

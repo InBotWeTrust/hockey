@@ -1002,7 +1002,7 @@ describe('SectionsScreen', () => {
   it('opens the bar maintenance page from its card', () => {
     renderSections();
     const card = screen.getByRole('button', { name: 'Бар' });
-    expect(card.querySelector('img')).toHaveAttribute('src', '/bar/bar-repair-card-v1.webp');
+    expect(card.querySelector('img')).toHaveAttribute('src', '/bar/bar-repair-card-v3.webp');
     fireEvent.click(card);
     expect(screen.getByTestId('location')).toHaveTextContent('/bar');
   });

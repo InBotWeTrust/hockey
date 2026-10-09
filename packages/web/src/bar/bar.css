@@ -568,7 +568,7 @@
   box-sizing: border-box;
   background:
     linear-gradient(rgba(16, 13, 10, 0.48), rgba(16, 13, 10, 0.16) 45%, rgba(16, 13, 10, 0.3)),
-    url('/bar/bar-repair-interior-v1.webp') center/cover;
+    url('/bar/bar-repair-interior-v3.webp') center/cover;
 }
 .bar-maintenance-copy {
   color: white;
