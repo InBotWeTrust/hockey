@@ -562,3 +562,22 @@
   height: 125%;
   pointer-events: none;
 }
+
+.bar-maintenance-screen {
+  min-height: 100dvh;
+  box-sizing: border-box;
+  background:
+    linear-gradient(rgba(16, 13, 10, 0.48), rgba(16, 13, 10, 0.16) 45%, rgba(16, 13, 10, 0.3)),
+    url('/bar/bar-repair-interior-v3.webp') center/cover;
+}
+.bar-maintenance-copy {
+  color: white;
+  padding: 0 4px;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.65);
+}
+.bar-maintenance-copy p {
+  text-wrap: pretty;
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.55;
+}
