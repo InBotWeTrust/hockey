@@ -220,3 +220,6 @@ export * from './fight/movement.js';
 export * from './fight/responsiveInput.js';
 
 export * as durak from "./durak.js";
+export * as durakTable from './durakTable.js';
+
+export * from "./barLayout.js";

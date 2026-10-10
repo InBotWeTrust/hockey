@@ -31,6 +31,8 @@ const schema = z
     HOST: z.string().default('0.0.0.0'),
     PORT: z.coerce.number().default(3000),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    OPENAI_API_KEY: optionalNonEmptyString,
+    BAR_CONVERSATION_MODEL: z.string().min(1).default('gpt-5.6-terra'),
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
     JWT_SECRET: z.string().min(16),

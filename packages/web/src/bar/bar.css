@@ -4,7 +4,7 @@
   overflow-y: auto;
   background:
     linear-gradient(rgba(20, 15, 10, 0.35), rgba(20, 15, 10, 0.75)),
-    url('/bar/bar-interior-v2.webp') center/cover;
+    url('/bar/bar-interior-v4.webp') center/cover;
 }
 .bar-header {
   display: flex;
@@ -411,7 +411,8 @@
   -webkit-backdrop-filter: none;
 }
 /* Equal glass controls, with the main chat's blur fading over messages below. */
-.bar-chat-input :is(textarea, button[aria-label='Отправить']) {
+.bar-chat-input :is(textarea, button[aria-label='Отправить']),
+.bar-identity__actions .btn {
   background: rgba(255, 255, 255, 0.2) !important;
   color: #f8fbff !important;
   border: 1px solid rgba(255, 255, 255, 0.78) !important;
@@ -566,4 +567,41 @@
 .bar-entries {
   display: grid;
   gap: 14px;
+}
+
+.bar-entries .sections-quick-card--wide {
+  grid-template-columns: 86px minmax(0, 1fr) 20px;
+}
+
+.bar-entries .sections-quick-card__title {
+  white-space: normal;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
+.bar-entries .sections-quick-card__meta {
+  display: block;
+  overflow: visible;
+  overflow-wrap: anywhere;
+}
+
+.bar-entries .card-chevron {
+  grid-column: 3;
+  grid-row: 1;
+  align-self: center;
+  justify-self: end;
+}
+
+@media (max-width: 360px) {
+  .bar-entries .sections-quick-card--wide {
+    grid-template-columns: 76px minmax(0, 1fr) 20px;
+  }
+
+  .bar-entries .sections-quick-card__title {
+    font-size: 16px;
+  }
+
+  .bar-entries .sections-quick-card__meta {
+    font-size: 11px;
+  }
 }

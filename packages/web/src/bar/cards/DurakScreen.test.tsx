@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, Link } from 'react-router-dom';
 import { expect, it, vi, afterEach } from 'vitest';
 import { DurakScreen } from './DurakScreen.js';
 import { DurakLaunchModal } from './DurakModals.js';
@@ -31,7 +31,7 @@ it('shows hand and deadline without menu exit or rules', () => {
   expect(screen.getByRole('region', { name: 'Меню игры' })).not.toContainElement(
     screen.getByRole('button', { name: 'Правила' }),
   );
-  expect(screen.getByRole('img', { name: 'Аватар Марии' })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Аватар: Мария' })).toBeInTheDocument();
 });
 it('shows settled result and supports replay', () => {
   render(
@@ -216,4 +216,27 @@ it('keeps horizontal scrolling from committing a card', () => {
   fireEvent.pointerUp(card, { clientX: 140, clientY: 140 });
   expect(hand.querySelectorAll('button')).toHaveLength(6);
   vi.unstubAllGlobals();
+});
+
+it('starts a fresh game when the computer opponent route changes', () => {
+  vi.useFakeTimers();
+  const g = { ...createGame(() => 0.4), attacker: 0 as const };
+  render(
+    <MemoryRouter initialEntries={['/bar/cards/computer/daria']}>
+      <Link to="/bar/cards/computer/grigory">Другой соперник</Link>
+      <Routes>
+        <Route path="/bar/cards/computer/:opponentId" element={<DurakScreen initialGame={g} />} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  const card = screen.getByRole('group', { name: 'Твои карты' }).querySelector('button')!;
+  fireEvent.click(card);
+  fireEvent.click(card);
+  expect(screen.getByRole('group', { name: 'Твои карты' }).querySelectorAll('button')).toHaveLength(
+    5,
+  );
+  fireEvent.click(screen.getByRole('link', { name: 'Другой соперник' }));
+  expect(screen.getByRole('group', { name: 'Твои карты' }).querySelectorAll('button')).toHaveLength(
+    6,
+  );
 });

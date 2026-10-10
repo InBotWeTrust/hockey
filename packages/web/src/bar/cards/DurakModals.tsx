@@ -1,15 +1,18 @@
 import { X } from 'lucide-react';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { computerOpponent, opponentArt, type ComputerOpponentId } from './computerOpponents.js';
 import type { Game } from './rules.js';
 export const art = (name: string) => `/bar/cards/${name}-v1.webp`;
 export function MariaScene({
   variant = 'playing',
   label = 'Мария за карточным столом',
   result = false,
+  opponentId = 'maria',
 }: {
   variant?: string;
   label?: string;
   result?: boolean;
+  opponentId?: ComputerOpponentId;
 }) {
   return (
     <div
@@ -17,7 +20,7 @@ export function MariaScene({
       role="img"
       aria-label={label}
     >
-      <img src={art(variant)} alt="" />
+      <img src={opponentArt(opponentId, variant)} alt="" />
     </div>
   );
 }
@@ -26,18 +29,38 @@ const closeButton = (onClose: () => void) => (
     <X size={15} />
   </button>
 );
-export function DurakLaunchModal({ onClose, onPlay }: { onClose: () => void; onPlay: () => void }) {
+export function DurakLaunchModal({
+  onClose,
+  onPlay,
+  opponentId = 'maria',
+}: {
+  onClose: () => void;
+  onPlay: () => void;
+  opponentId?: ComputerOpponentId;
+}) {
+  const opponent = computerOpponent(opponentId);
+  const withName = {
+    maria: 'Марией',
+    daria: 'Дарьей',
+    grigory: 'Григорием',
+    arsenich: 'Арсеничем',
+  }[opponentId];
   return (
     <AccessibleModal
-      title="Дурак с Марией"
+      title={`Дурак с ${withName}`}
       onRequestClose={onClose}
       cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
       headerAction={closeButton(onClose)}
     >
-      <MariaScene label="Мария приглашает сыграть в карты" />
+      <MariaScene
+        opponentId={opponentId}
+        variant={opponentId === 'maria' ? 'playing' : 'invite'}
+        label={`${opponent.name} приглашает сыграть в карты`}
+      />
       <p className="modal-copy bonus-game-preview-modal__story">
-        Мария составит тебе компанию за карточным столом. Обычный подкидной дурак: 36 карт, без
-        ставок. Избавься от всех карт раньше соперницы.
+        {opponentId === 'maria'
+          ? 'Мария составит тебе компанию за карточным столом. Обычный подкидной дурак: 36 карт, без ставок. Избавься от всех карт раньше соперницы.'
+          : `Подкидной дурак: 36 карт, без ставок. ${opponent.description}`}
       </p>
       <div className="modal-actions">
         <button className="modal-primary btn btn--cta" onClick={onPlay}>
@@ -51,11 +74,14 @@ export function DurakResultModal({
   result,
   onReplay,
   onBack,
+  opponentId = 'maria',
 }: {
   result: Game['result'];
   onReplay: () => void;
   onBack: () => void;
+  opponentId?: ComputerOpponentId;
 }) {
+  const opponent = computerOpponent(opponentId);
   const title = result === 0 ? 'Ты выиграл' : result === 1 ? 'Ты проиграл' : 'Ничья';
   return (
     <AccessibleModal
@@ -65,15 +91,16 @@ export function DurakResultModal({
       headerAction={closeButton(onBack)}
     >
       <MariaScene
+        opponentId={opponentId}
         variant={result === 0 ? 'player-win' : result === 1 ? 'player-loss' : 'playing'}
         label={title}
         result
       />
       <p className="modal-copy">
         {result === 0
-          ? '«Хорошо сыграно! Давай ещё одну?»'
+          ? opponent.win
           : result === 1
-            ? '«В этот раз моя взяла. Давай попробуем ещё?»'
+            ? opponent.loss
             : '«Все карты ушли в отбой. Сыграем ещё?»'}
       </p>
       <div className="modal-actions">

@@ -35,6 +35,9 @@ suite('isolated online card service', () => {
         readFile(new URL('../../../db/migrations/196_online_durak.sql', import.meta.url), 'utf8'),
       ),
     );
+    await pool.query(
+      await readFile(new URL('../../db/migrations/197_durak_tables.sql', import.meta.url), 'utf8'),
+    );
     [a, b, c] = [randomUUID(), randomUUID(), randomUUID()];
     for (const id of [a, b, c])
       await pool.query('insert into users(id,display_name) values($1,$2)', [id, id]);
@@ -43,6 +46,25 @@ suite('isolated online card service', () => {
     if (!pool) return;
     await pool.query(`drop schema ${schema} cascade`);
     await pool.end();
+  });
+  it('keeps a fixed two-minute search deadline across polls and retries', async () => {
+    await queueCards(pool, a);
+    const first = await pool.query(
+      'select expires_at,created_at from bar_card_queue where user_id=$1',
+      [a],
+    );
+    expect(
+      new Date(first.rows[0].expires_at).getTime() - new Date(first.rows[0].created_at).getTime(),
+    ).toBeGreaterThan(119000);
+    await cardLobby(pool, a);
+    await queueCards(pool, a);
+    const next = await pool.query('select expires_at from bar_card_queue where user_id=$1', [a]);
+    expect(next.rows[0].expires_at).toEqual(first.rows[0].expires_at);
+    await pool.query(
+      "update bar_card_queue set expires_at=now()-interval '1 second' where user_id=$1",
+      [a],
+    );
+    expect((await cardLobby(pool, a)).searching).toBe(false);
   });
   it('allows only one pending waiting state per player', async () => {
     const invitation = await inviteCards(pool, a, b);
@@ -54,15 +76,32 @@ suite('isolated online card service', () => {
     await expect(inviteCards(pool, a, b)).rejects.toMatchObject({ statusCode: 409 });
     await queueCards(pool, b, true);
   });
+  const start = async (id: string) => {
+    await getCardMatch(pool, a, id, { revision: 0, action: 'ready' });
+    await getCardMatch(pool, b, id, { revision: 0, action: 'ready' });
+    await pool.query("update bar_card_matches set state=jsonb_set(state,'{readiness,startsAt}',to_jsonb($2::bigint)),deadline_at=now() where id=$1", [id, Date.now() - 1]);
+  };
   it('matches concurrent search once, hides cards and rejects strangers', async () => {
     await Promise.all([queueCards(pool, a), queueCards(pool, b)]);
     const first = await cardLobby(pool, a);
     const second = await cardLobby(pool, b);
     expect(first.matchId).toBe(second.matchId);
     expect(first.matchId).not.toBeNull();
+    const waiting = await getCardMatch(pool, a, first.matchId!);
+    expect(waiting.hand).toEqual([]);
+    await start(first.matchId!);
     const view = await getCardMatch(pool, a, first.matchId!);
     expect(view.hand).toHaveLength(6);
     expect(view.opponentCount).toBe(6);
+    await expect(inviteCards(pool, c, a)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'card_busy',
+    });
+    await expect(inviteCards(pool, a, c)).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'card_busy',
+    });
+    expect((await queueCards(pool, a)).matchId).toBe(first.matchId);
     expect(view).not.toHaveProperty('state');
     expect(view).not.toHaveProperty('deck');
     await expect(getCardMatch(pool, c, first.matchId!)).rejects.toMatchObject({ statusCode: 404 });
@@ -80,6 +119,7 @@ suite('isolated online card service', () => {
     ]);
     expect(results[0]!.matchId).toBe(results[1]!.matchId);
     const id = results[0]!.matchId!;
+    await start(id);
     const view = await getCardMatch(pool, a, id);
     const attacker = view.attacker === 0 ? a : b;
     const own = await getCardMatch(pool, attacker, id);
