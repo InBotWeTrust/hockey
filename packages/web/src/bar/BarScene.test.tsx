@@ -36,7 +36,7 @@ it('previews a place first and navigates only when its preview is clicked', () =
       onAction={vi.fn()}
     />,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Арсенич' }));
+  fireEvent.focus(screen.getByRole('button', { name: 'Арсенич' }));
   expect(select).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Перейти: Арсенич' }));
   expect(select).toHaveBeenCalledWith('bar-4');
@@ -50,6 +50,7 @@ it('renders identity, safe actions and stable navigation', () => {
     <BarScene layout={layout} activeSlotId="bar-3" onSelectSlot={select} onAction={action} />,
   );
   expect(screen.getByRole('heading', { name: 'Мария' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
   fireEvent.click(screen.getByRole('button', { name: 'Сыграть в карты' }));
   expect(action).toHaveBeenCalledWith('cards', 'maria');
   fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
@@ -102,4 +103,13 @@ it('never loads remote or invalid paths from an unsaved admin draft', () => {
   );
   expect(container.querySelector('img[src="https://example.com/avatar.png"]')).toBeNull();
   expect(container.querySelector('img[src="/bar/../secret.png"]')).toBeNull();
+});
+
+it('navigates when clicking a marker with its preview already open', () => {
+  const select = vi.fn();
+  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()} />);
+  const marker = screen.getByRole('button', { name: /^Григорий$/ });
+  fireEvent.focus(marker);
+  fireEvent.click(marker);
+  expect(select).toHaveBeenCalledWith('bar-2');
 });

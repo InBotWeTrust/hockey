@@ -21,6 +21,7 @@ const fixture = () => {
   return { revision: 2, layout };
 };
 beforeEach(() => {
+  sessionStorage.clear();
   vi.clearAllMocks();
   vi.mocked(fetchConversation).mockResolvedValue({
     revision: 0,
@@ -44,8 +45,11 @@ it('offers a continued conversation from server history after entering the bar',
       <BarPanorama />
     </MemoryRouter>,
   );
+  await screen.findByRole('heading', { name: 'Мария' });
+  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Продолжить разговор' }));
   expect(await screen.findByRole('dialog', { name: 'Разговор: Мария' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'О персонаже: Мария' })).not.toBeInTheDocument();
   expect(await screen.findByText('Ответ')).toBeInTheDocument();
   expect(screen.getAllByText('Официантка').length).toBeGreaterThan(0);
   expect(sendConversation).not.toHaveBeenCalled();
@@ -74,7 +78,7 @@ it('does not reset a selected stable slot on delayed reordered data', async () =
       <BarPanorama />
     </MemoryRouter>,
   );
-  fireEvent.click(screen.getByRole('button', { name: /^Мария$/ }));
+  fireEvent.focus(screen.getByRole('button', { name: /^Мария$/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Перейти: Мария' }));
   const data = fixture();
   data.layout.slots.reverse();
@@ -96,4 +100,26 @@ it('retains usable defaults on error and retries the read', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
   await act(async () => {});
   expect(fetchBarLayout).toHaveBeenCalledTimes(2);
+});
+
+it('restores the selected character after returning from a game', async () => {
+  sessionStorage.setItem('bar-active-slot', 'bar-1');
+  vi.mocked(fetchBarLayout).mockResolvedValue(fixture());
+  render(<MemoryRouter><BarPanorama /></MemoryRouter>);
+  expect(await screen.findByRole('heading', { name: 'Дарья' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
+  expect(screen.getByRole('button', { name: 'Поговорить' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Скрыть действия' }));
+  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
+});
+
+it('expands character actions from the identity row without a modal', async () => {
+  const data = fixture();
+  data.layout.defaultSlotId = 'bar-3';
+  vi.mocked(fetchBarLayout).mockResolvedValue(data);
+  render(<MemoryRouter><BarPanorama /></MemoryRouter>);
+  fireEvent.click(await screen.findByRole('button', { name: 'О персонаже: Мария' }));
+  expect(screen.getByRole('button', { name: 'Сыграть в карты' })).toBeInTheDocument();
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 });

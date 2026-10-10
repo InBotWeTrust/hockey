@@ -28,6 +28,7 @@ export function BarScene({
   notice,
   onTalk,
   conversationStarted = false,
+  hideIdentity = false,
 }: {
   layout: BarLayout;
   activeSlotId: string;
@@ -38,6 +39,7 @@ export function BarScene({
   notice?: React.ReactNode;
   onTalk?: (character: BarCharacter) => void;
   conversationStarted?: boolean;
+  hideIdentity?: boolean;
 }) {
   const index = Math.max(
     0,
@@ -236,7 +238,10 @@ export function BarScene({
               if (e.pointerType === 'mouse') setPreviewSlot(s.id);
             }}
             onFocus={() => setPreviewSlot(s.id)}
-            onClick={() => setPreviewSlot(s.id)}
+            onClick={() => {
+              onSelectSlot(s.id);
+              setPreviewSlot(null);
+            }}
           />
         ))}
         {previewPlace && (
@@ -293,7 +298,7 @@ export function BarScene({
       >
         <ChevronRight />
       </button>
-      <section ref={panel} className="bar-space__actions" aria-live="polite">
+      <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity}>
         {isUnfinished(slot.occupantId) ? (
           <p className="bar-space__development">Персонаж в разработке</p>
         ) : profile ? (
