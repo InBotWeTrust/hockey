@@ -1,7 +1,9 @@
+import { DurakLaunchModal } from './cards/DurakModals.js';
+import './cards/durak.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { ChevronLeft } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { BarSocket, type BarSocketStatus } from './BarSocket.js';
@@ -45,13 +47,77 @@ const statusText: Record<BarSocketStatus, string> = {
 
 export function BarScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [cardsOpen, setCardsOpen] = useState(false);
+  return (
+    <main className="screen bar-screen">
+      <BarHeader title="Бар" onBack={() => navigate('/sections')} />
+      <section className="bar-content bar-entries" aria-label="Разделы бара">
+        <BarEntryCard
+          title="Трансляции"
+          description="Онлайн и предстоящие матчи"
+          artwork="/bar/bar-card-v2.webp"
+          onClick={() => navigate('/bar/broadcasts')}
+        />
+        <BarEntryCard
+          title="Дурак с Марией"
+          description="Подкидной дурак · 36 карт"
+          artwork="/bar/cards/maria-entry-v1.webp"
+          onClick={() => setCardsOpen(true)}
+        />
+      </section>
+      {cardsOpen && (
+        <DurakLaunchModal
+          onClose={() => setCardsOpen(false)}
+          onPlay={() => navigate('/bar/cards/maria')}
+        />
+      )}
+    </main>
+  );
+}
+
+function BarEntryCard({
+  title,
+  description,
+  artwork,
+  onClick,
+}: {
+  title: string;
+  description: string;
+  artwork: string;
+  onClick: () => void;
+}): JSX.Element {
+  return (
+    <button
+      type="button"
+      className="section-card-surface sections-quick-card sections-quick-card--active sections-quick-card--wide"
+      aria-label={title}
+      onClick={onClick}
+    >
+      <span className="sections-quick-card__art" aria-hidden="true">
+        <img src={artwork} alt="" draggable={false} />
+      </span>
+      <span className="sections-quick-card__content">
+        <span className="sections-quick-card__title-row">
+          <span className="sections-quick-card__title">{title}</span>
+        </span>
+        <span className="sections-quick-card__meta">
+          <span>{description}</span>
+        </span>
+      </span>
+      <ChevronRight className="card-chevron" aria-hidden="true" size={19} strokeWidth={2.7} />
+    </button>
+  );
+}
+
+export function BarBroadcastsScreen(): JSX.Element {
+  const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<'online' | 'upcoming'>('online');
   const { data, status } = useBarSnapshot(`page=${page}`);
   const board = data && 'online' in data ? data : null;
   return (
     <main className="screen bar-screen">
-      <BarHeader title="Бар" onBack={() => navigate('/sections')} />
+      <BarHeader title="Трансляции" onBack={() => navigate('/bar')} />
       <section className="bar-content">
         <h2 className="section-label bar-section-label">Выбери события</h2>
         <div className="bar-filters">
@@ -244,7 +310,7 @@ export function BarMatchScreen({ viewerId }: { viewerId?: string } = {}): JSX.El
   }, [live, buffer]);
   return (
     <main className="screen bar-screen bar-screen--match">
-      <BarHeader title="Трансляция" onBack={() => navigate('/bar')} />
+      <BarHeader title="Трансляция" onBack={() => navigate('/bar/broadcasts')} />
       <section className="game-scoreboard game-scoreboard--stable-surface bar-board">
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
