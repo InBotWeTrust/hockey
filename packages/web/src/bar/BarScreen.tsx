@@ -1,4 +1,3 @@
-import { DurakLaunchModal } from './cards/DurakModals.js';
 import './cards/durak.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -47,7 +46,6 @@ const statusText: Record<BarSocketStatus, string> = {
 
 export function BarScreen(): JSX.Element {
   const navigate = useNavigate();
-  const [cardsOpen, setCardsOpen] = useState(false);
   return (
     <main className="screen bar-screen">
       <BarHeader title="Бар" onBack={() => navigate('/sections')} />
@@ -59,18 +57,12 @@ export function BarScreen(): JSX.Element {
           onClick={() => navigate('/bar/broadcasts')}
         />
         <BarEntryCard
-          title="Дурак с Марией"
-          description="Подкидной дурак · 36 карт"
+          title="Дурак"
+          description="С игроком или с Марией · 36 карт"
           artwork="/bar/cards/maria-entry-v1.webp"
-          onClick={() => setCardsOpen(true)}
+          onClick={() => navigate('/bar/cards/online')}
         />
       </section>
-      {cardsOpen && (
-        <DurakLaunchModal
-          onClose={() => setCardsOpen(false)}
-          onPlay={() => navigate('/bar/cards/maria')}
-        />
-      )}
     </main>
   );
 }

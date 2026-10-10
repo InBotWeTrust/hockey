@@ -143,6 +143,8 @@ const ProfileStorySeriesScreen = lazy(() =>
     default: module.ProfileStorySeriesScreen,
   })),
 );
+const OnlineDurakLobby = lazy(() => import('../bar/cards/OnlineDurakLobby.js').then(m => ({default:m.OnlineDurakLobby})));
+const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js').then(m => ({default:m.OnlineDurakScreen})));
 const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
 const BarBroadcastsScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarBroadcastsScreen })));
 const BarScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarScreen })));
@@ -386,6 +388,8 @@ function AppExperience(): JSX.Element {
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
+              <Route path="/bar/cards/online" element={<PrivateRoute><OnlineDurakLobby /></PrivateRoute>} />
+              <Route path="/bar/cards/match/:id" element={<PrivateRoute><OnlineDurakScreen /></PrivateRoute>} />
               <Route path="/bar/cards/maria" element={<PrivateRoute><DurakScreen /></PrivateRoute>} />
               <Route path="/bar/broadcasts" element={<PrivateRoute><BarBroadcastsScreen /></PrivateRoute>} />
               <Route path="/bar" element={<PrivateRoute><BarScreen /></PrivateRoute>} />
