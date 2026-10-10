@@ -218,3 +218,5 @@ export * from './fight/engine.js';
 export * from './fight/movement.js';
 
 export * from './fight/responsiveInput.js';
+
+export * as durak from "./durak.js";

@@ -1,5 +1,5 @@
 import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { afterEach, describe, it, expect, vi } from 'vitest';
 import { BarScreen, BarBroadcastsScreen } from './BarScreen.js';
 import type { BarSocketOptions } from './BarSocket.js';
@@ -129,15 +129,16 @@ describe('bar board', () => {
   });
 });
 
-it('shows two bar entries and opens the Maria launch modal', () => {
+it('opens the shared opponent lobby from the single Durak entry', () => {
   render(
     <MemoryRouter>
-      <BarScreen />
+      <Routes>
+        <Route path="/" element={<BarScreen />} />
+        <Route path="/bar/cards/online" element={<div>Выбор соперника</div>} />
+      </Routes>
     </MemoryRouter>,
   );
   expect(screen.getByRole('button', { name: 'Трансляции' })).toBeInTheDocument();
-  expect(screen.queryByRole('tab', { name: 'Онлайн' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: /Дурак с Марией/ }));
-  expect(screen.getByRole('dialog')).toBeInTheDocument();
-  expect(screen.getByRole('button', { name: 'Играть' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Дурак' }));
+  expect(screen.getByText('Выбор соперника')).toBeInTheDocument();
 });

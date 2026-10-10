@@ -3,6 +3,9 @@ import React from 'react';
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Routes, Route } from 'react-router-dom';
 import { MotionConfig } from 'motion/react';
+import { DurakTable } from './DurakScreen.js';
+import { useDurakGame } from './useDurakGame.js';
+import { OnlineDurakLobby } from './OnlineDurakLobby.js';
 import { DurakScreen } from './DurakScreen.js';
 import { BarScreen, BarBroadcastsScreen } from '../BarScreen.js';
 import '../../app/global.css';
@@ -25,6 +28,17 @@ const initial =
       : fixture === 'loss'
         ? { ...base, result: 1 as const, phase: 'ended' as const }
         : undefined;
+function OnlineTablePreview() {
+  const controller = useDurakGame(initial);
+  return (
+    <DurakTable
+      controller={controller}
+      online
+      opponent={{ displayName: 'Соперник', avatarUrl: null }}
+      previewPlayer={{ displayName: 'Александр' }}
+    />
+  );
+}
 document.documentElement.style.setProperty('--app-safe-top', '0px');
 document.documentElement.style.setProperty('--app-safe-bottom', '0px');
 createRoot(document.getElementById('root')!).render(
@@ -38,6 +52,8 @@ createRoot(document.getElementById('root')!).render(
               <DurakScreen initialGame={initial} previewPlayer={{ displayName: 'Александр' }} />
             }
           />
+          <Route path="/bar/cards/online" element={<OnlineDurakLobby />} />
+          <Route path="/bar/cards/online-preview" element={<OnlineTablePreview />} />
           <Route path="/bar/broadcasts" element={<BarBroadcastsScreen />} />
           <Route path="*" element={<BarScreen />} />
         </Routes>

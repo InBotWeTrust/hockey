@@ -22,11 +22,26 @@ export function DurakScreen({
   initialGame?: Game | undefined;
   previewPlayer?: { displayName: string; avatarUrl?: string };
 } = {}) {
+  const controller = useDurakGame(initialGame);
+  return <DurakTable controller={controller} {...(previewPlayer ? { previewPlayer } : {})} />;
+}
+export function DurakTable({
+  controller,
+  previewPlayer,
+  opponent,
+  online = false,
+  error,
+}: {
+  controller: ReturnType<typeof useDurakGame>;
+  previewPlayer?: { displayName: string; avatarUrl?: string };
+  opponent?: { displayName: string; avatarUrl: string | null };
+  online?: boolean;
+  error?: string | null;
+}) {
   const navigate = useNavigate();
   const profile = useAuthStore((state) => state.user);
   const user = profile ?? previewPlayer;
-  const { game, dispatch, restart, surrender, remainingSeconds, thinking } =
-    useDurakGame(initialGame);
+  const { game, dispatch, restart, surrender, remainingSeconds, thinking } = controller;
   const [help, setHelp] = useState(false);
   const [exit, setExit] = useState(false);
   const [selected, setSelected] = useState<string | null>(null);
@@ -43,7 +58,7 @@ export function DurakScreen({
     setTargetReady(false);
     setHint(null);
   }, [game.revision]);
-  const back = () => navigate('/bar');
+  const back = () => navigate(online ? '/bar/cards/online' : '/bar');
   const commit = (card: Card) => {
     const play = actions.find((a) => a.type === 'play' && a.cardId === card.id);
     const beats = actions.filter((a) => a.type === 'beat' && a.cardId === card.id);
@@ -71,7 +86,9 @@ export function DurakScreen({
     }
   };
   const status = thinking
-    ? 'Мария думает…'
+    ? online
+      ? 'Ход соперника'
+      : 'Мария думает…'
     : (hint ??
       (game.phase === 'defend'
         ? 'Отбей карту или возьми'
@@ -81,7 +98,12 @@ export function DurakScreen({
             ? 'Подкинь карту или нажми «Бито»'
             : 'Твой ход'));
   return (
-    <main className="screen durak-screen">
+    <main className={`screen durak-screen${online ? ' durak-screen--online' : ''}`}>
+      {error && (
+        <p className="durak-network-error" role="alert">
+          {error}
+        </p>
+      )}
       <section className="durak-menu game-scoreboard-stack" aria-label="Меню игры">
         <div className="game-scoreboard game-scoreboard--stable-surface">
           <div className="game-scoreboard__row durak-menu__row">
@@ -115,8 +137,13 @@ export function DurakScreen({
             </div>
             <div className="game-scoreboard__metric">
               <div className="durak-menu__identity durak-menu__identity--opponent">
-                <FittedMenuLabel>{`(${game.hands[1].length}) Мария`}</FittedMenuLabel>
-                <UserAvatar avatarUrl={art('playing')} name="Мария" size={28} alt="Аватар Марии" />
+                <FittedMenuLabel>{`(${game.hands[1].length}) ${opponent?.displayName ?? 'Мария'}`}</FittedMenuLabel>
+                <UserAvatar
+                  avatarUrl={online ? (opponent?.avatarUrl ?? undefined) : art('playing')}
+                  name={opponent?.displayName ?? 'Мария'}
+                  size={28}
+                  alt={online ? 'Аватар соперника' : 'Аватар Марии'}
+                />
               </div>
             </div>
           </div>
@@ -137,11 +164,20 @@ export function DurakScreen({
           {status}
         </div>
       </section>
-      <section className="durak-opponent" aria-label="Карты Марии">
-        {game.hands[1].length > 0 ? (
-          <img src={art('playing')} alt="Мария с картами" />
+      <section
+        className="durak-opponent"
+        aria-label={online ? 'Соперник за столом' : 'Карты Марии'}
+      >
+        {online ? (
+          <OpponentSilhouette />
         ) : (
-          <img src={art('player-win')} alt="Мария закончила игру" />
+          <>
+            {game.hands[1].length > 0 ? (
+              <img src={art('playing')} alt="Мария с картами" />
+            ) : (
+              <img src={art('player-win')} alt="Мария закончила игру" />
+            )}
+          </>
         )}
       </section>
       <section className="durak-table" aria-label="Карты на столе">
@@ -242,18 +278,37 @@ export function DurakScreen({
           </button>
         ))}
       </div>
-      {game.result !== null && (
-        <DurakResultModal
-          result={game.result}
-          onReplay={() => {
-            setSelected(null);
-            setHelp(false);
-            setExit(false);
-            restart();
-          }}
-          onBack={back}
-        />
-      )}
+      {game.result !== null &&
+        (online ? (
+          <AccessibleModal
+            title={game.result === 0 ? 'Победа' : game.result === 'draw' ? 'Ничья' : 'Поражение'}
+            onRequestClose={back}
+          >
+            <p className="modal-copy">
+              {game.result === 0
+                ? 'Ты первым избавился от карт.'
+                : game.result === 'draw'
+                  ? 'Вы закончили одновременно.'
+                  : 'Соперник выиграл эту партию.'}
+            </p>
+            <div className="modal-actions">
+              <button className="btn btn--cta" onClick={back}>
+                Вернуться
+              </button>
+            </div>
+          </AccessibleModal>
+        ) : (
+          <DurakResultModal
+            result={game.result}
+            onReplay={() => {
+              setSelected(null);
+              setHelp(false);
+              setExit(false);
+              restart();
+            }}
+            onBack={back}
+          />
+        ))}
       {help && game.result === null && (
         <AccessibleModal
           title="Как играть"
@@ -319,5 +374,11 @@ export function DurakScreen({
         </AccessibleModal>
       )}
     </main>
+  );
+}
+
+function OpponentSilhouette() {
+  return (
+    <img className="durak-silhouette" src="/bar/cards/opponent-v1.webp" alt="Соперник с картами" />
   );
 }

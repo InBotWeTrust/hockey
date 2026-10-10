@@ -8,7 +8,15 @@ import {
   type Game,
 } from './rules.js';
 import { botView, chooseBotAction } from './bot.js';
-export function useDurakGame(initial?: Game) {
+export interface DurakController {
+  game: Game;
+  dispatch: (action: Action) => void;
+  surrender: () => void;
+  restart: (next?: Game) => void;
+  remainingSeconds: number | null;
+  thinking: boolean;
+}
+export function useDurakGame(initial?: Game): DurakController {
   const [game, setGame] = useState(() => initial ?? createGame());
   const [generation, setGeneration] = useState(0);
   const [remainingSeconds, setRemaining] = useState<number | null>(null);
