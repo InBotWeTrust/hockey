@@ -190,6 +190,10 @@ export function DurakTable({
                 />
               </div>
             </div>
+            <div className="game-scoreboard__metric durak-menu__trump" aria-label={pregame ? 'Козырь не определён' : `Козырь ${symbols[game.trump]}`}>
+              <span className="game-scoreboard__label">Козырь</span>
+              <strong className="durak-menu__trump-symbol">{pregame ? '—' : symbols[game.trump]}</strong>
+            </div>
           </div>
         </div>
         <FittedNotice fit

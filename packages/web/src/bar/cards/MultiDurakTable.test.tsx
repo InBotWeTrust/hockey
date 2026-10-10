@@ -113,3 +113,8 @@ it('places six seats around the table and marks self separately from taking', ()
   expect(container.querySelector('[data-self="true"]')).toHaveAttribute('data-taking', 'true');
   expect(screen.getByText('Берёт карты')).toBeInTheDocument();
 });
+
+it('keeps trump visible in the menu after the deck is empty', () => {
+  render(<MemoryRouter><MultiDurakTable view={{ ...base, game: { ...base.game!, deckCount: 0 } }} busy={false} error={null} now={1000} onCommand={vi.fn()} /></MemoryRouter>);
+  expect(screen.getByLabelText('Козырь ♣')).toBeInTheDocument();
+});

@@ -148,6 +148,10 @@ export function MultiDurakTable({
                 <FittedMenuLabel>{`${pregame ? `${view.seats.filter(s => view.ready.includes(s.userId)).length} из ${view.seats.length}` : view.seats.filter((s) => s.status === 'playing').length} за столом`}</FittedMenuLabel>
               )}
             </div>
+            <div className="game-scoreboard__metric durak-menu__trump" aria-label={pregame ? 'Козырь не определён' : `Козырь ${suits[g.trump]}`}>
+              <span className="game-scoreboard__label">Козырь</span>
+              <strong className="durak-menu__trump-symbol">{pregame ? '—' : suits[g.trump]}</strong>
+            </div>
           </div>
         </div>
         <FittedNotice fit

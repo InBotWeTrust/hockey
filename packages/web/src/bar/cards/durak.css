@@ -1237,3 +1237,28 @@
   border-color: rgba(211, 115, 115, 0.9);
   background: linear-gradient(135deg, rgba(125, 45, 45, 0.45), rgba(79, 29, 36, 0.28));
 }
+
+.durak-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr) minmax(0, 1.5fr) minmax(0, 0.7fr);
+}
+.durak-menu__trump-symbol {
+  font-size: 24px;
+  line-height: 1;
+  color: #d5e5ff;
+}
+
+.durak-menu .game-scoreboard__metric:nth-child(3) {
+  padding-inline: 10px;
+}
+.durak-menu .game-scoreboard__metric:nth-child(3) > .durak-menu__label {
+  font-size: 9px;
+}
+.durak-menu .durak-menu__trump {
+  padding-inline: 8px;
+}
+.durak-menu .durak-menu__trump .game-scoreboard__label {
+  font-size: 8px;
+}
+.durak-menu .durak-menu__trump-symbol {
+  font-size: 20px;
+}
