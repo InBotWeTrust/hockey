@@ -118,7 +118,9 @@
 .bar-space button.bar-place-preview {
   position: absolute;
   left: 38px;
-  width: min(190px, calc(100vw - 64px));
+  width: max-content;
+  max-width: calc(100vw - 64px);
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -218,11 +220,11 @@
   --bar-nav-reserve: 0px;
 }
 .app-shell--bottom-nav-visible .bar-space {
-  --bar-nav-reserve: calc(100px + var(--bottom-nav-bottom-gap, 0px));
+  --bar-nav-reserve: calc(56px + var(--bottom-nav-bottom-gap, 0px));
 }
 .bar-space__figure {
   top: 112px;
-  bottom: calc(max(212px, var(--bar-panel-height, 190px)) + var(--bar-nav-reserve) + 40px);
+  bottom: calc(120px + var(--bar-nav-reserve));
   padding: 0 12px;
 }
 .bar-space__figure img {
@@ -342,3 +344,33 @@
     height: 36px;
   }
 }
+
+.bar-identity-row { display: flex; align-items: center; gap: 12px; }
+.bar-identity-row .bar-identity { flex: 1; min-width: 0; }
+.bar-space .bar-identity__toggle { width: 32px; height: 32px; flex: 0 0 32px; }
+.bar-identity__expanded {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding-top: 8px;
+}
+
+.bar-space .bar-identity__toggle {
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  color: inherit;
+  cursor: pointer;
+}
+.bar-identity__toggle:focus-visible { outline: 2px solid #cde8ff; outline-offset: 3px; }
+
+/* Keep all character details inside the shared card. */
+.bar-space .bar-space__actions {
+  overflow: visible;
+}
+
+.bar-space .bar-space__actions[hidden] { display: none; }

@@ -10,11 +10,11 @@ import { barCharacters, fetchConversation, type BarCharacter } from './conversat
 export function BarPanorama() {
   const navigate = useNavigate();
   const [layout, setLayout] = useState(createDefaultBarLayout);
-  const [slot, setSlot] = useState('bar-8');
+  const [slot, setSlot] = useState(() => sessionStorage.getItem('bar-active-slot') || 'bar-8');
   const [opponent, setOpponent] = useState<ComputerOpponentId | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const touched = useRef(false);
+  const touched = useRef(!!sessionStorage.getItem('bar-active-slot'));
   const [conversation, setConversation] = useState<BarCharacter | null>(null);
   const [started, setStarted] = useState<Partial<Record<BarCharacter, boolean>>>({});
   const selectedCharacter = layout.slots.find((s) => s.id === slot)?.occupantId;
@@ -90,9 +90,11 @@ export function BarPanorama() {
     <>
       <BarScene
         layout={layout}
+        hideIdentity={conversation !== null}
         activeSlotId={slot}
         onSelectSlot={(id) => {
           touched.current = true;
+          sessionStorage.setItem('bar-active-slot', id);
           setSlot(id);
         }}
         onAction={action}

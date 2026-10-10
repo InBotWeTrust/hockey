@@ -1,7 +1,6 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { ChevronUp, ChevronRight } from 'lucide-react';
 import { isBarAssetPath, type BarProfile, type BarAction } from '@hockey/game-core';
-import { AccessibleModal } from '../components/AccessibleModal.js';
 export function BarIdentityPanel({
   profile,
   actions,
@@ -15,14 +14,16 @@ export function BarIdentityPanel({
   onTalk?: () => void;
   conversationStarted?: boolean;
 }) {
-  const [details, setDetails] = useState(false);
+  const [expanded, setExpanded] = useState(false);
   const [failedAvatar, setFailedAvatar] = useState<string | null>(null);
   return (
     <>
+      <div className="bar-identity-row">
       <button
         className="bar-identity"
-        onClick={() => setDetails(true)}
+        onClick={() => setExpanded(v => !v)}
         aria-label={`О персонаже: ${profile.name}`}
+        aria-expanded={expanded}
       >
         <span className="bar-identity__avatar">
           {isBarAssetPath(profile.avatar) && failedAvatar !== profile.avatar ? (
@@ -38,6 +39,11 @@ export function BarIdentityPanel({
           {profile.role && <span className="bar-identity__role">{profile.role}</span>}
         </span>
       </button>
+      <button className="bar-identity__toggle" aria-label={expanded ? "Скрыть действия" : "Показать действия"} aria-expanded={expanded} onClick={() => setExpanded(v => !v)}>
+        {expanded ? <ChevronUp size={18} /> : <ChevronRight size={18} />}
+      </button>
+      </div>
+      {expanded && <div className="bar-identity__expanded">
       {profile.description && <p className="bar-identity__description">{profile.description}</p>}
       {(actions.length > 0 || onTalk) && (
         <div className="bar-identity__actions">
@@ -57,22 +63,8 @@ export function BarIdentityPanel({
           ))}
         </div>
       )}
-      {details && (
-        <AccessibleModal
-          title={profile.name}
-          onClose={() => setDetails(false)}
-          headerAction={
-            <button className="icon-btn" aria-label="Закрыть" onClick={() => setDetails(false)}>
-              <X size={16} />
-            </button>
-          }
-        >
-          {profile.role && <p className="modal-copy">{profile.role}</p>}
-          <p className="modal-copy">
-            {profile.description || 'Больше о персонаже расскажем позже.'}
-          </p>
-        </AccessibleModal>
-      )}
+      </div>}
+
     </>
   );
 }
