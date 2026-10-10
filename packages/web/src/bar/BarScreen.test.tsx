@@ -129,7 +129,7 @@ describe('bar board', () => {
   });
 });
 
-it('opens the shared opponent lobby from the single Durak entry', () => {
+it('opens the bar at the manager and pages to the online terminal', () => {
   render(
     <MemoryRouter>
       <Routes>
@@ -138,7 +138,15 @@ it('opens the shared opponent lobby from the single Durak entry', () => {
       </Routes>
     </MemoryRouter>,
   );
-  expect(screen.getByRole('button', { name: 'Трансляции' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Дурак' }));
+  expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
+  expect(
+    screen.getByRole('navigation', { name: 'Места в баре' }).querySelectorAll('button'),
+  ).toHaveLength(10);
+  fireEvent.click(screen.getByRole('button', { name: 'Предыдущая страница' }));
+  expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Играть онлайн' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Перейти: Играть онлайн' }));
+  expect(screen.getByRole('heading', { name: 'Играть онлайн' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Найти соперников' }));
   expect(screen.getByText('Выбор соперника')).toBeInTheDocument();
 });

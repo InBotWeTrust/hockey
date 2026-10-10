@@ -55,7 +55,7 @@ export function OnlineDurakScreen() {
       document.removeEventListener('visibilitychange', load);
     };
   }, [id]);
-  const send = async (action: Action | 'surrender') => {
+  const send = async (action: Action | 'surrender' | 'ready') => {
     if (sending.current || !current.current) return;
     sending.current = true;
     setPending(true);
@@ -85,6 +85,42 @@ export function OnlineDurakScreen() {
         </button>
       </main>
     );
+  if (view.readiness) {
+    const r = view.readiness;
+    const seconds = Math.max(
+      0,
+      Math.ceil(((r.startsAt ?? r.expiresAt) - now - offset.current) / 1000),
+    );
+    return (
+      <DurakTable
+        online
+        opponent={view.opponent}
+        error={error}
+        pregame={{
+          text: r.cancelled
+            ? 'Встреча отменена: готовность не подтверждена.'
+            : r.startsAt !== null
+              ? 'Игра начинается'
+              : r.selfReady
+                ? 'Ждём готовности соперника'
+                : 'Подтвердите готовность',
+          ready: r.selfReady,
+          countdown: r.startsAt !== null,
+          cancelled: r.cancelled,
+          pending,
+          onReady: () => void send('ready'),
+        }}
+        controller={{
+          game: tableState(view),
+          dispatch: () => {},
+          surrender: () => navigate('/bar/cards/online'),
+          restart: () => navigate('/bar/cards/online'),
+          remainingSeconds: seconds,
+          thinking: true,
+        }}
+      />
+    );
+  }
   const game = tableState(view);
   return (
     <DurakTable

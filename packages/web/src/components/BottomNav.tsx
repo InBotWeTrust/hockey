@@ -1,3 +1,4 @@
+import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -104,7 +105,7 @@ function normalizeNavLocation(location: string | NavLocation): NavLocation {
 }
 
 export function isOpenRinkRoute(location: NavLocation): boolean {
-  if (location.pathname === '/bar/cards/maria' || location.pathname.startsWith('/bar/cards/match/')) return true;
+  if ((location.pathname === '/bar/cards/maria' || location.pathname.startsWith('/bar/cards/computer/')) || (location.pathname.startsWith('/bar/cards/match/') || location.pathname.startsWith('/bar/cards/room/'))) return true;
   if (/^\/bonus-games\/[^/]+\/play$/.test(location.pathname)) return true;
   if (location.pathname !== '/') return false;
   const params = new URLSearchParams(location.search);
@@ -133,7 +134,7 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
   );
 }
 
-export function BottomNav(): JSX.Element | null {
+export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.Element | null {
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const location = useLocation();
@@ -252,7 +253,7 @@ export function BottomNav(): JSX.Element | null {
   }, [isDemo, location]);
 
   // Hide nav inside a chat room — composer takes the nav's spot.
-  if (!isBottomNavVisible(location, user)) {
+  if (!preview && !isBottomNavVisible(location, user)) {
     return null;
   }
 
@@ -278,7 +279,8 @@ export function BottomNav(): JSX.Element | null {
         ...(weeklyChallenge?.pendingRewards ?? []),
       ])
     : 0;
-  const sectionActionCount = weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
+  const cardInviteCount = useCardInvites(s => s.incoming.length);
+  const sectionActionCount = cardInviteCount + weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     navigate(DEFAULT_GAME_ROUTE);

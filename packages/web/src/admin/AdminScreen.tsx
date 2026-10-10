@@ -62,6 +62,8 @@ import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSect
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import { OnboardingAdmin } from './OnboardingAdmin.js';
+import { UnsavedBarDialog } from './UnsavedBarDialog.js';
+import { BarAdmin, BAR_ADMIN_DIRTY_EVENT } from './BarAdmin.js';
 import { ArsenichAdmin } from './ArsenichAdmin.js';
 import { ReferralsAdmin } from './ReferralsAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
@@ -183,6 +185,7 @@ type AdminTab =
   | 'tournaments'
   | 'feedback'
   | 'onboarding'
+  | 'bar'
   | 'arsenich'
   | 'settings';
 type AdminAchievementsTab = 'achievements' | 'challenges';
@@ -209,6 +212,7 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
+  { id: 'bar', label: 'Бар', icon: <Gamepad2 size={15} /> },
   { id: 'arsenich', label: 'Арсенич', icon: <UserRound size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
@@ -715,7 +719,14 @@ function niceChartMax(value: number): number {
 export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const barDirty = useRef(false);
+  useEffect(() => {
+    const listener = (event: Event) => { barDirty.current = Boolean((event as CustomEvent).detail); };
+    window.addEventListener(BAR_ADMIN_DIRTY_EVENT, listener);
+    return () => window.removeEventListener(BAR_ADMIN_DIRTY_EVENT, listener);
+  }, []);
   const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [barExitTarget, setBarExitTarget] = useState<AdminTab | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const adminMenuButtonRef = useRef<HTMLButtonElement>(null);
   const adminDrawerRef = useRef<HTMLElement>(null);
@@ -744,6 +755,7 @@ export function AdminScreen(): JSX.Element {
 
   useEffect(() => {
     const resetToDashboard = (): void => {
+      if (barDirty.current) { setBarExitTarget('dashboard'); setAdminMenuOpen(false); return; }
       setTab('dashboard');
       setAdminMenuOpen(false);
     };
@@ -1011,6 +1023,7 @@ export function AdminScreen(): JSX.Element {
                       }
                       aria-current={tab === item.id ? 'page' : undefined}
                       onClick={() => {
+                        if (tab === 'bar' && barDirty.current && item.id !== 'bar') { setBarExitTarget(item.id); setAdminMenuOpen(false); return; }
                         setTab(item.id);
                         setAdminMenuOpen(false);
                       }}
@@ -1207,6 +1220,8 @@ export function AdminScreen(): JSX.Element {
         />
       )}
       {tab === 'onboarding' && <OnboardingAdmin />}
+      {barExitTarget && <UnsavedBarDialog title="Выйти без сохранения расстановки?" discardLabel="Выйти" onCancel={()=>setBarExitTarget(null)} onDiscard={()=>{setTab(barExitTarget);setBarExitTarget(null);}}/>}
+      {tab === 'bar' && <BarAdmin />}
       {tab === 'arsenich' && <ArsenichAdmin />}
       {tab === 'settings' && (
         <SettingsPanel

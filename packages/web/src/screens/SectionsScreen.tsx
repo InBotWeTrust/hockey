@@ -1,3 +1,4 @@
+import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -68,7 +69,7 @@ function storeBonusProgress(userId: string | undefined, progress: StoredBonusPro
 }
 
 const SECTION_ARTWORK = {
-  bar: '/bar/bar-card-v2.webp',
+  bar: '/bar/bar-card-v4.webp',
   achievements: '/achievements/first-goal.webp',
   daily: '/daily-game/start.webp',
   training: '/modes/training-evening.webp',
@@ -85,6 +86,7 @@ function numberText(value: number): string {
 }
 
 export function SectionsScreen(): JSX.Element {
+  const cardInviteCount = useCardInvites(s => s.incoming.length);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const dailyData = useDailyStore((s) => s.data);
@@ -328,11 +330,12 @@ export function SectionsScreen(): JSX.Element {
               onClick={() => navigate('/inventory')}
             />
             <QuickSectionCard
-              title="Бар"
+              title="Бар «4-й период»"
               meta="Трансляции и обсуждения"
               tone="default"
               size="wide"
               artworkSrc={SECTION_ARTWORK.bar}
+              attention={cardInviteCount > 0}
               onClick={() => navigate('/bar')}
             />
           </div>

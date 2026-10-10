@@ -1,3 +1,5 @@
+import { useCardInvites } from '../bar/cards/cardInvites.js';
+import { CardInviteToast } from '../bar/cards/CardInviteToast.js';
 import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
@@ -143,6 +145,7 @@ const ProfileStorySeriesScreen = lazy(() =>
     default: module.ProfileStorySeriesScreen,
   })),
 );
+const DurakRoomScreen = lazy(() => import('../bar/cards/DurakRoomScreen.js').then(m => ({default:m.DurakRoomScreen})));
 const OnlineDurakLobby = lazy(() => import('../bar/cards/OnlineDurakLobby.js').then(m => ({default:m.OnlineDurakLobby})));
 const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js').then(m => ({default:m.OnlineDurakScreen})));
 const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
@@ -312,6 +315,7 @@ export function appSurfaceClassName(pathname: string): string {
 }
 
 function AppExperience(): JSX.Element {
+  const hasCardInvite = useCardInvites(s => s.incoming.length > 0);
   const location = useLocation();
   const user = useAuthStore((s) => s.user);
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
@@ -355,7 +359,8 @@ function AppExperience(): JSX.Element {
       <ChatRealtime />
       <NativeNotificationBridge />
       <NativeUpdateBridge enabled={androidReleaseAccess} />
-      <DuelInviteToast suppressed={isOpenRinkRoute(location)} />
+      <DuelInviteToast suppressed={isOpenRinkRoute(location) || hasCardInvite} />
+      <CardInviteToast suppressed={isOpenRinkRoute(location)} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
@@ -389,7 +394,9 @@ function AppExperience(): JSX.Element {
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/bar/cards/online" element={<PrivateRoute><OnlineDurakLobby /></PrivateRoute>} />
+              <Route path="/bar/cards/room/:id" element={<PrivateRoute><DurakRoomScreen /></PrivateRoute>} />
               <Route path="/bar/cards/match/:id" element={<PrivateRoute><OnlineDurakScreen /></PrivateRoute>} />
+              <Route path="/bar/cards/computer/:opponentId" element={<PrivateRoute><DurakScreen /></PrivateRoute>} />
               <Route path="/bar/cards/maria" element={<PrivateRoute><DurakScreen /></PrivateRoute>} />
               <Route path="/bar/broadcasts" element={<PrivateRoute><BarBroadcastsScreen /></PrivateRoute>} />
               <Route path="/bar" element={<PrivateRoute><BarScreen /></PrivateRoute>} />

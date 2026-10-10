@@ -1233,7 +1233,11 @@
   font-size: var(--marksmanship-value-size, 18px);
 }
 
-.game-scoreboard {
+.game-scoreboard,
+.bar-space__actions,
+.bar-space .icon-btn,
+.bar-space .bar-place-preview,
+.modal-card.bar-conversation {
   width: 100%;
   min-width: 0;
   overflow: hidden;
