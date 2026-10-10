@@ -104,6 +104,7 @@ function normalizeNavLocation(location: string | NavLocation): NavLocation {
 }
 
 export function isOpenRinkRoute(location: NavLocation): boolean {
+  if (location.pathname === '/bar/cards/maria') return true;
   if (/^\/bonus-games\/[^/]+\/play$/.test(location.pathname)) return true;
   if (location.pathname !== '/') return false;
   const params = new URLSearchParams(location.search);

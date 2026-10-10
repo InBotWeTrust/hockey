@@ -562,3 +562,8 @@
   height: 125%;
   pointer-events: none;
 }
+
+.bar-entries {
+  display: grid;
+  gap: 14px;
+}

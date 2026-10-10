@@ -1,0 +1,707 @@
+.durak-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: var(--app-viewport-height, 100dvh);
+  padding: calc(10px + var(--app-safe-top, 0px)) 12px calc(10px + var(--app-safe-bottom, 0px));
+  overflow: hidden;
+  background: #164c3c url('/bar/cards/table-v1.webp') center/cover;
+  color: white;
+}
+.durak-screen .bar-header {
+  flex: none;
+  margin-bottom: 0;
+  max-width: none;
+}
+.durak-screen .bar-header h1 {
+  flex: 1;
+  font-size: var(--font-size-xl, 20px);
+}
+.durak-opponent {
+  position: relative;
+  flex: 0 1 24%;
+  min-height: 80px;
+  max-height: 210px;
+  text-align: center;
+  overflow: hidden;
+}
+.durak-opponent > img {
+  height: 100%;
+  width: auto;
+  max-width: 100%;
+  object-fit: contain;
+}
+.durak-counter {
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill, 999px);
+  background: var(--glass-bg, rgba(19, 36, 46, 0.55));
+  border: 1px solid var(--glass-border, rgba(255, 255, 255, 0.3));
+  backdrop-filter: blur(16px);
+}
+.durak-table {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  display: flex;
+  gap: 8px;
+  max-width: 700px;
+  width: 100%;
+  margin: auto;
+  align-items: center;
+}
+.durak-deck {
+  flex: none;
+  width: 64px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+}
+.durak-deck > div {
+  position: relative;
+  height: 94px;
+}
+.durak-deck img {
+  position: absolute;
+  left: 8px;
+  top: 0;
+  width: 52px;
+  border-radius: 6px;
+}
+.durak-deck img:first-child:not(:last-child) {
+  left: 0;
+  top: 12px;
+  z-index: 1;
+}
+.durak-pairs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  height: 100%;
+  max-height: 310px;
+  align-items: center;
+}
+.durak-pair {
+  position: relative;
+  display: block;
+  border: 0;
+  background: none;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  max-height: 145px;
+  min-height: 0;
+  cursor: pointer;
+}
+.durak-pair img {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: calc(100% - 14px);
+  height: calc(100% - 14px);
+  object-fit: contain;
+  object-position: left top;
+  filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.3));
+}
+.durak-pair .durak-defence {
+  left: 14px;
+  top: 14px;
+}
+.durak-pair--target {
+  outline: 2px solid var(--accent, #b8e3ff);
+  border-radius: 8px;
+}
+.durak-controls {
+  flex: none;
+  max-width: 700px;
+  width: 100%;
+  margin: 0 auto;
+}
+.durak-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  font-size: 14px;
+  text-shadow: 0 1px 3px #102b22;
+}
+.durak-timer {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.durak-actions {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  gap: 8px;
+}
+.durak-actions .btn {
+  min-width: 140px;
+}
+.durak-hand {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  overflow-x: auto;
+  overflow-y: hidden;
+  min-height: 135px;
+  max-width: 700px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 14px 6px 4px;
+  scrollbar-width: thin;
+}
+.durak-card {
+  flex: none;
+  width: 84px;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: 7px;
+  cursor: pointer;
+  margin-right: -25px;
+  transition: transform 0.15s;
+}
+.durak-card:last-child {
+  margin-right: 0;
+}
+.durak-card img {
+  display: block;
+  width: 100%;
+  border-radius: 7px;
+  box-shadow: 0 2px 8px #183b2e;
+}
+.durak-card:disabled {
+  filter: none;
+  opacity: 1;
+  cursor: default;
+}
+.durak-card--selected {
+  transform: translateY(-12px);
+  z-index: 1;
+}
+.durak-card:focus-visible {
+  outline: 2px solid white;
+  z-index: 2;
+}
+.durak-entry {
+  margin-bottom: 20px;
+}
+.durak-entry .bonus-game-card {
+  width: 100%;
+}
+@media (max-height: 650px) {
+  .durak-opponent {
+    max-height: 120px;
+  }
+  .durak-hand {
+    min-height: 109px;
+  }
+  .durak-card {
+    width: 66px;
+    margin-right: -16px;
+  }
+  .durak-screen {
+    gap: 4px;
+  }
+  .durak-actions {
+    min-height: 36px;
+  }
+  .durak-pairs {
+    gap: 6px;
+  }
+  .durak-deck {
+    width: 52px;
+    font-size: 11px;
+  }
+  .durak-deck img {
+    width: 42px;
+  }
+  .durak-deck > div {
+    height: 78px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .durak-card {
+    transition: none;
+  }
+}
+.bonus-game-preview-modal__artwork.durak-scene {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  aspect-ratio: 4/3;
+  background: url('/bar/cards/table-v1.webp') center top/100% auto no-repeat;
+  overflow: hidden !important;
+  min-height: 0 !important;
+  height: auto !important;
+}
+.durak-scene > img {
+  height: 90%;
+  width: 100%;
+  object-fit: contain;
+  position: absolute;
+  top: 5%;
+  left: 0;
+}
+.durak-entry .bonus-game-preview-modal__artwork.durak-scene {
+  width: 100%;
+  max-height: 170px;
+  aspect-ratio: auto;
+  height: 170px !important;
+}
+.screen.durak-screen {
+  color: #fff;
+}
+.durak-deck,
+.durak-status {
+  color: #fff;
+}
+/* Keep the seated opponent at the same far table edge on every viewport. */
+.durak-opponent {
+  flex: 0 0 calc(35dvh - 48px);
+  max-height: none;
+  overflow: hidden;
+  min-height: 105px;
+}
+.durak-opponent > img {
+  position: absolute;
+  height: 140%;
+  width: auto;
+  max-width: none;
+  bottom: -30%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+.durak-opponent .durak-counter {
+  bottom: 0;
+  z-index: 1;
+}
+.durak-deck {
+  width: 82px;
+  font-size: 12px;
+}
+.durak-deck > div {
+  height: 112px;
+}
+.durak-deck img {
+  width: 60px;
+  left: 22px;
+  top: 0;
+  border-radius: 8px;
+}
+.durak-deck img:first-child:not(:last-child) {
+  left: 0;
+  top: 18px;
+}
+.durak-pair img {
+  width: calc(100% - 24px);
+  height: auto;
+  max-height: calc(100% - 24px);
+  aspect-ratio: 2/3;
+  object-fit: fill;
+  border-radius: 8px;
+}
+.durak-pair .durak-defence {
+  left: 24px;
+  top: 24px;
+}
+.durak-hand {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.durak-hand::-webkit-scrollbar {
+  display: none;
+}
+@media (max-height: 650px) {
+  .durak-opponent {
+    max-height: none;
+  }
+  .durak-deck {
+    width: 72px;
+  }
+  .durak-deck img {
+    width: 52px;
+    left: 20px;
+  }
+  .durak-deck > div {
+    height: 98px;
+  }
+  .durak-pair img {
+    width: calc(100% - 20px);
+    max-height: calc(100% - 20px);
+  }
+  .durak-pair .durak-defence {
+    left: 20px;
+    top: 20px;
+  }
+}
+.durak-pair {
+  container-type: size;
+  --card-offset: 24px;
+}
+.durak-pair img {
+  width: min(calc(100cqw - var(--card-offset)), calc((100cqh - var(--card-offset)) * 0.65));
+  height: auto;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+@media (max-height: 650px) {
+  .durak-pair {
+    --card-offset: 20px;
+  }
+}
+.durak-screen::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: url('/bar/cards/table-v1.webp') center/cover;
+  mask: url('/bar/cards/table-foreground-mask.svg') center/cover no-repeat;
+  -webkit-mask: url('/bar/cards/table-foreground-mask.svg') center/cover no-repeat;
+  pointer-events: none;
+  z-index: 1;
+}
+.durak-screen > .bar-header,
+.durak-table,
+.durak-controls,
+.durak-hand {
+  position: relative;
+  z-index: 2;
+}
+.durak-counter {
+  z-index: 3 !important;
+}
+.durak-actions {
+  height: 52px;
+  min-height: 52px;
+  align-items: center;
+}
+.durak-pair img {
+  height: min(calc((100cqw - var(--card-offset)) / 0.7), calc(100cqh - var(--card-offset)));
+  width: auto;
+  max-width: none;
+  max-height: none;
+  aspect-ratio: auto;
+  object-fit: contain;
+}
+@media (max-height: 650px) {
+  .durak-actions {
+    height: 44px;
+    min-height: 44px;
+  }
+}
+.bonus-game-preview-modal__artwork.durak-scene--result {
+  background-size: auto 300%;
+}
+.durak-scene--result > img {
+  top: auto;
+  bottom: 0;
+  height: 95%;
+}
+
+/* Reuse the hockey scoreboard material, typography and feedback notice. */
+.durak-menu {
+  position: relative;
+  z-index: 3;
+  flex: none;
+  width: 100%;
+  max-width: 700px;
+  margin-inline: auto;
+  container-type: inline-size;
+}
+.durak-menu .durak-menu__row {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.durak-menu .durak-menu__links {
+  grid-template-columns: 1fr 1fr;
+  padding-block: 6px;
+}
+.durak-menu__links button {
+  border: 0;
+  background: none;
+  padding: 4px;
+  cursor: pointer;
+}
+.durak-turn-notice {
+  transform: none;
+  margin-top: 6px;
+}
+.durak-turn-notice[data-tone='success']::before {
+  background: #34d399;
+}
+.durak-turn-notice[data-tone='danger']::before {
+  background: #fb7185;
+}
+.durak-turn-notice[data-tone='warning']::before {
+  background: #facc15;
+}
+.durak-opponent {
+  flex-basis: calc(35dvh - 120px);
+  min-height: 60px;
+}
+.durak-opponent > img {
+  top: 0;
+  bottom: auto;
+  height: 125%;
+}
+.durak-menu .durak-menu__row {
+  padding: 7px 8px;
+}
+.durak-menu .durak-menu__links {
+  padding: 0 8px 4px;
+}
+.durak-menu__links button {
+  font-size: 9px;
+  padding: 3px;
+}
+.durak-opponent {
+  flex-basis: calc(35dvh - 105px);
+}
+.durak-opponent > img {
+  height: calc(35dvh - 65px);
+}
+
+.durak-menu__identity {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  width: 100%;
+  min-width: 0;
+}
+.durak-menu__identity--opponent {
+  justify-content: flex-end;
+}
+.durak-menu__identity .user-avatar {
+  border: 1px solid rgba(205, 232, 255, 0.46);
+}
+.durak-menu__identity--opponent .user-avatar img {
+  height: 212% !important;
+  width: 170% !important;
+  max-width: none;
+  left: -35% !important;
+  object-position: center top !important;
+}
+/* The dark bar needs only the shared glass rim, without an outer halo. */
+.durak-menu .game-scoreboard {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(112, 182, 247, 0.12),
+    inset 1px 0 0 rgba(255, 255, 255, 0.05),
+    inset -1px 0 0 rgba(255, 255, 255, 0.05);
+}
+.durak-menu .durak-turn-notice {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(112, 182, 247, 0.12);
+  text-shadow: none;
+}
+.durak-scene--result > img[src$='/player-win-v1.webp'] {
+  bottom: -6%;
+}
+
+.durak-menu .durak-menu__row {
+  grid-template-columns: 1.4fr 0.8fr 1fr 0.8fr 1.4fr;
+  padding-inline: 5px;
+}
+.durak-menu .game-scoreboard__metric {
+  padding-inline: 3px;
+}
+.durak-menu .durak-trump {
+  font-family: var(--font-sans);
+  color: #f8fbff;
+}
+.durak-menu .durak-trump--red {
+  color: #fb7185;
+}
+.durak-menu .game-scoreboard__label {
+  font-size: clamp(7px, 2.4cqw, 11px);
+  letter-spacing: 0.04em;
+}
+
+.durak-menu .durak-menu__label {
+  width: 100%;
+  min-width: 0;
+  text-overflow: clip;
+}
+.durak-menu__identity .durak-menu__label {
+  flex: 1;
+  text-align: left;
+}
+.durak-menu__identity--opponent .durak-menu__label {
+  text-align: right;
+}
+/* A separate reserve pocket distinguishes the deck from the active pairs. */
+.durak-table {
+  gap: 20px;
+}
+.durak-deck {
+  box-sizing: content-box;
+  padding: 10px 8px;
+  border: 1px solid rgba(205, 232, 255, 0.22);
+  border-radius: 14px;
+  background: rgba(2, 20, 15, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+@media (max-width: 400px) {
+  .durak-table {
+    gap: 12px;
+  }
+  .durak-deck {
+    padding: 8px 6px;
+  }
+}
+
+/* Keep the full seated pose visible above the foreground table edge. */
+.durak-screen {
+  --durak-scene-width: max(100%, calc((100dvh + 120px) * 0.562857));
+  background-size: var(--durak-scene-width) auto;
+  background-position: center top;
+}
+.durak-screen::before {
+  background-size: var(--durak-scene-width) auto;
+  background-position: center top;
+  mask-size: var(--durak-scene-width) auto;
+  mask-position: center top;
+  -webkit-mask-size: var(--durak-scene-width) auto;
+  -webkit-mask-position: center top;
+}
+.durak-opponent {
+  flex-basis: calc(42dvh - 105px);
+}
+.durak-opponent > img {
+  height: calc(40dvh - 50px);
+}
+.durak-opponent {
+  flex-basis: calc(max(100dvw * 1.77665, 100dvh + 120px) * 0.35 - 105px);
+  overflow: visible;
+}
+.durak-deck {
+  align-self: flex-end;
+  margin-bottom: clamp(12px, 3dvh, 24px);
+}
+
+/* Match the endurance countdown colours and thresholds. */
+.durak-menu [role='timer'] .game-scoreboard__value {
+  text-shadow: none;
+}
+.durak-menu [role='timer'][data-tone='success'] .game-scoreboard__value {
+  color: #6fac78;
+}
+.durak-menu [role='timer'][data-tone='warning'] .game-scoreboard__value {
+  color: #d9ae3d;
+}
+.durak-menu [role='timer'][data-tone='danger'] .game-scoreboard__value {
+  color: #df6b6b;
+}
+
+.durak-menu .durak-menu__row {
+  grid-template-columns: 1.5fr 0.8fr 0.8fr 1.5fr;
+}
+.durak-deck {
+  --deck-card-width: 60px;
+}
+.durak-deck__count {
+  position: absolute;
+  left: calc(var(--deck-card-width) / 2);
+  top: calc(18px + var(--deck-card-width) * 0.75);
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(205, 232, 255, 0.46);
+  background: linear-gradient(135deg, rgba(7, 24, 45, 0.28), rgba(15, 51, 78, 0.16));
+  backdrop-filter: blur(12px) saturate(145%);
+  -webkit-backdrop-filter: blur(12px) saturate(145%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  color: #f8fbff;
+  font-family: var(--font-mono);
+  font-weight: 900;
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+}
+@media (max-height: 650px) {
+  .durak-deck {
+    --deck-card-width: 52px;
+  }
+}
+
+.durak-menu .durak-menu__row {
+  grid-template-columns: 1.5fr 1fr 1.5fr;
+}
+.durak-deck--empty {
+  visibility: hidden;
+}
+
+.durak-controls {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 44px;
+  gap: 8px;
+  align-items: center;
+}
+.durak-tool.icon-btn {
+  color: #f8fbff;
+  border: 1px solid rgba(205, 232, 255, 0.46);
+  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06));
+  backdrop-filter: blur(18px) saturate(145%);
+  -webkit-backdrop-filter: blur(18px) saturate(145%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+.durak-tool.icon-btn {
+  color: rgba(205, 232, 255, 0.46);
+}
+.durak-tool__question {
+  font-family: var(--font-sans);
+  font-size: 22px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.durak-card {
+  height: 126px;
+  touch-action: pan-x;
+}
+.durak-card img {
+  height: 100%;
+  width: auto;
+  max-width: none;
+}
+@media (max-height: 650px) {
+  .durak-card {
+    height: 96px;
+  }
+}
+
+/* Match DailyScreen ModeInfoModal description typography. */
+.modal-card .durak-rules-copy {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1.6;
+}
+
+.bonus-game-launch-modal .durak-scene {
+  background-size: auto 300%;
+}
+.bonus-game-launch-modal .durak-scene > img {
+  height: 105%;
+  top: auto;
+  bottom: -8%;
+}
