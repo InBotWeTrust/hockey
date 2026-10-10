@@ -904,6 +904,9 @@
   justify-content: center;
 }
 .durak-multi-seat .durak-menu__label {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: 0.04em;
   width: 100%;
   max-width: 100%;
   min-width: 0;
