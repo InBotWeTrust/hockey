@@ -80,7 +80,7 @@ function ImageAttachment({
             maxWidth: 240,
             minHeight: 150,
             borderRadius: 14,
-            background: 'rgba(255,255,255,0.14)',
+            background: 'var(--liquid-inset-bg)',
             color: 'rgba(255,255,255,0.82)',
             fontSize: 12,
             fontWeight: 800,
@@ -302,7 +302,7 @@ function ChatBubbleImpl({
                     gap: 8,
                     padding: '8px 10px',
                     borderRadius: 14,
-                    background: isOwn ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.65)',
+                    background: isOwn ? 'var(--liquid-inset-bg)' : 'var(--liquid-inset-bg)',
                     color: 'inherit',
                     textDecoration: 'none',
                   }}

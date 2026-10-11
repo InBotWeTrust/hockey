@@ -5028,7 +5028,7 @@ describe('DailyScreen', () => {
     expect(localStorage.getItem('hockey.trainingHitboxesVisible')).toBe('true');
 
     const speedControl = screen.getByRole('button', { name: 'Скорости' });
-    expect(speedControl).toHaveStyle({ background: 'rgba(255, 255, 255, 0.82)' });
+    expect(speedControl).toHaveStyle({ background: 'var(--liquid-inset-bg)' });
     fireEvent.click(speedControl);
     const dialog = await screen.findByRole('dialog', { name: 'Скорости тренировки' });
     const sliders = within(dialog).getAllByRole('slider');
@@ -6590,11 +6590,11 @@ describe('DailyScreen', () => {
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
     expect(classic).toHaveAttribute('aria-pressed', 'true');
     expect(express.childElementCount).toBe(0);
-    expect(express.style.background).toBe('rgba(31, 42, 61, 0.92)');
+    expect(express.style.background).toBe('var(--liquid-selected-bg)');
 
     fireEvent.click(expressPlus);
     expect(expressPlus).toHaveAttribute('aria-pressed', 'false');
-    expect(expressPlus.style.background).toBe('rgba(255, 255, 255, 0.46)');
+    expect(expressPlus.style.background).toBe('var(--liquid-inset-bg)');
 
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
 

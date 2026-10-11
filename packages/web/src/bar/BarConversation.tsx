@@ -141,7 +141,7 @@ export function BarConversation({
       ariaLabel={`Разговор: ${name}`}
       presentation="sheet"
       onClose={onClose}
-      backdropStyle={{ background: 'rgba(0,0,0,0.18)', backdropFilter: 'none' }}
+      backdropStyle={{ background: 'var(--liquid-inset-bg)', backdropFilter: 'none' }}
       dragListener={false}
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface bar-conversation${!data?.turns.length ? ' bar-conversation--empty' : ''}${expanded ? ' bar-conversation--expanded' : ''}`}
       headerAction={

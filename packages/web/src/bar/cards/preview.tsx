@@ -189,7 +189,7 @@ createRoot(document.getElementById('root')!).render(
                   <div
                     style={{
                       padding: 16,
-                      background: '#17202a',
+                      background: 'var(--liquid-inset-bg)',
                       color: 'white',
                       minHeight: '100vh',
                     }}

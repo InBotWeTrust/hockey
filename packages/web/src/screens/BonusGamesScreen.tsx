@@ -459,7 +459,7 @@ export function BonusGamesScreen(): JSX.Element {
       </section>
       {developmentToast && <div role="status" style={{ position: 'fixed', bottom: 'calc(100px + var(--app-safe-bottom))',
         left: '50%', transform: 'translateX(-50%)', padding: '12px 18px', borderRadius: 16,
-        background: '#0f172a', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Локация в разработке</div>}
+        background: 'var(--liquid-inset-bg)', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Локация в разработке</div>}
       {rulesOpen && <BonusGamesRulesModal onClose={() => setRulesOpen(false)} />}
       {recordsGame !== null && <BonusRecordsModal gameId={recordsGame.id} title={recordsGame.arena.title} skillCode={recordsGame.skill_code} currentUserId={currentUserId} onClose={() => setRecordsGame(null)} />}
       {previewGame !== null ? (

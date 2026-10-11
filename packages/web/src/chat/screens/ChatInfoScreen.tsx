@@ -656,7 +656,7 @@ const modalInputStyle: React.CSSProperties = {
   width: '100%',
   borderRadius: 16,
   border: '1px solid rgba(255,255,255,0.85)',
-  background: 'rgba(255,255,255,0.55)',
+  background: 'var(--liquid-inset-bg)',
   padding: '12px 14px',
   font: 'inherit',
   fontWeight: 800,

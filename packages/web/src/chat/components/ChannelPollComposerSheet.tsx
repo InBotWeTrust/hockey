@@ -85,7 +85,7 @@ export function ChannelPollComposerSheet({
               minWidth: 34,
               minHeight: 34,
               borderRadius: 10,
-              background: 'rgba(255,255,255,0.72)',
+              background: 'var(--liquid-inset-bg)',
               color: 'var(--ink)',
             }}
           >
@@ -111,7 +111,7 @@ export function ChannelPollComposerSheet({
             outline: 'none',
             borderRadius: 16,
             padding: 12,
-            background: 'rgba(255,255,255,0.88)',
+            background: 'var(--liquid-inset-bg)',
             color: 'var(--ink)',
             fontSize: 15,
             lineHeight: 1.45,
@@ -147,7 +147,7 @@ export function ChannelPollComposerSheet({
                   outline: 'none',
                   borderRadius: 14,
                   padding: '0 12px',
-                  background: 'rgba(255,255,255,0.88)',
+                  background: 'var(--liquid-inset-bg)',
                   color: 'var(--ink)',
                   fontSize: 14,
                   fontFamily: 'inherit',
@@ -167,7 +167,7 @@ export function ChannelPollComposerSheet({
                     minWidth: 34,
                     minHeight: 34,
                     borderRadius: 10,
-                    background: 'rgba(255,255,255,0.72)',
+                    background: 'var(--liquid-inset-bg)',
                     color: 'var(--red-deep)',
                   }}
                 >

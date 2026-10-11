@@ -168,7 +168,7 @@ export function ProfileStatsGrid({
               style={{
                 fontSize: 14,
                 fontWeight: 700,
-                color: 'rgba(71, 85, 105, 0.68)',
+                color: 'var(--liquid-muted)',
               }}
             >
               ({formatProfileNumber(bestStreakDays)})
@@ -218,7 +218,7 @@ export function AchievementTile({
           borderRadius: 18,
           overflow: 'hidden',
           position: 'relative',
-          background: 'rgba(15, 23, 42, 0.08)',
+          background: 'var(--liquid-inset-bg)',
           flexShrink: 0,
           border: '1px solid rgba(255,255,255,0.82)',
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.9), 0 8px 18px rgba(15,23,42,0.12)',

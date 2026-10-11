@@ -535,8 +535,8 @@ describe('app backdrop variants', () => {
     const loading = screen.getByRole('status');
     expect(loading).toHaveClass('route-loading');
     expect(loading).toHaveStyle({
-      color: '#0f172a',
-      background: 'rgba(255, 255, 255, 0.9)',
+      color: 'var(--liquid-ink)',
+      background: 'var(--liquid-modal-bg)',
     });
   });
 

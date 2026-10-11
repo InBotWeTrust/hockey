@@ -134,7 +134,7 @@
 .bar-avatar-fallback {
   display: grid;
   place-items: center;
-  background: rgba(207, 233, 255, 0.14);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(221, 240, 255, 0.28);
   color: #f8fbff;
   font-size: 14px;
@@ -212,7 +212,7 @@
 }
 
 .bar-header .icon-btn {
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   border-color: rgba(255, 255, 255, 0.7);
 }
@@ -413,7 +413,7 @@
 /* Equal glass controls, with the main chat's blur fading over messages below. */
 .bar-chat-input :is(textarea, button[aria-label='Отправить']),
 .bar-identity__actions .btn {
-  background: rgba(255, 255, 255, 0.2) !important;
+  background: var(--liquid-inset-bg);
   color: #f8fbff !important;
   border: 1px solid rgba(255, 255, 255, 0.78) !important;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
@@ -452,7 +452,7 @@
   padding: 2px !important;
   border: 1px solid rgba(205, 232, 255, 0.46) !important;
   border-radius: 50%;
-  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06)) !important;
+  background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
   overflow: hidden;
 }

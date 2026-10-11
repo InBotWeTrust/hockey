@@ -264,7 +264,7 @@ export function OnboardingAdmin(): JSX.Element {
         </button>
       </div>
       {error && (
-        <div className="glass" role="alert" style={{ padding: 12, color: '#9f1239' }}>
+        <div className="glass" role="alert" style={{ padding: 12, color: 'var(--red-deep)' }}>
           {error}
         </div>
       )}
