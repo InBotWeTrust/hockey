@@ -6900,11 +6900,9 @@ function DuelResultCard({
               </div>
             </div>
             {match.rules.duelKind === 'marathon' && (
-              <div style={{ marginTop: 10 }}>
-                <DuelResultDetailRow
-                  label="Штрафы за таймер"
-                  value={`Вы: ${match.me.marathon_penalties ?? 0} · Соперник: ${match.opponent.marathon_penalties ?? 0}`}
-                />
+              <div className="duel-result-card__penalties">
+                <h3>Штрафы за таймер</h3>
+                <strong>{`${match.me.marathon_penalties ?? 0} : ${match.opponent.marathon_penalties ?? 0}`}</strong>
               </div>
             )}
             {tiebreaker && (
