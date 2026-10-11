@@ -3,6 +3,8 @@ export type FightZone = 'head' | 'body';
 export interface FightRules {
   version: number;
   initialHp: number;
+  initialHpByPlayer?: [number, number];
+  guardUnitsByPlayer?: [number, number];
   mainDurationMs: number;
   suddenDeathDurationMs: number;
   windupMs: number;

@@ -1,4 +1,7 @@
 import type { Pool } from 'pg';
+import { AppError } from '../plugins/errors.js';
+import type { ConflictEffect } from './conflict.js';
+import { startOlegFight,assertBarAccess } from './olegFightService.js';
 import { personaOf } from './personas.js';
 import type {
   Character,
@@ -85,10 +88,20 @@ export class SqlConversationStore implements ConversationStore {
     character: Character,
     turn: ConversationTurn,
     usedStoryIds: string[] = [],
+    conflict?: ConflictEffect,
   ): Promise<ConversationRecord> {
     const db = await this.pool.connect();
     try {
       await db.query('begin');
+      await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`bar-conversation:${user}`]);
+      await assertBarAccess(db,user);
+      if(conflict&&conflict.kind!=='none') {
+        const changed=await db.query(`insert into bar_conflicts(user_id,day,warnings,intervening)
+          select id,$2::date,$3,$4 from users where id=$1 and (now() at time zone coalesce(timezone,'UTC'))::date=$2::date
+          on conflict(user_id) do update set day=excluded.day,warnings=excluded.warnings,intervening=excluded.intervening,updated_at=now() returning user_id`,[user,conflict.day,conflict.warnings,conflict.intervening]);
+        if(!changed.rows.length)throw new AppError('conversation_stale','Начался новый день. Отправь сообщение ещё раз.',409);
+        if(conflict.kind==='fight')turn={...turn,fightId:await startOlegFight(db,user,turn.id)};
+      }
       const settings=await db.query<{enabled:boolean}>('select enabled from bar_memory_settings where user_id=$1 and character_id=$2 for update',[user,character]);
       const enabled=settings.rows[0]?.enabled ?? true;
       const { rows } = await db.query<Row>(

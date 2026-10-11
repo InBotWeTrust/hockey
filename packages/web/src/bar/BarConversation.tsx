@@ -1,6 +1,7 @@
+import { apiFetch } from '../api/apiFetch.js';
 import { BarMemoryControls } from './BarMemoryControls.js';
 import { useEffect, useRef, useState } from 'react';
-import { Expand, Minimize2, X, NotebookText, MessageCircle } from 'lucide-react';
+import { Expand, Minimize2, X, NotebookText, MessageCircle, HandFist } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { ApiError } from '../api/apiFetch.js';
 import {
@@ -36,6 +37,7 @@ export function BarConversation({
   const [readError, setReadError] = useState(false);
   const [retry, setRetry] = useState(0);
   const [showMemory,setShowMemory]=useState(false);
+  const [confirmFight,setConfirmFight]=useState(false);
   const [expanded, setExpanded] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const inFlight = useRef(false);
@@ -69,6 +71,7 @@ export function BarConversation({
         const snapshot = await fetchConversation(character);
         if (cancelled) return;
         setData(snapshot);
+        if(snapshot.turns.some(turn=>turn.fightId))window.dispatchEvent(new Event('bar-access-changed'));
         setLoading(false);
         update.current(snapshot);
         if (snapshot.pending)
@@ -106,6 +109,7 @@ export function BarConversation({
       update.current(snapshot);
       if (alive.current) {
         setData(snapshot);
+        if(snapshot.turns.some(turn=>turn.fightId))window.dispatchEvent(new Event('bar-access-changed'));
       }
       if (alive.current) setLocalMessages(items => items.filter(item => item.localId !== localId && !snapshot.turns.some(turn => turn.id === item.message.id)));
     } catch (cause) {
@@ -117,6 +121,7 @@ export function BarConversation({
           const snapshot = await fetchConversation(character);
           if (!alive.current) return;
           setData(snapshot);
+        if(snapshot.turns.some(turn=>turn.fightId))window.dispatchEvent(new Event('bar-access-changed'));
           update.current(snapshot);
           setLocalMessages(items => items.map(item => item.localId === localId ? {...item, message: {...message, id: crypto.randomUUID(), revision: snapshot.revision}} : item));
           if (snapshot.pending) setRetry((n) => n + 1);
@@ -162,6 +167,7 @@ export function BarConversation({
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface bar-conversation${!data?.turns.length ? ' bar-conversation--empty' : ''}${expanded ? ' bar-conversation--expanded' : ''}`}
       headerAction={
         <div className="bar-conversation__controls">
+          {character==='oleg'&&<button className="icon-btn" aria-label="Подраться с Олегом" disabled={waiting} onClick={()=>setConfirmFight(true)}><HandFist size={18}/></button>}
           <button className="icon-btn" aria-label={showMemory ? 'К разговору' : 'Память'} title={showMemory ? 'К разговору' : 'Память'} disabled={sending || !!data?.pending} onClick={()=>{setShowMemory(value=>!value);setExpanded(true);}}>{showMemory ? <MessageCircle size={18}/> : <NotebookText size={18}/>}</button>
           <button
             className="icon-btn"
@@ -177,6 +183,7 @@ export function BarConversation({
       }
     >
       <div className="bar-conversation__body">
+        {confirmFight&&<div className="bar-conversation__fight-confirm"><p>Ты чё, подраться захотел? Если проиграешь, вышвырну из бара и до 00:00 не пущу.</p><div className="modal-actions"><button className="btn btn--ghost" disabled={sending} onClick={()=>setConfirmFight(false)}>Отказаться</button><button className="btn btn--cta" disabled={sending} onClick={()=>{setSending(true);void apiFetch('/bar/fights/oleg',{method:'POST'}).then(()=>window.dispatchEvent(new Event('bar-access-changed'))).catch(()=>setError('Не удалось начать драку. Попробуй ещё раз.')).finally(()=>{setSending(false);setConfirmFight(false);});}}>Начать драку</button></div></div>}
         {showMemory ? <BarMemoryControls key={character} character={character} name={name} onChanged={async()=>{
           setLocalMessages([]);
           const next=await fetchConversation(character);setData(next);update.current(next);
@@ -197,9 +204,10 @@ export function BarConversation({
                   <p aria-label="Твоё сообщение" className="glass-dark chat-bubble--own bar-conversation__bubble bar-conversation__bubble--user">
                     {turn.user}
                   </p>
-                  <p aria-label={`Сообщение ${name}`} className="glass bar-conversation__bubble">
-                    {turn.assistant}
-                  </p>
+                  <div className={turn.speaker==='oleg'&&turn.intervention?'bar-conversation__intervention':undefined}>
+                    {turn.speaker==='oleg'&&turn.intervention&&<div className="bar-conversation__speaker"><img src="/bar/cards/oleg-avatar-v2.webp" alt="Олег"/><strong>Олег</strong></div>}
+                    <p aria-label={`Сообщение ${turn.speaker==='oleg'?'Олег':name}`} className="glass bar-conversation__bubble">{turn.assistant}</p>
+                  </div>
                 </div>
               ))}
             </>

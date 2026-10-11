@@ -4,7 +4,10 @@ import {
   conversationRoutes,
   type ConversationStore,
   type ConversationRecord,
+  type Character,
+  type ConversationTurn,
 } from './conversationRoutes.js';
+import { AppError } from '../plugins/errors.js';
 import type { CardResult } from './cardHistory.js';
 
 let app: ReturnType<typeof Fastify>;
@@ -165,4 +168,52 @@ it('never publishes an unchecked response when outgoing moderation times out',as
 it('does not call generation when incoming moderation is unavailable',async()=>{
   moderate.mockResolvedValue('unavailable');const result=await send();
   expect(result.statusCode).toBe(503);expect(answer).not.toHaveBeenCalled();
+});
+it('shows Oleg as the actual speaker for a scripted intervention and does not generate it',async()=>{
+ await app.close();
+ app=Fastify();app.decorate('authenticate',async(request:{user?:{id:string}})=>{request.user={id:'alice'};});
+ const row={revision:0,turns:[],pending:false} as ConversationRecord;
+ await app.register(conversationRoutes,{store:{read:async()=>row,reserve:async()=>({kind:'reserved',record:row}),complete:async(_u:string,_c:Character,t:ConversationTurn)=>({...row,revision:1,turns:[t]}),release:async()=>{}},answer,moderate,
+ gameStore:{save:async()=>true},classifyConflict:async()=> 'sexual',conflicts:{state:async()=>({day:'2026-10-11',warnings:1,intervening:false}),phrase:async()=> 'Она тебе уже ответила. Давай без этого.'}});
+ const result=await send('alice',undefined,0,'Давай переспим');
+ expect(result.statusCode).toBe(200);
+ expect(result.json().turns[0].speaker).toBe('oleg');
+ expect(result.json().turns[0].intervention).toBe('intervention');
+ expect(result.json().turns[0].assistant).toBe('Она тебе уже ответила. Давай без этого.');
+ expect(answer).not.toHaveBeenCalled();
+});
+it('keeps the reply working without escalation when conflict state is unavailable',async()=>{
+ await app.close();
+ app=Fastify();app.decorate('authenticate',async(request:{user?:{id:string}})=>{request.user={id:'alice'};});
+ const row={revision:0,turns:[],pending:false} as ConversationRecord;
+ const complete=vi.fn(async(_u:string,_c:Character,t:ConversationTurn)=>({...row,revision:1,turns:[t]}));
+ await app.register(conversationRoutes,{store:{read:async()=>row,reserve:async()=>({kind:'reserved',record:row}),complete,release:async()=>{}},answer,moderate,
+ gameStore:{save:async()=>true},classifyConflict:async()=> 'sexual',conflicts:{state:async()=>{throw new Error('database timeout');},phrase:async()=> 'Not used'}});
+ const result=await send();
+ expect(result.statusCode).toBe(200);
+ expect(answer).toHaveBeenCalledOnce();
+ expect(complete.mock.calls[0]?.[2].speaker).toBeUndefined();
+ expect((complete.mock.calls[0] as unknown[])?.[4]).toBeUndefined();
+});
+
+it('keeps midnight conflict expiration retryable without persisting a stale intervention',async()=>{
+ await app.close();app=Fastify();app.decorate('authenticate',async(request:{user?:{id:string}})=>{request.user={id:'alice'};});
+ const row={revision:0,turns:[],pending:false} as ConversationRecord;
+ await app.register(conversationRoutes,{store:{read:async()=>row,reserve:async()=>({kind:'reserved',record:row}),complete:async()=>{throw new AppError('conversation_stale','Начался новый день.',409);},release:async()=>{}},answer,moderate,gameStore:{save:async()=>true}});
+ expect((await send()).statusCode).toBe(409);
+});
+it('continues the reply when conflict state hangs past the checking deadline',async()=>{
+ await app.close();app=Fastify();app.decorate('authenticate',async(request:{user?:{id:string}})=>{request.user={id:'alice'};});
+ const row={revision:0,turns:[],pending:false} as ConversationRecord;
+ let release!:(value:{day:string;warnings:number;intervening:boolean})=>void;
+ const state=vi.fn(()=>new Promise<{day:string;warnings:number;intervening:boolean}>(done=>{release=done;}));
+ await app.register(conversationRoutes,{store:{read:async()=>row,reserve:async()=>({kind:'reserved',record:row}),complete:async(_u:string,_c:Character,t:ConversationTurn)=>({...row,revision:1,turns:[t]}),release:async()=>{}},answer,moderate,gameStore:{save:async()=>true},conflicts:{state,phrase:async()=> 'Not used'},classifyConflict:async()=> 'none'});
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout']});
+ const pending=send();
+ try{
+  await vi.waitFor(()=>expect(state).toHaveBeenCalledOnce());
+  await vi.advanceTimersByTimeAsync(6001);
+  await vi.waitFor(()=>expect(answer).toHaveBeenCalledOnce(),{timeout:100});
+  expect((await pending).statusCode).toBe(200);
+ }finally{release({day:'2026-10-11',warnings:0,intervening:false});await pending;vi.useRealTimers();}
 });

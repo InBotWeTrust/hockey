@@ -182,3 +182,7 @@
 .bar-conversation__identity small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .bar-memory__delete { width: 100%; margin-top: 20px; }
+
+.bar-conversation__speaker { display:flex;align-items:center;gap:8px;margin:12px 0 4px;font-size:13px; }
+.bar-conversation__speaker img { width:30px;height:30px;object-fit:cover;border-radius:50%; }
+.bar-conversation__fight-confirm { padding:12px; }

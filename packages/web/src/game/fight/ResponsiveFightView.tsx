@@ -4,7 +4,7 @@ import { useEffect,useRef,useState } from 'react';
 import { Assets,type Application } from 'pixi.js';
 import { fightInRange,getFightPosture,neutralFightInput,type FightHeldInput } from '@hockey/game-core';
 import { PixiStage } from '../PixiStage.js';
-import { Fighter,FIGHT_ASSETS } from './Fighter.js';
+import { Fighter,FIGHT_ASSETS,BAR_FIGHT_ASSETS } from './Fighter.js';
 import { FightTimeline } from './fightTimeline.js';
 import { fightEntranceX } from './fightEntrance.js';
 import { ResponsiveFightControls } from './ResponsiveFightControls.js';
@@ -72,9 +72,9 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
  {([player,other] as const).map((index,side)=><div key={index} className={`fight-health fight-health--${side} game-scoreboard__metric`} aria-label={`${side===0?'Ты':'Соперник'}: ${state.hp[index]} HP`}>
  <div className="fight-player-identity"><UserAvatar avatarUrl={(side===0?currentPlayer:opponent)?.avatarUrl} name={(side===0?currentPlayer:opponent)?.name??(side===0?'Ты':'Соперник')} size={28} alt={side===0?'Аватар текущего игрока':'Аватар соперника'}/>
  <span className="fight-health__name game-scoreboard__label">{(side===0?currentPlayer:opponent)?.name??(side===0?'Ты':'Соперник')}</span></div>
- <FightReserve kind="health" value={state.hp[index]} total={state.rules.initialHp}/>
- <FightReserve kind="guard" value={getFightPosture(state,index,nowMs).guardUnits} total={3}/></div>)}
+ <FightReserve kind="health" value={state.hp[index]} total={state.rules.initialHpByPlayer?.[index]??state.rules.initialHp}/>
+ <FightReserve kind="guard" value={getFightPosture(state,index,nowMs).guardUnits} total={state.rules.guardUnitsByPlayer?.[index]??3}/></div>)}
  <div className="fight-timer game-scoreboard__metric game-scoreboard__metric--timer" role="timer"><span className="game-scoreboard__label">Время</span><strong className="game-scoreboard__value">{Math.max(0,Math.ceil(((nowMs<state.phaseStartedAtMs?state.phaseStartedAtMs:state.deadlineMs)-nowMs)/1000))}</strong>{(nowMs<state.phaseStartedAtMs||state.status==='sudden_death')&&<small>{nowMs<state.phaseStartedAtMs?'Старт':'До первого попадания'}</small>}</div></div></div>
- <div className="fight-arena"><PixiStage onResize={layout} onReady={a=>{app.current=a;void Assets.load([...FIGHT_ASSETS]).then(()=>{if(app.current!==a)return;fighters.current=([0,1] as const).map(side=>{const f=new Fighter(side);a.stage.addChild(f.view);return f;});layoutRef.current();}).catch(()=>{if(app.current===a)setFailed(true);});}}/><div className="fight-feedback-layer" aria-hidden="true">{([0,1] as const).map(i=><span key={i} hidden className="fight-responsive-flash" ref={node=>{if(node)flashes.current.set(i,node);else flashes.current.delete(i);}}/>)}</div>{failed&&<p className="fight-notice" role="status">Игроки не загрузились.</p>}</div></div>
+ <div className="fight-arena"><PixiStage onResize={layout} onReady={a=>{app.current=a;void Assets.load([...FIGHT_ASSETS,...(props.skin==='bar'?BAR_FIGHT_ASSETS:[])]).then(()=>{if(app.current!==a)return;fighters.current=([0,1] as const).map(side=>{const f=new Fighter(side,props.skin==='bar'?(side===0?'player':'oleg'):undefined);a.stage.addChild(f.view);return f;});layoutRef.current();}).catch(()=>{if(app.current===a)setFailed(true);});}}/><div className="fight-feedback-layer" aria-hidden="true">{([0,1] as const).map(i=><span key={i} hidden className="fight-responsive-flash" ref={node=>{if(node)flashes.current.set(i,node);else flashes.current.delete(i);}}/>)}</div>{failed&&<p className="fight-notice" role="status">Игроки не загрузились.</p>}</div></div>
  <ResponsiveFightControls disabled={disabled} onInput={setInput} onAttack={attack} inRange={fightInRange(state,nowMs)} reset={reset}/></section>;
 }

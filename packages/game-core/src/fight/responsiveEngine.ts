@@ -20,7 +20,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
   }
   history.sort((a,b)=>a.effectiveAtMs-b.effectiveAtMs||a.player-b.player||a.seq-b.seq);
   const state:FightState={...input,rules:{...input.rules},hp:[...(input.responsive?.initialHp??input.hp)],lastSeq,actions:[],moves:[],responsive:{commands:history,initialHp:[...(input.responsive?.initialHp??input.hp)],timeline:[],contacts:[]}};
-  const runtime:FightFrame={atMs:input.phaseStartedAtMs,positions:[.32,.68],players:players.map(()=>({...neutralFightInput(),guardUnits:3,readyAtMs:input.phaseStartedAtMs,hitUntilMs:0,guardBreakUntilMs:0})) as FightFrame['players'],leaseUntil:[0,0],releasedAt:[input.phaseStartedAtMs,input.phaseStartedAtMs],regenerated:[0,0]};
+  const runtime:FightFrame={atMs:input.phaseStartedAtMs,positions:[.32,.68],players:players.map(i=>({...neutralFightInput(),guardUnits:input.rules.guardUnitsByPlayer?.[i]??3,readyAtMs:input.phaseStartedAtMs,hitUntilMs:0,guardBreakUntilMs:0})) as FightFrame['players'],leaseUntil:[0,0],releasedAt:[input.phaseStartedAtMs,input.phaseStartedAtMs],regenerated:[0,0]};
   const held=players.map(()=>neutralFightInput());
   const buffered:[FightActionCommand|null,FightActionCommand|null]=[null,null];
   const end=Math.min(input.deadlineMs,Math.max(sealedMs,...history.map(c=>c.effectiveAtMs),input.phaseStartedAtMs));
@@ -48,7 +48,7 @@ export function advanceResponsiveFight(input: FightState, commands: readonly Fig
       if(p.guard){runtime.releasedAt[i]=null;runtime.regenerated[i]=0;}
       else if(runtime.releasedAt[i]===null){runtime.releasedAt[i]=t;runtime.regenerated[i]=0;}
       const release=runtime.releasedAt[i];
-      if(release!==null){const count=Math.max(0,Math.floor((t-release-600)/500));p.guardUnits=Math.min(3,p.guardUnits+count-runtime.regenerated[i]);runtime.regenerated[i]=count;}
+      if(release!==null){const count=Math.max(0,Math.floor((t-release-600)/500));p.guardUnits=Math.min(state.rules.guardUnitsByPlayer?.[i]??3,p.guardUnits+count-runtime.regenerated[i]);runtime.regenerated[i]=count;}
     }
     for(const c of history.filter(c=>c.effectiveAtMs===t)){
       const p=runtime.players[c.player];
