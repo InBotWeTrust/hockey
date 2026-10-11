@@ -7,6 +7,8 @@ import {
   type BarOccupantId,
   type BarAction,
 } from '@hockey/game-core';
+import { CharacterGesture } from './characterGesture.js';
+import { CharacterHitArea } from './CharacterHitArea.js';
 import { OnlineDurakLobby } from './cards/OnlineDurakLobby.js';
 import { BarIdentityPanel } from './BarIdentityPanel.js';
 import './bar-panorama.css';
@@ -30,6 +32,7 @@ export function BarScene({
   onTalk,
   conversationStarted = false,
   hideIdentity = false,
+  onPhysicalIncident,
 }: {
   layout: BarLayout;
   activeSlotId: string;
@@ -41,7 +44,13 @@ export function BarScene({
   onTalk?: (character: BarCharacter) => void;
   conversationStarted?: boolean;
   hideIdentity?: boolean;
+  onPhysicalIncident?: (character: BarCharacter) => void;
 }) {
+  const incident = useRef(onPhysicalIncident);
+  incident.current = onPhysicalIncident;
+  const target = useRef<BarCharacter | null>(null);
+  const [gesture] = useState(() => new CharacterGesture(() => { if (target.current) incident.current?.(target.current); }));
+  useEffect(() => { gesture.cancel(); target.current=null; return () => gesture.cancel(); }, [gesture,activeSlotId,hideIdentity]);
   const index = Math.max(
     0,
     layout.slots.findIndex((s) => s.id === activeSlotId),
@@ -132,16 +141,22 @@ export function BarScene({
       onTouchCancel={() => {
         start.current = null;
       }}
+      onPointerMove={(e) => gesture.move(e.pointerId,e.clientX,e.clientY)}
+      onContextMenu={(e) => { if ((e.target as Element).closest('[data-bar-character]')) e.preventDefault(); }}
       onPointerDown={(e) => {
+        const hit=(e.target as Element).closest('[data-bar-character]')?.getAttribute('data-bar-character') as BarCharacter | null;
+        if (hit && !hideIdentity) { target.current=hit; gesture.down(e.pointerId,e.clientX,e.clientY); e.currentTarget.setPointerCapture?.(e.pointerId); } else gesture.cancel();
         if (e.pointerType === 'mouse' && !(e.target as HTMLElement).closest('button')) {
           start.current = { x: e.clientX, y: e.clientY };
           e.currentTarget.setPointerCapture?.(e.pointerId);
         }
       }}
       onPointerUp={(e) => {
+        gesture.up(e.pointerId);
         if (e.pointerType === 'mouse') finish(e.clientX, e.clientY);
       }}
       onPointerCancel={() => {
+        gesture.cancel();
         start.current = null;
       }}
       onKeyDown={(e) => {
@@ -190,6 +205,9 @@ export function BarScene({
                     transform: `translate(-${s.x}%,-${s.y}%)`,
                   }}
                 />
+              )}
+              {onPhysicalIncident && !hideIdentity && s.id===activeSlotId && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
+                <CharacterHitArea character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${s.scale*100}%`,height:`${s.scale*100}%`,left:`${s.x}%`,top:`${s.y}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
             </div>
           );

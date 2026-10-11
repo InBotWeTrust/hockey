@@ -6,7 +6,7 @@ import type { ComputerOpponentId } from './cards/computerOpponents.js';
 import { fetchBarLayout } from './layoutApi.js';
 import { BarScene } from './BarScene.js';
 import { BarConversation } from './BarConversation.js';
-import { barCharacters, fetchConversation, type BarCharacter } from './conversationApi.js';
+import { barCharacters, fetchConversation, sendPhysicalIncident, type BarCharacter } from './conversationApi.js';
 export function BarPanorama() {
   const navigate = useNavigate();
   const [layout, setLayout] = useState(createDefaultBarLayout);
@@ -16,6 +16,22 @@ export function BarPanorama() {
   const [retry, setRetry] = useState(0);
   const touched = useRef(!!sessionStorage.getItem('bar-active-slot'));
   const [conversation, setConversation] = useState<BarCharacter | null>(null);
+  const [incidentError,setIncidentError]=useState(false);
+  const pendingIncident=useRef<{character:BarCharacter;id:string}|null>(null);
+  const incidentSending=useRef(false);
+  const [conversationVersion,setConversationVersion]=useState(0);
+  const physicalIncident=async(character:BarCharacter)=>{
+    if(incidentSending.current)return;
+    const event=pendingIncident.current ?? {character,id:crypto.randomUUID()};
+    pendingIncident.current=event;incidentSending.current=true;setIncidentError(false);
+    try {
+      const snapshot=await sendPhysicalIncident(event.character,event.id);
+      pendingIncident.current=null;
+      setConversationVersion(v=>v+1);setConversation(event.character);
+      setStarted(previous=>({...previous,[event.character]:true}));
+      if(snapshot.turns.some(turn=>turn.fightId))window.dispatchEvent(new Event('bar-access-changed'));
+    }catch{setIncidentError(true);}finally{incidentSending.current=false;}
+  };
   const [started, setStarted] = useState<Partial<Record<BarCharacter, boolean>>>({});
   const selectedCharacter = layout.slots.find((s) => s.id === slot)?.occupantId;
   useEffect(() => {
@@ -99,10 +115,11 @@ export function BarPanorama() {
         }}
         onAction={action}
         onTalk={setConversation}
+        {...(!incidentError ? {onPhysicalIncident:(character:BarCharacter)=>void physicalIncident(character)} : {})}
         conversationStarted={!!started[selectedCharacter as BarCharacter]}
         onBack={() => navigate('/sections')}
         notice={
-          error ? (
+          incidentError ? <><span>Не удалось вызвать Олега.</span><button onClick={()=>{const event=pendingIncident.current;if(event)void physicalIncident(event.character);}}>Повторить</button></> : error ? (
             <>
               <span>Не удалось загрузить расстановку.</span>
               <button onClick={() => setRetry((v) => v + 1)}>Повторить</button>
@@ -112,7 +129,7 @@ export function BarPanorama() {
       />
       {conversation && (
         <BarConversation
-          key={conversation}
+          key={`${conversation}:${conversationVersion}`}
           character={conversation}
           name={layout.profiles[conversation].name}
           avatar={layout.profiles[conversation].avatar}

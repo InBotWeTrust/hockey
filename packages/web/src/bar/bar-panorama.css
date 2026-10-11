@@ -466,3 +466,6 @@
 .bar-space:has(.bar-space__actions--terminal) button.bar-place-preview {
   max-width: 100%;
 }
+
+.bar-space__character-hit { position:absolute; pointer-events:none; user-select:none; -webkit-touch-callout:none; }
+.bar-space__character-hit path { fill:transparent; pointer-events:fill; }

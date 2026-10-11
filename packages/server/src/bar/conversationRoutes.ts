@@ -1,3 +1,4 @@
+import { recordPhysicalIncident } from './physicalIncident.js';
 import { SqlConflictStore,createConflictClassifier,nextConflict,type ClassifyConflict,type ConflictEffect } from './conflict.js';
 import { personaOf } from './personas.js';
 import { SqlDialoguePrivacy, type DialoguePrivacy } from './dialoguePrivacy.js';
@@ -31,6 +32,7 @@ export interface ConversationTurn {
   speaker?: Character;
   intervention?: string;
   fightId?: string;
+  event?: 'physical';
 }
 export interface ConversationRecord {
   revision: number;
@@ -197,6 +199,14 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
   const snapshot = (character: Character, record: ConversationRecord) => ({
     ...record,
     greeting: characterVoices[character].greeting,
+  });
+  app.post('/bar/conversations/:character/physical-incident', { preHandler: [app.authenticate] }, async request => {
+    const character=characterOf(request.params);
+    const parsed=z.object({eventId:z.string().uuid()}).strict().safeParse(request.body);
+    if(!parsed.success)throw new AppError('invalid_incident','Не удалось распознать нажатие.',400);
+    const {eventId}=parsed.data;
+    await recordPhysicalIncident(app.pg,request.user.id,character,eventId);
+    return snapshot(character,await store.read(request.user.id,character));
   });
   app.get('/bar/conversations/:character', { preHandler: [app.authenticate] }, async (request) => {
     const character = characterOf(request.params);

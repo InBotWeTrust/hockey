@@ -57,7 +57,7 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
     for (const turn of turns.slice(-20).reverse()) {
       const size = turn.user.length + turn.assistant.length + 100;
       if (size > available) break;
-      recent.unshift({ role: 'user', content: redactSecrets(turn.user) }, { role: 'assistant', content: redactSecrets(turn.speaker==='oleg'&&character!=='oleg' ? `Олег, вмешательство охранника: ${turn.assistant}` : turn.assistant) });
+      recent.unshift(...(turn.user ? [{ role: 'user', content: redactSecrets(turn.user) }] : []), { role: 'assistant', content: redactSecrets(turn.speaker==='oleg'&&character!=='oleg' ? `Олег, вмешательство охранника: ${turn.assistant}` : turn.assistant) });
       available -= size;
     }
     const memoryData = { ...(context?.fightMemories ? {fightMemories:context.fightMemories} : {}), ...(context?.recentGames ? {recentGames:context.recentGames} : {}), summary: context?.summary && safeMemoryText(context.summary) ? context.summary.slice(0,1800) : '', facts: context?.facts.filter(fact=>safeMemoryText(fact.content)).slice(0,12) ?? [], relationship: context?.relationship.filter(safeMemoryText).slice(0,6) ?? [] };

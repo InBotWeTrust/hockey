@@ -217,3 +217,9 @@ it('continues the reply when conflict state hangs past the checking deadline',as
   expect((await pending).statusCode).toBe(200);
  }finally{release({day:'2026-10-11',warnings:0,intervening:false});await pending;vi.useRealTimers();}
 });
+it('validates physical gestures before accessing storage and requires auth',async()=>{
+ const url='/bar/conversations/maria/physical-incident';
+ expect((await app.inject({method:'POST',url,payload:{eventId:'bad'}})).statusCode).toBe(401);
+ expect((await app.inject({method:'POST',url,headers:{authorization:'alice'},payload:{eventId:'bad'}})).statusCode).toBe(400);
+ expect((await app.inject({method:'POST',url:'/bar/conversations/online/physical-incident',headers:{authorization:'alice'},payload:{eventId:'11111111-1111-4111-8111-111111111111'}})).statusCode).toBe(400);
+});

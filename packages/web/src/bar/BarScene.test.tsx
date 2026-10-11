@@ -114,3 +114,15 @@ it('navigates when clicking a marker with its preview already open', () => {
   fireEvent.click(marker);
   expect(select).toHaveBeenCalledWith('bar-2');
 });
+it('detects character taps, ignores background and cancels a swipe', () => {
+ const incident=vi.fn(),select=vi.fn();
+ const {container,rerender}=render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()} onPhysicalIncident={incident}/>);
+ const main=container.querySelector('main')!,hit=container.querySelector('[data-bar-character="maria"]')!;
+ const pointer=(target:Element,type:string,x=0)=>{const event=new MouseEvent(type,{bubbles:true,clientX:x});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);};
+ pointer(hit,'pointerdown');pointer(main,'pointerup');pointer(hit,'pointerdown');pointer(main,'pointermove',60);pointer(main,'pointerup',60);
+ expect(incident).not.toHaveBeenCalled();expect(select).toHaveBeenCalledWith('bar-2');
+ for(let i=0;i<3;i++){pointer(main,'pointerdown');pointer(main,'pointerup');}expect(incident).not.toHaveBeenCalled();
+ for(let i=0;i<3;i++){pointer(hit,'pointerdown');pointer(main,'pointerup');}expect(incident).toHaveBeenCalledWith('maria');expect(incident).toHaveBeenCalledTimes(1);
+ rerender(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" hideIdentity onSelectSlot={select} onAction={vi.fn()} onPhysicalIncident={incident}/>);
+ expect(container.querySelector('[data-bar-character]')).toBeNull();
+});
