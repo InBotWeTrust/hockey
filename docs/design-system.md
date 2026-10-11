@@ -113,7 +113,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 
 Общие компоненты проверяются в локальном синтетическом каталоге на баре, льду и пляже. Проверки размеров: 360 и 430 px; состояния: выбранный/обычный/disabled пункт, карточка, обычная модалка, начало периода, portal-select и отключённая прозрачность. Это проверка реальных компонентов с тестовым содержимым, без входа и серверных записей. Она не заменяет приёмку каждой авторизованной страницы на dev и физическом iPhone.
 
-Результаты и границы проверки приведены в конце документа.
+Итоговые результаты тестов, сборки и браузерной проверки записываются в конце документа после завершения проверок.
 
 ## Каталог элементов и вариантов
 
@@ -262,7 +262,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.login-screen__mini-app-card` | `width: min(100%, 360px)`; `padding: 24px`; `gap: 16px`; `color: var(--ink)` |
 | `.login-screen__mini-app-card h1, .login-screen__mini-app-card p` | `margin: 0` |
 | `.login-screen__mini-app-card p` | `line-height: 1.55` |
-| `.login-screen__mini-app-card a` | `color: #075985`; `font-weight: 800` |
+| `.login-screen__mini-app-card a` | `color: #91d1f3`; `font-weight: 800` |
 | `.login-screen .telegram-login-unavailable, .login-screen .telegram-login-fallback__copy` | `color: rgba(245, 250, 255, 0.92) !important`; `font-size: 12px`; `font-weight: 700`; `line-height: 1.35` |
 | `.login-screen__brand`<br>@media (max-height: 720px) | `padding-top: 8px` |
 | `.login-screen__logo`<br>@media (max-height: 720px) | `width: 68px`; `height: 68px`; `border-radius: 19px` |
@@ -381,7 +381,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-games-skill-tabs .segmented-tabs` | `width: 100%`; `max-width: 100%`; `min-width: 0` |
 | `.bonus-games-skill-tabs .segmented-tabs--scrollable` | `gap: 4px`; `padding-inline: 4px` |
 | `.bonus-games-skill-tabs .segmented-tabs--scrollable .segmented-tabs__item` | `padding-inline: 8px` |
-| `.bonus-games-attempt-progress` | `min-height: 74px`; `gap: 9px`; `padding: 12px 13px 11px`; `border: 1px solid rgba(255, 255, 255, 0.94)`; `border-radius: 22px`; `background: rgba(237, 244, 250, 0.84)`; `box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 2px rgba(74, 144, 226, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9)` |
+| `.bonus-games-attempt-progress` | `min-height: 74px`; `gap: 9px`; `padding: 12px 13px 11px`; `border: 1px solid rgba(255, 255, 255, 0.94)`; `border-radius: 22px`; `background: var(--liquid-card-bg)`; `box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 2px rgba(74, 144, 226, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.9)` |
 | `.bonus-games-attempt-progress__bar` | `height: 34px`; `border: 1px solid rgba(255, 255, 255, 0.9)`; `border-radius: 999px`; `background: rgba(119, 137, 156, 0.48)`; `box-shadow: inset 0 1px 4px rgba(15, 23, 42, 0.14)` |
 | `.bonus-games-attempt-progress__bar > span` | `min-width: 0`; `border-radius: inherit`; `background: linear-gradient(90deg, #399bc8 0%, #59b9de 72%, #7ccbe8 100%)` |
 | `.bonus-games-attempt-progress__value` | `color: var(--liquid-ink)`; `font-size: 14px`; `font-weight: 950`; `letter-spacing: 0.04em` |
@@ -391,7 +391,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-games-rules` | `gap: 9px`; `margin: 0`; `color: var(--muted)`; `font-size: 13px`; `font-weight: 700`; `line-height: 1.4` |
 | `.bonus-games-rules li::marker` | `color: var(--ink)`; `font-weight: 900` |
 | `.bonus-games-catalog__notice` | `border: 1px solid rgba(255, 255, 255, 0.72)`; `border-radius: 18px`; `padding: 15px`; `background: var(--liquid-inset-bg)`; `color: var(--muted)`; `font-size: 14px`; `font-weight: 750`; `line-height: 1.4` |
-| `.bonus-games-catalog__notice--error` | `background: rgba(241, 247, 252, 0.9)`; `border-color: rgba(255, 255, 255, 0.94)`; `color: var(--liquid-muted)`; `font-weight: 850`; `box-shadow: 0 12px 28px rgba(2, 8, 23, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.86)` |
+| `.bonus-games-catalog__notice--error` | `background: var(--liquid-card-bg)`; `border-color: rgba(255, 255, 255, 0.94)`; `color: var(--liquid-muted)`; `font-weight: 850`; `box-shadow: 0 12px 28px rgba(2, 8, 23, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.86)` |
 | `.chat-list-error` | `margin: 12px 14px`; `padding: 18px`; `border: 1px solid rgba(255, 255, 255, 0.9)`; `border-radius: 20px`; `background: var(--liquid-inset-bg)`; `box-shadow: 0 14px 32px rgba(2, 8, 23, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.84)`; `backdrop-filter: blur(16px) saturate(130%)` |
 | `.chat-list-error__copy` | `margin-bottom: 10px`; `color: var(--liquid-muted)`; `font-size: 14px`; `font-weight: 800` |
 | `.bonus-games-catalog__grid` | `gap: 12px` |
@@ -417,8 +417,8 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-game-card__artwork-frame` | `width: calc(100% - 24px)`; `margin: 12px 12px 0`; `border: 1px solid rgba(255, 255, 255, 0.82)`; `border-radius: 16px`; `background: var(--liquid-card-bg)`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42)` |
 | `.bonus-game-card__artwork` | `width: 100%`; `height: 100%`; `border-radius: inherit` |
 | `.bonus-game-card__status` | `min-height: 0`; `padding: 3px 7px`; `border: 0`; `border-radius: 999px`; `box-shadow: none`; `font-size: 9px`; `font-weight: 800`; `line-height: 1.1` |
-| `.bonus-game-card__status--completed` | `background: rgba(32, 122, 82, 0.13)`; `color: #287457` |
-| `.bonus-game-card__status--available` | `background: rgba(180, 137, 38, 0.14)`; `color: #87681f` |
+| `.bonus-game-card__status--completed` | `background: rgba(32, 122, 82, 0.13)`; `color: #a4e0c9` |
+| `.bonus-game-card__status--available` | `background: rgba(180, 137, 38, 0.14)`; `color: #e8d19b` |
 | `.bonus-game-card__status--locked` | `background: var(--liquid-card-bg)`; `color: var(--liquid-muted)` |
 | `.bonus-game-card__completion-badge` | `width: 22px`; `height: 22px`; `border: 1px solid rgba(255, 255, 255, 0.82)`; `border-radius: 999px`; `background: var(--liquid-card-bg)`; `color: #fff`; `box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18)` |
 | `.bonus-game-card__content` | `grid-template-columns: minmax(0, 1fr) 20px`; `gap: 7px 8px`; `padding: 13px 14px 14px` |
@@ -436,7 +436,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-game-card__reward--muted .bonus-game-card__reward-icon` | `color: rgba(15, 23, 42, 0.48) !important` |
 | `.bonus-game-card__action` | `min-height: 46px`; `margin-top: 4px` |
 | `.bonus-game-card__chevron` | `color: var(--card-chevron-color)` |
-| `.bonus-games-purchase-error` | `margin: 14px 0 0`; `color: #b91c1c`; `font-size: 13px`; `font-weight: 800`; `line-height: 1.4` |
+| `.bonus-games-purchase-error` | `margin: 14px 0 0`; `color: #ef9595`; `font-size: 13px`; `font-weight: 800`; `line-height: 1.4` |
 | `.bonus-game-mode-state` | `min-height: 100dvh`; `padding: calc(20px + var(--app-safe-top)) 18px calc(96px + var(--app-safe-bottom))` |
 | `.bonus-game-mode-card` | `width: min(100%, 340px)`; `gap: 14px`; `padding: 24px 20px`; `border: 1px solid rgba(255, 255, 255, 0.82)`; `border-radius: 24px`; `background: var(--liquid-card-bg)`; `box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16)` |
 | `.bonus-game-mode-card h1, .bonus-game-mode-card p` | `margin: 0` |
@@ -462,8 +462,8 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.admin-form-section-title:first-child` | `margin-top: 0`; `padding-top: 0` |
 | `.bonus-game-reconcile` | `max-width: min(250px, calc(100cqw - 28px))`; `min-height: 38px`; `gap: 8px`; `padding: 8px 10px`; `border: 1px solid rgba(255, 255, 255, 0.66)`; `border-radius: 14px`; `color: var(--liquid-ink)`; `background: var(--liquid-inset-bg)`; `box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.54)`; `backdrop-filter: blur(12px) saturate(135%)`; `font-size: 11px`; `font-weight: 850`; `line-height: 1.2` |
 | `.bonus-game-reconcile__spinner` | `width: 12px`; `height: 12px`; `border: 2px solid rgba(37, 99, 235, 0.2)`; `border-radius: 50%` |
-| `.bonus-game-reconcile__retry` | `min-height: 26px`; `padding: 0 8px`; `border: 1px solid rgba(37, 99, 235, 0.2)`; `border-radius: 999px`; `color: #1d4ed8`; `background: var(--liquid-inset-bg)` |
-| `.bonus-game-abandon-error` | `margin: 12px 0 0`; `color: #b91c1c`; `font-size: 13px`; `font-weight: 800` |
+| `.bonus-game-reconcile__retry` | `min-height: 26px`; `padding: 0 8px`; `border: 1px solid rgba(37, 99, 235, 0.2)`; `border-radius: 999px`; `color: #93acf1`; `background: var(--liquid-inset-bg)` |
+| `.bonus-game-abandon-error` | `margin: 12px 0 0`; `color: #ef9595`; `font-size: 13px`; `font-weight: 800` |
 | `.modal-card.bonus-game-result-modal` | `width: min(100%, 360px)`; `padding: 20px 18px 18px`; `background: var(--liquid-modal-bg)`; `box-shadow: none`; `backdrop-filter: none` |
 | `.bonus-game-result-modal .modal-title` | `font-size: 14px`; `font-weight: 900`; `letter-spacing: 0.1em`; `line-height: 1.25` |
 | `.bonus-game-result-modal .modal-copy` | `margin-top: 6px`; `color: var(--liquid-muted)`; `font-size: 12px`; `font-weight: 800` |
@@ -623,7 +623,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.segmented-tabs--scrollable .segmented-tabs__item` | `min-width: max-content`; `min-height: 36px`; `padding-inline: 13px` |
 | `.tournament-details > .segmented-tabs--scrollable .segmented-tabs__item` | `min-width: max-content` |
 | `.segmented-tabs__item--active` | `border-color: rgba(15, 23, 42, 0.92)`; `background: var(--liquid-selected-bg)`; `color: #ffffff`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.12)` |
-| `.app-shell--arena .segmented-tabs` | `background: rgba(226, 236, 246, 0.78)`; `border-color: rgba(255, 255, 255, 0.9)`; `box-shadow: 0 8px 22px rgba(2, 8, 23, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.86)`; `backdrop-filter: blur(16px) saturate(125%)` |
+| `.app-shell--arena .segmented-tabs` | `background: var(--liquid-chrome-bg)`; `border-color: rgba(255, 255, 255, 0.9)`; `box-shadow: 0 8px 22px rgba(2, 8, 23, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.86)`; `backdrop-filter: blur(16px) saturate(125%)` |
 | `.app-shell--arena .segmented-tabs__item:not(.segmented-tabs__item--active)` | `color: var(--liquid-ink)`; `font-weight: 850` |
 | `.segmented-tabs__attention` | `width: 7px`; `height: 7px`; `border-radius: 999px`; `background: rgba(220, 38, 38, 0.94)`; `box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.14)` |
 | `.segmented-tabs__attention--small` | `width: 6px`; `height: 6px`; `box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.14)` |
@@ -636,9 +636,9 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.duel-stumble-notice, .duel-fatigue-notice, .initial-training-feedback-notice` | `gap: 9px`; `max-width: calc(100% - 40px)`; `padding: 9px 13px 10px`; `border-radius: clamp(14px, 5cqw, 22px)`; `border: 1px solid rgba(205, 232, 255, 0.46)`; `background: var(--liquid-inset-bg)`; `color: rgba(255, 255, 255, 0.96)`; `font-size: 12px`; `font-weight: 500`; `letter-spacing: 0`; `line-height: 1`; `box-shadow: 0 3px 10px rgba(0, 10, 27, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(112, 182, 247, 0.12)`; `backdrop-filter: blur(18px) saturate(1.45)` |
 | `.duel-stumble-notice::before, .duel-fatigue-notice::before, .initial-training-feedback-notice::before` | `width: 3px`; `height: 18px`; `border-radius: 2px` |
 | `.duel-stumble-notice::before` | `background: #facc15` |
-| `.bonus-game-endurance-timer` | `width: auto`; `min-width: clamp(120px, 34%, 180px)`; `gap: clamp(3px, 1.2cqw, 5px)`; `padding: 10px 22px 11px`; `color: #6fac78` |
+| `.bonus-game-endurance-timer` | `width: auto`; `min-width: clamp(120px, 34%, 180px)`; `gap: clamp(3px, 1.2cqw, 5px)`; `padding: 10px 22px 11px`; `color: #b1d2b6` |
 | `.bonus-game-endurance-timer__value` | `font-size: clamp(34px, 8vw, 48px)`; `font-weight: 900`; `letter-spacing: -0.025em`; `line-height: 1` |
-| `.bonus-game-endurance-timer--warning` | `color: #d9ae3d` |
+| `.bonus-game-endurance-timer--warning` | `color: #ebd499` |
 | `.bonus-game-endurance-timer--danger` | `color: #df6b6b` |
 | `.duel-fatigue-notice::before` | `background: #fb923c` |
 | `.initial-training-feedback-notice` | `width: min(440px, calc(100% - 40px))`; `line-height: 1.35` |
@@ -662,13 +662,13 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.app-shell--arena .icon-btn:is([aria-label='Назад'], [aria-label='К списку чатов']), .catalog-header-back, .icon-btn--page-back` | `width: 38px`; `height: 38px`; `min-width: 38px`; `min-height: 38px`; `background: var(--chrome-surface-bg)`; `border-color: var(--chrome-surface-border)`; `color: var(--liquid-ink)`; `box-shadow: 0 7px 18px rgba(2, 8, 23, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.82)`; `backdrop-filter: blur(12px) saturate(140%)` |
 | `.home-arena-modal-card` | `width: min(430px, calc(100vw - 28px))`; `max-height: min(76vh, 680px)`; `gap: 14px` |
 | `.home-arena-options` | `min-width: 0`; `margin: 0`; `padding: 0`; `border: 0`; `gap: 8px` |
-| `.home-arena-option` | `min-height: 70px`; `padding: 8px`; `grid-template-columns: auto 72px minmax(0, 1fr)`; `gap: 10px`; `border: 1px solid rgba(255, 255, 255, 0.76)`; `border-radius: 16px`; `color: var(--ink)`; `background: rgba(255, 255, 255, 0.28)`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66)` |
+| `.home-arena-option` | `min-height: 70px`; `padding: 8px`; `grid-template-columns: auto 72px minmax(0, 1fr)`; `gap: 10px`; `border: 1px solid rgba(255, 255, 255, 0.76)`; `border-radius: 16px`; `color: var(--ink)`; `background: var(--liquid-inset-bg)`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.66)` |
 | `.home-arena-option:has(input:checked)` | `border-color: rgba(15, 23, 42, 0.82)`; `color: #ffffff`; `background: rgba(15, 23, 42, 0.76)` |
 | `.home-arena-option input` | `margin: 0 0 0 4px` |
 | `.home-arena-option img` | `width: 72px`; `height: 52px`; `border-radius: 11px`; `border: 1px solid rgba(255, 255, 255, 0.66)` |
 | `.home-arena-option span` | `min-width: 0`; `font-size: 15px`; `font-weight: 900`; `line-height: 1.2` |
 | `.home-arena-modal-error` | `margin: 0`; `color: var(--red-deep)`; `font-size: 13px`; `font-weight: 800`; `line-height: 1.35` |
-| `.home-arena-modal-status` | `margin: 0`; `padding: 11px 13px`; `border: 1px solid rgba(15, 23, 42, 0.2)`; `border-radius: 14px`; `color: var(--ink)`; `background: rgba(255, 255, 255, 0.44)`; `font-size: 13px`; `font-weight: 850`; `line-height: 1.35` |
+| `.home-arena-modal-status` | `margin: 0`; `padding: 11px 13px`; `border: 1px solid rgba(15, 23, 42, 0.2)`; `border-radius: 14px`; `color: var(--ink)`; `background: var(--liquid-inset-bg)`; `font-size: 13px`; `font-weight: 850`; `line-height: 1.35` |
 | `.profile-screen, .profile-detail-screen` | `min-height: 100%`; `padding: calc(14px + var(--app-safe-top)) 14px calc(98px + var(--app-safe-bottom))`; `color: var(--ink)` |
 | `.profile-screen--locker-bg, .mode-shell--locker` | `background-color: var(--liquid-inset-bg)` |
 | `.locker-room-bg--beginner` | `background: linear-gradient(180deg, rgba(7, 20, 39, 0.12), rgba(7, 20, 39, 0.38)), url('/backgrounds/locker-room-beginner.webp') center top / cover no-repeat` |
@@ -733,7 +733,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.weekly-challenge-failure-modal__task--completed .weekly-challenge-failure-modal__status` | `border-color: #16a34a`; `background: #16a34a`; `color: white` |
 | `.profile-trophy-history__challenge-tasks li` | `grid-template-columns: minmax(0, 1fr) auto`; `gap: 12px`; `color: var(--ink)`; `font-size: 12px`; `font-weight: 750`; `line-height: 1.3` |
 | `.profile-trophy-history__challenge-tasks li > strong` | `min-width: 30px` |
-| `.profile-trophy-showcase__item svg` | `width: 18px`; `height: 18px`; `color: #e0a92c` |
+| `.profile-trophy-showcase__item svg` | `width: 18px`; `height: 18px`; `color: #efd494` |
 | `.profile-trophy-showcase__item strong` | `width: 100%`; `min-width: 0`; `color: var(--ink)`; `font-size: 18px`; `line-height: 1` |
 | `.profile-trophy-showcase__number` | `color: inherit`; `line-height: inherit` |
 | `.profile-trophy-showcase__item > span` | `color: var(--muted)`; `font-size: 9px`; `line-height: 1.12`; `font-weight: 800` |
@@ -901,7 +901,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.profile-story-series-card--unlocked .profile-story-series-card__visual` | `width: 76px`; `height: 76px` |
 | `.profile-story-series-card--unlocked .profile-story-series-card__visual img` | `width: 100%`; `height: 100%` |
 | `.profile-story-series-card__copy > span` | `color: var(--muted)`; `font-size: 11px`; `font-weight: 650`; `line-height: 1.25` |
-| `.profile-story-series-card--unlocked .profile-story-series-card__copy small` | `color: #2d7b52` |
+| `.profile-story-series-card--unlocked .profile-story-series-card__copy small` | `color: #a5dec0` |
 | `.profile-story-series-card__visual` | `width: 58px`; `height: 58px`; `border-radius: 13px`; `background: radial-gradient(circle at 30% 22%, rgba(96, 165, 250, 0.3), transparent 48%), linear-gradient(145deg, #31445d, #162438)`; `color: rgba(226, 232, 240, 0.92)`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.16)` |
 | `.profile-story-series-card__visual svg` | `width: 22px`; `height: 22px` |
 | `.profile-story-series-card__copy` | `min-width: 0`; `gap: 5px` |
@@ -939,7 +939,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.inventory-bank-card__bonus` | `min-height: 19px`; `padding: 3px 7px`; `border-radius: var(--r-pill)`; `font-size: 9px`; `font-weight: 950`; `line-height: 1` |
 | `.inventory-bank-card__bonus` | `color: var(--liquid-muted)`; `border: 1px solid rgba(30, 91, 151, 0.18)`; `background: var(--liquid-card-bg)` |
 | `.inventory-bank-card__marker` | `min-width: 27px`; `height: 18px`; `padding: 0 6px`; `border-radius: var(--r-pill)`; `font-size: 8px`; `font-weight: 950`; `line-height: 1`; `letter-spacing: 0.03em`; `color: #fff`; `border: 1px solid rgba(255, 255, 255, 0.22)`; `background: var(--ink)`; `box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2)` |
-| `.inventory-bank-card__marker--premium` | `color: #563b00`; `border-color: rgba(255, 255, 255, 0.58)`; `background: linear-gradient(135deg, #ffe18a, #f4b942)`; `box-shadow: 0 3px 9px rgba(180, 117, 10, 0.3)` |
+| `.inventory-bank-card__marker--premium` | `color: #f3d491`; `border-color: rgba(255, 255, 255, 0.58)`; `background: linear-gradient(135deg, #ffe18a, #f4b942)`; `box-shadow: 0 3px 9px rgba(180, 117, 10, 0.3)` |
 | `.inventory-bank-card__action` | `min-width: 78px`; `gap: 8px` |
 | `.inventory-bank-card__action strong` | `color: var(--ink)`; `font-size: 13px`; `font-weight: 950`; `line-height: 1.1` |
 | `.inventory-bank-card__action .btn` | `width: 100%`; `min-width: 0`; `min-height: 34px`; `padding: 0 10px`; `font-size: 12px` |
@@ -953,7 +953,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.prices-package-card` | `min-width: 0`; `min-height: 112px`; `padding: 12px`; `border-radius: 22px`; `grid-template-columns: 54px minmax(0, 1fr) auto`; `gap: 11px` |
 | `.prices-package-card__icon` | `width: 54px`; `height: 54px`; `border: 1px solid rgba(255, 255, 255, 0.72)`; `border-radius: 18px`; `color: var(--reward-coin)`; `background: var(--liquid-card-bg)` |
 | `.prices-package-card__marker` | `min-width: 27px`; `height: 18px`; `padding: 0 6px`; `border: 1px solid rgba(255, 255, 255, 0.22)`; `border-radius: var(--r-pill)`; `color: #fff`; `background: var(--ink)`; `box-shadow: 0 3px 8px rgba(15, 23, 42, 0.2)`; `font-size: 8px`; `font-weight: 950`; `letter-spacing: 0.03em`; `line-height: 1` |
-| `.prices-package-card__marker--premium` | `color: #563b00`; `border-color: rgba(255, 255, 255, 0.58)`; `background: linear-gradient(135deg, #ffe18a, #f4b942)`; `box-shadow: 0 3px 9px rgba(180, 117, 10, 0.3)` |
+| `.prices-package-card__marker--premium` | `color: #f3d491`; `border-color: rgba(255, 255, 255, 0.58)`; `background: linear-gradient(135deg, #ffe18a, #f4b942)`; `box-shadow: 0 3px 9px rgba(180, 117, 10, 0.3)` |
 | `.prices-package-card__copy` | `min-width: 0`; `gap: 3px` |
 | `.prices-package-card__copy h2, .prices-package-card__copy p` | `margin: 0` |
 | `.prices-package-card__copy h2` | `color: var(--ink)`; `font-size: 14px`; `font-weight: 950`; `line-height: 1.15` |
@@ -967,7 +967,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.prices-screen__legal h2, .legal-screen__section h2` | `margin: 0 0 10px`; `color: var(--liquid-ink)`; `font-size: 18px` |
 | `.prices-screen__legal h2:not(:first-child)` | `margin-top: 22px` |
 | `.prices-screen__legal p, .legal-screen__section p` | `margin: 8px 0`; `line-height: 1.55` |
-| `.prices-screen__legal a, .legal-screen a` | `color: #075985`; `font-weight: 700` |
+| `.prices-screen__legal a, .legal-screen a` | `color: #91d1f3`; `font-weight: 700` |
 | `.legal-screen__content` | `gap: 14px` |
 | `.legal-screen__back` | `padding: 10px 2px` |
 | `.prices-screen__legal-links, .legal-screen__links` | `gap: 8px 14px` |
@@ -1036,7 +1036,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.achievement-card__rewards svg` | `width: 12px`; `height: 12px` |
 | `.achievement-card__stage` | `width: max-content`; `max-width: 100%`; `padding: 3px 7px`; `border-radius: 999px`; `background: var(--liquid-card-bg)`; `color: var(--liquid-muted)`; `font-size: 9px`; `line-height: 1.1`; `font-weight: 800`; `letter-spacing: 0.02em` |
 | `.achievement-card__status-copy` | `color: var(--liquid-muted)`; `font-size: 9px`; `line-height: 1.1`; `font-weight: 750` |
-| `.achievement-card--claimable .achievement-card__status-copy` | `color: #16745f` |
+| `.achievement-card--claimable .achievement-card__status-copy` | `color: #98ebd9` |
 | `.achievement-card__requirement` | `color: var(--liquid-muted)`; `font-size: 11px`; `line-height: 1.25`; `font-weight: 650` |
 | `.achievement-card__stage-progress` | `height: 23px`; `border: 1px solid rgba(255, 255, 255, 0.72)`; `border-radius: 999px`; `background: rgba(92, 115, 137, 0.17)`; `box-shadow: inset 0 1px 3px rgba(15, 23, 42, 0.08)` |
 | `.achievement-card__stage-progress-fill` | `min-width: 0`; `border-radius: inherit`; `background: linear-gradient(90deg, #3d8fc4, #64b7da)` |
@@ -1052,14 +1052,14 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.advanced-training-exercise-card__skill` | `color: var(--liquid-ink)`; `font-weight: 850` |
 | `.advanced-training-exercise-card__rewards--claimed` | `color: var(--liquid-muted)` |
 | `.advanced-training-exercise-card__meta` | `min-width: 0`; `min-height: 14px`; `gap: 6px`; `color: var(--liquid-muted)`; `font-size: 11px`; `font-weight: 650`; `line-height: 1.25` |
-| `.training-exercise-card__stage--complete` | `background: rgba(32, 122, 82, 0.13)`; `color: #287457` |
-| `.training-exercise-card__stage--available` | `background: rgba(180, 137, 38, 0.14)`; `color: #87681f` |
+| `.training-exercise-card__stage--complete` | `background: rgba(32, 122, 82, 0.13)`; `color: #a4e0c9` |
+| `.training-exercise-card__stage--available` | `background: rgba(180, 137, 38, 0.14)`; `color: #e8d19b` |
 | `.training-exercise-card__stage--locked` | `background: var(--liquid-card-bg)`; `color: var(--liquid-muted)` |
 | `.advanced-training-start-modal` | `width: min(100%, 520px)` |
 | `.advanced-training-start-modal__goal` | `margin: 0`; `color: var(--liquid-ink)`; `font-size: 14px`; `line-height: 1.4` |
 | `.advanced-training-start-modal__button` | `width: 100%`; `margin-top: 16px` |
 | `.achievement-card__claim` | `width: calc(100% - 22px)`; `min-height: 36px`; `margin: 0 11px 11px`; `font-size: 12px` |
-| `.achievement-card__complete` | `color: #16745f`; `font-size: 10px`; `font-weight: 850` |
+| `.achievement-card__complete` | `color: #98ebd9`; `font-size: 10px`; `font-weight: 850` |
 | `.achievement-card__open`<br>@media (max-width: 350px) | `grid-template-columns: 62px minmax(0, 1fr)`; `gap: 9px`; `padding: 9px` |
 | `.achievement-card__thumbnail`<br>@media (max-width: 350px) | `width: 62px`; `height: 62px` |
 | `.achievement-card__title`<br>@media (max-width: 350px) | `font-size: 13px` |
@@ -1093,7 +1093,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.duel-equipment-option` | `color: var(--ink)`; `border: 1px solid rgba(255, 255, 255, 0.76)`; `background: var(--liquid-inset-bg)`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56)` |
 | `.duel-equipment-option--selected` | `border-color: rgba(255, 255, 255, 0.92)`; `background: var(--liquid-selected-bg)`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86), 0 8px 18px rgba(15, 23, 42, 0.1)` |
 | `.duel-equipment-option__check` | `width: 18px`; `height: 18px`; `border: 2px solid rgba(71, 85, 105, 0.34)`; `border-radius: 999px`; `background: rgba(255, 255, 255, 0.42)`; `color: #ffffff`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.62)` |
-| `.duel-equipment-option__check--selected` | `width: 20px`; `height: 20px`; `border: 0`; `background: #1f2a3d`; `box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1)` |
+| `.duel-equipment-option__check--selected` | `width: 20px`; `height: 20px`; `border: 0`; `background: var(--liquid-selected-bg)`; `box-shadow: 0 0 0 3px rgba(15, 23, 42, 0.1)` |
 | `.duel-rating-month-nav` | `min-height: 0`; `padding: 0` |
 | `.modal-card.duel-rating-info-modal` | `max-height: calc(100dvh - 40px)`; `padding: 22px 22px 18px`; `background: var(--glass-bg)`; `border: 1px solid var(--glass-border)`; `box-shadow: var(--shadow-glass)` |
 | `.duel-rating-info-modal .modal-title` | `font-size: 15px`; `font-weight: 700` |
@@ -1110,8 +1110,8 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.duel-card-meta` | `min-width: 0`; `gap: 2px`; `color: var(--muted)`; `font-size: 12px`; `line-height: 1.15` |
 | `.duel-card-venue` | `width: fit-content`; `color: var(--liquid-muted)`; `font-size: 10px`; `font-weight: 760` |
 | `.duel-invite-action` | `box-shadow: none` |
-| `.duel-invite-action--decline` | `border: 1px solid rgba(128, 49, 61, 0.2)`; `background: rgba(163, 72, 83, 0.16)`; `color: #6f2933` |
-| `.duel-invite-action--accept` | `border: 1px solid rgba(42, 100, 68, 0.2)`; `background: rgba(65, 128, 91, 0.18)`; `color: #244f38` |
+| `.duel-invite-action--decline` | `border: 1px solid rgba(128, 49, 61, 0.2)`; `background: rgba(163, 72, 83, 0.16)`; `color: #dea6ae` |
+| `.duel-invite-action--accept` | `border: 1px solid rgba(42, 100, 68, 0.2)`; `background: rgba(65, 128, 91, 0.18)`; `color: #abd9c0` |
 | `.arena-duel-invite-action` | `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08)` |
 | `.arena-duel-invite-action--decline` | `border: 1px solid rgba(221, 127, 139, 0.52)`; `background: rgba(119, 48, 61, 0.64)`; `color: rgba(255, 238, 241, 0.96)` |
 | `.arena-duel-invite-action--accept` | `border: 1px solid rgba(114, 177, 139, 0.52)`; `background: rgba(43, 96, 65, 0.68)`; `color: rgba(239, 255, 245, 0.96)` |
@@ -1131,7 +1131,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.duel-limits-period__format-name` | `color: var(--ink)`; `font-weight: 800` |
 | `.duel-limits-card__loading` | `padding: 12px 2px`; `color: var(--liquid-muted)`; `font-size: 13px` |
 | `.duel-state-card` | `min-height: 64px`; `padding: 14px`; `border-radius: 18px`; `border: 1px solid rgba(255, 255, 255, 0.82)`; `background: var(--liquid-card-bg)`; `color: var(--liquid-muted)`; `font-size: 14px`; `font-weight: 750` |
-| `.duel-state-card--error` | `color: #7f1d1d` |
+| `.duel-state-card--error` | `color: #e89b9b` |
 | `.tournament-standing-player--button` | `width: 100%`; `min-width: 0`; `min-height: 44px`; `padding: 0`; `border: 0`; `background: transparent`; `color: inherit` |
 | `.tournament-standing-table tbody tr.tournament-standing-table__current-user` | `color: var(--ink)`; `background: rgba(147, 197, 253, 0.38)` |
 | `.duel-history-summary` | `gap: 10px`; `padding: 14px`; `border: 1px solid rgba(255, 255, 255, 0.94)`; `border-radius: 22px`; `background: linear-gradient( 135deg, rgba(147, 197, 253, 0.72), rgba(219, 234, 254, 0.86) 52%, rgba(255, 255, 255, 0.72) )`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92), 0 18px 42px rgba(37, 99, 235, 0.2)` |
@@ -1162,9 +1162,9 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.duel-day-match__result` | `font-size: 11px`; `font-weight: 900` |
 | `.duel-day-match__aside` | `gap: 3px` |
 | `.duel-day-match__chevron` | `color: var(--liquid-muted)` |
-| `.duel-day-match__result--win` | `color: #166534` |
-| `.duel-day-match__result--draw` | `color: #854d0e` |
-| `.duel-day-match__result--loss` | `color: #991b1b` |
+| `.duel-day-match__result--win` | `color: #9ae9b8` |
+| `.duel-day-match__result--draw` | `color: #f3c591` |
+| `.duel-day-match__result--loss` | `color: #ed9797` |
 | `.duel-inline-result .duel-result-card` | `width: 100%`; `max-height: none !important`; `padding: 12px`; `border: 0`; `border-radius: 0 0 17px 17px`; `background: var(--liquid-card-bg)`; `box-shadow: none` |
 | `.duel-result-card__compact-meta` | `grid-template-columns: minmax(0, 1fr)`; `row-gap: 7px`; `padding: 1px 2px 2px` |
 | `.duel-result-card__points-rewards` | `gap: 10px` |
@@ -1232,7 +1232,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.daily-calendar__day, .daily-calendar__empty` | `min-width: 0` |
 | `.daily-calendar__day` | `border: 1px solid var(--surface-calendar-day-border, rgba(255, 255, 255, 0.72))`; `border-radius: 12px`; `color: var(--liquid-muted)`; `font-size: 12px`; `font-weight: 900`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72)` |
 | `.daily-calendar__day--neutral` | `background: var(--surface-calendar-day-bg, rgba(255, 255, 255, 0.42))`; `color: var(--liquid-muted)` |
-| `.daily-calendar__day--completed` | `background: linear-gradient(145deg, rgba(134, 239, 172, 0.9), rgba(74, 222, 128, 0.68))`; `color: #14532d` |
+| `.daily-calendar__day--completed` | `background: linear-gradient(145deg, rgba(134, 239, 172, 0.9), rgba(74, 222, 128, 0.68))`; `color: #9ce7ba` |
 | `.daily-calendar__day--duel` | `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.daily-calendar__day-number` | `line-height: 1` |
 | `.daily-calendar__duel-count` | `color: var(--liquid-muted)`; `font-size: 6px`; `font-weight: 900`; `line-height: 1` |
@@ -1243,7 +1243,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.daily-calendar__duel-result--win` | `background: #2fbf71` |
 | `.daily-calendar__duel-result--loss` | `background: #d45f67` |
 | `.daily-calendar__duel-result--draw` | `background: #e1ad24` |
-| `.daily-calendar__day--incomplete` | `background: linear-gradient(145deg, rgba(253, 230, 138, 0.92), rgba(250, 204, 21, 0.7))`; `color: #713f12` |
+| `.daily-calendar__day--incomplete` | `background: linear-gradient(145deg, rgba(253, 230, 138, 0.92), rgba(250, 204, 21, 0.7))`; `color: #eebf95` |
 | `.training-history` | `gap: 8px` |
 | `.training-settings` | `gap: 8px` |
 | `.training-period-speeds__title.section-label` | `margin: 0`; `padding: 0` |
@@ -1366,12 +1366,12 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.admin-attention-dot--toolbar` | `box-shadow: 0 0 0 2px rgba(9, 22, 45, 0.94)` |
 | `.admin-broadcast-card` | `border-radius: 20px`; `padding: 16px`; `gap: 14px` |
 | `.admin-broadcast-card__title` | `color: var(--ink)`; `font-size: 16px`; `font-weight: 950` |
-| `.admin-broadcast-card__audience` | `margin-top: 5px`; `color: #1d4ed8`; `font-size: 13px`; `font-weight: 900` |
+| `.admin-broadcast-card__audience` | `margin-top: 5px`; `color: #93acf1`; `font-size: 13px`; `font-weight: 900` |
 | `.admin-broadcast-card p` | `margin: 0`; `color: var(--muted)`; `font-size: 13px`; `font-weight: 700`; `line-height: 1.45` |
 | `.admin-broadcast-card__field` | `gap: 7px`; `color: var(--ink)`; `font-size: 12px`; `font-weight: 900` |
 | `.admin-broadcast-card__field textarea` | `height: auto`; `min-height: 132px`; `padding: 12px`; `line-height: 1.45` |
 | `.admin-broadcast-card__field small` | `color: var(--muted)` |
-| `.admin-broadcast-card__success` | `color: #166534`; `font-size: 13px`; `font-weight: 900` |
+| `.admin-broadcast-card__success` | `color: #9ae9b8`; `font-size: 13px`; `font-weight: 900` |
 | `.admin-broadcast-preview` | `max-height: 180px`; `padding: 12px`; `border: 1px solid rgba(15, 23, 42, 0.14)`; `border-radius: 14px`; `background: var(--liquid-inset-bg)`; `color: var(--ink)`; `font-size: 13px`; `line-height: 1.45` |
 | `.admin-drawer__item--active` | `background: var(--liquid-modal-bg)`; `border-color: rgba(7, 20, 40, 0.86)`; `color: #ffffff`; `box-shadow: 0 8px 20px rgba(3, 14, 30, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.12)` |
 | `.admin-screen .glass` | `background: var(--liquid-inset-bg)`; `border-color: rgba(255, 255, 255, 0.9)`; `box-shadow: 0 14px 34px rgba(3, 15, 31, 0.17), inset 0 1px 0 rgba(255, 255, 255, 0.88)`; `backdrop-filter: blur(22px) saturate(118%)` |
@@ -1408,17 +1408,17 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-game-editor__upload-button` | `min-height: 34px`; `padding: 7px 13px`; `border: 1px solid rgba(255, 255, 255, 0.92)`; `border-radius: 999px`; `color: var(--liquid-ink)`; `background: var(--liquid-inset-bg)`; `box-shadow: 0 6px 16px rgba(4, 18, 36, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.88)`; `font-size: 11px`; `font-weight: 900` |
 | `.bonus-game-editor label:has(> input[type='checkbox'])` | `min-height: 44px`; `gap: 10px !important`; `padding: 9px 11px`; `border: 1px solid rgba(255, 255, 255, 0.78)`; `border-radius: 14px`; `background: var(--liquid-inset-bg)` |
 | `.bonus-game-editor input[type='checkbox']` | `width: 24px`; `height: 24px`; `margin: 0` |
-| `.bonus-game-editor__alert` | `padding: 11px 12px`; `border: 1px solid rgba(190, 45, 45, 0.22)`; `border-radius: 14px`; `color: #9f1d1d`; `background: rgba(255, 232, 232, 0.72)`; `font-size: 12px`; `font-weight: 800`; `line-height: 1.4` |
+| `.bonus-game-editor__alert` | `padding: 11px 12px`; `border: 1px solid rgba(190, 45, 45, 0.22)`; `border-radius: 14px`; `color: #ec9797`; `background: rgba(115, 38, 45, 0.28)`; `font-size: 12px`; `font-weight: 800`; `line-height: 1.4` |
 | `.bonus-game-editor__actions` | `grid-template-columns: 1fr 1fr`; `gap: 10px`; `margin: 0`; `padding: 14px 4px calc(16px + var(--app-safe-bottom))`; `background: var(--liquid-inset-bg)` |
 | `.bonus-game-editor__actions .btn, .bonus-game-editor__actions .modal-primary` | `min-height: 48px` |
 | `.bonus-game-editor-modal`<br>@media (max-width: 620px) | `width: calc(100vw - 20px) !important`; `height: calc(var(--app-viewport-height, 100dvh) - 20px)`; `max-height: calc(var(--app-viewport-height, 100dvh) - 20px) !important`; `padding-inline: 16px !important` |
 | `.bonus-game-editor__scroll`<br>@media (max-width: 620px) | `grid-template-columns: minmax(0, 1fr)`; `gap: 10px` |
 | `.bonus-game-editor__upload-button`<br>@media (max-width: 620px) | `width: 100%` |
-| `.app-shell--unified-glass :is(.section-card-surface--muted, .daily-result-modal__period--empty)` | `background: rgba(226, 233, 241, 0.62)` |
+| `.app-shell--unified-glass :is(.section-card-surface--muted, .daily-result-modal__period--empty)` | `background: var(--liquid-inset-bg)` |
 | `.app-shell--unified-glass :is(.glass, .modal-card, .segmented-tabs, .glass-dock-surface)`<br>@media (prefers-reduced-transparency: reduce) | `backdrop-filter: none` |
 | `.venue-badge` | `min-height: 20px`; `padding: 0 8px`; `border: 1px solid rgba(100, 116, 139, 0.22)`; `border-radius: 999px`; `color: var(--liquid-muted)`; `background: var(--liquid-inset-bg)`; `font-size: 10px`; `font-weight: 900`; `line-height: 1` |
-| `.venue-badge--home` | `border-color: rgba(37, 99, 235, 0.26)`; `background: var(--liquid-inset-bg)`; `color: #1d4ed8` |
-| `.venue-badge--away` | `border-color: rgba(234, 88, 12, 0.26)`; `background: rgba(255, 237, 213, 0.76)`; `color: #c2410c` |
+| `.venue-badge--home` | `border-color: rgba(37, 99, 235, 0.26)`; `background: var(--liquid-inset-bg)`; `color: #93acf1` |
+| `.venue-badge--away` | `border-color: rgba(234, 88, 12, 0.26)`; `background: rgba(104, 77, 26, 0.28)`; `color: #f3ad91` |
 | `.venue-badge--neutral` | `border-color: rgba(100, 116, 139, 0.24)`; `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.venue-badge--dark` | `border-color: rgba(174, 231, 255, 0.34)`; `background: var(--liquid-inset-bg)`; `color: rgba(233, 251, 255, 0.94)`; `box-shadow: 0 0 8px rgba(92, 211, 255, 0.16)` |
 | `.tournament-fixture-summary` | `min-width: 0`; `gap: 8px` |
@@ -1471,7 +1471,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-standing-player > span` | `min-width: 0` |
 | `.tournament-standing-table tbody tr.tournament-standing-table__playoff-place` | `background: rgba(111, 151, 132, 0.14)` |
 | `.tournament-standings-progressive__more` | `margin: 12px 0 0`; `color: var(--muted)` |
-| `.tournament-standings-progressive__pinned` | `width: min(calc(100vw - 48px), 488px)`; `border-radius: 0`; `background: #c4d5e6` |
+| `.tournament-standings-progressive__pinned` | `width: min(calc(100vw - 48px), 488px)`; `border-radius: 0`; `background: var(--liquid-solid-bg)` |
 | `.tournament-standings-progressive__pinned .tournament-standing-table` | `margin: 0` |
 | `.tournament-standings-progressive__pinned .tournament-standing-table tbody tr.tournament-standing-table__current-user` | `background: rgba(147, 197, 253, 0.38)` |
 | `.tournament-standing-table--duel-rating` | `font-size: 11px` |
@@ -1513,9 +1513,9 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-calendar__day` | `padding: 0`; `border: 1px solid var(--surface-calendar-day-border, rgba(255, 255, 255, 0.72))`; `border-radius: 11px`; `background: var(--surface-calendar-day-bg, rgba(255, 255, 255, 0.42))`; `color: var(--liquid-muted)`; `font-size: 11px`; `font-weight: 650` |
 | `.tournament-calendar__day--has-events` | `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)`; `font-weight: 780` |
 | `.tournament-calendar__day--regular` | `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
-| `.tournament-calendar__day--playoff` | `border-color: rgba(112, 74, 179, 0.42)`; `background: rgba(210, 199, 244, 0.9)`; `color: #44306f` |
+| `.tournament-calendar__day--playoff` | `border-color: rgba(112, 74, 179, 0.42)`; `background: rgba(210, 199, 244, 0.9)`; `color: #b9aada` |
 | `.tournament-calendar__day--today` | `border-color: rgba(36, 77, 115, 0.55)` |
-| `.tournament-calendar__day--outside-range:disabled` | `background: var(--surface-calendar-day-muted-bg, rgba(255, 255, 255, 0.26))`; `color: #7890a5` |
+| `.tournament-calendar__day--outside-range:disabled` | `background: var(--surface-calendar-day-muted-bg, rgba(255, 255, 255, 0.26))`; `color: #b6c3ce` |
 | `.tournament-calendar__day--selected` | `border-color: #173c5e`; `background: var(--liquid-selected-bg)`; `color: #ffffff`; `box-shadow: 0 6px 14px rgba(23, 60, 94, 0.2)` |
 | `.tournament-calendar__day--playoff.tournament-calendar__day--selected` | `border-color: #c8b4ff`; `background: #34265d`; `color: #ffffff`; `box-shadow: inset 0 0 0 2px rgba(206, 190, 255, 0.54), 0 6px 14px rgba(52, 38, 93, 0.24)` |
 | `.tournament-calendar__day i` | `width: 3px`; `height: 3px`; `border-radius: 999px`; `background: currentColor` |
@@ -1562,7 +1562,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-live__header` | `grid-template-columns: 34px minmax(0, 1fr) 34px`; `gap: 8px` |
 | `.tournament-live__header h2` | `margin: 0`; `font-size: 15px`; `font-weight: 820` |
 | `.tournament-live__update, .tournament-live__message` | `color: var(--liquid-muted)`; `font-size: 11px`; `font-weight: 650` |
-| `.tournament-live__message--error` | `color: #9a2d2d` |
+| `.tournament-live__message--error` | `color: #e3a0a0` |
 | `.tournament-live__score > div` | `color: var(--liquid-muted)`; `font-size: 12px`; `font-weight: 680` |
 | `.tournament-live__score > strong` | `margin-top: 3px`; `font-size: 32px`; `font-weight: 900` |
 | `.tournament-live__participants` | `gap: 7px` |
@@ -1582,7 +1582,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-fixture-card__meta strong` | `color: var(--liquid-muted)` |
 | `.tournament-fixture-card__score` | `color: var(--liquid-muted)`; `font-size: 12px`; `font-weight: 900` |
 | `.tournament-fixture-result` | `font-size: 12px`; `font-weight: 900` |
-| `.tournament-fixture-result--win` | `color: #15803d` |
+| `.tournament-fixture-result--win` | `color: #96eeb7` |
 | `.tournament-fixture-result--loss` | `color: #b76d72` |
 | `.tournament-fixture-matchup` | `min-width: 0`; `gap: 8px` |
 | `.tournament-fixture-matchup__avatars > :last-child` | `box-shadow: 0 0 0 2px rgba(241, 248, 253, 0.95)` |
@@ -1590,7 +1590,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-fixture-card__footer` | `min-height: 25px`; `gap: 8px` |
 | `.tournament-fixture-card__footer > div` | `min-width: 0`; `gap: 8px` |
 | `.tournament-fixture-card__action--primary` | `border-color: #173c5e`; `background: var(--liquid-card-bg)`; `color: #ffffff`; `box-shadow: 0 7px 16px rgba(23, 60, 94, 0.2)` |
-| `.tournament-fixture-card__error` | `color: #9a2d2d`; `font-size: 10px`; `font-weight: 650`; `line-height: 1.35` |
+| `.tournament-fixture-card__error` | `color: #e3a0a0`; `font-size: 10px`; `font-weight: 650`; `line-height: 1.35` |
 | `.tournament-bracket-row` | `padding: 9px 0` |
 | `.tournament-bracket` | `gap: 8px` |
 | `.tournament-bracket-overview` | `min-width: 0`; `gap: 8px` |
@@ -1618,7 +1618,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-bracket-overview__bronze-lane` | `min-width: 0` |
 | `.tournament-bracket-overview__bronze-lane::before` | `width: 1px`; `height: 10px`; `background: rgba(144, 91, 46, 0.4)` |
 | `.tournament-bracket-series--mine` | `border-color: rgba(43, 126, 89, 0.62)`; `box-shadow: 0 0 0 2px rgba(43, 126, 89, 0.1), 0 8px 20px rgba(37, 99, 75, 0.1)` |
-| `.tournament-bracket-champion` | `grid-template-columns: minmax(0, 1fr)`; `min-width: 0`; `width: 100%`; `gap: 8px`; `padding: 12px`; `border: 1px solid rgba(190, 145, 41, 0.5)`; `border-radius: 16px`; `background: linear-gradient(135deg, rgba(255, 222, 113, 0.72), rgba(255, 246, 211, 0.78))`; `color: #6f5012`; `box-shadow: 0 10px 24px rgba(151, 108, 23, 0.14)` |
+| `.tournament-bracket-champion` | `grid-template-columns: minmax(0, 1fr)`; `min-width: 0`; `width: 100%`; `gap: 8px`; `padding: 12px`; `border: 1px solid rgba(190, 145, 41, 0.5)`; `border-radius: 16px`; `background: linear-gradient(135deg, rgba(104, 77, 26, 0.28), rgba(104, 77, 26, 0.16))`; `color: #eed196`; `box-shadow: 0 10px 24px rgba(151, 108, 23, 0.14)` |
 | `.tournament-bracket-champion > strong` | `font-size: 11px`; `font-weight: 900` |
 | `.tournament-bracket-champion > span` | `min-width: 0`; `width: 100%`; `font-size: 9px`; `font-weight: 700`; `line-height: 1.35` |
 | `.tournament-bracket-champion__player` | `grid-template-columns: 14px auto minmax(0, 1fr)`; `min-width: 0`; `gap: 6px` |
@@ -1665,10 +1665,10 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-bracket__round-tabs` | `max-width: 100%`; `gap: 5px`; `padding: 2px` |
 | `.tournament-bracket__round-tabs button` | `min-height: 30px`; `padding: 5px 10px`; `border: 1px solid rgba(98, 127, 153, 0.2)`; `border-radius: 999px`; `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)`; `font-size: 10px`; `font-weight: 720` |
 | `.tournament-bracket__round-tabs button.is-active` | `border-color: #173c5e`; `background: var(--liquid-selected-bg)`; `color: #ffffff` |
-| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--gold` | `border-color: rgba(190, 145, 41, 0.46)`; `background: linear-gradient(135deg, rgba(255, 225, 132, 0.72), rgba(255, 244, 204, 0.78))`; `color: #765412` |
-| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--bronze` | `border-color: rgba(158, 96, 47, 0.38)`; `background: linear-gradient(135deg, rgba(222, 169, 116, 0.58), rgba(247, 220, 188, 0.72))`; `color: #74451f` |
-| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--gold.is-active` | `border-color: rgba(156, 111, 20, 0.68)`; `background: linear-gradient(135deg, rgba(244, 196, 79, 0.9), rgba(255, 231, 151, 0.94))` |
-| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--bronze.is-active` | `border-color: rgba(132, 75, 33, 0.62)`; `background: linear-gradient(135deg, rgba(200, 132, 75, 0.78), rgba(235, 190, 145, 0.9))` |
+| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--gold` | `border-color: rgba(190, 145, 41, 0.46)`; `background: linear-gradient(135deg, rgba(104, 77, 26, 0.28), rgba(104, 77, 26, 0.16))`; `color: #efd095` |
+| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--bronze` | `border-color: rgba(158, 96, 47, 0.38)`; `background: linear-gradient(135deg, rgba(99, 60, 29, 0.28), rgba(99, 60, 29, 0.16))`; `color: #e5be9e` |
+| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--gold.is-active` | `border-color: rgba(156, 111, 20, 0.68)`; `background: linear-gradient(135deg, rgba(104, 77, 26, 0.4), rgba(104, 77, 26, 0.28))` |
+| `.tournament-bracket__round-tabs button.tournament-bracket__round-tab--bronze.is-active` | `border-color: rgba(132, 75, 33, 0.62)`; `background: linear-gradient(135deg, rgba(99, 60, 29, 0.4), rgba(99, 60, 29, 0.28))` |
 | `.tournament-bracket-round` | `gap: 8px` |
 | `.tournament-bracket-round > h3` | `margin: 0`; `color: var(--ink)`; `font-size: 14px`; `font-weight: 850` |
 | `.tournament-bracket-round > .tournament-rules__muted` | `margin: 0` |
@@ -1699,8 +1699,8 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-bracket-game__participant` | `min-width: 0`; `color: var(--liquid-muted)` |
 | `.tournament-bracket-game__score` | `color: var(--liquid-muted)` |
 | `.tournament-bracket-game__technical-result` | `min-width: 0` |
-| `.tournament-bracket-game__participant--winner` | `color: #1f8a5b` |
-| `.tournament-bracket-game__participant--own-loss` | `color: #bd4d4d` |
+| `.tournament-bracket-game__participant--winner` | `color: #9be9c7` |
+| `.tournament-bracket-game__participant--own-loss` | `color: #dea6a6` |
 | `.tournament-duel-result__matchup` | `margin-top: 10px`; `padding: 10px`; `border: 1px solid rgba(255, 255, 255, 0.7)`; `border-radius: 16px`; `background: var(--liquid-inset-bg)`; `color: var(--ink)`; `font-size: 14px`; `font-weight: 850` |
 | `.tournament-duel-result__matchup-main` | `grid-template-columns: minmax(0, max-content) auto minmax(0, 1fr) auto`; `gap: 7px` |
 | `.tournament-duel-result__player` | `min-width: 0`; `gap: 6px` |
@@ -1723,17 +1723,17 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-duel-result__next-game` | `margin-top: 14px`; `color: var(--liquid-muted)`; `font-size: 13px` |
 | `.tournament-duel-result__countdown` | `gap: 4px` |
 | `.tournament-duel-result__countdown > span` | `color: var(--liquid-muted)`; `font-size: 13px`; `font-weight: 800` |
-| `.tournament-duel-result__countdown > strong` | `color: #1677bd`; `font-size: clamp(28px, 8vw, 36px)`; `font-weight: 900`; `letter-spacing: -0.025em`; `line-height: 0.96` |
+| `.tournament-duel-result__countdown > strong` | `color: #91caf2`; `font-size: clamp(28px, 8vw, 36px)`; `font-weight: 900`; `letter-spacing: -0.025em`; `line-height: 0.96` |
 | `.tournament-playoff-attempt` | `gap: 7px`; `margin-top: 6px`; `padding: 10px`; `border: 1px solid rgba(72, 115, 153, 0.2)`; `border-radius: 13px`; `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.tournament-playoff-attempt > strong, .tournament-playoff-attempt__readiness > strong, .tournament-playoff-attempt__progress > strong, .tournament-playoff-attempt__scheduled > strong, .tournament-playoff-attempt__incident > strong, .tournament-playoff-attempt__choice > strong` | `font-size: 11px`; `font-weight: 820`; `line-height: 1.35` |
 | `.tournament-playoff-attempt > span, .tournament-playoff-attempt__readiness > span, .tournament-playoff-attempt__progress > span, .tournament-playoff-attempt__scheduled > span, .tournament-playoff-attempt__incident > span, .tournament-playoff-attempt__choice > span` | `color: var(--liquid-muted)`; `font-size: 10px`; `font-weight: 560`; `line-height: 1.4` |
 | `.tournament-playoff-attempt__readiness, .tournament-playoff-attempt__progress, .tournament-playoff-attempt__scheduled, .tournament-playoff-attempt__incident, .tournament-playoff-attempt__choice` | `gap: 5px` |
 | `.tournament-playoff-attempt__choice > div` | `grid-template-columns: repeat(2, minmax(0, 1fr))`; `gap: 6px` |
 | `.tournament-playoff-attempt .btn` | `min-height: 34px`; `padding: 7px 10px`; `font-size: 10px`; `letter-spacing: 0` |
-| `.tournament-playoff-attempt__eyebrow` | `color: #70501d` |
-| `.tournament-playoff-attempt__result, .tournament-playoff-attempt__series-win` | `color: #1f6a4a` |
-| `.tournament-playoff-attempt__incident` | `padding: 8px`; `border-radius: 10px`; `background: rgba(255, 237, 196, 0.72)`; `color: #775414` |
-| `.tournament-playoff-attempt__tournament-win` | `padding: 9px 10px`; `border-radius: 11px`; `background: linear-gradient(135deg, rgba(255, 226, 122, 0.8), rgba(255, 244, 204, 0.9))`; `color: #67470d` |
+| `.tournament-playoff-attempt__eyebrow` | `color: #e6ca9e` |
+| `.tournament-playoff-attempt__result, .tournament-playoff-attempt__series-win` | `color: #a0e3c7` |
+| `.tournament-playoff-attempt__incident` | `padding: 8px`; `border-radius: 10px`; `background: rgba(104, 77, 26, 0.28)`; `color: #edcf96` |
+| `.tournament-playoff-attempt__tournament-win` | `padding: 9px 10px`; `border-radius: 11px`; `background: linear-gradient(135deg, rgba(104, 77, 26, 0.4), rgba(104, 77, 26, 0.28))`; `color: #f1d092` |
 | `.tournament-bracket-round--bronze .tournament-bracket-series` | `border-color: rgba(174, 122, 64, 0.28)`; `background: rgba(255, 244, 225, 0.3)` |
 | `.tournament-details__registration` | `margin: 2px 0 0` |
 | `.tournament-details__registration--withdraw` | `margin-top: 14px` |
@@ -1757,7 +1757,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-artwork-field` | `gap: 8px` |
 | `.tournament-artwork-field__preview` | `width: 76px`; `border-radius: 16px`; `box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14)` |
 | `.tournament-artwork-field__upload input` | `width: 1px`; `height: 1px` |
-| `.tournament-artwork-field__error` | `color: #b91c1c`; `font-size: 11px`; `font-weight: 750` |
+| `.tournament-artwork-field__error` | `color: #ef9595`; `font-size: 11px`; `font-weight: 750` |
 | `.tournament-admin-card` | `width: 100%`; `padding: 13px 15px`; `border: 1px solid rgba(255, 255, 255, 0.78)`; `border-radius: 18px`; `color: var(--ink)` |
 | `.tournament-admin-card__status, .tournament-operations__heading > span` | `color: var(--liquid-muted)`; `font-size: 10px`; `font-weight: 900`; `letter-spacing: 0.08em`; `line-height: 1.2` |
 | `.tournament-admin-card__title` | `margin-top: 4px`; `font-size: 17px`; `font-weight: 900`; `line-height: 1.2` |
@@ -1769,10 +1769,10 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-operations__actions` | `gap: 5px` |
 | `.tournament-operations__actions .icon-btn` | `width: 32px`; `min-width: 32px`; `height: 32px`; `min-height: 32px` |
 | `.tournament-operations__notice` | `padding: 0 4px`; `color: rgba(244, 250, 255, 0.94)`; `font-size: 11px`; `font-weight: 650`; `line-height: 1.35` |
-| `.tournament-icon-btn--danger` | `border-color: rgba(185, 28, 28, 0.22)`; `background: rgba(254, 226, 226, 0.86)`; `color: #b91c1c` |
+| `.tournament-icon-btn--danger` | `border-color: rgba(185, 28, 28, 0.22)`; `background: rgba(115, 38, 45, 0.28)`; `color: #ef9595` |
 | `.tournament-operations__panel` | `gap: 10px`; `min-width: 0`; `padding: 13px`; `border-radius: 18px`; `color: var(--ink)` |
 | `.tournament-operations__field` | `gap: 5px`; `min-width: 0`; `color: var(--ink)`; `font-size: 12px`; `font-weight: 820` |
-| `.tournament-operations__recovery-error` | `color: #9a2d2d`; `font-size: 12px`; `font-weight: 700`; `line-height: 1.4` |
+| `.tournament-operations__recovery-error` | `color: #e3a0a0`; `font-size: 12px`; `font-weight: 700`; `line-height: 1.4` |
 | `.tournament-operations__recovery-actions` | `margin-top: 4px` |
 | `.tournament-operations__recovery-actions .modal-primary` | `line-height: 1.25` |
 | `.tournament-player-search` | `min-width: 0` |
@@ -1800,7 +1800,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-schedule-fixture__heading` | `color: var(--muted)`; `font-size: 10px`; `font-weight: 760` |
 | `.tournament-schedule-fixture > strong` | `font-size: 13px`; `font-weight: 820`; `line-height: 1.3` |
 | `.tournament-schedule-fixture__status` | `padding: 3px 7px`; `border-radius: 999px`; `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)`; `font-size: 9px`; `font-weight: 780` |
-| `.tournament-schedule-fixture__status.is-active, .tournament-schedule-fixture__status.is-open` | `background: rgba(30, 113, 74, 0.12)`; `color: #226645` |
+| `.tournament-schedule-fixture__status.is-active, .tournament-schedule-fixture__status.is-open` | `background: rgba(30, 113, 74, 0.12)`; `color: #a3e0c3` |
 | `.tournament-schedule-fixture__status.is-completed, .tournament-schedule-fixture__status.is-settled` | `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.tournament-schedule-fixture__meta` | `color: var(--muted)`; `font-size: 10px`; `font-weight: 650` |
 | `.tournament-schedule-fixture__meta > span + span::before` | `color: var(--liquid-muted)` |
@@ -1808,18 +1808,18 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-schedule-upcoming > p` | `margin: -2px 12px 10px`; `color: var(--muted)`; `font-size: 10px`; `line-height: 1.4` |
 | `.tournament-operation-incidents, .tournament-admin-series-list` | `gap: 8px` |
 | `.tournament-bracket-series__admin-action` | `width: 100%` |
-| `.tournament-operation-incidents` | `padding: 10px`; `border: 1px solid rgba(190, 77, 62, 0.24)`; `border-radius: 14px`; `background: rgba(255, 239, 235, 0.72)` |
+| `.tournament-operation-incidents` | `padding: 10px`; `border: 1px solid rgba(190, 77, 62, 0.24)`; `border-radius: 14px`; `background: rgba(115, 38, 45, 0.28)` |
 | `.tournament-operation-incidents h3, .tournament-operation-incidents p` | `margin: 0` |
-| `.tournament-operation-incidents h3` | `color: #802f28`; `font-size: 13px` |
-| `.tournament-operation-incidents p` | `color: #76544f`; `font-size: 10px`; `line-height: 1.4` |
+| `.tournament-operation-incidents h3` | `color: #e2a7a2`; `font-size: 13px` |
+| `.tournament-operation-incidents p` | `color: #ceb9b6`; `font-size: 10px`; `line-height: 1.4` |
 | `.tournament-operation-list-row--incident` | `gap: 2px`; `background: var(--liquid-inset-bg)` |
-| `.tournament-operation-list-row--incident > span` | `color: #76544f`; `font-size: 10px`; `font-weight: 620` |
+| `.tournament-operation-list-row--incident > span` | `color: #ceb9b6`; `font-size: 10px`; `font-weight: 620` |
 | `.tournament-admin-series` | `gap: 8px`; `padding: 11px`; `border: 1px solid rgba(100, 116, 139, 0.14)`; `border-radius: 14px`; `background: var(--liquid-inset-bg)` |
 | `.tournament-admin-series__heading, .tournament-admin-series__players, .tournament-series-decision__score` | `gap: 8px` |
 | `.tournament-admin-series__heading > div, .tournament-admin-series__players, .tournament-series-decision, .tournament-series-decision__confirmation` | `gap: 6px` |
 | `.tournament-admin-series__heading span, .tournament-admin-series__players span` | `color: var(--muted)`; `font-size: 10px`; `font-weight: 650` |
-| `.tournament-series-decision__confirmation` | `padding: 10px`; `border: 1px solid rgba(190, 77, 62, 0.22)`; `border-radius: 13px`; `background: rgba(255, 239, 235, 0.7)` |
-| `.tournament-series-decision__confirmation p` | `margin: 0`; `color: #674b47`; `font-size: 11px`; `line-height: 1.45` |
+| `.tournament-series-decision__confirmation` | `padding: 10px`; `border: 1px solid rgba(190, 77, 62, 0.22)`; `border-radius: 13px`; `background: rgba(115, 38, 45, 0.28)` |
+| `.tournament-series-decision__confirmation p` | `margin: 0`; `color: #cdb9b7`; `font-size: 11px`; `line-height: 1.45` |
 | `.tournament-matchday-list` | `gap: 8px` |
 | `.tournament-matchday-row` | `gap: 3px`; `padding: 10px 11px`; `border: 1px solid rgba(148, 163, 184, 0.2)`; `border-radius: 13px`; `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.tournament-matchday-row strong` | `font-size: 12px`; `font-weight: 720` |
@@ -1827,7 +1827,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-matchday-row__heading` | `gap: 8px` |
 | `.tournament-matchday-row .tournament-matchday-row__status` | `padding: 2px 7px`; `border-radius: 999px`; `font-size: 9px`; `font-weight: 760`; `line-height: 1.25` |
 | `.tournament-matchday-row--current` | `border-color: rgba(58, 149, 216, 0.5)`; `background: var(--liquid-inset-bg)`; `box-shadow: 0 7px 20px rgba(20, 96, 154, 0.12)` |
-| `.tournament-matchday-row--current .tournament-matchday-row__status` | `background: rgba(21, 119, 187, 0.13)`; `color: #12649c` |
+| `.tournament-matchday-row--current .tournament-matchday-row__status` | `background: rgba(21, 119, 187, 0.13)`; `color: #91cbf2` |
 | `.tournament-matchday-row--past` | `border-color: rgba(130, 149, 166, 0.16)`; `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.tournament-matchday-row--past .tournament-matchday-row__status` | `background: var(--liquid-inset-bg)`; `color: var(--liquid-muted)` |
 | `.tournament-matchday-row--past .tournament-matchday-times span, .tournament-matchday-row--past .tournament-matchday-times b` | `color: var(--liquid-muted)` |
@@ -1891,7 +1891,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.admin-official-account-card`<br>@media (max-width: 560px) | `grid-template-columns: auto minmax(0, 1fr)` |
 | `.tournament-action-list, .tournament-participant-actions, .tournament-reward-status` | `gap: 8px` |
 | `.tournament-action-list .admin-compact-btn, .tournament-participant-actions .admin-compact-btn` | `width: 100%` |
-| `.admin-compact-btn--danger` | `border-color: rgba(185, 28, 28, 0.24)`; `background: rgba(254, 226, 226, 0.88)`; `color: #b91c1c` |
+| `.admin-compact-btn--danger` | `border-color: rgba(185, 28, 28, 0.24)`; `background: rgba(115, 38, 45, 0.28)`; `color: #ef9595` |
 | `.profile-settings-header` | `grid-template-columns: 38px minmax(0, 1fr)`; `gap: 10px`; `margin: 18px 14px 14px` |
 | `.profile-settings-header h1` | `margin: 2px 0 0`; `font-size: 25px`; `font-weight: 950`; `line-height: 1.04` |
 | `.profile-settings-loading` | `padding: 24px`; `color: var(--muted)`; `font-size: 13px` |
@@ -1916,7 +1916,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.profile-customization-card__fields input` | `min-width: 0`; `padding: 11px 12px`; `border: 1px solid rgba(100, 116, 139, 0.24)`; `border-radius: 13px`; `background: var(--liquid-card-bg)`; `color: var(--ink)`; `font-size: 14px` |
 | `.profile-customization-card__fields input:focus` | `border-color: rgba(51, 65, 85, 0.52)`; `box-shadow: 0 0 0 3px rgba(51, 65, 85, 0.1)` |
 | `.profile-customization-card__save` | `width: 100%`; `min-height: 44px` |
-| `.profile-customization-card__error` | `color: #9f1239`; `font-size: 12px`; `font-weight: 700`; `line-height: 1.35` |
+| `.profile-customization-card__error` | `color: #f391ac`; `font-size: 12px`; `font-weight: 700`; `line-height: 1.35` |
 | `.profile-settings-grip-label` | `gap: 6px`; `margin-bottom: 6px` |
 | `.profile-settings-grip-label button` | `padding: 0`; `border: 0`; `background: none` |
 | `.profile-settings-grip-label .profile-settings-grip-info` | `color: rgba(255, 255, 255, 0.94)` |
@@ -1925,7 +1925,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.profile-settings-grip-option__indicator[data-selected='true']` | `border-color: rgba(255, 255, 255, 0.94)`; `background: var(--liquid-selected-bg)` |
 | `.profile-logout-wrap` | `margin: 4px 14px 0` |
 | `.profile-logout-btn` | `width: 100%`; `gap: 8px`; `padding: 14px 0`; `border-radius: 16px`; `font-size: 15px`; `font-weight: 650` |
-| `.profile-logout-btn--danger` | `border: 1px solid rgba(104, 35, 35, 0.34)`; `background: rgba(211, 115, 115, 0.9)`; `color: #34202a`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 8px 18px rgba(86, 36, 36, 0.15)` |
+| `.profile-logout-btn--danger` | `border: 1px solid rgba(104, 35, 35, 0.34)`; `background: rgba(211, 115, 115, 0.9)`; `color: #d0b3c2`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.34), 0 8px 18px rgba(86, 36, 36, 0.15)` |
 | `.profile-logout-btn--danger svg` | `color: currentColor` |
 | `.tournament-reward-status strong` | `font-size: 13px`; `font-weight: 760` |
 | `.tournament-reward-status span` | `color: var(--muted)`; `font-size: 11px`; `font-weight: 560`; `line-height: 1.45` |
@@ -1958,7 +1958,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-dispatch-tournament-button input` | `width: 18px`; `height: 18px`; `margin: 0` |
 | `.tournament-announcement-action` | `width: 100%`; `margin-top: 10px`; `padding: 10px 14px`; `font-size: 12px`; `letter-spacing: 0` |
 | `.tournament-dispatch-feedback` | `color: var(--liquid-muted)`; `font-size: 11px`; `font-weight: 650`; `line-height: 1.4` |
-| `.tournament-dispatch-feedback--error` | `color: #b91c1c` |
+| `.tournament-dispatch-feedback--error` | `color: #ef9595` |
 | `.tournament-dispatch-history-row` | `padding-top: 7px`; `color: var(--muted)`; `font-size: 10px`; `font-weight: 720` |
 | `.arena-duel-opponent-name` | `font-size: clamp(13px, 1.9vh, 18px)` |
 | `.arena-duel-venue-label` | `font-size: clamp(7px, 0.95vh, 9px)` |
@@ -1990,8 +1990,8 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.tournament-bracket__round-tabs button`<br>@media (max-width: 360px) | `min-height: 28px`; `padding: 4px 9px`; `font-size: 9px` |
 | `.app-shell--unified-glass :is( .tournament-overview-grid > button, .tournament-standing-list > div, .tournament-fixture-card, .tournament-bracket__round-tabs button, .tournament-bracket-series, .tournament-bracket-player, .tournament-participants-list__row, .tournament-player-search__results > button, .tournament-participant-admin-row, .tournament-operation-list-row, .tournament-schedule-upcoming, .tournament-schedule-fixture, .tournament-admin-series, .tournament-matchday-row, .admin-official-dialog__message, .admin-official-dialog__attachment, .tournament-operation-rewards__row > span, .tournament-dispatch-message )` | `background: var(--surface-card-bg)`; `border-color: var(--surface-border)`; `box-shadow: var(--surface-card-shadow)`; `backdrop-filter: var(--surface-blur)` |
 | `.app-shell--unified-glass .tournament-player-search__results` | `background: var(--surface-elevated-bg)`; `border-color: rgba(255, 255, 255, 0.94)`; `box-shadow: var(--surface-elevated-shadow)`; `backdrop-filter: none` |
-| `.app-shell--unified-glass .tournament-bracket__round-tabs button.tournament-bracket__round-tab--gold` | `border-color: rgba(190, 145, 41, 0.46)`; `background: linear-gradient(135deg, rgba(255, 225, 132, 0.72), rgba(255, 244, 204, 0.78))`; `color: #765412` |
-| `.app-shell--unified-glass .tournament-bracket__round-tabs button.tournament-bracket__round-tab--bronze` | `border-color: rgba(158, 96, 47, 0.38)`; `background: linear-gradient(135deg, rgba(222, 169, 116, 0.58), rgba(247, 220, 188, 0.72))`; `color: #74451f` |
+| `.app-shell--unified-glass .tournament-bracket__round-tabs button.tournament-bracket__round-tab--gold` | `border-color: rgba(190, 145, 41, 0.46)`; `background: linear-gradient(135deg, rgba(104, 77, 26, 0.28), rgba(104, 77, 26, 0.16))`; `color: #efd095` |
+| `.app-shell--unified-glass .tournament-bracket__round-tabs button.tournament-bracket__round-tab--bronze` | `border-color: rgba(158, 96, 47, 0.38)`; `background: linear-gradient(135deg, rgba(99, 60, 29, 0.28), rgba(99, 60, 29, 0.16))`; `color: #e5be9e` |
 | `.app-shell--unified-glass .tournament-bracket__round-tabs button.is-active` | `border-color: rgba(15, 23, 42, 0.92)`; `background: rgba(15, 23, 42, 0.92)`; `color: #ffffff`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 8px 18px rgba(15, 23, 42, 0.12)`; `backdrop-filter: none` |
 | `.app-shell--unified-glass .tournament-bracket-series--mine` | `border-color: rgba(43, 126, 89, 0.62)`; `box-shadow: 0 0 0 2px rgba(43, 126, 89, 0.1), var(--surface-card-shadow)` |
 | `.app-shell--unified-glass .tournament-bracket-player--bronze-winner` | `background: rgba(205, 139, 85, 0.22)`; `box-shadow: inset 0 0 0 1px rgba(158, 96, 47, 0.2)` |
@@ -2016,7 +2016,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.weekly-challenge-start-modal__rewards .reward--token` | `color: var(--reward-token)` |
 | `.weekly-challenge-start-modal .weekly-challenge-task` | `padding-inline: 1px` |
 | `.weekly-challenge-start-modal .weekly-challenge-task__title, .weekly-challenge-start-modal .weekly-challenge-task__value` | `font-size: 13px`; `font-weight: 700` |
-| `.weekly-challenge-start-modal__error` | `color: #b91c1c`; `font-size: 13px`; `line-height: 1.4` |
+| `.weekly-challenge-start-modal__error` | `color: #ef9595`; `font-size: 13px`; `line-height: 1.4` |
 | `.weekly-challenge-start-modal__content > .btn` | `width: 100%` |
 | `.weekly-challenge-screen` | `padding: calc(22px + var(--app-safe-top)) 14px 24px` |
 | `.weekly-challenge-screen__content` | `width: 100%`; `max-width: 760px`; `margin: 0 auto`; `gap: 14px` |
@@ -2059,9 +2059,9 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.weekly-challenge-task__track > span` | `height: 100%`; `border-radius: inherit`; `background: var(--blue-accent)` |
 | `.weekly-challenge-card__actions` | `grid-template-columns: 0.82fr 1fr`; `gap: 8px` |
 | `.weekly-challenge-card__actions .btn, .weekly-challenge-card > .btn` | `min-height: 42px`; `padding: 11px 14px`; `font-size: 13px` |
-| `.weekly-challenge-card__decline.btn` | `color: #b91c1c`; `background: var(--liquid-card-bg)`; `border-color: rgba(185, 28, 28, 0.2)`; `box-shadow: none` |
+| `.weekly-challenge-card__decline.btn` | `color: #ef9595`; `background: var(--liquid-card-bg)`; `border-color: rgba(185, 28, 28, 0.2)`; `box-shadow: none` |
 | `.weekly-challenge-card__claimed` | `color: var(--muted)`; `font-size: 12px`; `font-weight: 900` |
-| `.weekly-challenge-card__error` | `color: #dc2626`; `font-size: 12px`; `font-weight: 900` |
+| `.weekly-challenge-card__error` | `color: #ee9696`; `font-size: 12px`; `font-weight: 900` |
 | `.duel-challenge-toast, .achievement-reward-toast` | `width: min(440px, calc(100vw - 32px))`; `padding: 11px 15px`; `border: 1px solid rgba(255, 255, 255, 0.72)`; `border-radius: 16px`; `background: var(--liquid-card-bg)`; `box-shadow: 0 14px 38px rgba(15, 23, 42, 0.28)`; `color: #fff`; `font-size: 13px`; `line-height: 1.35` |
 | `.achievement-reward-toast` | `width: min(398px, calc(100vw - 32px))` |
 | `.profile-referral-copy-toast` | `width: max-content`; `max-width: calc(100vw - 32px)`; `padding: 8px 16px` |
@@ -2112,8 +2112,8 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-game-levels__choices` | `grid-template-columns: repeat(3, minmax(0, 1fr))`; `gap: 6px`; `margin: 12px 0 10px` |
 | `.bonus-game-levels__choices .btn` | `gap: 4px`; `min-width: 0`; `padding: 10px 4px`; `font-size: 12px`; `letter-spacing: 0` |
 | `.bonus-game-levels__status` | `font-size: 10px` |
-| `.bonus-game-level-choice__check` | `width: 18px`; `height: 18px`; `border: 2px solid rgba(71, 85, 105, .34)`; `border-radius: 999px`; `background: rgba(255, 255, 255, .42)`; `color: white`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62)` |
-| `.bonus-game-level-choice__check[data-selected="true"]` | `width: 20px`; `height: 20px`; `border: 0`; `background: #1f2a3d`; `box-shadow: 0 0 0 3px rgba(15, 23, 42, .1)` |
+| `.bonus-game-level-choice__check` | `width: 18px`; `height: 18px`; `border: 2px solid rgba(71, 85, 105, .34)`; `border-radius: 999px`; `background: var(--liquid-inset-bg)`; `color: white`; `box-shadow: inset 0 1px 0 rgba(255, 255, 255, .62)` |
+| `.bonus-game-level-choice__check[data-selected="true"]` | `width: 20px`; `height: 20px`; `border: 0`; `background: var(--liquid-selected-bg)`; `box-shadow: 0 0 0 3px rgba(15, 23, 42, .1)` |
 | `.bonus-game-levels__choices [aria-pressed="true"]` | `border-color: var(--color-primary, #f7d44a)`; `background: rgba(247, 212, 74, 0.12)` |
 | `.bonus-game-levels__received` | `margin: 0`; `color: var(--green-deep)`; `font-size: 12px`; `font-weight: 700` |
 | `.bonus-game-preview-modal .modal-actions` | `margin-top: 8px` |
@@ -2121,7 +2121,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bonus-game-level-reward` | `gap: 20px`; `font-size: 16px`; `font-weight: 800` |
 | `.bonus-game-level-reward span` | `gap: 6px` |
 | `.bonus-game-level-reward svg` | `width: 20px`; `height: 20px` |
-| `.bonus-game-level-reward--received span` | `color: #64748b !important` |
+| `.bonus-game-level-reward--received span` | `color: #b8c0cc !important` |
 | `.bonus-game-preview-modal .bonus-game-levels__received` | `color: var(--liquid-muted)` |
 | `.bonus-game-levels__choices .bonus-game-level-choice--completed` | `background: rgba(34, 197, 94, .10)` |
 | `.bonus-game-levels__choices .bonus-game-level-choice--available` | `background: rgba(250, 204, 21, .10)` |
@@ -2170,7 +2170,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.bar-admin input[type='range']` | `padding: 0` |
 | `.bar-admin__pages` | `grid-template-columns: repeat(2, minmax(0, 1fr))`; `gap: 6px`; `padding: 0`; `margin: 0` |
 | `.bar-admin__pages button` | `width: 100%`; `padding: 8px`; `border: 1px solid #ffffff30`; `background: #ffffff18`; `border-radius: 10px`; `color: inherit`; `font-size: 13px` |
-| `.bar-admin__pages .bar-admin__page--active` | `border-color: #639df5`; `background: #639df530` |
+| `.bar-admin__pages .bar-admin__page--active` | `border-color: var(--liquid-border)`; `background: var(--liquid-selected-bg)` |
 | `.bar-admin__row` | `gap: 8px`; `margin: 12px 0` |
 | `.bar-admin__preview` | `max-width: 390px`; `width: 100%` |
 | `.bar-admin__preview .bar-space` | `color: white` |
@@ -2189,7 +2189,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.onboarding-admin__step` | `grid-template-columns: 68px minmax(0, 1fr) auto` |
 | `.onboarding-admin__thumbnail, .onboarding-admin__thumbnail-fallback` | `width: 68px`; `height: 92px`; `border-radius: 12px`; `background: var(--liquid-card-bg)` |
 | `.onboarding-admin__thumbnail-fallback` | `padding: 6px`; `color: var(--muted)`; `font-size: 10px`; `font-weight: 800` |
-| `.onboarding-admin__field-error` | `margin-top: 6px`; `color: #9f1239`; `font-size: 12px`; `font-weight: 800` |
+| `.onboarding-admin__field-error` | `margin-top: 6px`; `color: var(--red-deep)`; `font-size: 12px`; `font-weight: 800` |
 | `.onboarding-step-editor__speeds` | `grid-template-columns: repeat(3, minmax(0, 1fr))`; `gap: 8px` |
 | `.onboarding-step-editor__speeds`<br>@media (max-width: 640px) | `grid-template-columns: 1fr` |
 | `.onboarding-admin__step`<br>@media (max-width: 640px) | `grid-template-columns: 56px minmax(0, 1fr)` |
@@ -2679,7 +2679,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.fight-challenge__label` | `min-width: max-content`; `color: var(--liquid-ink)`; `font-size: 9.5px`; `font-weight: 950`; `line-height: 1`; `letter-spacing: 0` |
 | `.fight-movement` | `grid-template-columns: repeat(2,minmax(0,1fr))`; `gap: 10px`; `padding-top: 8px` |
 | `.fight-move.btn.btn--cta` | `min-height: 38px`; `padding: 0`; `font-size: 26px` |
-| `.fight-move[aria-pressed="true"]` | `background: #386589` |
+| `.fight-move[aria-pressed="true"]` | `background: var(--liquid-selected-bg)` |
 | `.fight-action__progress` | `width: var(--fight-ready)`; `height: 4px`; `background: #b8e7ff` |
 | `.fight-action.is-in-range:not(:disabled)` | `border-color: #b8e7ff` |
 | `.fight-challenge__count` | `min-width: 15px`; `height: 15px`; `padding: 0 3px`; `border-radius: 999px`; `color: var(--liquid-ink)`; `background: var(--liquid-selected-bg)`; `border: 1px solid rgba(255,255,255,.95)`; `font-size: 9.5px`; `font-weight: 950`; `line-height: 1` |
@@ -2694,7 +2694,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `.fight-held.btn.btn--cta` | `width: 100%`; `min-height: 0`; `border-radius: 50%`; `padding: 0`; `font-size: 13px` |
 | `.fight-control-left .fight-held.btn.btn--cta` | `width: min(100%,54px)`; `font-size: 27px` |
 | `.fight-control-right .fight-held` | `max-width: 88px` |
-| `.fight-held.btn.btn--cta[aria-pressed="true"]` | `background: rgba(94,157,196,.82)`; `border-color: rgba(202,237,255,.9)` |
+| `.fight-held.btn.btn--cta[aria-pressed="true"]` | `background: var(--liquid-selected-bg)`; `border-color: rgba(202,237,255,.9)` |
 | `.fight-guard-pips` | `gap: 4px`; `margin-top: 4px` |
 | `.fight-guard-pips i` | `width: 10px`; `height: 3px`; `border-radius: 2px`; `background: rgba(255,255,255,.22)` |
 | `.fight-guard-pips i.is-filled` | `background: #a8dbf3` |
@@ -3642,7 +3642,7 @@ Backdrop затемняет окружение. Blur принадлежит ка
 | `loadPreview` | [217](../packages/web/src/admin/OnboardingAdmin.tsx#L217) | `<section style={{ display: 'grid', gap: 12 }} aria-label="Управление онбордингом">` |
 | `loadPreview` | [221](../packages/web/src/admin/OnboardingAdmin.tsx#L221) | `<div className="glass" style={{ padding: 6, borderRadius: 18, display: 'flex', gap: 6 }}>` |
 | `loadPreview` | [243](../packages/web/src/admin/OnboardingAdmin.tsx#L243) | `<div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>` |
-| `loadPreview` | [267](../packages/web/src/admin/OnboardingAdmin.tsx#L267) | `<div className="glass" role="alert" style={{ padding: 12, color: '#9f1239' }}>` |
+| `loadPreview` | [267](../packages/web/src/admin/OnboardingAdmin.tsx#L267) | `<div className="glass" role="alert" style={{ padding: 12, color: 'var(--red-deep)' }}>` |
 | `loadPreview` | [278](../packages/web/src/admin/OnboardingAdmin.tsx#L278) | `borderRadius: 18,` |
 | `loadPreview` | [279](../packages/web/src/admin/OnboardingAdmin.tsx#L279) | `padding: 12,` |
 | `loadPreview` | [281](../packages/web/src/admin/OnboardingAdmin.tsx#L281) | `gap: 8,` |
@@ -4222,18 +4222,18 @@ Backdrop затемняет окружение. Blur принадлежит ка
 
 | Компонент | Строка источника | Декларация |
 | --- | --- | --- |
-| `ReplyPreview` | [32](../packages/web/src/chat/components/ReplyPreview.tsx#L32) | `padding: '6px 10px 6px 12px',` |
-| `ReplyPreview` | [34](../packages/web/src/chat/components/ReplyPreview.tsx#L34) | `borderRadius: 12,` |
-| `ReplyPreview` | [37](../packages/web/src/chat/components/ReplyPreview.tsx#L37) | `width: '100%',` |
-| `ReplyPreview` | [39](../packages/web/src/chat/components/ReplyPreview.tsx#L39) | `fontSize: 11,` |
-| `ReplyPreview` | [43](../packages/web/src/chat/components/ReplyPreview.tsx#L43) | `gap: 8,` |
-| `contentNode` | [59](../packages/web/src/chat/components/ReplyPreview.tsx#L59) | `width: 3,` |
-| `contentNode` | [60](../packages/web/src/chat/components/ReplyPreview.tsx#L60) | `borderRadius: 2,` |
-| `contentNode` | [64](../packages/web/src/chat/components/ReplyPreview.tsx#L64) | `<div style={{ minWidth: 0, flex: 1 }}>` |
-| `contentNode` | [65](../packages/web/src/chat/components/ReplyPreview.tsx#L65) | `<div style={{ fontWeight: 700, fontSize: 11, color: senderColor }}>{senderName}</div>` |
-| `contentNode` | [87](../packages/web/src/chat/components/ReplyPreview.tsx#L87) | `fontSize: 14,` |
-| `contentNode` | [88](../packages/web/src/chat/components/ReplyPreview.tsx#L88) | `padding: 0,` |
-| `contentNode` | [89](../packages/web/src/chat/components/ReplyPreview.tsx#L89) | `lineHeight: 1,` |
+| `ReplyPreview` | [28](../packages/web/src/chat/components/ReplyPreview.tsx#L28) | `padding: '6px 10px 6px 12px',` |
+| `ReplyPreview` | [30](../packages/web/src/chat/components/ReplyPreview.tsx#L30) | `borderRadius: 12,` |
+| `ReplyPreview` | [33](../packages/web/src/chat/components/ReplyPreview.tsx#L33) | `width: '100%',` |
+| `ReplyPreview` | [35](../packages/web/src/chat/components/ReplyPreview.tsx#L35) | `fontSize: 11,` |
+| `ReplyPreview` | [39](../packages/web/src/chat/components/ReplyPreview.tsx#L39) | `gap: 8,` |
+| `contentNode` | [55](../packages/web/src/chat/components/ReplyPreview.tsx#L55) | `width: 3,` |
+| `contentNode` | [56](../packages/web/src/chat/components/ReplyPreview.tsx#L56) | `borderRadius: 2,` |
+| `contentNode` | [60](../packages/web/src/chat/components/ReplyPreview.tsx#L60) | `<div style={{ minWidth: 0, flex: 1 }}>` |
+| `contentNode` | [61](../packages/web/src/chat/components/ReplyPreview.tsx#L61) | `<div style={{ fontWeight: 700, fontSize: 11, color: senderColor }}>{senderName}</div>` |
+| `contentNode` | [83](../packages/web/src/chat/components/ReplyPreview.tsx#L83) | `fontSize: 14,` |
+| `contentNode` | [84](../packages/web/src/chat/components/ReplyPreview.tsx#L84) | `padding: 0,` |
+| `contentNode` | [85](../packages/web/src/chat/components/ReplyPreview.tsx#L85) | `lineHeight: 1,` |
 
 </details>
 
@@ -6308,7 +6308,6 @@ Backdrop затемняет окружение. Blur принадлежит ка
 ## Охват каталога
 
 CSS: 2585 правил оформления и вариантов. React: 2793 строк локальной геометрии. Каталог содержит декларации CSS и локальной геометрии React, в том числе служебных элементов. Это индекс исходного оформления, а не вычисленных размеров в браузере. Серверная логика и содержимое рисунков в каталог не включены.
-
 ## Проверка реализации 11 октября 2026
 
 - Локальная ветка `feature/universal-liquid-glass`, база `465b718e`; публикации на dev и production нет.
@@ -6319,3 +6318,5 @@ CSS: 2585 правил оформления и вариантов. React: 2793 �
 - Chromium: реальные BottomNav, GlassSelect и StartPeriodModal плюс синтетическое содержимое карточек/модалки на баре, льду и пляже; 360 и 430 px, нет горизонтального переполнения, выбор списка и запуск периода работают, pageerror отсутствуют. Проверка материала до изменения была RED, после изменения GREEN.
 - Отключённая прозрачность: непрозрачный нейтральный материал и отсутствие blur подтверждены через browser media emulation. Обычные `/login` и `/demo` открываются без горизонтального переполнения. Вход в аккаунт и серверные записи не выполнялись.
 - Снимки и локальный отчёт: `output/playwright/liquid-glass/` в рабочей копии. Это локальная проверка компонентов, не приёмка всех авторизованных экранов, Safari/WebKit или физического iPhone.
+
+Follow-up audit: [all routes, screens, overlays and controls](liquid-glass-audit.md). Additional validation: 138 modal/control and related screen tests passed; 96 theme/tournament tests rerun after the final color refinement passed. Eight public routes rendered in Chromium at 360 px. The local prices API was unavailable, so that page verified the error presentation only.
