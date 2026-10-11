@@ -30,7 +30,7 @@ it('provides finished assets for the four new characters', () => {
   const layout = createDefaultBarLayout();
   for (const id of ['oleg', 'timofey', 'veronika', 'igor'] as const) {
     expect(layout.profiles[id]?.composition).toMatch(/composition-v1.webp$/);
-    expect(layout.profiles[id]?.avatar).toMatch(/avatar-v1.webp$/);
+    expect(layout.profiles[id]?.avatar).toMatch(/avatar-v[12].webp$/);
   }
 });
 
@@ -49,4 +49,15 @@ it('upgrades old assets without moving existing characters or replacing custom p
   expect(upgraded.slots[8]!.occupantId).toBe('igor');
   expect(layout.slots[8]!.occupantId).toBe('news');
   expect(upgradeBarLayout(upgraded)).toEqual(upgraded);
+});
+
+it('updates distorted legacy portraits while keeping custom avatar paths', () => {
+  const layout = createDefaultBarLayout();
+  layout.profiles.igor.avatar = '/bar/cards/igor-avatar-v1.webp';
+  layout.profiles.oleg.avatar = '/bar/cards/oleg-avatar-v1.webp';
+  layout.profiles.veronika.avatar = '/bar/cards/custom.png';
+  const upgraded = upgradeBarLayout(layout);
+  expect(upgraded.profiles.igor.avatar).toBe('/bar/cards/igor-avatar-v2.webp');
+  expect(upgraded.profiles.oleg.avatar).toBe('/bar/cards/oleg-avatar-v2.webp');
+  expect(upgraded.profiles.veronika.avatar).toBe('/bar/cards/custom.png');
 });
