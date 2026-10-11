@@ -1275,7 +1275,8 @@
   z-index: 1000;
   padding: 12px;
   border-radius: 16px;
-  background: var(--surface, #fff);
-  color: var(--text, #18212b);
-  box-shadow: 0 4px 24px #0002;
+  background: var(--liquid-toast-bg);
+  color: var(--liquid-ink);
+  border: 1px solid var(--liquid-border-soft);
+  box-shadow: var(--liquid-shadow);
 }
