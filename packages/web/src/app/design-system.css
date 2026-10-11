@@ -1315,6 +1315,7 @@
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+  text-shadow: none;
 }
 
 .game-scoreboard__label--small {

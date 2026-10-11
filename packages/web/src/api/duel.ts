@@ -71,6 +71,9 @@ export interface DailyStateResponse {
 
 export interface ShotInputPayload {
   tapTime: number;
+  /** Continuous period time; tapTime remains the paused scene time. */
+  periodTapTime?: number;
+  resultPauseMs?: number;
   shooterTapTime?: number;
   puckSpeedPerMs?: number;
   shooterFrequency?: number;

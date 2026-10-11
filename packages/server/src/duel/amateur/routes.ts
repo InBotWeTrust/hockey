@@ -1,4 +1,4 @@
-import { projectMarathon, compareScoredDuel, type MarathonWindowMs } from './scoredFormats.js';
+import { projectMarathon, restoreScoredSceneClocks, compareScoredDuel, type MarathonWindowMs } from './scoredFormats.js';
 import { FightRuntime } from './fight/runtime/manager.js';
 import { fightWindowRemainingMs } from './fight/window.js';
 import { startFightWorker } from './fight/worker.js';
@@ -305,6 +305,8 @@ const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
   input: z.object({
     tapTime: z.number(),
+    periodTapTime: z.number().nonnegative().optional(),
+    resultPauseMs: z.union([z.literal(1), z.literal(1000)]).optional(),
     shooterTapTime: z.number().optional(),
     puckSpeedPerMs: z.number().optional(),
     shooterFrequency: z.number().optional(),
@@ -766,6 +768,8 @@ interface DuelRulesSnapshot {
 
 interface DuelParticipantDTO {
   last_shot_ends_ms?: number;
+  scene_elapsed_ms?: number;
+  shooter_elapsed_ms?: number;
   format_score?: number;
   sniper_points?: number;
   marathon_penalties?: number;
@@ -893,6 +897,7 @@ interface DuelMatchStateDTO extends DuelMatchDTO {
 }
 
 interface SubmitAmateurDuelShotResponse {
+  awarded_points?: number;
   state_revision?:number;
   match_id: string;
   server_result: DuelShotResult;
@@ -3829,7 +3834,7 @@ async function scoredParticipantFields(
 ): Promise<Partial<DuelParticipantDTO>> {
   if (rules.duelKind !== 'sniper' && rules.duelKind !== 'marathon') return {};
   const shots = await client.query<{
-    input_payload: { tapTime: number; puckSpeedPerMs: number };
+    input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number };
     server_result: DuelShotResult;
     awarded_points: number;
   }>(
@@ -3840,26 +3845,29 @@ async function scoredParticipantFields(
   );
   const lastInput=shots.rows.at(-1)?.input_payload;
   const lastShotEndsMs=lastInput ? lastInput.tapTime+(PUCK_START.y-GOAL_OPENING.y)/lastInput.puckSpeedPerMs : 0;
+  const elapsedMs = participant.period_started_at === null
+    ? Number(participant.active_duration_ms)
+    : Math.max(0, now.getTime() - participant.period_started_at.getTime());
+  const lastFlightMs = lastInput ? (PUCK_START.y - GOAL_OPENING.y) / lastInput.puckSpeedPerMs : 0;
+  const clockFields = restoreScoredSceneClocks(elapsedMs, lastInput, lastFlightMs);
   if (rules.duelKind === 'sniper') {
     const points = shots.rows.reduce((sum, shot) => sum + Number(shot.awarded_points), 0);
-    return { format_score: points / 10, sniper_points: points, last_shot_ends_ms:lastShotEndsMs };
+    return { ...clockFields, format_score: points / 10, sniper_points: points, last_shot_ends_ms:lastShotEndsMs };
   }
   const durationMs = rules.periodRules[0]!.durationMs;
-  const elapsedMs =
-    participant.period_started_at === null
-      ? Number(participant.active_duration_ms)
-      : Math.max(0, now.getTime() - participant.period_started_at.getTime());
+
   const projection = projectMarathon({
     durationMs,
     windowMs: rules.marathonWindowMs ?? 7000,
     elapsedMs,
     shots: shots.rows.map((shot) => ({
-      startedMs: Number(shot.input_payload.tapTime),
+      startedMs: Number(shot.input_payload.periodTapTime ?? shot.input_payload.tapTime),
       flightMs: (PUCK_START.y - GOAL_OPENING.y) / Number(shot.input_payload.puckSpeedPerMs),
       goal: shot.server_result === 'goal',
     })),
   });
   return {
+    ...clockFields,
     format_score: projection.score,
     marathon_penalties: projection.penalties,
     average_goal_ms: projection.goals > 0 ? durationMs / projection.goals : null,
@@ -6775,8 +6783,8 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         await assertFullAmateurAccess(client, req.user.id);
         if (lockedMatch.duel_kind === 'sniper' || lockedMatch.duel_kind === 'marathon') {
-          const prior = await client.query<{ server_result: DuelShotResult }>(
-            `select server_result from shot_session where amateur_duel_match_id=$1 and user_id=$2
+          const prior = await client.query<{ server_result: DuelShotResult; awarded_points: number }>(
+            `select server_result, awarded_points from shot_session where amateur_duel_match_id=$1 and user_id=$2
                and mode='amateur_duel' and period_number=1 and shot_index=$3`,
             [lockedMatch.id, req.user.id, body.shot_index],
           );
@@ -6787,6 +6795,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               state_revision: dto.state_revision ?? 0,
               match_id: lockedMatch.id,
               server_result: prior.rows[0].server_result,
+              awarded_points: Number(prior.rows[0].awarded_points),
               confirmed_shot_index: confirmedStats.shots,
               participant: {
                 ...await scoredParticipantFields(client,lockedMatch,(await fetchParticipants(client,lockedMatch.id)).find(player=>player.user_id===req.user.id)!,parseRulesSnapshot(lockedMatch.rules_snapshot),now),
@@ -6857,20 +6866,27 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         assertDuelTapTimeFresh(
           participant,
-          rules.duelKind === 'sniper' || rules.duelKind === 'marathon' ? 0 : cur.shots,
+          cur.shots,
           body.input.tapTime,
           now,
         );
+        const isScoredDuel = rules.duelKind === 'sniper' || rules.duelKind === 'marathon';
+        const periodTapTime = body.input.periodTapTime ?? body.input.tapTime;
+        if (isScoredDuel) {
+          assertDuelTapTimeFresh(participant, 0, periodTapTime, now);
+          if (body.input.tapTime > periodTapTime + TAP_TIME_FUTURE_TOLERANCE_MS)
+            throw new AppError('conflict', 'scene clock is ahead of period clock', 409);
+        }
         if (
-          (rules.duelKind === 'sniper' || rules.duelKind === 'marathon') &&
-          body.input.tapTime > periodRule.durationMs
+          isScoredDuel &&
+          periodTapTime > periodRule.durationMs
         )
           throw new AppError('conflict', 'duel shot started after the final siren', 409);
 
         let earliestTapTime=0;
         if ((rules.duelKind === 'sniper' || rules.duelKind === 'marathon') && cur.shots > 0) {
           const previous = await client.query<{
-            input_payload: { tapTime: number; puckSpeedPerMs: number };
+            input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number };
           }>(
             `select input_payload from shot_session where amateur_duel_match_id=$1 and user_id=$2
                and period_number=$3 order by shot_index desc limit 1`,
@@ -6878,6 +6894,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           );
           const input = previous.rows[0]!.input_payload;
           earliestTapTime=input.tapTime+(PUCK_START.y-GOAL_OPENING.y)/input.puckSpeedPerMs;
+          if (body.input.periodTapTime !== undefined && input.periodTapTime !== undefined &&
+              periodTapTime < input.periodTapTime + (PUCK_START.y - GOAL_OPENING.y) / input.puckSpeedPerMs)
+            throw new AppError('conflict', 'duel shots overlap on the period clock', 409);
           if (
             body.input.tapTime <
             input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / input.puckSpeedPerMs
@@ -6932,6 +6951,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
         const shotInput = {
           tapTime: body.input.tapTime,
+          ...(isScoredDuel && body.input.periodTapTime !== undefined ? { periodTapTime, resultPauseMs: body.input.resultPauseMs ?? 1000 } : {}),
           ...(body.input.shooterTapTime !== undefined
             ? { shooterTapTime: body.input.shooterTapTime }
             : {}),
@@ -7092,6 +7112,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           state_revision:Number((await client.query<{state_revision:string}>('select state_revision from amateur_duel_match where id=$1',[match.id])).rows[0]!.state_revision),
           match_id: match.id,
           server_result: serverResult,
+          awarded_points: awardedPoints,
           confirmed_shot_index: confirmedStats.shots,
           participant: {
             ...(await scoredParticipantFields(client, match, refreshedParticipant, rules, now)),

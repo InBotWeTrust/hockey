@@ -43,6 +43,7 @@ interface AmateurDuelStoreState {
     claimedResult: ShotResultType;
   }) => Promise<{
     serverResult: ShotResultType;
+    awardedPoints?: number;
     state: AmateurDuelMatchState;
     isCurrent: () => boolean;
   } | null>;
@@ -430,6 +431,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       set({ error: null });
       return {
         serverResult: acknowledgement.server_result,
+        ...(acknowledgement.awarded_points !== undefined ? { awardedPoints: acknowledgement.awarded_points } : {}),
         state: next,
         isCurrent: () => {
           const live=get().match;

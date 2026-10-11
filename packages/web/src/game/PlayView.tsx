@@ -322,6 +322,7 @@ export interface PlayViewProps<TState> {
   onInactiveActionStart?: (() => void) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
   goalsOnlyWhileInactive?: boolean | undefined;
+  separatePeriodClock?: boolean | undefined;
   continuousClockDuringResult?: boolean | undefined;
   waitForShotResponseBeforeResultClose?: boolean | undefined;
   freezeRenderingDuringResult?: boolean | undefined;
@@ -625,6 +626,7 @@ export function PlayView<TState>({
   onInactiveActionStart,
   entranceBeforeInactiveAction = false,
   goalsOnlyWhileInactive = false,
+  separatePeriodClock = false,
   continuousClockDuringResult = false,
   waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
@@ -1837,6 +1839,10 @@ export function PlayView<TState>({
     const input = {
       tapTime,
       shooterTapTime,
+      ...(separatePeriodClock ? {
+        periodTapTime: computeInitialElapsedMs({ ...sessionTimingRef.current, initialSceneElapsedMs: null, initialShooterElapsedMs: null }),
+        resultPauseMs: reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS,
+      } : {}),
       ...(shooterMotionT !== undefined ? { shooterMotionTime: shooterMotionT } : {}),
       puckSpeedPerMs: puckSpeed,
       shooterFrequency: effectiveShooterFreq,
@@ -2102,6 +2108,7 @@ export function PlayView<TState>({
         pendingResultCloseRef.current?.();
       });
   }, [
+    separatePeriodClock,
     continuousClockDuringResult,
     waitForShotResponseBeforeResultClose,
     freezeRenderingDuringResult,

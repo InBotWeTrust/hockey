@@ -1,3 +1,4 @@
+import { MarksmanshipScoreNotice, marksmanshipV6TechniqueLabel } from '../components/MarksmanshipScoreNotice.js';
 import { duelDisplayScore, duelFormatLabel, duelScorePairText } from '../components/duel/scoredDuel.js';
 import { duelTemplateChoices } from '../components/duel/duelTemplateChoices.js';
 import { classifyMarksmanshipShot } from '@hockey/game-core';
@@ -5772,6 +5773,21 @@ function AmateurDuelPlayView({
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
+  const [sniperScoreParts, setSniperScoreParts] = useState<readonly { points: number; label: string }[] | null>(null);
+  const sniperPendingPartsRef = useRef<readonly { points: number; label: string }[] | null>(null);
+  const sniperResultVisibleRef = useRef(false);
+  const sniperNoticeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const showSniperScore = useCallback((parts: readonly { points: number; label: string }[] | null) => {
+    if (sniperNoticeTimeoutRef.current !== null) clearTimeout(sniperNoticeTimeoutRef.current);
+    setSniperScoreParts(parts);
+    sniperNoticeTimeoutRef.current = parts ? setTimeout(() => setSniperScoreParts(null), 2000) : null;
+  }, []);
+  useEffect(() => {
+    setSniperScoreParts(null);
+    sniperPendingPartsRef.current = null;
+    sniperResultVisibleRef.current = false;
+    return () => { if (sniperNoticeTimeoutRef.current !== null) clearTimeout(sniperNoticeTimeoutRef.current); };
+  }, [matchId]);
   const applyState = useAmateurDuelStore((s) => s.applyState);
   const [now, setNow] = useState(Date.now());
   const [dismissedResultMatchId, setDismissedResultMatchId] = useState<string | null>(null);
@@ -6345,6 +6361,8 @@ function AmateurDuelPlayView({
           sessionStartedAt={match.period_started_at}
           serverNow={match.server_now}
           receivedAtPerformanceMs={match.received_at_performance_ms}
+          initialSceneElapsedMs={match.me.scene_elapsed_ms}
+          initialShooterElapsedMs={match.me.shooter_elapsed_ms}
           goals={match.current_period_goals}
           scoreboardGoals={duelDisplayScore(match.rules.duelKind, match.me)}
           shots={match.current_period_shots}
@@ -6355,12 +6373,6 @@ function AmateurDuelPlayView({
           {...(fightPaused ? { timer: formatMs(match.me.clock?.remainingMs ?? Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
           backLabel={duelBackLabel(match.source, false)}
           scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
-          continuousClockDuringResult={
-            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
-          }
-          freezeRenderingDuringResult={
-            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
-          }
           canStartAction={
             match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
               ? () =>
@@ -6376,8 +6388,8 @@ function AmateurDuelPlayView({
           }
           shotResolver={
             match.rules.duelKind === 'sniper' && match.rules.sniperScoring
-              ? (context) =>
-                  classifyMarksmanshipShot({
+              ? (context) => {
+                  const classification = classifyMarksmanshipShot({
                     shotInput: context.input,
                     goalie: context.goalieConfig,
                     seed: context.seed,
@@ -6386,11 +6398,31 @@ function AmateurDuelPlayView({
                     phaseOffsets: context.phaseOffsets,
                     earliestTapTime: match.me.last_shot_ends_ms ?? 0,
                     scoring: match.rules.sniperScoring!,
-                  }).result
+                  });
+                  sniperPendingPartsRef.current = classification.result.type === 'goal' && classification.awardedPoints > 0
+                    ? [{ points: classification.awardedPoints, label: classification.v6Score?.technique ? marksmanshipV6TechniqueLabel(classification.v6Score.technique) : 'Гол' }]
+                    : null;
+                  return classification.result;
+                }
               : undefined
           }
           optimisticAddShot={optimisticAddShot}
-          submitShot={submitShot}
+          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          submitShot={async (args) => {
+            const result = await submitShot(args);
+            if (match.rules.duelKind === 'sniper' && result?.isCurrent()) {
+              const points = result.awardedPoints;
+              sniperPendingPartsRef.current = result.serverResult === 'goal' && (points ?? 0) > 0
+                ? [{ points: points!, label: sniperPendingPartsRef.current?.[0]?.label ?? 'Гол' }] : null;
+              if (sniperResultVisibleRef.current) showSniperScore(sniperPendingPartsRef.current);
+            }
+            return result;
+          }}
+          onResultVisibilityChange={(visible) => {
+            if (match.rules.duelKind !== 'sniper') return;
+            sniperResultVisibleRef.current = visible;
+            if (visible) showSniperScore(sniperPendingPartsRef.current);
+          }}
           applyState={applyState}
           duelCondition={(elapsed, speeds) => {
             const condition = duelCondition(elapsed, speeds);
@@ -6412,6 +6444,8 @@ function AmateurDuelPlayView({
                 {(Math.ceil(marathonRemainingMs / 100) / 10).toFixed(1)}
               </span>
             </div>
+          ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
+            <MarksmanshipScoreNotice parts={sniperScoreParts} scoring={match.rules.sniperScoring} />
           ) : undefined}
           hudAddon={
             <>

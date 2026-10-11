@@ -206,7 +206,7 @@ async function playersFor(
           await pool.query<{
             amateur_duel_match_id: string;
             user_id: string;
-            input_payload: { tapTime: number; puckSpeedPerMs: number };
+            input_payload: { tapTime: number; periodTapTime?: number; puckSpeedPerMs: number };
             server_result: string;
             awarded_points: number;
           }>(
@@ -272,7 +272,7 @@ async function playersFor(
                 windowMs: row.rules_snapshot?.marathonWindowMs ?? 7000,
                 elapsedMs: elapsed,
                 shots: shots.map((shot) => ({
-                  startedMs: shot.input_payload.tapTime,
+                  startedMs: shot.input_payload.periodTapTime ?? shot.input_payload.tapTime,
                   flightMs: (PUCK_START.y - GOAL_OPENING.y) / shot.input_payload.puckSpeedPerMs,
                   goal: shot.server_result === 'goal',
                 })),
