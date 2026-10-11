@@ -1,4 +1,4 @@
-import { duelDisplayScore, duelFormatLabel, duelScoreText } from '../components/duel/scoredDuel.js';
+import { duelDisplayScore, duelFormatLabel, duelScorePairText } from '../components/duel/scoredDuel.js';
 import { duelTemplateChoices } from '../components/duel/duelTemplateChoices.js';
 import { classifyMarksmanshipShot } from '@hockey/game-core';
 import { DuelKindPreferenceButton } from '../components/DuelKindPreferenceButton.js';
@@ -2499,7 +2499,7 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
   const inviteEndsAt = timestampMs(match.ready_expires_at);
   const periodEndsAt = timestampMs(match.period_ends_at);
   const breakEndsAt = timestampMs(match.break_ends_at);
-  const score = `${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`;
+  const score = duelScorePairText(match.rules.duelKind, match.me, match.opponent);
 
   if (match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled') {
     return {
@@ -3083,7 +3083,7 @@ function DuelStatsModal({
         </div>
 
         <div
-          aria-label={`Счёт дуэли ${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`}
+          aria-label={`Счёт дуэли ${duelScorePairText(match.rules.duelKind, match.me, match.opponent)}`}
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
@@ -3093,7 +3093,7 @@ function DuelStatsModal({
         >
           <DailyStatsMetric
             label="Счёт"
-            value={`${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`}
+            value={duelScorePairText(match.rules.duelKind, match.me, match.opponent)}
           />
           <DailyStatsMetric label="Время" value={formatDurationMs(match.me.active_duration_ms)} />
           <DailyStatsMetric label="Период" value={`${currentPeriod}/${match.rules.totalPeriods}`} />
@@ -5630,7 +5630,7 @@ function DuelListCard({
             {duelFormatLabel(match.rules)}
             {opensOnCardClick
               ? ` · ${formatShortDateTime(historyDate)}`
-              : ` · ${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`}
+              : ` · ${duelScorePairText(match.rules.duelKind, match.me, match.opponent)}`}
           </span>
           <span
             className="duel-card-venue"
@@ -6485,7 +6485,7 @@ function AmateurDuelPlayView({
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
         <TotalCell
           label={match.rules.duelKind==='sniper' ? 'ОЧКИ' : 'СЧЁТ'}
-          value={`${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`}
+          value={duelScorePairText(match.rules.duelKind, match.me, match.opponent)}
         />
         <TotalCell label="ВРЕМЯ" value={formatDurationMs(match.me.active_duration_ms)} />
         <TotalCell
@@ -6818,7 +6818,7 @@ function DuelResultCard({
             )}
             <div
               className="tournament-duel-result__matchup"
-              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`}
+              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${duelScorePairText(match.rules.duelKind, match.me, match.opponent)}`}
             >
               <div className="tournament-duel-result__matchup-main">
                 <div className="tournament-duel-result__player">
@@ -6863,7 +6863,7 @@ function DuelResultCard({
                   )}
                 </div>
                 <strong className="tournament-duel-result__game-score">
-                  {`${duelScoreText(match.rules.duelKind, match.me)} : ${duelScoreText(match.rules.duelKind, match.opponent)}`}
+                  {duelScorePairText(match.rules.duelKind, match.me, match.opponent)}
                 </strong>
               </div>
               <div className="tournament-duel-result__meta" style={match.fight_rewards?.length ? {flexDirection:'column',alignItems:'stretch',gap:6} : undefined}>
@@ -6902,7 +6902,7 @@ function DuelResultCard({
             {match.rules.duelKind === 'marathon' && (
               <div className="duel-result-card__penalties">
                 <h3>Штрафы за таймер</h3>
-                <strong>{`${match.me.marathon_penalties ?? 0} : ${match.opponent.marathon_penalties ?? 0}`}</strong>
+                <strong>{`${match.me.marathon_penalties ?? 0}:${match.opponent.marathon_penalties ?? 0}`}</strong>
               </div>
             )}
             {tiebreaker && (
@@ -8057,6 +8057,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     name: opponent.display_name || 'Соперник',
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
+    scoreSeparator: match.rules.duelKind === 'sniper' ? ' : ' : ':',
     shots: opponent.shots_taken,
     shotsLabel,
     time,

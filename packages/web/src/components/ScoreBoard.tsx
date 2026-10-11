@@ -49,6 +49,7 @@ export interface ScoreBoardProps {
 }
 
 export interface ScoreBoardOpponent {
+  scoreSeparator?: string;
   name: string;
   avatarUrl: string | null;
   goals: number;
@@ -104,7 +105,7 @@ export function buildGameScoreboardModel({
     id: opponent ? 'score' : 'goals',
     label: opponent ? 'СЧЁТ' : scoreLabel,
     value: opponent
-      ? `${goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} : ${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}`
+      ? `${goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}${opponent.scoreSeparator ?? ':'}${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}`
       : padded(goals),
   };
   const statusLine: GameScoreboardStatusLine | undefined = opponent
