@@ -19,6 +19,7 @@ const profiles = z
     oleg: profile,
     timofey: profile,
     veronika: profile,
+    igor: profile,
     news: profile,
     broadcasts: profile,
   })

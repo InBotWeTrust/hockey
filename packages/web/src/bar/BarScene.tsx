@@ -12,7 +12,7 @@ import { BarIdentityPanel } from './BarIdentityPanel.js';
 import './bar-panorama.css';
 import { barCharacters, type BarCharacter } from './conversationApi.js';
 const isUnfinished = (id: BarOccupantId | null | undefined) =>
-  !id || ['veronika', 'oleg', 'timofey'].includes(id);
+  !id;
 function CharacterSilhouette() {
   return <svg className="bar-space__silhouette" viewBox="0 0 240 480" aria-hidden="true">
     <circle cx="120" cy="65" r="38" />

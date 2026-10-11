@@ -1,6 +1,6 @@
 import { expect, it, beforeEach, afterEach } from 'vitest';
 import Fastify, { type FastifyError, type FastifyRequest, type FastifyReply } from 'fastify';
-import { createDefaultBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
+import { createDefaultBarLayout, upgradeBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
 import { barLayoutRoutes } from './layoutRoutes.js';
 let app: ReturnType<typeof Fastify>;
 let stored: BarLayoutSnapshot;
@@ -103,5 +103,5 @@ it('migration seed matches the shared initial layout', async () => {
   );
   const seed = sql.match(/values \(1,'(.+)'::jsonb\)/)?.[1];
   expect(seed).toBeDefined();
-  expect(JSON.parse(seed!.replaceAll("''", "'"))).toEqual(createDefaultBarLayout());
+  expect(upgradeBarLayout(JSON.parse(seed!.replaceAll("''", "'")))).toEqual(createDefaultBarLayout());
 });

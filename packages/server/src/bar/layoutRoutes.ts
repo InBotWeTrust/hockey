@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
-import { createDefaultBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
+import { createDefaultBarLayout, upgradeBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
 import { createAdminPreHandlers } from '../admin/guards.js';
 import { AppError } from '../plugins/errors.js';
 import { barLayoutSchema, barLayoutWriteSchema } from './layoutSchema.js';
@@ -10,7 +10,7 @@ export const barLayoutRoutes: FastifyPluginAsync = async (app) => {
     );
     const row = rows[0];
     return row
-      ? { revision: row.revision, layout: barLayoutSchema.parse(row.layout) }
+      ? { revision: row.revision, layout: barLayoutSchema.parse(upgradeBarLayout(row.layout)) }
       : { revision: 1, layout: createDefaultBarLayout() };
   };
   app.get('/bar/layout', { preHandler: [app.authenticate] }, read);

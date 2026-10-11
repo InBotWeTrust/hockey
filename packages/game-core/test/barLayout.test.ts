@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { createDefaultBarLayout, barActionsFor, moveBarOccupant } from '../src/barLayout.js';
+import { createDefaultBarLayout, upgradeBarLayout, barActionsFor, moveBarOccupant } from '../src/barLayout.js';
 describe('bar layout', () => {
   it('starts at Veronika with ten stable slots and fresh defaults', () => {
     const a = createDefaultBarLayout();
@@ -24,4 +24,29 @@ describe('bar layout', () => {
     expect(barActionsFor('online')).toEqual(['online']);
     expect(barActionsFor('broadcasts')).toEqual(['broadcasts']);
   });
+});
+
+it('provides finished assets for the four new characters', () => {
+  const layout = createDefaultBarLayout();
+  for (const id of ['oleg', 'timofey', 'veronika', 'igor'] as const) {
+    expect(layout.profiles[id]?.composition).toMatch(/composition-v1.webp$/);
+    expect(layout.profiles[id]?.avatar).toMatch(/avatar-v1.webp$/);
+  }
+});
+
+it('upgrades old assets without moving existing characters or replacing custom profiles', () => {
+  const layout = createDefaultBarLayout();
+  layout.profiles.oleg.composition = '/bar/cards/custom.png';
+  layout.profiles.oleg.description = 'Custom';
+  layout.profiles.veronika.composition = null;
+  layout.slots[5]!.x = 35;
+  layout.slots[8]!.occupantId = 'news';
+  const upgraded = upgradeBarLayout(layout);
+  expect(upgraded.profiles.oleg.composition).toBe('/bar/cards/custom.png');
+  expect(upgraded.profiles.oleg.description).toBe('Custom');
+  expect(upgraded.profiles.veronika.composition).toContain('veronika-composition');
+  expect(upgraded.slots[5]!.x).toBe(35);
+  expect(upgraded.slots[8]!.occupantId).toBe('igor');
+  expect(layout.slots[8]!.occupantId).toBe('news');
+  expect(upgradeBarLayout(upgraded)).toEqual(upgraded);
 });
