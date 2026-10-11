@@ -1,6 +1,7 @@
 /* Neutral material shared by application chrome, content and portal overlays.
  * Artwork and semantic status colors stay independent of the material. */
 :root {
+  --liquid-scrim-blur: blur(14px) saturate(115%);
   --liquid-ink: #f8f9fb;
   --liquid-muted: rgba(248, 249, 251, 0.82);
   --liquid-muted-soft: rgba(248, 249, 251, 0.66);
@@ -112,7 +113,7 @@
   box-shadow: none;
 }
 
-.app-shell :is(.btn, .icon-btn, .segmented-tabs__item):disabled {
+.app-shell :is(.btn, .icon-btn):disabled {
   background: var(--liquid-inset-bg);
   border-color: var(--liquid-border-soft);
   box-shadow: none;
@@ -138,8 +139,8 @@
 
 .modal-backdrop {
   background: var(--liquid-scrim);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  backdrop-filter: var(--liquid-scrim-blur);
+  -webkit-backdrop-filter: var(--liquid-scrim-blur);
 }
 
 .app-shell :is(.modal-card, .admin-drawer, .tournament-player-search__results),
@@ -266,6 +267,7 @@
     --liquid-selected-bg: #52555b;
     --liquid-blur: none;
     --liquid-modal-blur: none;
+    --liquid-scrim-blur: none;
   }
 }
 
@@ -279,4 +281,67 @@
 .app-shell :is(.onboarding-flow__speech, .login-screen__auth-button) {
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
+}
+
+/* Keep navigation geometry and icon weight aligned with the approved capsule. */
+.app-shell .bottom-nav__tab { color: var(--liquid-muted); }
+.app-shell .bottom-nav__tab--active { color: var(--liquid-ink); }
+.app-shell .bottom-nav__icon-wrap svg { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35)); }
+.app-shell .bottom-nav__active-glow { display: none; }
+
+/* Reading surfaces keep detailed scenery from competing with long text. */
+:root {
+  --chat-reading-bg: rgba(24, 28, 34, 0.88);
+  --chat-reading-own-bg: rgba(48, 54, 64, 0.92);
+  --chat-reading-meta: #cbd1d9;
+}
+.app-shell.app-shell--unified-glass .chat-reading-surface {
+  background: var(--chat-reading-bg);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #f8f9fb;
+  text-shadow: none;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.app-shell.app-shell--unified-glass .chat-reading-surface.chat-bubble--own {
+  background: var(--chat-reading-own-bg);
+}
+.chat-reading-surface {
+  --liquid-inset-bg: rgba(0, 0, 0, 0.22);
+  --liquid-muted: var(--chat-reading-meta);
+  --muted: var(--chat-reading-meta);
+}
+.app-shell.app-shell--unified-glass .chat-reading-surface .pill {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.06);
+  box-shadow: none;
+  text-shadow: none;
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --chat-reading-bg: #181c22; --chat-reading-own-bg: #303640; }
+  .app-shell.app-shell--unified-glass .chat-reading-surface { backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+
+.app-shell .bar-identity__avatar { border-color: var(--liquid-border); }
+
+.app-shell .segmented-tabs__item:disabled { opacity: 0.55; cursor: default; }
+
+/* Toasts are body portals and need their own readable material. */
+:root { --liquid-toast-bg: rgba(24, 28, 34, 0.94); }
+.duel-challenge-toast,
+.achievement-reward-toast {
+  background: var(--liquid-toast-bg);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border-color: var(--liquid-border);
+  color: #f8f9fb;
+  text-shadow: none;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+@media (prefers-reduced-transparency: reduce) {
+  :root { --liquid-toast-bg: #181c22; }
+  .duel-challenge-toast, .achievement-reward-toast {
+    backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
 }

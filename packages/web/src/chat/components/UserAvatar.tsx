@@ -30,6 +30,8 @@ export function UserAvatar({
         width: size,
         height: size,
         borderRadius: '50%',
+        border: '1px solid var(--liquid-border)',
+        boxSizing: 'border-box',
         background: 'var(--liquid-inset-bg)',
         color: '#ffffff',
         display: 'flex',
