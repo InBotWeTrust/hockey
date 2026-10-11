@@ -329,7 +329,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
 
   return (
     <div
-      className="bottom-nav-shell glass-edge-fade glass-edge-fade--bottom"
+      className="bottom-nav-shell"
       style={{
         position: 'absolute',
         left: 0,

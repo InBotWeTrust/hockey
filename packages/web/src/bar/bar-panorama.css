@@ -184,8 +184,8 @@
 .bar-space__actions {
   position: absolute;
   bottom: max(24px, env(safe-area-inset-bottom));
-  left: 16px;
-  right: 16px;
+  left: 12px;
+  right: 12px;
   display: grid;
   gap: 12px;
   color: white;
