@@ -82,7 +82,7 @@ describe('TournamentCatalog', () => {
 
   it('gives the pinned current-player row an opaque surface', () => {
     expect(designSystemCss).toMatch(
-      /\.tournament-standings-progressive__pinned\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*#c4d5e6;/s,
+      /\.tournament-standings-progressive__pinned\s*\{[^}]*border-radius:\s*0;[^}]*background:\s*var\(--liquid-solid-bg\);/s,
     );
   });
 
@@ -841,7 +841,7 @@ describe('TournamentCatalog', () => {
       expect(getComputedStyle(final!).backgroundColor).toBe(
         getComputedStyle(overview!).backgroundColor,
       );
-      expect(getComputedStyle(bronze!).color).toBe('rgb(116, 69, 31)');
+      expect(getComputedStyle(bronze!).color).toBe('rgb(229, 190, 158)');
     } finally {
       shell.remove();
       style.remove();

@@ -821,7 +821,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
                     fontWeight: 700,
                     color:
                       pushStatus === 'error' || pushStatus === 'denied'
-                        ? '#b42318'
+                        ? 'var(--red-deep)'
                         : 'var(--muted)',
                   }}
                 >

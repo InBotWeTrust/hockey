@@ -1396,7 +1396,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
                     size={38}
                     fontSize={14}
                     alt={participant.displayName}
-                    style={{ background: 'rgba(30, 91, 151, 0.13)', color: 'var(--liquid-muted)' }}
+                    style={{ background: 'var(--liquid-inset-bg)', color: 'var(--liquid-muted)' }}
                   />
                 </span>
                 <strong>{participant.displayName}</strong>

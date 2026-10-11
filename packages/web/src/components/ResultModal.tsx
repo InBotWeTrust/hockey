@@ -79,7 +79,7 @@ export function ResultModal({
           boxSizing: 'border-box',
           padding: contained ? '7px 12px' : 'clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px)',
           borderRadius: contained ? 12 : 24,
-          background: 'var(--liquid-card-bg)',
+          background: 'var(--liquid-modal-bg)',
           border: '1.5px solid rgba(255, 255, 255, 0.86)',
           backdropFilter: 'blur(18px) saturate(115%)',
           WebkitBackdropFilter: 'blur(18px) saturate(115%)',

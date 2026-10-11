@@ -382,7 +382,7 @@
 
 .fight-movement { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; padding-top:8px; flex:0 0 auto; }
 .fight-move.btn.btn--cta { min-height:38px; padding:0; font-size:26px; touch-action:none; user-select:none; }
-.fight-move[aria-pressed="true"] { background:#386589; }
+.fight-move[aria-pressed="true"] { background:var(--liquid-selected-bg); }
 .fight-action { position:relative; overflow:hidden; }
 .fight-action > span { position:relative; z-index:1; }
 .fight-action__progress { position:absolute; left:0; bottom:0; width:var(--fight-ready); height:4px; background:#b8e7ff; }
@@ -456,7 +456,7 @@
 .fight-control-left .fight-held.btn.btn--cta { width:min(100%,54px); font-size:27px; }
 .fight-control-right .fight-held { max-width:88px; }
 .fight-held--down { grid-column:1 / -1; justify-self:center; }
-.fight-held.btn.btn--cta[aria-pressed="true"] { transform:scale(.96); background:rgba(94,157,196,.82); border-color:rgba(202,237,255,.9); opacity:1; }
+.fight-held.btn.btn--cta[aria-pressed="true"] { transform:scale(.96); background:var(--liquid-selected-bg); border-color:rgba(202,237,255,.9); opacity:1; }
 .fight-guard-pips { display:flex; gap:4px; margin-top:4px; }
 .fight-guard-pips i { width:10px; height:3px; border-radius:2px; background:rgba(255,255,255,.22); }
 .fight-guard-pips i.is-filled { background:#a8dbf3; }

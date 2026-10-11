@@ -1970,7 +1970,7 @@ function ArenaVideoCube({
                     padding: 0,
                     border: 0,
                     borderRadius: 999,
-                    background: active ? 'rgba(244, 253, 255, 0.96)' : 'rgba(178, 232, 255, 0.42)',
+                    background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)' ,
                     boxShadow: active
                       ? '0 0 7px rgba(212, 249, 255, 0.74)'
                       : '0 0 5px rgba(86, 205, 255, 0.24)',
@@ -2696,7 +2696,7 @@ function DailyPeriodTab({
         fontFamily: 'var(--font-mono)',
         fontSize: 11,
         fontWeight: 900,
-        background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
+        background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
         border: active
           ? '1px solid rgba(182, 238, 255, 0.72)'
           : '1px solid rgba(118, 215, 255, 0.24)',

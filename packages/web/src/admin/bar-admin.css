@@ -57,8 +57,8 @@
   overflow-wrap: anywhere;
 }
 .bar-admin__pages .bar-admin__page--active {
-  border-color: #639df5;
-  background: #639df530;
+  border-color: var(--liquid-border);
+  background: var(--liquid-selected-bg);
 }
 .bar-admin__row {
   display: flex;

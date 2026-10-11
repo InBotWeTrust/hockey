@@ -18,14 +18,10 @@ export function ReplyPreview({
   const isComposer = variant === 'composer';
   const isDark = !isComposer && tone === 'dark';
   const isClickable = onClick !== undefined && !isComposer;
-  const previewBackground = isComposer
-    ? 'rgba(255,255,255,0.55)'
-    : isDark
-      ? 'rgba(226, 242, 255, 0.16)'
-      : 'rgba(15,23,42,0.06)';
-  const previewColor = isDark ? 'rgba(255, 255, 255, 0.9)' : 'var(--ink)';
-  const senderColor = isDark ? 'rgba(125, 211, 252, 0.98)' : 'var(--blue-accent)';
-  const contentColor = isDark ? 'rgba(255, 255, 255, 0.74)' : 'rgba(15, 23, 42, 0.72)';
+  const previewBackground = 'var(--liquid-inset-bg)';
+  const previewColor = 'var(--liquid-ink)';
+  const senderColor = 'var(--liquid-ink)';
+  const contentColor = 'var(--liquid-muted)';
 
   const style = {
     position: 'relative' as const,
@@ -58,7 +54,7 @@ export function ReplyPreview({
           bottom: 4,
           width: 3,
           borderRadius: 2,
-          background: 'var(--blue-accent)',
+          background: 'var(--liquid-border)',
         }}
       />
       <div style={{ minWidth: 0, flex: 1 }}>

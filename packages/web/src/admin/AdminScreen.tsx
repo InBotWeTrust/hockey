@@ -1728,7 +1728,7 @@ function MiniLineChart({
             <text
               x={chartLeft - 7}
               y={y + 4}
-              fill="rgba(15, 23, 42, 0.52)"
+              fill="var(--liquid-muted)"
               fontSize="9"
               fontWeight="700"
               textAnchor="end"
@@ -1795,7 +1795,7 @@ function MiniLineChart({
             width={tooltipWidth}
             height={tooltipHeight}
             rx="9"
-            fill="rgba(15, 23, 42, 0.92)"
+            fill="var(--liquid-muted)"
           />
           <text x={tooltipX + 8} y={tooltipY + 13} fill="#fff" fontSize="9" fontWeight="800">
             {shortDateText(activeSeriesPoint.date)}
@@ -1806,7 +1806,7 @@ function MiniLineChart({
         </g>
       ) : null}
       {first && (
-        <text x={chartLeft} y={height - 5} fill="rgba(15, 23, 42, 0.58)" fontSize="10">
+        <text x={chartLeft} y={height - 5} fill="var(--liquid-muted)" fontSize="10">
           {shortDateText(first)}
         </text>
       )}
@@ -1814,7 +1814,7 @@ function MiniLineChart({
         <text
           x={width / 2}
           y={height - 5}
-          fill="rgba(15, 23, 42, 0.58)"
+          fill="var(--liquid-muted)"
           fontSize="10"
           textAnchor="middle"
         >
@@ -1825,7 +1825,7 @@ function MiniLineChart({
         <text
           x={chartRight}
           y={height - 5}
-          fill="rgba(15, 23, 42, 0.58)"
+          fill="var(--liquid-muted)"
           fontSize="10"
           textAnchor="end"
         >
@@ -3313,8 +3313,8 @@ function PushMonitoringPanel({
                         padding: '9px 10px',
                         background:
                           alert.severity === 'danger'
-                            ? 'rgba(254, 226, 226, 0.56)'
-                            : 'rgba(254, 243, 199, 0.56)',
+                            ? 'rgba(115, 38, 45, 0.28)'
+                            : 'rgba(104, 77, 26, 0.28)',
                       }}
                     >
                       <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
@@ -3441,7 +3441,7 @@ function PushMonitoringPanel({
                         <div
                           style={{
                             marginTop: 3,
-                            color: '#b91c1c',
+                            color: 'var(--red-deep)',
                             fontSize: 10,
                             fontWeight: 850,
                             overflowWrap: 'anywhere',

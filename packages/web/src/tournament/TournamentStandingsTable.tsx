@@ -176,7 +176,7 @@ export function TournamentStandingsTable(props: {
                     size={isDuelRating || isExperienceRating || isProfileStatRating ? 24 : 28}
                     fontSize={isDuelRating || isExperienceRating || isProfileStatRating ? 10 : 11}
                     alt={playerName}
-                    style={{ background: 'rgba(30, 91, 151, 0.13)', color: 'var(--liquid-muted)' }}
+                    style={{ background: 'var(--liquid-inset-bg)', color: 'var(--liquid-muted)' }}
                   />
                   <span title={playerName}>{playerName}</span>
                 </button>

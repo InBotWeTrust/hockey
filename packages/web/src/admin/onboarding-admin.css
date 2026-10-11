@@ -24,7 +24,7 @@
 
 .onboarding-admin__field-error {
   margin-top: 6px;
-  color: #9f1239;
+  color: var(--red-deep);
   font-size: 12px;
   font-weight: 800;
 }
