@@ -6344,3 +6344,5 @@ Portal toasts: neutral dark background rgba(24,28,34,.94), blur 18 px, white tex
 Bar character identity panel: horizontal inset 12 px on both sides, aligned with BottomNav. Terminal layout retains its separate controls geometry.
 
 Artwork badges (public profile experience and task levels): opaque #20252d background, white numbers without text shadow, shared edge. BottomNav has no full-width backdrop outside its dock.
+
+Settings section headings: 14 px horizontal inset to align with cards. Logout: subdued red translucent fill, pale red readable text, no shadow. Bar navigator preview: opaque neutral material without clipped backdrop blur over moving panorama.
