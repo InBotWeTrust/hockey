@@ -8055,7 +8055,6 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
 
   return {
     name: opponent.display_name || 'Соперник',
-    ownScoreOnly: match.source !== 'tournament',
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
     shots: opponent.shots_taken,
