@@ -80,6 +80,8 @@ export function FightControls({
           border: 0,
           padding: 8.5,
           background: 'transparent',
+          backdropFilter: 'none',
+          WebkitBackdropFilter: 'none',
           boxShadow: 'none',
           cursor: disabled ? 'default' : 'pointer',
           color: 'var(--ink)',

@@ -8077,6 +8077,31 @@ export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
     '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
 };
 
+const DUEL_INVENTORY_BADGE_STYLE: CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: -18,
+  width: 46,
+  height: 16,
+  boxSizing: 'border-box',
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: '#26313f',
+  fontFamily: 'var(--font-ui)',
+  fontSize: 9.5,
+  fontWeight: 800,
+  lineHeight: 1,
+  letterSpacing: 0,
+  whiteSpace: 'nowrap',
+  textShadow: 'none',
+  background: 'rgba(218, 227, 236, 0.9)',
+  borderRadius: 5,
+  padding: '2px 4px',
+  zIndex: 2,
+};
+
 const DUEL_EQUIPMENT_META: Record<InventoryEquipmentKind, { title: string; empty: string }> = {
   stick: { title: 'Клюшка', empty: 'Без клюшки' },
   skates: { title: 'Коньки', empty: 'Без коньков' },
@@ -8378,7 +8403,7 @@ function DuelRinkLoadoutHud({
       aria-label="Выбор инвентаря"
       style={{
         display: 'flex',
-        gap: 9,
+        gap: 18,
         pointerEvents: locked ? 'none' : 'auto',
       }}
     >
@@ -8412,6 +8437,7 @@ function DuelRinkLoadoutHud({
             style={{
               position: 'relative',
               width: 31,
+              flexShrink: 0,
               height: 31,
               borderRadius: 999,
               overflow: 'visible',
@@ -8442,27 +8468,7 @@ function DuelRinkLoadoutHud({
             {inventoryBadge && (
               <span
                 aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  left: '50%',
-                  bottom: -16,
-                  minWidth: 'max-content',
-                  transform: 'translateX(-50%)',
-                  display: 'block',
-                  color: 'var(--liquid-ink)',
-                  fontFamily: 'var(--font-ui)',
-                  fontSize: 9.5,
-                  fontWeight: 950,
-                  lineHeight: 1,
-                  letterSpacing: 0,
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.7)',
-                  background: 'rgba(25, 30, 35, 0.88)',
-                  borderRadius: 5,
-                  padding: '2px 4px',
-                  zIndex: 2,
-                }}
+                style={DUEL_INVENTORY_BADGE_STYLE}
               >
                 {inventoryBadge}
               </span>
@@ -8871,7 +8877,7 @@ export function DuelInventoryMiniHud({
       style={{
         display: 'flex',
         justifyContent: 'flex-start',
-        gap: 9,
+        gap: 18,
         pointerEvents: onSelectKind ? 'auto' : 'none',
       }}
     >
@@ -8922,6 +8928,7 @@ export function DuelInventoryMiniHud({
               padding: 0,
               position: 'relative',
               width: 31,
+              flexShrink: 0,
               height: 31,
               borderRadius: 999,
               overflow: 'visible',
@@ -8951,27 +8958,7 @@ export function DuelInventoryMiniHud({
             {inventoryBadge && (
               <span
                 aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  left: '50%',
-                  bottom: -16,
-                  minWidth: 'max-content',
-                  transform: 'translateX(-50%)',
-                  display: 'block',
-                  color: 'var(--liquid-ink)',
-                  fontFamily: 'var(--font-ui)',
-                  fontSize: 9.5,
-                  fontWeight: 950,
-                  lineHeight: 1,
-                  letterSpacing: 0,
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  textShadow: '0 1px 2px rgba(0,0,0,0.7)',
-                  background: 'rgba(25, 30, 35, 0.88)',
-                  borderRadius: 5,
-                  padding: '2px 4px',
-                  zIndex: 2,
-                }}
+                style={DUEL_INVENTORY_BADGE_STYLE}
               >
                 {inventoryBadge}
               </span>
