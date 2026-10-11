@@ -166,7 +166,7 @@ export function OlegFightPanel({
       >
         {(data.outcome === 'win' || data.outcome === 'loss') && (
           <img
-            src={`/bar/fight/${data.outcome === 'win' ? 'player-win' : 'player-loss'}-v1.webp`}
+            src={`/bar/fight/${data.outcome === 'win' ? 'player-win' : 'player-loss'}-v2.webp`}
             alt={
               data.outcome === 'win'
                 ? 'Олег сидит у стены бара после драки'

@@ -77,5 +77,19 @@ it('shows a blocked re-entry in a modal with Oleg at the entrance',async()=>{
  vi.mocked(fetchBarAccess).mockResolvedValue({blockedUntil:'2026-10-12T00:00:00Z',fightId:null});
  render(<MemoryRouter><BarAccessGate><p>Private bar contents</p></BarAccessGate></MemoryRouter>);
  expect(await screen.findByRole('dialog',{name:'Бар закрыт'})).toBeInTheDocument();
- expect(screen.getByRole('img',{name:'Олег стоит у входа и не пускает в бар'})).toHaveAttribute('src','/bar/fight/oleg-blocked-v1.webp');
+ expect(screen.getByRole('img',{name:'Олег стоит у входа и не пускает в бар'})).toHaveAttribute('src','/bar/fight/oleg-blocked-v2.webp');
+});
+
+it('checks access at countdown zero and waits for server confirmation before entering',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(new Date('2026-10-12T20:59:58Z'));
+ let confirm!:(access:{blockedUntil:string|null;fightId:string|null})=>void;
+ vi.mocked(fetchBarAccess).mockResolvedValueOnce({blockedUntil:'2026-10-12T21:00:00Z',fightId:null}).mockImplementation(()=>new Promise(resolve=>{confirm=resolve;}));
+ const view=render(<MemoryRouter><BarAccessGate><p>Private bar contents</p></BarAccessGate></MemoryRouter>);
+ try {
+  await act(async()=>{});expect(screen.getByRole('timer')).toHaveTextContent('00:00:02');
+  await act(()=>vi.advanceTimersByTimeAsync(2000));
+  expect(fetchBarAccess).toHaveBeenCalledTimes(2);expect(screen.queryByText('Private bar contents')).not.toBeInTheDocument();
+  await act(async()=>confirm({blockedUntil:null,fightId:null}));
+  expect(screen.getByText('Private bar contents')).toBeInTheDocument();
+ } finally {view.unmount();vi.useRealTimers();}
 });
