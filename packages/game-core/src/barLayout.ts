@@ -106,10 +106,10 @@ export function createDefaultBarLayout(): BarLayout {
         null,
         '/bar/cards/online-terminal-v1.webp',
       ),
-      oleg: profile('Олег', 'Охранник', 'Немногословный и внимательный. Следит за порядком, ценит прямоту и иногда неожиданно шутит.', '/bar/cards/oleg-avatar-v1.webp', '/bar/cards/oleg-composition-v1.webp'),
+      oleg: profile('Олег', 'Охранник', 'Немногословный и внимательный. Следит за порядком, ценит прямоту и иногда неожиданно шутит.', '/bar/cards/oleg-avatar-v2.webp', '/bar/cards/oleg-composition-v1.webp'),
       timofey: profile('Тимофей', 'Работник стадиона', 'Вечно что-то забывает и ищет повод передохнуть. Курит, флиртует и выпутывается из неловких ситуаций с хитрой улыбкой.', '/bar/cards/timofey-avatar-v1.webp', '/bar/cards/timofey-composition-v1.webp'),
       veronika: profile('Вероника', 'Управляющая баром', 'Собранная и гостеприимная. Держит бар в порядке, замечает каждую мелочь и умеет найти подход к людям.', '/bar/cards/veronika-avatar-v1.webp', '/bar/cards/veronika-composition-v1.webp'),
-      igor: profile('Игорь', 'Бармен', 'Общительный парень, который всегда в курсе спортивных новостей. Любит обсуждать матчи, результаты и спорить о любимых командах.', '/bar/cards/igor-avatar-v1.webp', '/bar/cards/igor-composition-v1.webp'),
+      igor: profile('Игорь', 'Бармен', 'Общительный парень, который всегда в курсе спортивных новостей. Любит обсуждать матчи, результаты и спорить о любимых командах.', '/bar/cards/igor-avatar-v2.webp', '/bar/cards/igor-composition-v1.webp'),
       news: profile('Газеты на стойке', '', ''),
       broadcasts: profile('Трансляции', '', 'Смотри хоккейные матчи.'),
     },
@@ -190,7 +190,8 @@ export function upgradeBarLayout(layout: BarLayout): BarLayout {
     const current = next.profiles[id];
     next.profiles[id] = current ? {
       ...current,
-      avatar: current.avatar || defaults.profiles[id].avatar,
+      avatar: (id === 'igor' || id === 'oleg') && current.avatar === `/bar/cards/${id}-avatar-v1.webp`
+        ? defaults.profiles[id].avatar : current.avatar || defaults.profiles[id].avatar,
       composition: current.composition || defaults.profiles[id].composition,
       description: current.description || defaults.profiles[id].description,
     } : defaults.profiles[id];
