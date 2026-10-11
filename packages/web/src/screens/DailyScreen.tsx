@@ -8091,7 +8091,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     name: opponent.display_name || 'Соперник',
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
-    scoreSeparator: match.rules.duelKind === 'sniper' ? ' : ' : ':',
+    scoreSeparator: match.rules.duelKind === 'sniper' ? '\u2009:\u2009' : ':',
     shots: opponent.shots_taken,
     shotsLabel,
     time,

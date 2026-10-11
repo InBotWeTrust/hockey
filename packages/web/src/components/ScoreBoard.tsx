@@ -178,7 +178,15 @@ export function GameScoreboard({
                     style={{ containerType: 'inline-size', width: '100%' }}
                   >
                     <span style={{ fontSize: `min(1em, ${155 / Math.max(1, metric.value.length)}cqw)` }}>
-                      {metric.value}
+                      {metric.id === 'score' && metric.value.includes('\u2009:\u2009') ? (
+                        <>
+                          {metric.value.split('\u2009:\u2009')[0]}
+                          <span style={{ fontSize: '0.5em' }}>{'\u2009'}</span>
+                          :
+                          <span style={{ fontSize: '0.5em' }}>{'\u2009'}</span>
+                          {metric.value.split('\u2009:\u2009')[1]}
+                        </>
+                      ) : metric.value}
                     </span>
                   </span>
                 </div>

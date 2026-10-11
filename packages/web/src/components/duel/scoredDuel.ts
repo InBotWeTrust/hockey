@@ -37,5 +37,5 @@ export function duelScorePairText(
   me: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
   opponent: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
 ): string {
-  return [duelScoreText(kind, me), duelScoreText(kind, opponent)].join(kind === 'sniper' ? ' : ' : ':');
+  return [duelScoreText(kind, me), duelScoreText(kind, opponent)].join(kind === 'sniper' ? '\u2009:\u2009' : ':');
 }
