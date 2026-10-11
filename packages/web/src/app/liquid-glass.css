@@ -358,7 +358,8 @@
 
 /* Standalone settings headings align with card edges, not the viewport. */
 .profile-settings-screen .section-label { padding-inline: 14px; }
-.app-shell .profile-logout-btn--danger {
+.app-shell .profile-logout-btn--danger,
+.bar-memory__delete {
   background: rgba(48, 24, 28, 0.32);
   border: 1px solid rgba(255, 160, 160, 0.5);
   color: #ffe0e0;

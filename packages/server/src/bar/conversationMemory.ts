@@ -84,7 +84,7 @@ export class SqlConversationMemory {
     } catch (error) { await db.query('rollback'); throw error; }
     finally { db.release(); }
   }
-  async context(user: string, character: Character, content: string, turns: ConversationTurn[]): Promise<ConversationContext> {
+  async context(user: string, character: Character, content: string, _turns: ConversationTurn[]): Promise<ConversationContext> {
     const setting=await this.pool.query<{enabled:boolean;history_start:number;generation:number}>('select enabled,history_start,generation from bar_memory_settings where user_id=$1 and character_id=$2',[user,character]);
     const enabled=setting.rows[0]?.enabled ?? true;
     const historyStart=setting.rows[0]?.history_start ?? 0;

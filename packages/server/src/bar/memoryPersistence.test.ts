@@ -4,7 +4,7 @@ import { Pool } from 'pg';
 import { beforeAll, afterAll, beforeEach, describe, it, expect, vi } from 'vitest';
 import { SqlConversationStore } from './conversationStore.js';
 import { SqlCardHistoryStore } from './cardHistory.js';
-import { SqlConversationMemory } from './conversationMemory.js';
+import { SqlConversationMemory, type StoryValidator } from './conversationMemory.js';
 const url = process.env.BAR_MEMORY_TEST_DATABASE ?? process.env.TEST_DATABASE_URL;
 const alice = '11111111-1111-4111-8111-111111111111';
 const bob = '22222222-2222-4222-8222-222222222222';
@@ -208,7 +208,7 @@ describe.skipIf(!url)('dedicated bar memory database', () => {
     const store=new SqlConversationStore(pool);
     await store.reserve(alice,'maria',turnId,0);
     const independent={title:'Чашка',content:'После смены поставила чашку на край стола и поймала её.',topics:['бар'],disclosure:'casual' as const};
-    const creator=vi.fn(async()=>independent),validator=vi.fn(async(..._args:Parameters<import('./conversationMemory.js').StoryValidator>)=>true);
+    const creator=vi.fn(async()=>independent),validator=vi.fn(async(..._args:Parameters<StoryValidator>)=>true);
     const memory=new SqlConversationMemory(pool,validator,creator);
     const context=await memory.context(alice,'maria','Моя личная история про шарф.',[]);
     const result=await context.tool('propose_story',{title:'Личная история',content:'Потеряла шарф игрока в Самаре.',topics:['бар','PRIVATE_SENTINEL'],disclosure:'casual'});

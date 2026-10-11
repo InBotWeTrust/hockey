@@ -25,7 +25,7 @@ export function createModeration(key?: string, transport: typeof fetch=fetch): M
   return async (text,signal) => {
     if (!key) return 'unavailable';
     try {
-      const response=await transport('https://api.openai.com/v1/moderations',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal: signal ? AbortSignal.any([signal,AbortSignal.timeout(1000)]) : AbortSignal.timeout(1000),body:JSON.stringify({model:'omni-moderation-latest',input:redactSecrets(text).slice(0,6000)})});
+      const response=await transport('https://api.openai.com/v1/moderations',{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},signal: signal ? AbortSignal.any([signal,AbortSignal.timeout(3000)]) : AbortSignal.timeout(3000),body:JSON.stringify({model:'omni-moderation-latest',input:redactSecrets(text).slice(0,6000)})});
       if(!response.ok) return 'unavailable';
       const data=z.object({results:z.array(z.object({categories:z.record(z.boolean())})).min(1)}).parse(await response.json());
       const categories=data.results[0]!.categories;
