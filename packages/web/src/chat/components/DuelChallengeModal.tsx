@@ -1,4 +1,4 @@
-import { MarathonWindowPicker } from '../../components/duel/MarathonWindowPicker.js';
+import { duelTemplateChoices } from '../../components/duel/duelTemplateChoices.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X } from 'lucide-react';
@@ -170,6 +170,8 @@ export function DuelChallengeModal({
     [templatesQuery.data?.templates],
   );
 
+  const choices = useMemo(() => duelTemplateChoices(templates), [templates]);
+
   useEffect(() => {
     if (templates.length === 0) return;
     if (availabilityQuery.data?.formats) {
@@ -270,13 +272,13 @@ export function DuelChallengeModal({
           )}
           {!templatesQuery.isLoading &&
             !templatesQuery.isError &&
-            templates.map((template) => {
-              const selected = template.id === selectedTemplateId;
+            choices.map(({ template, value, marathonWindow: window }) => {
+              const selected = template.id === selectedTemplateId && (window === undefined || window === marathonWindow);
               const availability = availabilityQuery.data?.formats?.[template.duel_kind];
               const blocked = availability?.available === false;
               return (
                 <button
-                  key={template.id}
+                  key={value}
                   type="button"
                   aria-pressed={selected}
                   disabled={blocked}
@@ -284,6 +286,7 @@ export function DuelChallengeModal({
                   className="glass"
                   onClick={() => {
                     setSelectedTemplateId(template.id);
+                    if (window !== undefined) setMarathonWindow(window);
                     setError(null);
                   }}
                   style={{
@@ -308,7 +311,7 @@ export function DuelChallengeModal({
                     </span>
                   )}
                   <span style={{ gridColumn: 1, fontSize: 15, fontWeight: 900 }}>
-                    {duelKindText(template.duel_kind)}
+                    {duelKindText(template.duel_kind)}{window === undefined ? null : ` · ${window / 1000} сек`}
                   </span>
                   <span
                     style={{
@@ -335,12 +338,6 @@ export function DuelChallengeModal({
           )}
         </div>
 
-        {templates.find((item) => item.id === selectedTemplateId)?.duel_kind === 'marathon' && (
-          <MarathonWindowPicker
-            selected={[marathonWindow]}
-            onChange={(next) => setMarathonWindow(next[0]!)}
-          />
-        )}
         {error && (
           <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>{error}</div>
         )}

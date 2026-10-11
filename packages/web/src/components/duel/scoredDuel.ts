@@ -24,3 +24,10 @@ export function duelFormatLabel(
     (rules.duelKind === 'marathon' ? ` · ${(rules.marathonWindowMs ?? 7000) / 1000} сек` : '')
   );
 }
+
+export function duelScoreText(
+  kind: AmateurDuelKind,
+  player: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
+): string {
+  return duelDisplayScore(kind, player).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
+}

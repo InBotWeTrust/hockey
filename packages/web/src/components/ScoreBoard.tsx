@@ -50,6 +50,7 @@ export interface ScoreBoardProps {
 
 export interface ScoreBoardOpponent {
   name: string;
+  ownScoreOnly?: boolean;
   avatarUrl: string | null;
   goals: number;
   shots: number;
@@ -102,14 +103,18 @@ export function buildGameScoreboardModel({
   };
   const scoreMetric: GameScoreboardMetric = {
     id: opponent ? 'score' : 'goals',
-    label: opponent ? 'СЧЁТ' : scoreLabel,
-    value: opponent ? `${goals}:${opponent.goals}` : padded(goals),
+    label: opponent && !opponent.ownScoreOnly ? 'СЧЁТ' : scoreLabel,
+    value: opponent?.ownScoreOnly
+      ? goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })
+      : opponent ? `${goals}:${opponent.goals}` : padded(goals),
   };
   const statusLine: GameScoreboardStatusLine | undefined = opponent
     ? {
         id: 'opponent',
         label: opponent.name,
-        value: `${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`,
+        value: opponent.ownScoreOnly
+          ? `${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} · ${opponent.time.toUpperCase()}`
+          : `${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`,
         avatarUrl: opponent.avatarUrl,
         tone: opponent.timeTone ?? 'muted',
       }
@@ -168,7 +173,14 @@ export function GameScoreboard({
                   >
                     {metric.label}
                   </span>
-                  <span className="game-scoreboard__value">{metric.value}</span>
+                  <span
+                    className="game-scoreboard__value"
+                    style={metric.id === 'score' && metric.value.length > 4
+                      ? { fontSize: `min(20px, ${30 / metric.value.length}cqw)` }
+                      : undefined}
+                  >
+                    {metric.value}
+                  </span>
                 </div>
               );
             })}
@@ -203,7 +215,7 @@ export function GameScoreboard({
 export function ScoreBoard(props: ScoreBoardProps): JSX.Element {
   const model = buildGameScoreboardModel({
     ...props,
-    scoreLabel: props.opponent ? 'СЧЁТ' : (props.scoreLabel ?? 'ШАЙБЫ'),
+    scoreLabel: props.opponent && !props.opponent.ownScoreOnly ? 'СЧЁТ' : (props.scoreLabel ?? 'ШАЙБЫ'),
   });
   return <GameScoreboard {...model} />;
 }

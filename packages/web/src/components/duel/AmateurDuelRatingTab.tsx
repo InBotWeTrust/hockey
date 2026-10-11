@@ -66,6 +66,7 @@ export function AmateurDuelRatingTab({
         items={RATING_SCOPES}
         activeTab={scope}
         ariaLabel="Зачёт рейтинга дуэлей"
+        scrollable
         onChange={setScope}
       />
       <section

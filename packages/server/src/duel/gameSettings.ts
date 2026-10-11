@@ -513,8 +513,8 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
   ...([
     ['daily', 'Новых дуэлей в день', 8],
     ['weekly', 'Новых дуэлей в неделю', 40],
-    ['monthly', 'Новых дуэлей в месяц', 129],
-    ['per_format_monthly', 'Новых дуэлей формата в месяц', 43],
+    ['monthly', 'Новых дуэлей в месяц', 130],
+    ['per_format_monthly', 'Новых дуэлей формата в месяц', 26],
     ['outgoing_invites', 'Ожидающих исходящих вызовов', 2],
   ] as const).map(([key, label, defaultValue]) => ({
     key: `amateur.limits.${key}`,
