@@ -1,5 +1,16 @@
-export type RatingScope = 'overall' | 'express' | 'express_plus' | 'classic';
-export type MonthlyRatingReward = { coins: number; stars: number; experience: number; tokens: number };
+export type RatingScope =
+  | 'overall'
+  | 'express'
+  | 'express_plus'
+  | 'classic'
+  | 'sniper'
+  | 'marathon';
+export type MonthlyRatingReward = {
+  coins: number;
+  stars: number;
+  experience: number;
+  tokens: number;
+};
 
 export interface RatingScopeSettings {
   enabled: boolean;
@@ -18,6 +29,8 @@ export interface MonthlyRatingSettings {
   express: RatingScopeSettings;
   express_plus: RatingScopeSettings;
   classic: RatingScopeSettings;
+  sniper: RatingScopeSettings;
+  marathon: RatingScopeSettings;
 }
 
 const zero: MonthlyRatingReward = { coins: 0, stars: 0, experience: 0, tokens: 0 };
@@ -38,6 +51,8 @@ export const DEFAULT_MONTHLY_RATING_SETTINGS: MonthlyRatingSettings = {
   express: format(),
   express_plus: format(),
   classic: format(),
+  sniper: format(),
+  marathon: format(),
 };
 
 export function monthlyRewardForPlace(

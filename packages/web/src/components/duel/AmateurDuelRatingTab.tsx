@@ -14,6 +14,8 @@ const RATING_SCOPES: Array<{ id: RatingScope; label: string }> = [
   { id: 'express', label: 'Экспресс' },
   { id: 'express_plus', label: 'Микс' },
   { id: 'classic', label: 'Классика' },
+  { id: 'sniper', label: 'Снайпер' },
+  { id: 'marathon', label: 'Марафон' },
 ];
 
 function monthLabel(key: string): string {

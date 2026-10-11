@@ -2884,6 +2884,60 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
   });
 
+  it('shows the Marathon window on the active arena card', async () => {
+    localStorage.setItem('hockey.arenaSelectedEntryId', 'training');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      rules: { ...settledDuelMatch.rules, duelKind: 'marathon', marathonWindowMs: 4000 },
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/events')) {
+        return new Response(JSON.stringify({ events: [activeMatch] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+
+    await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
+    expect(screen.getByText('Марафон · 4 сек')).toBeInTheDocument();
+  });
+
   it('explains a safe-start lock on the arena card before T-60', async () => {
     const activeMatch = {
       ...settledDuelMatch,

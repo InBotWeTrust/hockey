@@ -1,3 +1,6 @@
+import { duelDisplayScore, duelFormatLabel } from '../components/duel/scoredDuel.js';
+import { MarathonWindowPicker } from '../components/duel/MarathonWindowPicker.js';
+import { classifyMarksmanshipShot } from '@hockey/game-core';
 import { DuelKindPreferenceButton } from '../components/DuelKindPreferenceButton.js';
 import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from '../game/matchCourt.js';
 import { useDuelFightSocket } from '../hooks/useDuelFightSocket.js';
@@ -221,6 +224,8 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   express: '/modes/amateur-duel-steal-clean.webp',
   express_plus: '/modes/amateur-duel-card.webp',
   classic: '/modes/amateur-duel.webp',
+  sniper: '/modes/amateur-duel-card.webp',
+  marathon: '/modes/amateur-duel.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
@@ -1422,7 +1427,7 @@ function GameHub({
         invitePending,
       opponentName: event.opponent.display_name,
       opponentAvatarUrl: event.opponent.avatar_url,
-      typeLabel: duelKindText(event.rules.duelKind),
+      typeLabel: duelFormatLabel(event.rules),
       venueRole: event.venue_role,
       secondaryActions: isIncomingInvite ? (
         <div
@@ -2494,7 +2499,7 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
   const inviteEndsAt = timestampMs(match.ready_expires_at);
   const periodEndsAt = timestampMs(match.period_ends_at);
   const breakEndsAt = timestampMs(match.break_ends_at);
-  const score = `${match.me.goals}:${match.opponent.goals}`;
+  const score = `${duelDisplayScore(match.rules.duelKind, match.me)}:${duelDisplayScore(match.rules.duelKind, match.opponent)}`;
 
   if (match.status === 'settled' || match.status === 'expired' || match.status === 'cancelled') {
     return {
@@ -3078,7 +3083,7 @@ function DuelStatsModal({
         </div>
 
         <div
-          aria-label={`Счёт дуэли ${match.me.goals}:${match.opponent.goals}`}
+          aria-label={`Счёт дуэли ${duelDisplayScore(match.rules.duelKind, match.me)}:${duelDisplayScore(match.rules.duelKind, match.opponent)}`}
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
@@ -3086,7 +3091,10 @@ function DuelStatsModal({
             marginBottom: 14,
           }}
         >
-          <DailyStatsMetric label="Счёт" value={`${match.me.goals}:${match.opponent.goals}`} />
+          <DailyStatsMetric
+            label="Счёт"
+            value={`${duelDisplayScore(match.rules.duelKind, match.me)}:${duelDisplayScore(match.rules.duelKind, match.opponent)}`}
+          />
           <DailyStatsMetric label="Время" value={formatDurationMs(match.me.active_duration_ms)} />
           <DailyStatsMetric label="Период" value={`${currentPeriod}/${match.rules.totalPeriods}`} />
         </div>
@@ -3095,7 +3103,7 @@ function DuelStatsModal({
           items={[
             {
               label: 'Формат',
-              value: `${duelKindText(match.rules.duelKind)} · ${match.rules.totalPeriods}П`,
+              value: `${duelFormatLabel(match.rules)} · ${match.rules.totalPeriods}П`,
             },
             {
               label: 'Окно',
@@ -4067,6 +4075,8 @@ function formatRuCount(value: number, one: string, few: string, many: string): s
 function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express') return 'Экспресс';
   if (kind === 'express_plus') return 'Микс';
+  if (kind === 'sniper') return 'Снайпер';
+  if (kind === 'marathon') return 'Марафон';
   return 'Классика';
 }
 
@@ -4140,6 +4150,8 @@ const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
   express: 0,
   express_plus: 1,
   classic: 2,
+  sniper: 3,
+  marathon: 4,
 };
 
 function sortDuelTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] {
@@ -4418,7 +4430,13 @@ function AmateurHubPage({
   );
 }
 
-const DUEL_KIND_OPTIONS: AmateurDuelKind[] = ['express', 'express_plus', 'classic'];
+const DUEL_KIND_OPTIONS: AmateurDuelKind[] = [
+  'express',
+  'express_plus',
+  'classic',
+  'sniper',
+  'marathon',
+];
 
 function DuelKindPreferencePicker({
   selected,
@@ -4505,6 +4523,14 @@ function DuelKindPreferencePicker({
 
 function MatchmakingRulesContent(): JSX.Element {
   const ruleItems: Array<{ title: string; text: string }> = [
+    {
+      title: 'Снайпер',
+      text: '1 период, 3 минуты. Очки за сложность гола по правилам Меткости; при равенстве решает точность.',
+    },
+    {
+      title: 'Марафон',
+      text: '1 период, 4 минуты. На следующий гол 7 или 4 секунды. За истечение таймера минус шайба, минимум 0. При равенстве решает среднее время на гол.',
+    },
     { title: 'Экспресс', text: '1 период, 3 минуты. Нужно забить как можно больше шайб.' },
     {
       title: 'Микс',
@@ -4607,6 +4633,8 @@ function AmateurDuelsPage({
     'express_plus',
     'classic',
   ]);
+  const [marathonWindows, setMarathonWindows] = useState<Array<4000 | 7000>>([7000]);
+  const [challengeWindow, setChallengeWindow] = useState<4000 | 7000>(7000);
   const [matchmakingRulesOpen, setMatchmakingRulesOpen] = useState(false);
   const [formatLimitToast, setFormatLimitToast] = useState<string | null>(null);
   const [quickPickInfoOpen, setQuickPickInfoOpen] = useState(false);
@@ -4680,7 +4708,8 @@ function AmateurDuelsPage({
   };
 
   const matchmakingMut = useMutation({
-    mutationFn: (duelKinds: AmateurDuelKind[]) => joinAmateurMatchmaking(duelKinds),
+    mutationFn: (duelKinds: AmateurDuelKind[]) =>
+      joinAmateurMatchmaking(duelKinds, marathonWindows),
     onError: () => {
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
     },
@@ -4697,8 +4726,11 @@ function AmateurDuelsPage({
     },
   });
   const challengeMut = useMutation({
-    mutationFn: (body: { template_id: string; opponent_user_id: string }) =>
-      challengeAmateurDuel(body),
+    mutationFn: (body: {
+      template_id: string;
+      opponent_user_id: string;
+      marathon_window_ms?: 4000 | 7000;
+    }) => challengeAmateurDuel(body),
     onError: () => {
       setSelectedOpponent(null);
       void queryClient.invalidateQueries({ queryKey: ['amateur-duel'] });
@@ -4977,6 +5009,13 @@ function AmateurDuelsPage({
                     }}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
+                  {matchmakingKinds.includes('marathon') && (
+                    <MarathonWindowPicker
+                      multiple
+                      selected={marathonWindows}
+                      onChange={setMarathonWindows}
+                    />
+                  )}
                   <button
                     type="button"
                     className="btn btn--cta"
@@ -5087,6 +5126,12 @@ function AmateurDuelsPage({
                     </>
                   ) : (
                     <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
+                  )}
+                  {selectedTemplate?.duel_kind === 'marathon' && (
+                    <MarathonWindowPicker
+                      selected={[challengeWindow]}
+                      onChange={(next) => setChallengeWindow(next[0]!)}
+                    />
                   )}
                   <div className="section-label duel-form-section-title">
                     <span>Быстрый выбор</span>
@@ -5359,6 +5404,9 @@ function AmateurDuelsPage({
                         challengeMut.mutate({
                           template_id: selectedTemplate.id,
                           opponent_user_id: selectedOpponent.userId,
+                          ...(selectedTemplate.duel_kind === 'marathon'
+                            ? { marathon_window_ms: challengeWindow }
+                            : {}),
                         });
                       });
                     }}
@@ -5577,10 +5625,10 @@ function DuelListCard({
       <div className="duel-card-details" style={{ gridColumn: '2 / 3', gridRow: '2' }}>
         <div className="duel-card-meta">
           <span>
-            {duelKindText(match.rules.duelKind)}
+            {duelFormatLabel(match.rules)}
             {opensOnCardClick
               ? ` · ${formatShortDateTime(historyDate)}`
-              : ` · ${match.me.goals}:${match.opponent.goals}`}
+              : ` · ${duelDisplayScore(match.rules.duelKind, match.me)}:${duelDisplayScore(match.rules.duelKind, match.opponent)}`}
           </span>
           <span
             className="duel-card-venue"
@@ -5850,6 +5898,20 @@ function AmateurDuelPlayView({
     previousReadyStateRef.current = { me: meReady, opponent: opponentReady };
   }, [match, matchId]);
 
+  const marathonDeadline =
+    match?.rules.duelKind === 'marathon' ? match.me.marathon_window_ends_at : null;
+  useEffect(() => {
+    if (!marathonDeadline || !match || match.me.state !== 'period_active') return;
+    const serverTime =
+      Date.parse(match.server_now) +
+      Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now()));
+    const timer = window.setTimeout(
+      () => void refresh(),
+      Math.max(50, Date.parse(marathonDeadline) - serverTime + 50),
+    );
+    return () => window.clearTimeout(timer);
+  }, [marathonDeadline, match?.id, match?.me.state, refresh]);
+
   const participantState = match?.me?.state;
   useEffect(() => {
     if (participantState === 'period_active') setSelectedLoadoutKind(null);
@@ -6102,6 +6164,7 @@ function AmateurDuelPlayView({
             goalieEntranceKey: goalieReadyEntranceKey,
           }}
           backLabel={duelBackLabel(match.source, true)}
+          scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
@@ -6115,7 +6178,7 @@ function AmateurDuelPlayView({
               onSelectKind={setSelectedLoadoutKind}
             />
           }
-          scoreboardGoals={match.me.goals}
+          scoreboardGoals={duelDisplayScore(match.rules.duelKind, match.me)}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
         {showDirectResultModal && (
@@ -6212,7 +6275,7 @@ function AmateurDuelPlayView({
       <ModeShell title="Комната дуэли" onBack={onBack}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
           <TotalCell label="ФОРМАТ" value={`${match.rules.totalPeriods}П`} />
-          <TotalCell label="ТИП" value={duelKindText(match.rules.duelKind)} />
+          <TotalCell label="ТИП" value={duelFormatLabel(match.rules)} />
           <TotalCell label={readyTimerLabel} value={readyText} />
         </div>
         <div
@@ -6277,7 +6340,7 @@ function AmateurDuelPlayView({
           serverNow={match.server_now}
           receivedAtPerformanceMs={match.received_at_performance_ms}
           goals={match.current_period_goals}
-          scoreboardGoals={match.me.goals}
+          scoreboardGoals={duelDisplayScore(match.rules.duelKind, match.me)}
           shots={match.current_period_shots}
           shotsTotal={
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
@@ -6285,6 +6348,38 @@ function AmateurDuelPlayView({
           periodEndsAt={periodEndsAt}
           {...(fightPaused ? { timer: formatMs(match.me.clock?.remainingMs ?? Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
           backLabel={duelBackLabel(match.source, false)}
+          scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
+          continuousClockDuringResult={
+            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
+          }
+          canStartAction={
+            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
+              ? () =>
+                  periodEndsAt === undefined ||
+                  periodEndsAt === null ||
+                  Date.parse(match.server_now) +
+                    Math.max(
+                      0,
+                      performance.now() - (match.received_at_performance_ms ?? performance.now()),
+                    ) <=
+                    periodEndsAt
+              : undefined
+          }
+          shotResolver={
+            match.rules.duelKind === 'sniper' && match.rules.sniperScoring
+              ? (context) =>
+                  classifyMarksmanshipShot({
+                    shotInput: context.input,
+                    goalie: context.goalieConfig,
+                    seed: context.seed,
+                    shotIndex: context.shotIndex,
+                    stickEffects: context.stickEffects,
+                    phaseOffsets: context.phaseOffsets,
+                    earliestTapTime: match.me.last_shot_ends_ms ?? 0,
+                    scoring: match.rules.sniperScoring!,
+                  }).result
+              : undefined
+          }
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
@@ -6296,12 +6391,39 @@ function AmateurDuelPlayView({
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <>
-            {match.fight?.status==='resolved'&&match.fight.resolved_at&&fightNow-Date.parse(match.fight.resolved_at)<1500&&<p role="status">{match.fight.winner_user_id===match.me.user_id?'Победа в драке! +1 ⭐ · +1 опыт':'Поражение · +1 опыт'}</p>}
-            <DuelInventoryMiniHud
-              match={match}
-              liveCondition={liveDuelCondition}
-              {...(loadoutEditable && !fightPaused ? { onSelectKind: setSelectedLoadoutKind } : {})}
-            /></>
+              {match.rules.duelKind === 'marathon' && (
+                <p role="status" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                  До следующего гола:{' '}
+                  {Math.max(
+                    0,
+                    Math.ceil(
+                      ((match.me.marathon_window_ends_at
+                        ? Date.parse(match.me.marathon_window_ends_at)
+                        : fightNow) -
+                        fightNow) /
+                        1000,
+                    ),
+                  )}{' '}
+                  сек · штрафы: {match.me.marathon_penalties ?? 0}
+                </p>
+              )}
+              {match.fight?.status === 'resolved' &&
+                match.fight.resolved_at &&
+                fightNow - Date.parse(match.fight.resolved_at) < 1500 && (
+                  <p role="status">
+                    {match.fight.winner_user_id === match.me.user_id
+                      ? 'Победа в драке! +1 ⭐ · +1 опыт'
+                      : 'Поражение · +1 опыт'}
+                  </p>
+                )}
+              <DuelInventoryMiniHud
+                match={match}
+                liveCondition={liveDuelCondition}
+                {...(loadoutEditable && !fightPaused
+                  ? { onSelectKind: setSelectedLoadoutKind }
+                  : {})}
+              />
+            </>
           }
           rightHudAddon={fightAction}
           scoreboardOpponent={duelScoreboardOpponent(match)}
@@ -6353,7 +6475,10 @@ function AmateurDuelPlayView({
       <DuelOpponentPanel match={match} />
       <DuelRulesPanel match={match} />
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
-        <TotalCell label="ГОЛЫ" value={`${match.me.goals}:${match.opponent.goals}`} />
+        <TotalCell
+          label={match.rules.duelKind==='sniper' ? 'ОЧКИ' : 'СЧЁТ'}
+          value={`${duelDisplayScore(match.rules.duelKind, match.me)}:${duelDisplayScore(match.rules.duelKind, match.opponent)}`}
+        />
         <TotalCell label="ВРЕМЯ" value={formatDurationMs(match.me.active_duration_ms)} />
         <TotalCell
           label="ПЕРИОД"
@@ -6362,7 +6487,7 @@ function AmateurDuelPlayView({
       </div>
       <DuelLoadoutSummary match={match} />
       <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-        {statusText}. При равных голах решает суммарное активное время периодов.
+        {statusText}. {match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
       </div>
       {error && (
         <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
@@ -6685,7 +6810,7 @@ function DuelResultCard({
             )}
             <div
               className="tournament-duel-result__matchup"
-              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${match.me.goals}:${match.opponent.goals}`}
+              aria-label={`Итог игры: ${match.me.display_name} — ${match.opponent.display_name}, ${duelDisplayScore(match.rules.duelKind, match.me)}:${duelDisplayScore(match.rules.duelKind, match.opponent)}`}
             >
               <div className="tournament-duel-result__matchup-main">
                 <div className="tournament-duel-result__player">
@@ -6730,14 +6855,15 @@ function DuelResultCard({
                   )}
                 </div>
                 <strong className="tournament-duel-result__game-score">
-                  {match.me.goals}:{match.opponent.goals}
+                  {duelDisplayScore(match.rules.duelKind, match.me)}:
+                  {duelDisplayScore(match.rules.duelKind, match.opponent)}
                 </strong>
               </div>
               <div className="tournament-duel-result__meta" style={match.fight_rewards?.length ? {flexDirection:'column',alignItems:'stretch',gap:6} : undefined}>
                 {match.source !== 'tournament' ? (
                   <span className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
                     <span>
-                      <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                      <strong>Формат:</strong> {duelFormatLabel(match.rules)}
                     </span>
                     <span className="duel-result-card__reward-values">
                       <span
@@ -6752,7 +6878,7 @@ function DuelResultCard({
                   </span>
                 ) : (
                   <span>
-                    <strong>Формат:</strong> {duelKindText(match.rules.duelKind)}
+                    <strong>Формат:</strong> {duelFormatLabel(match.rules)}
                   </span>
                 )}
                 {fightRewardRow}
@@ -7092,7 +7218,27 @@ export function TournamentResultPreviewScreen(): JSX.Element {
 function duelTiebreakerExplanation(
   match: AmateurDuelMatch,
 ): { label: string; value: string; result: string } | null {
-  if (match.status !== 'settled' || match.me.goals !== match.opponent.goals) return null;
+  if (
+    match.status !== 'settled' ||
+    duelDisplayScore(match.rules.duelKind, match.me) !==
+      duelDisplayScore(match.rules.duelKind, match.opponent)
+  )
+    return null;
+  if (match.rules.duelKind === 'marathon')
+    return {
+      label: 'Среднее время на гол',
+      value: `${match.me.average_goal_ms == null ? '—' : (match.me.average_goal_ms / 1000).toFixed(1) + ' сек'} / ${match.opponent.average_goal_ms == null ? '—' : (match.opponent.average_goal_ms / 1000).toFixed(1) + ' сек'}`,
+      result:
+        match.me.goals === match.opponent.goals
+          ? 'Одинаковый результат'
+          : 'Решило среднее время на гол',
+    };
+  if (match.rules.duelKind === 'sniper' && compareDuelAccuracy(match) === 0)
+    return {
+      label: 'Точность',
+      value: `${duelAccuracy(match.me)}% / ${duelAccuracy(match.opponent)}%`,
+      result: 'Одинаковый результат',
+    };
   if (usesAccuracyTiebreaker(match) && compareDuelAccuracy(match) !== 0) {
     const meAccuracy = duelAccuracy(match.me);
     const opponentAccuracy = duelAccuracy(match.opponent);
@@ -7624,7 +7770,7 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
             lineHeight: 1.05,
           }}
         >
-          {duelKindText(match.rules.duelKind)}
+          {duelFormatLabel(match.rules)}
         </div>
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
           {chips.map((chip, index) => (
@@ -7897,7 +8043,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
   return {
     name: opponent.display_name || 'Соперник',
     avatarUrl: opponent.avatar_url,
-    goals: opponent.goals,
+    goals: duelDisplayScore(match.rules.duelKind, opponent),
     shots: opponent.shots_taken,
     shotsLabel,
     time,

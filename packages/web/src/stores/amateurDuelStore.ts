@@ -74,6 +74,7 @@ function applyShotAcknowledgement(
     current_period_goals: acknowledgement.participant.current_period_goals,
     me: {
       ...match.me,
+      ...acknowledgement.participant,
       state: acknowledgement.participant.state,
       current_period: acknowledgement.participant.current_period,
       current_period_shots: acknowledgement.participant.current_period_shots,
@@ -319,12 +320,37 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   },
 
   applyState: (next) => {
-    const current=get().match;
-    if(current?.id===next.id&&(current.state_revision??0)>(next.state_revision??0)) return;
-    let incoming=retainFightProgress(current,next);
-    if(current?.id===next.id && (current.state_revision??0)===(next.state_revision??0) && current.opponent && next.opponent) {
-      if(compareParticipantProgress(next.me,current.me)<0) incoming={...current,...newerServerTime(current,next),...(incoming.fight!==undefined?{fight:incoming.fight}:{})};
-      else if(compareParticipantProgress(next.opponent,current.opponent)<0) incoming={...incoming,opponent:current.opponent,opponent_recent_periods:current.opponent_recent_periods};
+    const current = get().match;
+    if (current?.id === next.id && (current.state_revision ?? 0) > (next.state_revision ?? 0))
+      return;
+    if (
+      current?.id === next.id &&
+      (current.state_revision ?? 0) === (next.state_revision ?? 0) &&
+      (current.rules?.duelKind === 'sniper' || current.rules?.duelKind === 'marathon') &&
+      Date.parse(current.server_now) > Date.parse(next.server_now) &&
+      compareParticipantProgress(next.me, current.me) <= 0 &&
+      compareParticipantProgress(next.opponent, current.opponent) <= 0
+    )
+      return;
+    let incoming = retainFightProgress(current, next);
+    if (
+      current?.id === next.id &&
+      (current.state_revision ?? 0) === (next.state_revision ?? 0) &&
+      current.opponent &&
+      next.opponent
+    ) {
+      if (compareParticipantProgress(next.me, current.me) < 0)
+        incoming = {
+          ...current,
+          ...newerServerTime(current, next),
+          ...(incoming.fight !== undefined ? { fight: incoming.fight } : {}),
+        };
+      else if (compareParticipantProgress(next.opponent, current.opponent) < 0)
+        incoming = {
+          ...incoming,
+          opponent: current.opponent,
+          opponent_recent_periods: current.opponent_recent_periods,
+        };
     }
     set({match:incoming,loading:false,error:null});
   },

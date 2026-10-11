@@ -144,7 +144,7 @@ function MatchGroup({
               <span className="game-scoreboard__label bar-match-kind">
                 {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
                 {match.format
-                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[match.format]}`
+                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика', sniper: 'Снайпер', marathon: 'Марафон' }[match.format]}${match.format === 'marathon' ? ` · ${(match.marathonWindowMs ?? 7000) / 1000} сек` : ''}`
                   : ''}
                 {match.title ? ` · ${match.title}` : ''}
               </span>
@@ -176,7 +176,7 @@ function MatchGroup({
               />
               <strong className="game-scoreboard__value bar-score">
                 {match.group === 'online'
-                  ? `${match.players[0].goals} : ${match.players[1].goals}`
+                  ? `${match.players[0].score ?? match.players[0].goals} : ${match.players[1].score ?? match.players[1].goals}`
                   : '—'}
               </strong>
               <PlayerBadge
@@ -264,7 +264,8 @@ export function BarMatchScreen({ viewerId }: { viewerId?: string } = {}): JSX.El
               {live.match.kind === 'duel' ? 'Дуэль' : (live.match.title ?? 'Турнир')}
             </p>
             <p className="game-scoreboard__value bar-live-score">
-              {live.match.players[0].goals} : {live.match.players[1].goals}
+              {live.match.players[0].score ?? live.match.players[0].goals} :{' '}
+              {live.match.players[1].score ?? live.match.players[1].goals}
             </p>
             {live.match.group === 'finished' && (
               <p role="status" className="bar-final">

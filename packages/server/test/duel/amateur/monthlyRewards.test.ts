@@ -141,6 +141,24 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     }
   });
 
+  it.each(['sniper', 'marathon'])(
+    'closes the %s rating and pays its independent reward once',
+    async (kind) => {
+      const users = await seedSeason('2026-08', 2);
+      await pool.query('update amateur_duel_match set duel_kind=$1', [kind]);
+      await reconcileCompletedMonthlyRating(pool, september);
+      await reconcileCompletedMonthlyRating(pool, september);
+      const format = await pool.query(
+        'select scope,user_id,stars,experience from monthly_duel_format_placement order by place',
+      );
+      expect(format.rows).toEqual([
+        { scope: kind, user_id: users[0], stars: 30, experience: 30 },
+        { scope: kind, user_id: users[1], stars: 0, experience: 0 },
+      ]);
+      const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!);
+      expect(pending[0]).toMatchObject({ stars: 330, experience: 30 });
+    },
+  );
   it('pays a qualified solo-format winner even with fewer than ten eligible players', async () => {
     const users = await seedSeason('2026-08', 2);
     await reconcileCompletedMonthlyRating(pool, september);
