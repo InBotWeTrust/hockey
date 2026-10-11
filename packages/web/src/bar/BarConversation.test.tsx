@@ -160,3 +160,11 @@ it('drops failed local messages when privacy controls clear the conversation',as
  expect(screen.queryByText('Не сохранять эту реплику')).not.toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'Повторить отправку'})).not.toBeInTheDocument();
 });
+
+it('anchors the dialogue above the keyboard using the visible application viewport', async () => {
+  open();
+  await screen.findByText(snapshot.greeting);
+  const backdrop = screen.getByRole('dialog').parentElement;
+  expect(backdrop?.style.height).toBe('var(--app-viewport-height, 100dvh)');
+  expect(backdrop?.style.bottom).toBe('auto');
+});
