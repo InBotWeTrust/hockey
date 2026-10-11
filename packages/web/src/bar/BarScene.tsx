@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, Monitor, Newspaper, Tv } from 'lucide-react';
 import {
   barActionsFor,
@@ -7,6 +7,7 @@ import {
   type BarOccupantId,
   type BarAction,
 } from '@hockey/game-core';
+import { OnlineDurakLobby } from './cards/OnlineDurakLobby.js';
 import { BarIdentityPanel } from './BarIdentityPanel.js';
 import './bar-panorama.css';
 import { barCharacters, type BarCharacter } from './conversationApi.js';
@@ -58,8 +59,26 @@ export function BarScene({
       Math.floor((clientY - bounds.top) / bounds.height * layout.slots.length)));
     setPreviewSlot(layout.slots[row]!.id);
   };
+  const previewCard = useRef<HTMLButtonElement>(null);
   const previewIndex = layout.slots.findIndex((s) => s.id === previewSlot);
   const previewPlace = layout.slots[previewIndex];
+  useLayoutEffect(() => {
+    const nav = places.current;
+    const card = previewCard.current;
+    if (!nav || !card || slot.occupantId !== 'online') return;
+    const position = () => {
+      const width = nav.clientWidth;
+      const center = (previewIndex + 0.5) * width / layout.slots.length;
+      card.style.left = `${Math.max(0, Math.min(center - card.offsetWidth / 2, width - card.offsetWidth))}px`;
+    };
+    position();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(position);
+    observer.observe(nav);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [previewIndex, slot.occupantId, layout.slots.length]);
+
   const previewProfile = previewPlace?.occupantId && !isUnfinished(previewPlace.occupantId)
     ? layout.profiles[previewPlace.occupantId] : null;
   useEffect(() => {
@@ -246,6 +265,7 @@ export function BarScene({
         ))}
         {previewPlace && (
           <button
+            ref={previewCard}
             id="bar-place-preview"
             className="bar-place-preview"
             style={{ top: `${previewIndex * 10}%` }}
@@ -298,8 +318,8 @@ export function BarScene({
       >
         <ChevronRight />
       </button>
-      <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity}>
-        {isUnfinished(slot.occupantId) ? (
+      <section ref={panel} className={`bar-space__actions${slot.occupantId === 'online' ? ' bar-space__actions--terminal' : ''}`} aria-live="polite" hidden={hideIdentity}>
+        {slot.occupantId === 'online' ? <OnlineDurakLobby embedded /> : isUnfinished(slot.occupantId) ? (
           <p className="bar-space__development">Персонаж в разработке</p>
         ) : profile ? (
           <BarIdentityPanel

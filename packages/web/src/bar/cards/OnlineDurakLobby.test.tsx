@@ -250,3 +250,18 @@ it('opens online for a pending invitation and blocks a competing computer game',
   fireEvent.click(screen.getByRole('tab', { name: 'Игра с персонажем' }));
   expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeDisabled();
 });
+
+it('embeds online controls with unavailable future games', async () => {
+  vi.mocked(api.lobby).mockResolvedValue({ searching: false, invites: [], matchId: null });
+  render(<MemoryRouter><OnlineDurakLobby embedded /></MemoryRouter>);
+  expect(screen.getByRole('tab', { name: 'Дурак' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.getByRole('tab', { name: 'Бильярд' })).toBeEnabled();
+  expect(screen.getByRole('tab', { name: 'Дартс' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('tab', { name: 'Бильярд' }));
+  expect(screen.getByText('Раздел в разработке')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Дурак' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('tab', { name: 'Игра с персонажем' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('tab', { name: 'Вызвать' }));
+  expect(screen.queryByRole('button', { name: 'Начать поиск' })).not.toBeInTheDocument();
+});

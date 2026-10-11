@@ -146,8 +146,9 @@ it('opens the bar at the manager and pages to the online terminal', () => {
   expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
   fireEvent.focus(screen.getByRole('button', { name: 'Играть онлайн' }));
   fireEvent.click(screen.getByRole('button', { name: 'Перейти: Играть онлайн' }));
-  expect(screen.getByRole('heading', { name: 'Играть онлайн' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Найти соперников' }));
-  expect(screen.getByText('Выбор соперника')).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Дурак' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Бильярд' })).toBeEnabled();
+  expect(screen.getByRole('tab', { name: 'Дартс' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Найти соперников' })).not.toBeInTheDocument();
 });
