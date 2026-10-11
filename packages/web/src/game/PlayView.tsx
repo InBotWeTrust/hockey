@@ -2318,8 +2318,8 @@ export function PlayView<TState>({
                   ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
                 }))}
             />
-            {scoreboardAccessory}
             {noticeInScoreboard && gameNotice}
+            {scoreboardAccessory}
           </div>
         )
       }
