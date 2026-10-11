@@ -9,6 +9,8 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { DurakResultModal, art } from './DurakModals.js';
 import { computerOpponent, opponentArt, type ComputerOpponentId } from './computerOpponents.js';
 import { useDurakGame } from './useDurakGame.js';
+import { recordCardGame } from './cardHistoryDelivery.js';
+import type { CompletedCardGame } from './cardHistory.js';
 import { cardOrder, legalActions, type Card, type Game } from './rules.js';
 import '../bar.css';
 import './durak.css';
@@ -25,10 +27,11 @@ export function DurakScreen({
   previewPlayer?: { displayName: string; avatarUrl?: string };
 } = {}) {
   const params = useParams();
+  const owner = useAuthStore(state => state.user?.id);
   const opponentId = computerOpponent(params.opponentId).id;
   return (
     <ComputerGame
-      key={opponentId}
+      key={`${opponentId}:${owner ?? 'preview'}`}
       opponentId={opponentId}
       initialGame={initialGame}
       {...(previewPlayer ? { previewPlayer } : {})}
@@ -44,13 +47,26 @@ function ComputerGame({
   initialGame?: Game | undefined;
   previewPlayer?: { displayName: string; avatarUrl?: string };
 }) {
-  const controller = useDurakGame(initialGame, opponentId);
+  const owner = useAuthStore(state => state.user?.id);
+  const [unsaved,setUnsaved] = useState<CompletedCardGame | null>(null);
+  const save = (match: CompletedCardGame) => {
+    if (!owner || previewPlayer) return;
+    try { recordCardGame(owner,match); setUnsaved(null); }
+    catch { setUnsaved(match); }
+  };
+  const controller = useDurakGame(initialGame, opponentId, save);
   return (
+    <>
+    {unsaved && <div className="bar-card-history-error" role="alert">
+      Не удалось сохранить результат партии на устройстве.
+      <button className="btn btn--ghost" onClick={() => save(unsaved)}>Повторить сохранение</button>
+    </div>}
     <DurakTable
       opponentId={opponentId}
       controller={controller}
       {...(previewPlayer ? { previewPlayer } : {})}
     />
+    </>
   );
 }
 export function DurakTable({

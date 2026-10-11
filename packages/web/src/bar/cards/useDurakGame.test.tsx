@@ -3,6 +3,7 @@ import { act, renderHook } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createGame } from './rules.js';
 import { useDurakGame } from './useDurakGame.js';
+import type { CompletedCardGame } from './cardHistory.js';
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
@@ -53,4 +54,18 @@ it('keeps the initial Maria delay under React StrictMode', () => {
   act(() => vi.advanceTimersByTime(1000));
   expect(result.current.game.revision).toBe(1);
   unmount();
+});
+
+it('reports a finished game once, including surrender, and gives a rematch a new ID', () => {
+  const completed: CompletedCardGame[] = [];
+  const g = { ...createGame(() => 0.4), attacker: 0 as const };
+  const { result, rerender } = renderHook(() => useDurakGame(g, 'maria', (match) => completed.push(match)), { wrapper: StrictMode });
+  act(() => result.current.surrender());
+  rerender();
+  expect(completed).toHaveLength(1);
+  expect(completed[0]).toMatchObject({ character: 'maria', result: 'loss', surrendered: true, caughtCheats: 0 });
+  act(() => result.current.restart(g));
+  act(() => result.current.surrender());
+  expect(completed).toHaveLength(2);
+  expect(completed[1]!.id).not.toBe(completed[0]!.id);
 });

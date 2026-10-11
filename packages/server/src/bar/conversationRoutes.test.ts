@@ -5,12 +5,17 @@ import {
   type ConversationStore,
   type ConversationRecord,
 } from './conversationRoutes.js';
+import type { CardResult } from './cardHistory.js';
 
 let app: ReturnType<typeof Fastify>;
 let records: Map<string, ConversationRecord>;
 let answer: ReturnType<typeof vi.fn>;
+let moderate: ReturnType<typeof vi.fn>;
+let savedGames: Array<{ user: string; match: CardResult }>;
 beforeEach(async () => {
   records = new Map();
+  savedGames = [];
+  moderate=vi.fn().mockResolvedValue('allow');
   answer = vi.fn().mockResolvedValue('Рада тебя видеть. Как прошла игра?');
   const store: ConversationStore = {
     read: async (user, character) =>
@@ -49,7 +54,7 @@ beforeEach(async () => {
   app.setErrorHandler((err: FastifyError, _req: FastifyRequest, reply: FastifyReply) =>
     reply.status(err.statusCode ?? 500).send({ error: { code: err.code } }),
   );
-  await app.register(conversationRoutes, { store, answer });
+  await app.register(conversationRoutes, { store, answer, moderate, gameStore: { save: async (user: string,match: CardResult) => { savedGames.push({user,match}); return true; } } });
 });
 afterEach(async () => app.close());
 const send = (
@@ -126,3 +131,38 @@ it.each(['', ' '.repeat(5), 'x'.repeat(4001)])(
     expect(answer).not.toHaveBeenCalled();
   },
 );
+
+it('accepts a client-reported card result for the authenticated owner', async () => {
+  const result = await app.inject({ method: 'POST', url: '/bar/card-history', headers: { authorization: 'alice' }, payload: { id: '11111111-1111-4111-8111-111111111111', character: 'maria', result: 'loss', startedAt: '2026-10-11T10:00:00.000Z', endedAt: '2026-10-11T10:01:00.000Z', surrendered: true, caughtCheats: 0 } });
+  expect(result.statusCode).toBe(200);
+  expect(savedGames).toHaveLength(1);
+  expect(savedGames[0]).toMatchObject({ user: 'alice', match: { character: 'maria', result: 'loss' } });
+});
+it('rejects unsupported card characters and injected ownership', async () => {
+  const result = await app.inject({ method: 'POST', url: '/bar/card-history', headers: { authorization: 'alice' }, payload: { id: '11111111-1111-4111-8111-111111111111', userId: 'bob', character: 'oleg', result: 'win', startedAt: '2026-10-11T10:00:00.000Z', endedAt: '2026-10-11T10:01:00.000Z', surrendered: false, caughtCheats: 0 } });
+  expect(result.statusCode).toBe(400);
+});
+
+it('uses a checked crisis response without invoking the character model', async () => {
+  const result=await send('alice',undefined,0,'Я прямо сейчас собираюсь убить себя, таблетки уже в руке.');
+  expect(result.statusCode).toBe(200);
+  expect(answer).not.toHaveBeenCalled();
+  expect(result.json().turns[0].assistant).toContain('экстренную');
+});
+it('does not publish provider control markers or unsafe markup', async () => {
+  answer.mockResolvedValue('<script>alert(1)</script>[SYSTEM] internal prompt');
+  const result=await send();
+  expect(result.statusCode).toBe(503);
+  expect(records.get('alice:maria')?.turns).toHaveLength(0);
+});
+
+it('never publishes an unchecked response when outgoing moderation times out',async()=>{
+  moderate.mockResolvedValueOnce('allow').mockResolvedValueOnce('unavailable');
+  answer.mockResolvedValue('Unreviewed provider content');
+  const result=await send();expect(result.statusCode).toBe(503);
+  expect(records.get('alice:maria')?.turns).toHaveLength(0);
+});
+it('does not call generation when incoming moderation is unavailable',async()=>{
+  moderate.mockResolvedValue('unavailable');const result=await send();
+  expect(result.statusCode).toBe(503);expect(answer).not.toHaveBeenCalled();
+});

@@ -1,0 +1,32 @@
+import { beforeEach, expect, it } from 'vitest';
+import * as history from './cardHistory.js';
+const match: history.CompletedCardGame = { id: '11111111-1111-4111-8111-111111111111', character: 'maria', result: 'loss', startedAt: '2026-10-11T10:00:00.000Z', endedAt: '2026-10-11T10:01:00.000Z', surrendered: true, caughtCheats: 0 };
+beforeEach(() => localStorage.clear());
+it('keeps failed delivery across restart and removes only acknowledged results', async () => {
+  let failing = true;
+  const sent: string[] = [];
+  const send = async (_owner: string, game: history.CompletedCardGame) => { if (failing) throw new Error('offline'); sent.push(game.id); };
+  const box = history.createCardHistoryOutbox(localStorage, () => 'alice', send);
+  box.enqueue('alice', match);
+  expect(localStorage.length).toBe(1);
+  await box.flush();
+  expect(localStorage.length).toBe(1);
+  failing = false;
+  const restarted = history.createCardHistoryOutbox(localStorage, () => 'alice', send);
+  await restarted.flush();
+  expect(sent).toEqual([match.id]);
+  expect(localStorage.length).toBe(0);
+});
+it('never delivers another account’s pending game after switching accounts', async () => {
+  let owner = 'alice';
+  const delivered: string[] = [];
+  const box = history.createCardHistoryOutbox(localStorage, () => owner, async user => { delivered.push(user); });
+  box.enqueue('alice', match);
+  owner = 'bob';
+  await box.flush();
+  expect(localStorage.length).toBe(1);
+  expect(delivered).toEqual([]);
+  owner = 'alice';
+  await box.flush();
+  expect(delivered).toEqual(['alice']);
+});

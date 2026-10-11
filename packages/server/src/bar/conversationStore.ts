@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { personaOf } from './personas.js';
 import type {
   Character,
   ConversationRecord,
@@ -38,6 +39,8 @@ export class SqlConversationStore implements ConversationStore {
         `insert into bar_conversations(user_id,character_id) values($1,$2) on conflict do nothing`,
         [user, character],
       );
+      await db.query('insert into bar_memory_settings(user_id,character_id) values($1,$2) on conflict do nothing',[user,character]);
+      await db.query('select 1 from bar_memory_settings where user_id=$1 and character_id=$2 for update',[user,character]);
       const { rows } = await db.query<Row>(
         `select revision,turns,(pending_until > now()) as pending from bar_conversations where user_id=$1 and character_id=$2 for update`,
         [user, character],
@@ -81,13 +84,39 @@ export class SqlConversationStore implements ConversationStore {
     user: string,
     character: Character,
     turn: ConversationTurn,
+    usedStoryIds: string[] = [],
   ): Promise<ConversationRecord> {
-    const { rows } = await this.pool.query<Row>(
-      `update bar_conversations set turns=turns || $4::jsonb,revision=revision+1,pending_id=null,pending_until=null where user_id=$1 and character_id=$2 and pending_id=$3 returning revision,turns,false as pending`,
-      [user, character, turn.id, JSON.stringify([turn])],
-    );
-    if (!rows[0]) throw new Error('reservation_lost');
-    return rows[0];
+    const db = await this.pool.connect();
+    try {
+      await db.query('begin');
+      const settings=await db.query<{enabled:boolean}>('select enabled from bar_memory_settings where user_id=$1 and character_id=$2 for update',[user,character]);
+      const enabled=settings.rows[0]?.enabled ?? true;
+      const { rows } = await db.query<Row>(
+        `update bar_conversations set turns=turns || $4::jsonb,revision=revision+1,pending_id=null,pending_until=null
+         where user_id=$1 and character_id=$2 and pending_id=$3 and pending_until>now() returning revision,turns,false as pending`,
+        [user, character, turn.id, JSON.stringify([turn])],
+      );
+      if (!rows[0]) throw new Error('reservation_lost');
+      if (enabled && usedStoryIds.length) {
+        const authored = new Set(personaOf(character).biography.stories.map(story => story.id));
+        const dynamic = await db.query<{ id: string }>(
+          'select id::text from bar_character_stories where character_id=$1 and id::text=any($2::text[])',
+          [character, usedStoryIds],
+        );
+        const valid = new Set([...authored, ...dynamic.rows.map(story => story.id)]);
+        for (const id of [...new Set(usedStoryIds)].filter(id => valid.has(id)).slice(0, 4))
+          await db.query(`insert into bar_told_stories(user_id,character_id,story_id,first_turn_id,last_turn_id)
+            values($1,$2,$3,$4,$4) on conflict(user_id,character_id,story_id) do update
+            set last_turn_id=excluded.last_turn_id,last_told_at=now()`, [user,character,id,turn.id]);
+      }
+      if(enabled) await db.query(`insert into bar_memory_jobs(user_id,character_id,target_revision) values($1,$2,$3)
+        on conflict(user_id,character_id) do update set target_revision=excluded.target_revision,attempts=0,next_at=now()`, [user,character,rows[0].revision]);
+      await db.query('commit');
+      return rows[0];
+    } catch (error) {
+      await db.query('rollback');
+      throw error;
+    } finally { db.release(); }
   }
   async release(user: string, character: Character, id: string) {
     await this.pool.query(

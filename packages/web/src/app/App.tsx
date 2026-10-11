@@ -8,6 +8,7 @@ import './design-system.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { useCardHistoryDelivery } from '../bar/cards/cardHistoryDelivery.js';
 import { BottomNav, isBottomNavVisible, isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
@@ -315,6 +316,7 @@ export function appSurfaceClassName(pathname: string): string {
 }
 
 function AppExperience(): JSX.Element {
+  useCardHistoryDelivery();
   const hasCardInvite = useCardInvites(s => s.incoming.length > 0);
   const location = useLocation();
   const user = useAuthStore((s) => s.user);

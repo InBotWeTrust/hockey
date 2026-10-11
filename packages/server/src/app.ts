@@ -265,6 +265,9 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(barLayoutRoutes);
   await app.register(conversationRoutes, {
     model: config.BAR_CONVERSATION_MODEL,
+    closeRouterModel: config.BAR_CLOSEROUTER_MODEL,
+    closeRouterProvider: config.BAR_CLOSEROUTER_PROVIDER,
+    ...(config.CLOSEROUTER_API_KEY ? { closeRouterKey: config.CLOSEROUTER_API_KEY } : {}),
     ...(config.OPENAI_API_KEY ? { apiKey: config.OPENAI_API_KEY } : {}),
   });
   await app.register(durakRoutes);

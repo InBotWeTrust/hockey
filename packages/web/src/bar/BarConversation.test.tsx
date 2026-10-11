@@ -97,3 +97,8 @@ it('retains text and reloads history on a stale revision instead of resending au
   expect(screen.getByRole('textbox')).toHaveValue('Мой вопрос');
   expect(sendConversation).toHaveBeenCalledTimes(1);
 });
+
+it('makes personal memory controls discoverable in the conversation',async()=>{
+  open();await screen.findByText(snapshot.greeting);
+  expect(screen.getByRole('button',{name:'Память'})).toBeEnabled();
+});

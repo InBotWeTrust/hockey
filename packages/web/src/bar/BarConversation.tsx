@@ -1,5 +1,6 @@
+import { BarMemoryControls } from './BarMemoryControls.js';
 import { useEffect, useRef, useState } from 'react';
-import { Expand, Minimize2, X } from 'lucide-react';
+import { Expand, Minimize2, X, NotebookText, MessageCircle } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { ApiError } from '../api/apiFetch.js';
 import {
@@ -32,6 +33,7 @@ export function BarConversation({
   const [error, setError] = useState('');
   const [readError, setReadError] = useState(false);
   const [retry, setRetry] = useState(0);
+  const [showMemory,setShowMemory]=useState(false);
   const [expanded, setExpanded] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const inFlight = useRef(false);
@@ -146,6 +148,7 @@ export function BarConversation({
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface bar-conversation${!data?.turns.length ? ' bar-conversation--empty' : ''}${expanded ? ' bar-conversation--expanded' : ''}`}
       headerAction={
         <div className="bar-conversation__controls">
+          <button className="icon-btn" aria-label={showMemory ? 'К разговору' : 'Память'} title={showMemory ? 'К разговору' : 'Память'} disabled={sending || !!data?.pending} onClick={()=>{setShowMemory(value=>!value);setExpanded(true);}}>{showMemory ? <MessageCircle size={18}/> : <NotebookText size={18}/>}</button>
           <button
             className="icon-btn"
             aria-label={expanded ? 'Свернуть разговор' : 'Развернуть разговор'}
@@ -160,6 +163,11 @@ export function BarConversation({
       }
     >
       <div className="bar-conversation__body">
+        {showMemory ? <BarMemoryControls key={character} character={character} name={name} onChanged={async()=>{
+          request.current=null;
+          const next=await fetchConversation(character);setData(next);update.current(next);
+        }}/> : <>
+        <p className="bar-conversation__privacy-note">Персонаж может запоминать разговор. Заметки и настройки доступны в «Память». Не отправляй пароли и ключи.</p>
         <div
           ref={log}
           className="bar-conversation__log"
@@ -206,6 +214,7 @@ export function BarConversation({
             disabled={!data || loading || sending || !!data.pending}
           />
         </div>
+        </>}
       </div>
     </AccessibleModal>
   );

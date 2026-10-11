@@ -32,6 +32,7 @@ COPY --from=builder /repo/packages/game-core/dist ./packages/game-core/dist
 COPY --from=builder /repo/packages/server/package.json ./packages/server/
 COPY --from=builder /repo/packages/server/dist ./packages/server/dist
 COPY --from=builder /repo/packages/server/db ./packages/server/db
+COPY --from=builder /repo/packages/server/personas ./packages/server/personas
 COPY --from=builder /repo/packages/server/seed-assets ./packages/server/seed-assets
 
 RUN pnpm install --prod --frozen-lockfile --filter @hockey/server... --filter @hockey/game-core

@@ -10,6 +10,7 @@ import {
 import { attemptCheat, catchCheat } from './cheating.js';
 import type { ComputerOpponentId } from './computerOpponents.js';
 import { botView, chooseBotAction } from './bot.js';
+import type { CompletedCardGame } from './cardHistory.js';
 export interface DurakController {
   game: Game;
   dispatch: (action: Action) => void;
@@ -22,7 +23,11 @@ export interface DurakController {
 export function useDurakGame(
   initial?: Game,
   opponentId: ComputerOpponentId = 'maria',
+  onComplete?: (match: CompletedCardGame) => void,
 ): DurakController {
+  const completion = useRef(onComplete);
+  completion.current = onComplete;
+  const session = useRef({ id: crypto.randomUUID(), startedAt: new Date().toISOString(), surrendered: false, caughtCheats: 0, reported: initial?.result !== null && initial?.result !== undefined });
   const [game, setGame] = useState(() => initial ?? createGame());
   const [generation, setGeneration] = useState(0);
   const [remainingSeconds, setRemaining] = useState<number | null>(null);
@@ -31,6 +36,14 @@ export function useDurakGame(
   const skipCheat = useRef(false);
   const stateRef = useRef(game);
   stateRef.current = game;
+  useEffect(() => {
+    if (game.result === null || session.current.reported || !completion.current) return;
+    session.current.reported = true;
+    completion.current({ id: session.current.id, character: opponentId,
+      result: game.result === 'draw' ? 'draw' : game.result === 0 ? 'win' : 'loss',
+      startedAt: session.current.startedAt, endedAt: new Date().toISOString(),
+      surrendered: session.current.surrendered, caughtCheats: session.current.caughtCheats });
+  }, [game,opponentId]);
   const schedule = useRef<{ game: Game; actor: number; deadline: number } | null>(null);
   useEffect(() => {
     if (game.result !== null) {
@@ -108,23 +121,29 @@ export function useDurakGame(
     if (!pending || stateRef.current !== pending.staged) return false;
     pendingCheat.current = null;
     skipCheat.current = true;
+    session.current.caughtCheats++;
     const next = catchCheat(pending.before, pending.staged);
     stateRef.current = next;
     setGame(next);
     return true;
   };
-  const surrender = () =>
-    setGame((current) =>
-      current.result !== null
-        ? current
-        : { ...current, phase: 'ended', result: 1, revision: current.revision + 1 },
-    );
+  const surrender = () => {
+    const current = stateRef.current;
+    if (current.result !== null) return;
+    session.current.surrendered = true;
+    const next: Game = { ...current, phase: 'ended', result: 1, revision: current.revision + 1 };
+    stateRef.current = next;
+    setGame(next);
+  };
   const restart = (next?: Game) => {
+    session.current = { id: crypto.randomUUID(), startedAt: new Date().toISOString(), surrendered: false, caughtCheats: 0, reported: next?.result !== null && next?.result !== undefined };
     schedule.current = null;
     pendingCheat.current = null;
     cheats.current = 0;
     skipCheat.current = false;
-    setGame(next ?? createGame());
+    const fresh = next ?? createGame();
+    stateRef.current = fresh;
+    setGame(fresh);
     setGeneration((n) => n + 1);
   };
   return {
