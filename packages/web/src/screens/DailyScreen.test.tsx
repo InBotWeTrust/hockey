@@ -6842,6 +6842,42 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('shows both Marathon variants inside the challenge dropdown', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/templates') ? { templates: [...challengeTemplates, { ...challengeTemplates[0], id: 'marathon', title: 'Марафон', duel_kind: 'marathon', period_duration_ms: 240000, period_rules: [{ periodNumber: 1, mode: 'time_attack', durationMs: 240000, shotsLimit: null }] }] }
+        : url.includes('/matches') ? { matches: [] } : url.includes('/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
+    const select = await screen.findByRole('combobox', { name: 'Шаблон дуэли' });
+    fireEvent.click(select);
+    expect(await screen.findByRole('option', { name: /Марафон · 7 сек/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Марафон · 4 сек/ }));
+    expect(select).toHaveTextContent('Марафон · 4 сек');
+    expect(screen.queryByRole('group', { name: 'Время на следующий гол' })).not.toBeInTheDocument();
+  });
+
+  it.each([{ windows: [4000] }, { windows: [7000] }, { windows: [7000, 4000] }])('searches the Marathon chip variants $windows independently', async ({ windows }) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/templates') ? { templates: [] } : url.includes('/matches') ? { matches: [] }
+        : url.includes('/matchmaking/join') ? { ticket: { user_id: 'u1', duel_kinds: ['marathon'], expires_at: '2100-01-01T00:00:00Z' } }
+        : url.includes('/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    for (const label of ['Экспресс', 'Микс', 'Классика']) fireEvent.click(await screen.findByRole('button', { name: label }));
+    for (const window of windows) fireEvent.click(await screen.findByRole('button', { name: `Марафон · ${window / 1000} сек` }));
+    expect(screen.getByText('Форматы поиска').style.transform).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['marathon'], marathon_windows_ms: windows });
+    });
+  });
+
   it('selects the first available duel format when opening the challenge flow', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);

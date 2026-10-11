@@ -8453,9 +8453,9 @@ button.profile-story-series-card {
 }
 
 .duel-template-select {
-  --glass-select-background: #dce6ef;
-  --glass-select-border: rgba(255, 255, 255, 0.96);
-  --glass-select-shadow: 0 8px 18px rgba(4, 15, 28, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.92);
+  --glass-select-background: rgba(38, 45, 51, 0.82);
+  --glass-select-border: var(--liquid-border);
+  --glass-select-shadow: var(--liquid-selected-shadow);
 }
 
 .duel-format-warning {

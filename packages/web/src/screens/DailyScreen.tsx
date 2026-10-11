@@ -1,5 +1,5 @@
 import { duelDisplayScore, duelFormatLabel } from '../components/duel/scoredDuel.js';
-import { MarathonWindowPicker } from '../components/duel/MarathonWindowPicker.js';
+import { duelTemplateChoices } from '../components/duel/duelTemplateChoices.js';
 import { classifyMarksmanshipShot } from '@hockey/game-core';
 import { DuelKindPreferenceButton } from '../components/DuelKindPreferenceButton.js';
 import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from '../game/matchCourt.js';
@@ -4142,8 +4142,8 @@ function duelTemplateSummaryParts(template: AmateurDuelTemplate): string[] {
   ];
 }
 
-function duelTemplateOptionLabel(template: AmateurDuelTemplate): string {
-  return `${template.title} (${duelTemplateSummaryParts(template).join(' · ')})`;
+function duelTemplateOptionLabel(template: AmateurDuelTemplate, window?: 4000 | 7000): string {
+  return `${template.title}${window === undefined ? '' : ` · ${window / 1000} сек`} (${duelTemplateSummaryParts(template).join(' · ')})`;
 }
 
 const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
@@ -4440,6 +4440,7 @@ const DUEL_KIND_OPTIONS: AmateurDuelKind[] = [
 
 function DuelKindPreferencePicker({
   selected,
+  marathonWindows,
   onChange,
   onInfo,
   locks,
@@ -4447,7 +4448,8 @@ function DuelKindPreferencePicker({
   onLimitUnavailable,
 }: {
   selected: AmateurDuelKind[];
-  onChange: (next: AmateurDuelKind[]) => void;
+  marathonWindows: Array<4000 | 7000>;
+  onChange: (next: AmateurDuelKind[], windows: Array<4000 | 7000>) => void;
   onInfo: () => void;
   locks?: Partial<Record<AmateurDuelKind, GameplayLockDTO | null>>;
   limits?: AmateurDuelOverview['format_limits'];
@@ -4458,7 +4460,7 @@ function DuelKindPreferencePicker({
     const next = selectedSet.has(kind)
       ? selected.filter((cur) => cur !== kind)
       : [...selected, kind];
-    onChange(DUEL_KIND_OPTIONS.filter((cur) => next.includes(cur)));
+    onChange(DUEL_KIND_OPTIONS.filter((cur) => next.includes(cur)), marathonWindows);
   };
 
   return (
@@ -4472,7 +4474,7 @@ function DuelKindPreferencePicker({
           marginBottom: 8,
         }}
       >
-        <div className="section-label" style={{ margin: 0, transform: 'translateX(-14px)' }}>
+        <div className="section-label" style={{ margin: 0 }}>
           Форматы поиска
         </div>
         <button
@@ -4491,14 +4493,14 @@ function DuelKindPreferencePicker({
           gap: 6,
         }}
       >
-        {DUEL_KIND_OPTIONS.map((kind) => {
+        {DUEL_KIND_OPTIONS.flatMap((kind) => (kind === 'marathon' ? [4000, 7000] as const : [undefined]).map((window) => ({ kind, window }))).map(({ kind, window }) => {
           const limitUnavailable = limits?.[kind]?.available === false;
           return (
             <DuelKindPreferenceButton
-              key={kind}
-              label={duelKindText(kind)}
-              checked={selectedSet.has(kind)}
-              active={selectedSet.has(kind)}
+              key={`${kind}:${window ?? ''}`}
+              label={window === undefined ? duelKindText(kind) : `Марафон · ${window / 1000} сек`}
+              checked={selectedSet.has(kind) && (window === undefined || marathonWindows.includes(window))}
+              active={selectedSet.has(kind) && (window === undefined || marathonWindows.includes(window))}
               disabled={locks?.[kind]?.blocked === true}
               ariaDisabled={limitUnavailable}
               title={
@@ -4510,7 +4512,13 @@ function DuelKindPreferencePicker({
               }
               onClick={() => {
                 if (limitUnavailable) onLimitUnavailable(kind);
-                else toggleKind(kind);
+                else if (window === undefined) toggleKind(kind);
+                else {
+                  const current = selectedSet.has('marathon') ? marathonWindows : [];
+                  const windows = current.includes(window) ? current.filter((value) => value !== window) : [...current, window];
+                  const kinds = selected.filter((value) => value !== 'marathon');
+                  onChange(windows.length ? [...kinds, 'marathon'] : kinds, windows);
+                }
               }}
             />
           );
@@ -4999,9 +5007,13 @@ function AmateurDuelsPage({
                 <>
                   <DuelKindPreferencePicker
                     selected={eligibleMatchmakingKinds}
+                    marathonWindows={marathonWindows}
                     {...(formatLocks === undefined ? {} : { locks: formatLocks })}
                     {...(formatLimits === undefined ? {} : { limits: formatLimits })}
-                    onChange={setMatchmakingKinds}
+                    onChange={(kinds, windows) => {
+                      setMatchmakingKinds(kinds);
+                      setMarathonWindows(windows);
+                    }}
                     onLimitUnavailable={(kind) => {
                       setFormatLimitToast(
                         `Месячный лимит формата «${duelKindText(kind)}» исчерпан.`,
@@ -5009,13 +5021,6 @@ function AmateurDuelsPage({
                     }}
                     onInfo={() => setMatchmakingRulesOpen(true)}
                   />
-                  {matchmakingKinds.includes('marathon') && (
-                    <MarathonWindowPicker
-                      multiple
-                      selected={marathonWindows}
-                      onChange={setMarathonWindows}
-                    />
-                  )}
                   <button
                     type="button"
                     className="btn btn--cta"
@@ -5104,34 +5109,31 @@ function AmateurDuelsPage({
                       <GlassSelect
                         ariaLabel="Шаблон дуэли"
                         buttonClassName="duel-template-select"
-                        value={selectedTemplate.id}
-                        options={templateItems.map((template) => {
+                        value={selectedTemplate.duel_kind === 'marathon' ? `${selectedTemplate.id}:${challengeWindow}` : selectedTemplate.id}
+                        options={duelTemplateChoices(templateItems).map(({ template, value, marathonWindow }) => {
                           const unavailable =
                             formatLimits?.[template.duel_kind]?.available === false ||
                             selectedOpponent?.format_limits?.[template.duel_kind]?.available ===
                               false;
                           return {
-                            value: template.id,
+                            value,
                             label: unavailable
-                              ? `Лимит: ${duelTemplateOptionLabel(template)}`
-                              : duelTemplateOptionLabel(template),
+                              ? `Лимит: ${duelTemplateOptionLabel(template, marathonWindow)}`
+                              : duelTemplateOptionLabel(template, marathonWindow),
                             disabled: unavailable,
                           };
                         })}
-                        onChange={(templateId) => {
+                        onChange={(value) => {
+                          const choice = duelTemplateChoices(templateItems).find((item) => item.value === value);
+                          if (!choice) return;
                           challengeAutoSelectPending.current = false;
-                          setSelectedTemplateId(templateId);
+                          setSelectedTemplateId(choice.template.id);
+                          if (choice.marathonWindow !== undefined) setChallengeWindow(choice.marathonWindow);
                         }}
                       />
                     </>
                   ) : (
                     <div style={{ color: 'var(--muted)', fontSize: 14 }}>Нет активных шаблонов</div>
-                  )}
-                  {selectedTemplate?.duel_kind === 'marathon' && (
-                    <MarathonWindowPicker
-                      selected={[challengeWindow]}
-                      onChange={(next) => setChallengeWindow(next[0]!)}
-                    />
                   )}
                   <div className="section-label duel-form-section-title">
                     <span>Быстрый выбор</span>

@@ -79,6 +79,26 @@ describe('DuelChallengeModal Amateur preview access', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it.each([4000, 7000])('sends the selected %i-ms Marathon profile challenge', async (window) => {
+    useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/templates') ? { templates: [{ ...template, id: 'marathon', duel_kind: 'marathon', title: 'Марафон', period_duration_ms: 240000 }] }
+        : url.includes('/challenge-availability') ? { available: true } : { match: {} };
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderModal();
+    const option = await screen.findByRole('button', { name: new RegExp(`Марафон · ${window / 1000} сек`) });
+    fireEvent.click(option);
+    expect(option).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.queryByRole('group', { name: 'Время на следующий гол' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Вызвать' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input, init]) => String(input).endsWith('/challenge') && init?.method === 'POST');
+      expect(JSON.parse(String(call?.[1]?.body))).toMatchObject({ template_id: 'marathon', marathon_window_ms: window });
+    });
+  });
+
   it('marks the selected duel type with a check indicator and pressed state', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(
