@@ -1,3 +1,4 @@
+import { AppToast } from '../../components/AppToast.js';
 import { DuelKindPreferenceButton } from '../../components/DuelKindPreferenceButton.js';
 import { joinRoom, roomInvite } from './roomApi.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
@@ -20,13 +21,13 @@ import {
 } from './onlineApi.js';
 import '../bar.css';
 import './durak.css';
-export function OnlineDurakLobby() {
+export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
   const navigate = useNavigate();
   const location = useLocation();
   const userId = useAuthStore((state) => state.user?.id);
   const [info, setInfo] = useState<'quick' | 'search' | null>(null);
   const [computerOpen, setComputerOpen] = useState<ComputerOpponentId | null>(null);
-  const [mode, setMode] = useState<'computer' | 'online'>(location.state?.mode === 'online' ? 'online' : 'computer');
+  const [mode, setMode] = useState<'computer' | 'online'>(embedded || location.state?.mode === 'online' ? 'online' : 'computer');
   const [heroIndex, setHeroIndex] = useState(0);
   const onlineSwipe = useRef<{ x: number; y: number } | null>(null);
   const initialLobby = useRef(true);
@@ -36,6 +37,7 @@ export function OnlineDurakLobby() {
     const timer = setInterval(() => setClock(Date.now()), 1000);
     return () => clearInterval(timer);
   }, []);
+  const [developmentToast, setDevelopmentToast] = useState(false);
   const [capacity, setCapacity] = useState(2);
   const [formats, setFormats] = useState([2]);
   const [tab, setTab] = useState<'find' | 'challenge'>('find');
@@ -164,9 +166,9 @@ export function OnlineDurakLobby() {
   const outgoing = state?.invites.some((i) => i.status === 'pending' && i.sender_id === userId);
   return (
     <main
-      className={`screen bar-screen online-durak-lobby online-durak-lobby--panorama online-durak-lobby--${mode}`}
+      className={`screen bar-screen online-durak-lobby online-durak-lobby--panorama online-durak-lobby--${mode}${embedded ? ' online-durak-lobby--embedded' : ''}`}
       onTouchStart={(event) => {
-        if (mode !== 'online') return;
+        if (embedded || mode !== 'online') return;
         const touch = event.touches[0];
         onlineSwipe.current = touch ? { x: touch.clientX, y: touch.clientY } : null;
       }}
@@ -183,7 +185,7 @@ export function OnlineDurakLobby() {
       data-scene={mode === 'online' ? 4 : heroIndex}
       style={{ '--durak-scene-index': mode === 'online' ? 4 : heroIndex } as CSSProperties}
     >
-      <div className="durak-panorama-view">
+      {!embedded && <div className="durak-panorama-view">
         <div className="durak-panorama-track">
           <img className="durak-panorama-background" src="/bar/cards/bar-populated-panorama-v2.webp"
             alt="Панорама бара «4-й период»" draggable={false} />
@@ -197,6 +199,8 @@ export function OnlineDurakLobby() {
           </div>
         </div>
       </div>
+      }
+      {developmentToast && <AppToast message="Раздел в разработке" onDismiss={() => setDevelopmentToast(false)} />}
       {info && (
         <AccessibleModal
           title={info === 'quick' ? 'Быстрый выбор' : 'Поиск соперника'}
@@ -216,12 +220,12 @@ export function OnlineDurakLobby() {
           </div>
         </AccessibleModal>
       )}
-      <header className="bar-header">
+      {!embedded && <header className="bar-header">
         <button className="icon-btn" aria-label="Назад" onClick={() => navigate('/bar')}>
           <ChevronLeft size={22} />
         </button>
         <h1>Дурак</h1>
-      </header>
+      </header>}
       {computerOpen && (
         <DurakLaunchModal
           opponentId={computerOpen}
@@ -230,6 +234,11 @@ export function OnlineDurakLobby() {
         />
       )}
       <section className="bar-content">
+        {embedded ? <>
+        <div className="durak-mode-tabs">
+          <SegmentedTabs items={[{ id: 'durak', label: 'Дурак' }, { id: 'billiards', label: 'Бильярд' }, { id: 'darts', label: 'Дартс' }]} activeTab="durak" onChange={() => setDevelopmentToast(true)} ariaLabel="Игра" />
+        </div>
+        </> : <>
         <div className="durak-mode-tabs">
           <SegmentedTabs
             items={[
@@ -245,6 +254,7 @@ export function OnlineDurakLobby() {
             ariaLabel="Режим игры"
           />
         </div>
+        </>}
         {error && (
           <p role="alert" className="bar-connection">
             {error}
@@ -265,11 +275,11 @@ export function OnlineDurakLobby() {
         </div>
         {mode === 'online' && (
           <>
-            <button type="button" className="icon-btn durak-terminal-back"
+            {!embedded && <button type="button" className="icon-btn durak-terminal-back"
               aria-label="Предыдущий персонаж"
               onClick={() => { setHeroIndex(3); setMode('computer'); }}>
               <ChevronLeft aria-hidden="true" />
-            </button>
+            </button>}
             <div className="section-label duel-section-title">Текущие партии</div>
             {!state?.invites.some((i) => i.status === 'pending') && (
               <div role="status" className="duel-empty-current">
