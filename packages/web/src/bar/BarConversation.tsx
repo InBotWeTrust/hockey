@@ -12,6 +12,8 @@ import {
 } from './conversationApi.js';
 import { ChatInput } from '../chat/components/ChatInput.js';
 import './bar-conversation.css';
+interface LocalMessage { localId: string; message: ConversationMessage; failed: boolean }
+const thinkingPhrases = ['думает…', 'подбирает слова…', 'готовит ответ…'];
 export function BarConversation({
   character,
   name,
@@ -37,7 +39,15 @@ export function BarConversation({
   const [expanded, setExpanded] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const inFlight = useRef(false);
-  const request = useRef<ConversationMessage | null>(null);
+  const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
+  const [thinkingIndex, setThinkingIndex] = useState(0);
+  const waiting = sending || !!data?.pending;
+  useEffect(() => {
+    setThinkingIndex(0);
+    if (!waiting) return;
+    const timer = setInterval(() => setThinkingIndex(index => (index + 1) % thinkingPhrases.length), 5000);
+    return () => clearInterval(timer);
+  }, [waiting]);
   const alive = useRef(true);
   const log = useRef<HTMLDivElement>(null);
   const update = useRef(onUpdate);
@@ -81,30 +91,34 @@ export function BarConversation({
   }, [character, retry]);
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight;
-  }, [data, sending]);
-  const send = async (content: string) => {
+  }, [data, sending, localMessages]);
+  const send = async (content: string, retryMessage?: LocalMessage) => {
     if (!data || loading || data.pending || inFlight.current || !content) return;
     inFlight.current = true;
     setSending(true);
     setError('');
-    if (!request.current || request.current.content !== content)
-      request.current = { id: crypto.randomUUID(), revision: data.revision, content };
+    const previous = retryMessage ?? localMessages.find(item => item.failed && item.message.content === content);
+    const message = previous?.message ?? { id: crypto.randomUUID(), revision: data.revision, content };
+    const localId = previous?.localId ?? message.id;
+    setLocalMessages(items => [...items.filter(item => item.localId !== localId), {localId, message, failed: false}]);
     try {
-      const snapshot = await sendConversation(character, request.current);
+      const snapshot = await sendConversation(character, message);
       update.current(snapshot);
       if (alive.current) {
         setData(snapshot);
       }
-      request.current = null;
+      if (alive.current) setLocalMessages(items => items.filter(item => item.localId !== localId && !snapshot.turns.some(turn => turn.id === item.message.id)));
     } catch (cause) {
-      if (!alive.current) throw cause;
+      if (!alive.current) return;
+      setLocalMessages(items => items.map(item => item.localId === localId ? {...item, failed: true} : item));
       if (cause instanceof ApiError && cause.status === 409) {
-        request.current = null;
         setError('Разговор изменился в другом окне. Обнови его перед отправкой.');
         try {
           const snapshot = await fetchConversation(character);
+          if (!alive.current) return;
           setData(snapshot);
           update.current(snapshot);
+          setLocalMessages(items => items.map(item => item.localId === localId ? {...item, message: {...message, id: crypto.randomUUID(), revision: snapshot.revision}} : item));
           if (snapshot.pending) setRetry((n) => n + 1);
         } catch {
           setData(null);
@@ -115,9 +129,9 @@ export function BarConversation({
             ? 'В локальном превью OpenAI ещё не подключён.'
             : cause instanceof ApiError && cause.code === 'conversation_limit'
               ? 'Сегодня много поговорили. Продолжим завтра.'
-              : 'Ответ не пришёл. Текст сохранён, попробуй отправить ещё раз.',
+              : 'Ответ не пришёл. Можно повторить отправку сообщения.',
         );
-      throw cause;
+      // The visible local bubble owns retry; the composer can clear immediately.
     } finally {
       inFlight.current = false;
       if (alive.current) setSending(false);
@@ -164,10 +178,9 @@ export function BarConversation({
     >
       <div className="bar-conversation__body">
         {showMemory ? <BarMemoryControls key={character} character={character} name={name} onChanged={async()=>{
-          request.current=null;
+          setLocalMessages([]);
           const next=await fetchConversation(character);setData(next);update.current(next);
         }}/> : <>
-        <p className="bar-conversation__privacy-note">Персонаж может запоминать разговор. Заметки и настройки доступны в «Память». Не отправляй пароли и ключи.</p>
         <div
           ref={log}
           className="bar-conversation__log"
@@ -178,22 +191,26 @@ export function BarConversation({
           {loading && <p role="status">Загружаем разговор…</p>}
           {data && (
             <>
-              <p className="glass bar-conversation__bubble">{data.greeting}</p>
+              <p aria-label={`Сообщение ${name}`} className="glass bar-conversation__bubble">{data.greeting}</p>
               {data.turns.map((turn) => (
                 <div key={turn.id}>
-                  <p className="glass-dark chat-bubble--own bar-conversation__bubble bar-conversation__bubble--user">
-                    <span className="sr-only">Ты: </span>
+                  <p aria-label="Твоё сообщение" className="glass-dark chat-bubble--own bar-conversation__bubble bar-conversation__bubble--user">
                     {turn.user}
                   </p>
-                  <p className="glass bar-conversation__bubble">
-                    <span className="sr-only">{name}: </span>
+                  <p aria-label={`Сообщение ${name}`} className="glass bar-conversation__bubble">
                     {turn.assistant}
                   </p>
                 </div>
               ))}
             </>
           )}
-          {(sending || data?.pending) && <p role="status">{name} отвечает…</p>}
+          {localMessages.filter(item => !data?.turns.some(turn => turn.id === item.message.id)).map(item => (
+            <div key={item.localId} className="bar-conversation__local-message">
+              <p aria-label="Твоё сообщение" className="glass-dark chat-bubble--own bar-conversation__bubble bar-conversation__bubble--user">{item.message.content}</p>
+              {item.failed && <button className="bar-conversation__retry bar-conversation__message-retry" disabled={waiting || loading || !data} onClick={() => void send(item.message.content, item)}>Повторить отправку</button>}
+            </div>
+          ))}
+          {waiting && <p className="bar-conversation__thinking" role="status">{name} {thinkingPhrases[thinkingIndex]}</p>}
         </div>
         {error && (
           <div className="bar-conversation__error" role="alert">
@@ -209,7 +226,7 @@ export function BarConversation({
           <ChatInput
             replyTo={null}
             onClearReply={() => {}}
-            onSend={(content) => send(content)}
+            onSend={(content) => { void send(content); }}
             placeholder="Сообщение..."
             disabled={!data || loading || sending || !!data.pending}
           />
