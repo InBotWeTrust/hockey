@@ -108,3 +108,25 @@ describe('unified glass material', () => {
     expect(styles.backgroundColor).not.toBe('rgb(24, 38, 58)');
   });
 });
+
+it('preserves background blur on the shared modal backdrop', () => {
+  const rule = liquidGlassCss.match(/^\.modal-backdrop \{[^}]*\}/m)?.[0];
+  expect(rule).toContain('backdrop-filter: var(--liquid-scrim-blur)');
+  expect(rule).toContain('-webkit-backdrop-filter: var(--liquid-scrim-blur)');
+  expect(liquidGlassCss).toContain('--liquid-scrim-blur: blur(14px) saturate(115%)');
+});
+
+it('provides dense reading surfaces for chat history', () => {
+  expect(liquidGlassCss).toContain('--chat-reading-bg: rgba(24, 28, 34, 0.88)');
+  expect(liquidGlassCss).toContain('.app-shell.app-shell--unified-glass .chat-reading-surface');
+  expect(liquidGlassCss).toContain('--chat-reading-meta: #cbd1d9');
+});
+
+it('keeps disabled segmented tabs borderless like other inactive tabs', () => {
+  expect(liquidGlassCss).not.toContain('.app-shell :is(.btn, .icon-btn, .segmented-tabs__item):disabled');
+});
+
+it('gives portal toasts a dense background independent of app shell', () => {
+  expect(liquidGlassCss).toContain('--liquid-toast-bg: rgba(24, 28, 34, 0.94)');
+  expect(liquidGlassCss).toContain('background: var(--liquid-toast-bg)');
+});

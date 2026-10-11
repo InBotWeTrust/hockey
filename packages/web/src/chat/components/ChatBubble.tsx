@@ -120,7 +120,7 @@ function ChatBubbleImpl({
   onOpenProfile,
   onOpenImage,
 }: ChatBubbleProps): JSX.Element {
-  const className = isOwn ? 'glass-dark chat-bubble--own' : 'glass';
+  const className = isOwn ? 'glass-dark chat-reading-surface chat-bubble--own' : 'glass chat-reading-surface';
   const align = isOwn ? 'flex-end' : 'flex-start';
   const radius = isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px';
   const attachments = message.isDeleted ? [] : messageAttachments(message.metadata);
@@ -191,7 +191,7 @@ function ChatBubbleImpl({
         fontSize: 10,
         lineHeight: '18px',
         fontWeight: 600,
-        color: isOwn ? 'rgba(255, 255, 255, 0.72)' : 'rgba(71, 85, 105, 0.74)',
+        color: 'var(--chat-reading-meta)',
         whiteSpace: 'nowrap',
       }}
     >
@@ -222,7 +222,7 @@ function ChatBubbleImpl({
           borderRadius: radius,
           fontSize: 14,
           lineHeight: 1.4,
-          color: isOwn ? '#ffffff' : 'var(--ink)',
+          color: 'var(--liquid-ink)',
           wordBreak: 'break-word',
           opacity: message.isDeleted ? 0.6 : 1,
           fontStyle: message.isDeleted ? 'italic' : 'normal',
@@ -350,7 +350,7 @@ function ChatBubbleImpl({
               fontSize: 10,
               lineHeight: 1.2,
               fontWeight: 700,
-              color: isOwn ? 'rgba(255, 255, 255, 0.62)' : 'rgba(71, 85, 105, 0.62)',
+              color: 'var(--chat-reading-meta)',
             }}
           >
             изменено

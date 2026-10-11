@@ -52,6 +52,17 @@ function renderBottomNav(path: string, extra?: JSX.Element): QueryClient {
 }
 
 describe('BottomNav remembered navigation', () => {
+  it('uses compact thin icons without changing the outer menu radius', () => {
+    renderBottomNav('/profile');
+    const navigation = screen.getByLabelText('Навигация');
+    expect(navigation).toHaveStyle({ height: '54px', borderRadius: '19px' });
+    for (const icon of navigation.querySelectorAll('.bottom-nav__icon-wrap svg')) {
+      expect(icon).toHaveAttribute('width', '18');
+      expect(icon).toHaveAttribute('height', '18');
+      expect(icon).toHaveAttribute('stroke-width', '1.5');
+    }
+  });
+
   it.each([
     ['/', '?view=daily'],
     ['/', '?view=classic'],

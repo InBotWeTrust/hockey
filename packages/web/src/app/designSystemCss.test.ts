@@ -143,10 +143,11 @@ describe('profile story section heading alignment', () => {
 });
 
 describe('profile story image treatment', () => {
-  it('uses the same white image border as other profile cards', () => {
+  it('keeps the story image inside a single outer frame', () => {
     const image = rule('.profile-story-card > img');
 
-    expect(image).toContain('border: 1px solid rgba(255, 255, 255, 0.88)');
+    expect(image).toContain('border: 0;');
+    expect(rule('.profile-story-card')).toContain('border: 1px solid var(--liquid-border)');
   });
 });
 
@@ -221,5 +222,11 @@ describe('completed challenge history modal', () => {
     );
 
     expect(expandedSummary).toContain('border-bottom: 1px solid rgba(15, 23, 42, 0.08)');
+  });
+});
+
+ describe('section heading alignment', () => {
+  it('aligns labels with content without an extra horizontal inset', () => {
+    expect(css.match(/^\.section-label \{[^}]*\}/m)?.[0]).toContain('padding: 2px 0;');
   });
 });

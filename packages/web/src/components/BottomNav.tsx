@@ -21,7 +21,7 @@ import { chatKeys } from '../lib/queryKeys.js';
 
 export const NAV_HEIGHT = 68;
 
-const ICON_SIZE = 22;
+const ICON_SIZE = 18;
 const LAST_GAME_ROUTE_KEY = 'hockey.nav.lastGameRoute';
 const LAST_SECTIONS_ROUTE_KEY = 'hockey.nav.lastSectionsRoute';
 const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
@@ -372,7 +372,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
           active={isGame}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Gamepad2 size={ICON_SIZE} strokeWidth={2} />
+              <Gamepad2 size={ICON_SIZE} strokeWidth={1.5} />
               {!isDemo && gameActionCount > 0 && (
                 <span
                   aria-label={`События игры: ${gameActionCount}`}
@@ -408,7 +408,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
           active={isSections}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Package size={ICON_SIZE} strokeWidth={2} />
+              <Package size={ICON_SIZE} strokeWidth={1.5} />
               {!isDemo && sectionActionCount > 0 && (
                 <span
                   aria-label={`События разделов: ${sectionActionCount}`}
@@ -444,7 +444,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
           active={isChat}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <MessageCircle size={ICON_SIZE} strokeWidth={2} />
+              <MessageCircle size={ICON_SIZE} strokeWidth={1.5} />
               {!isDemo && totalUnread > 0 && (
                 <span
                   aria-label={`Непрочитанные: ${totalUnread}`}
@@ -478,7 +478,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
           label="Раздевалка"
           disabled={isDemo}
           active={isProfile}
-          icon={<span style={{ position: 'relative', display: 'inline-flex' }}><User size={ICON_SIZE} strokeWidth={2} />{(user?.unclaimedReferralRewardsCount ?? 0) > 0 ? <span className="bottom-nav__badge" aria-label={`Награды за приглашения: ${user!.unclaimedReferralRewardsCount}`}>{user!.unclaimedReferralRewardsCount! > 99 ? '99+' : user!.unclaimedReferralRewardsCount}</span> : null}</span>}
+          icon={<span style={{ position: 'relative', display: 'inline-flex' }}><User size={ICON_SIZE} strokeWidth={1.5} />{(user?.unclaimedReferralRewardsCount ?? 0) > 0 ? <span className="bottom-nav__badge" aria-label={`Награды за приглашения: ${user!.unclaimedReferralRewardsCount}`}>{user!.unclaimedReferralRewardsCount! > 99 ? '99+' : user!.unclaimedReferralRewardsCount}</span> : null}</span>}
           onClick={openProfileRoute}
         />
         {showAdmin && (
@@ -487,7 +487,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
             active={isAdmin}
             icon={
               <span style={{ position: 'relative', display: 'inline-flex' }}>
-                <ShieldCheck size={ICON_SIZE} strokeWidth={2} />
+                <ShieldCheck size={ICON_SIZE} strokeWidth={1.5} />
                 {(adminAttention?.totalCount ?? 0) > 0 && (
                   <span
                     aria-label={`События администратора: ${adminAttention!.totalCount}`}

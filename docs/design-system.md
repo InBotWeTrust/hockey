@@ -6320,3 +6320,23 @@ CSS: 2585 правил оформления и вариантов. React: 2793 �
 - Снимки и локальный отчёт: `output/playwright/liquid-glass/` в рабочей копии. Это локальная проверка компонентов, не приёмка всех авторизованных экранов, Safari/WebKit или физического iPhone.
 
 Follow-up audit: [all routes, screens, overlays and controls](liquid-glass-audit.md). Additional validation: 138 modal/control and related screen tests passed; 96 theme/tournament tests rerun after the final color refinement passed. Eight public routes rendered in Chromium at 360 px. The local prices API was unavailable, so that page verified the error presentation only.
+
+## Liquid Glass geometry corrections
+
+- Section labels: padding `2px 0`; align with container content. Container owns horizontal inset.
+- Player count: heading bottom margin 8 px; preserve buttons 2-6 and existing multiple/single selection semantics.
+- Bottom nav: height 54 px, outer radius 19 px; selected item 56 x 46 px, radius 15 px; icons 18 px, stroke 1.5.
+- Shared edge: 1 px `var(--liquid-border)` (white 38%). Story image has no inner border.
+- Full-screen bar QA must not use the admin `preview` prop (680 px height).
+
+Modal backdrop: `--liquid-scrim-blur: blur(14px) saturate(115%)`, including WebKit. The scrim blurs the entire underlying page independently of the modal material. Reduced transparency sets this token to `none`.
+
+Chat reading material: incoming messages/channel posts use rgba(24,28,34,.88), own messages rgba(48,54,64,.92), blur 18 px, border white 18%, text #f8f9fb without shadow, metadata #cbd1d9. Quotes use black 22% inset. Chrome keeps the shared transparent material. Reduced transparency uses opaque reading surfaces.
+
+Avatars: circular 1 px border `var(--liquid-border)` (white 38%), including player quick pick, chat authors/headers and channel comments. Border is inside the declared size (`box-sizing: border-box`), shared with bar character avatars.
+
+Quick-pick player names and avatars share the same horizontal center. Name label uses full item width and centered text; avatar is centered within that width.
+
+Disabled segmented tabs keep the inactive borderless appearance; indicate unavailability with opacity .55, not an extra outline.
+
+Portal toasts: neutral dark background rgba(24,28,34,.94), blur 18 px, white text without shadow, shared 1 px edge, radius 16 px. Dense material prevents underlying headings from showing through. Reduced transparency uses #181c22 with no blur.

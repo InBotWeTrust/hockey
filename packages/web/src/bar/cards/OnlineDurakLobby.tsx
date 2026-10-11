@@ -474,6 +474,7 @@ export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
                         <span
                           className="duel-quick-pick__name"
                           style={{
+                            textAlign: 'center',
                             width: '100%',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
