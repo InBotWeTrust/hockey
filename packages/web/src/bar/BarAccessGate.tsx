@@ -64,7 +64,7 @@ export function BarAccessGate({ children }: { children: ReactNode }) {
       <img src="/bar/fight/oleg-blocked-v2.webp" alt="Олег стоит у входа и не пускает в бар"/>
       <p>Олег сегодня тебя больше не пустит.</p>
       <BarReopeningCountdown until={access.blockedUntil} onExpire={()=>window.dispatchEvent(new Event('bar-access-changed'))}/>
-      <div className="modal-actions"><button className="btn btn--cta" onClick={leave}>В главное меню</button></div>
+      <div className="modal-actions"><button className="btn btn--cta" onClick={leave}>Понятно</button></div>
     </AccessibleModal>;
   }
   if (error)
