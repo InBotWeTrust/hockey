@@ -88,7 +88,7 @@ export function FightControls({
         <span
           className={incoming && remaining > 0 ? 'fight-challenge__pulse' : undefined}
           style={{
-            background: 'rgba(255,255,255,.24)',
+            background: 'var(--liquid-inset-bg)',
             border: '1px solid rgba(255,255,255,.82)',
             ...iconStyle,
             width: 31,

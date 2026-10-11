@@ -633,7 +633,7 @@ function inventoryResourceUnitForKind(kind: AdminInventoryItemKind): AdminInvent
 }
 
 const adminInventoryHintStyle: CSSProperties = {
-  color: 'rgba(71, 85, 105, 0.78)',
+  color: 'var(--liquid-muted)',
   fontSize: 9.5,
   fontWeight: 500,
   lineHeight: 1.18,
@@ -1402,7 +1402,7 @@ function DashboardMiniStat({
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 16,
         padding: '10px 9px',
-        background: 'rgba(255, 255, 255, 0.32)',
+        background: 'var(--liquid-inset-bg)',
         minWidth: 0,
       }}
     >
@@ -1728,7 +1728,7 @@ function MiniLineChart({
             <text
               x={chartLeft - 7}
               y={y + 4}
-              fill="rgba(15, 23, 42, 0.52)"
+              fill="var(--liquid-muted)"
               fontSize="9"
               fontWeight="700"
               textAnchor="end"
@@ -1795,7 +1795,7 @@ function MiniLineChart({
             width={tooltipWidth}
             height={tooltipHeight}
             rx="9"
-            fill="rgba(15, 23, 42, 0.92)"
+            fill="var(--liquid-muted)"
           />
           <text x={tooltipX + 8} y={tooltipY + 13} fill="#fff" fontSize="9" fontWeight="800">
             {shortDateText(activeSeriesPoint.date)}
@@ -1806,7 +1806,7 @@ function MiniLineChart({
         </g>
       ) : null}
       {first && (
-        <text x={chartLeft} y={height - 5} fill="rgba(15, 23, 42, 0.58)" fontSize="10">
+        <text x={chartLeft} y={height - 5} fill="var(--liquid-muted)" fontSize="10">
           {shortDateText(first)}
         </text>
       )}
@@ -1814,7 +1814,7 @@ function MiniLineChart({
         <text
           x={width / 2}
           y={height - 5}
-          fill="rgba(15, 23, 42, 0.58)"
+          fill="var(--liquid-muted)"
           fontSize="10"
           textAnchor="middle"
         >
@@ -1825,7 +1825,7 @@ function MiniLineChart({
         <text
           x={chartRight}
           y={height - 5}
-          fill="rgba(15, 23, 42, 0.58)"
+          fill="var(--liquid-muted)"
           fontSize="10"
           textAnchor="end"
         >
@@ -1989,7 +1989,7 @@ function UsersPanel({
                 width: '100%',
                 height: 44,
                 borderRadius: 14,
-                background: 'rgba(255, 255, 255, 0.52)',
+                background: 'var(--liquid-inset-bg)',
                 gap: 7,
                 fontSize: 12,
                 fontWeight: 850,
@@ -2153,7 +2153,7 @@ function UserNotificationStats({
             width: 32,
             height: 32,
             borderRadius: 12,
-            background: subscribed && subscribed.count > 0 ? 'rgba(15, 23, 42, 0.92)' : '#eef4fb',
+            background: subscribed && subscribed.count > 0 ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
             color: subscribed && subscribed.count > 0 ? '#ffffff' : 'var(--muted)',
             display: 'flex',
             alignItems: 'center',
@@ -2193,7 +2193,7 @@ function UserNotificationStats({
                 border: '1px solid rgba(255, 255, 255, 0.72)',
                 borderRadius: 14,
                 padding: '8px 9px',
-                background: 'rgba(255, 255, 255, 0.32)',
+                background: 'var(--liquid-inset-bg)',
                 minWidth: 0,
               }}
             >
@@ -2240,7 +2240,7 @@ function UserAvatar({ user }: { user: AdminUser }): JSX.Element {
         width: 42,
         height: 42,
         borderRadius: 999,
-        background: 'rgba(15, 23, 42, 0.92)',
+        background: 'var(--liquid-inset-bg)',
         color: '#ffffff',
         fontSize: 16,
         fontWeight: 950,
@@ -2372,7 +2372,7 @@ function UserDetailsModal({
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -2406,7 +2406,7 @@ function UserDetailsModal({
             right: 14,
             width: 34,
             height: 34,
-            background: 'rgba(255,255,255,0.62)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <X size={16} />
@@ -2860,7 +2860,7 @@ function IdentityAvatar({ identity }: { identity: AdminIdentity }): JSX.Element 
         width: 36,
         height: 36,
         borderRadius: 999,
-        background: identity.linked || identity.active ? 'rgba(15, 23, 42, 0.92)' : 'transparent',
+        background: identity.linked || identity.active ? 'var(--liquid-selected-bg)' : 'transparent',
         border: identity.linked || identity.active ? 'none' : '1px solid rgba(15, 23, 42, 0.24)',
         color: identity.linked || identity.active ? '#ffffff' : 'var(--muted)',
         fontSize: 14,
@@ -3157,7 +3157,7 @@ function NotificationsPanel({
             border: '1px solid rgba(255, 255, 255, 0.72)',
             borderRadius: 16,
             padding: 10,
-            background: 'rgba(255, 255, 255, 0.28)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>Активные</div>
@@ -3170,7 +3170,7 @@ function NotificationsPanel({
             border: '1px solid rgba(255, 255, 255, 0.72)',
             borderRadius: 16,
             padding: 10,
-            background: 'rgba(255, 255, 255, 0.28)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>Всего</div>
@@ -3292,7 +3292,7 @@ function PushMonitoringPanel({
                       border: '1px solid rgba(255, 255, 255, 0.72)',
                       borderRadius: 15,
                       padding: '9px 10px',
-                      background: 'rgba(255, 255, 255, 0.24)',
+                      background: 'var(--liquid-inset-bg)',
                       color: 'var(--muted)',
                       fontSize: 11,
                       fontWeight: 850,
@@ -3313,8 +3313,8 @@ function PushMonitoringPanel({
                         padding: '9px 10px',
                         background:
                           alert.severity === 'danger'
-                            ? 'rgba(254, 226, 226, 0.56)'
-                            : 'rgba(254, 243, 199, 0.56)',
+                            ? 'rgba(115, 38, 45, 0.28)'
+                            : 'rgba(104, 77, 26, 0.28)',
                       }}
                     >
                       <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
@@ -3323,7 +3323,7 @@ function PushMonitoringPanel({
                       <div
                         style={{
                           marginTop: 3,
-                          color: 'rgba(15, 23, 42, 0.72)',
+                          color: 'var(--liquid-muted)',
                           fontSize: 11,
                           fontWeight: 800,
                           lineHeight: 1.35,
@@ -3349,7 +3349,7 @@ function PushMonitoringPanel({
                       border: '1px solid rgba(255, 255, 255, 0.72)',
                       borderRadius: 15,
                       padding: '9px 10px',
-                      background: 'rgba(255, 255, 255, 0.26)',
+                      background: 'var(--liquid-inset-bg)',
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
@@ -3441,7 +3441,7 @@ function PushMonitoringPanel({
                         <div
                           style={{
                             marginTop: 3,
-                            color: '#b91c1c',
+                            color: 'var(--red-deep)',
                             fontSize: 10,
                             fontWeight: 850,
                             overflowWrap: 'anywhere',
@@ -3510,7 +3510,7 @@ function NotificationTemplateCard({
           <div
             style={{
               marginTop: 5,
-              color: 'rgba(15, 23, 42, 0.78)',
+              color: 'var(--liquid-muted)',
               fontSize: 13,
               fontWeight: 750,
               lineHeight: 1.35,
@@ -3557,7 +3557,7 @@ function NotificationInfo({ label, value }: { label: string; value: string }): J
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 14,
         padding: '8px 9px',
-        background: 'rgba(255, 255, 255, 0.3)',
+        background: 'var(--liquid-inset-bg)',
         minWidth: 0,
       }}
     >
@@ -3725,7 +3725,7 @@ function AdminChatAvatarControl({
       style={{
         borderRadius: 16,
         padding: 10,
-        background: 'rgba(255,255,255,0.44)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.7)',
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) auto',
@@ -4386,7 +4386,7 @@ function ChatProfileEditorModal({
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -5129,7 +5129,7 @@ function MismatchLogCard({ log }: { log: AdminMismatchLog }): JSX.Element {
               width: 42,
               height: 42,
               borderRadius: 999,
-              background: 'rgba(15, 23, 42, 0.92)',
+              background: 'var(--liquid-inset-bg)',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
@@ -5199,7 +5199,7 @@ function MismatchLogCard({ log }: { log: AdminMismatchLog }): JSX.Element {
             margin: '8px 0 0',
             padding: 10,
             borderRadius: 14,
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'var(--liquid-inset-bg)',
             color: '#ffffff',
             overflowX: 'auto',
             fontSize: 10,
@@ -5220,7 +5220,7 @@ function MismatchInfo({ label, value }: { label: string; value: string }): JSX.E
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 14,
         padding: '8px 9px',
-        background: 'rgba(255, 255, 255, 0.3)',
+        background: 'var(--liquid-inset-bg)',
         minWidth: 0,
       }}
     >
@@ -5832,7 +5832,7 @@ function FeedbackMetric({
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 15,
         padding: '8px 8px 9px',
-        background: 'rgba(255, 255, 255, 0.24)',
+        background: 'var(--liquid-inset-bg)',
       }}
     >
       <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>{label}</div>
@@ -5952,7 +5952,7 @@ function FeedbackCard({
       </div>
       <div
         style={{
-          color: 'rgba(15, 23, 42, 0.76)',
+          color: 'var(--liquid-muted)',
           fontSize: 13,
           fontWeight: 700,
           lineHeight: 1.45,
@@ -6135,7 +6135,7 @@ function InventoryThumb({ item }: { item: AdminInventoryItem }): JSX.Element {
         width: 56,
         height: 56,
         borderRadius: 14,
-        background: 'rgba(15, 23, 42, 0.9)',
+        background: 'var(--liquid-inset-bg)',
         color: '#ffffff',
         display: 'flex',
         alignItems: 'center',
@@ -7116,7 +7116,7 @@ function AchievementAdminCard({
           alt=""
           width={58}
           height={58}
-          style={{ borderRadius: 8, objectFit: 'cover', background: 'rgba(255,255,255,0.5)' }}
+          style={{ borderRadius: 8, objectFit: 'cover', background: 'var(--liquid-inset-bg)' }}
         />
         <div style={{ minWidth: 0 }}>
           <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
@@ -8326,7 +8326,7 @@ function DuelTemplateEditor({
             padding: 12,
             display: 'grid',
             gap: 10,
-            background: 'rgba(255,255,255,0.34)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
@@ -8395,7 +8395,7 @@ function DuelTemplateEditor({
             padding: 12,
             display: 'grid',
             gap: 10,
-            background: 'rgba(255,255,255,0.34)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
@@ -8410,7 +8410,7 @@ function DuelTemplateEditor({
                 padding: 10,
                 display: 'grid',
                 gap: 8,
-                background: 'rgba(255,255,255,0.42)',
+                background: 'var(--liquid-inset-bg)',
               }}
             >
               <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
@@ -8591,7 +8591,7 @@ function SettingsPanel({
                     width: 30,
                     height: 30,
                     borderRadius: 999,
-                    background: 'rgba(15, 23, 42, 0.92)',
+                    background: 'var(--liquid-inset-bg)',
                     color: '#ffffff',
                     display: 'inline-flex',
                     alignItems: 'center',

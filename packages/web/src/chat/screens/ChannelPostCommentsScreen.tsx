@@ -194,7 +194,7 @@ function CommentRow({
                       gap: 8,
                       padding: '8px 10px',
                       borderRadius: 14,
-                      background: 'rgba(255,255,255,0.65)',
+                      background: 'var(--liquid-inset-bg)',
                       color: 'inherit',
                       textDecoration: 'none',
                     }}
@@ -650,7 +650,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
                         gap: 10,
                         padding: '10px 12px',
                         borderRadius: 16,
-                        background: 'rgba(255,255,255,0.12)',
+                        background: 'var(--liquid-inset-bg)',
                         color: 'inherit',
                         textDecoration: 'none',
                       }}
@@ -748,7 +748,7 @@ export function ChannelPostCommentsScreen(): JSX.Element {
                   gap: 8,
                   padding: '8px 10px',
                   borderRadius: 16,
-                  background: 'rgba(255,255,255,0.72)',
+                  background: 'var(--liquid-inset-bg)',
                   border: '1px solid rgba(255,255,255,0.74)',
                 }}
               >

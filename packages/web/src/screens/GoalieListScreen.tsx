@@ -109,7 +109,7 @@ export function GoalieListScreen(): JSX.Element {
                   style={{
                     padding: '8px 14px',
                     borderRadius: 999,
-                    background: 'rgba(15, 23, 42, 0.9)',
+                    background: 'var(--liquid-inset-bg)',
                     color: '#ffffff',
                     fontSize: 12,
                     fontWeight: 700,
@@ -151,7 +151,7 @@ function MetaChip({ children }: { children: React.ReactNode }): JSX.Element {
         fontWeight: 600,
         padding: '3px 8px',
         borderRadius: 999,
-        background: 'rgba(15, 23, 42, 0.08)',
+        background: 'var(--liquid-inset-bg)',
         color: 'var(--muted)',
         letterSpacing: '0.06em',
         textTransform: 'uppercase',

@@ -5,6 +5,7 @@ import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
+import './liquid-glass.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -252,7 +253,7 @@ export function RouteLoading(): JSX.Element {
       <div
         className="route-loading"
         role="status"
-        style={{ color: '#0f172a', background: 'rgba(255, 255, 255, 0.9)' }}
+        style={{ color: 'var(--liquid-ink)', background: 'var(--liquid-modal-bg)' }}
       >
         Загрузка…
       </div>

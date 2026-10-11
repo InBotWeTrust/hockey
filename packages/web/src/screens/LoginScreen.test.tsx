@@ -70,7 +70,7 @@ describe('LoginScreen', () => {
     expect(vkButton).toHaveClass('login-screen__auth-button');
     expect(vkButton.compareDocumentPosition(screen.getByPlaceholderText('Введите код')))
       .toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(vkButton).toHaveStyle({ background: '#0077ff' });
+    expect(vkButton).toHaveStyle({ background: 'var(--liquid-selected-bg)' });
     expect(vkButton.querySelector('img')).toHaveAttribute('src', '/icons/vk-community.png');
     expect(screen.getByRole('button', { name: /демо-режим/i })).toHaveClass(
       'login-screen__auth-button',

@@ -99,7 +99,7 @@ export function UpdatePrompt(): JSX.Element | null {
         alignItems: 'center',
         justifyContent: 'center',
         padding: '20px',
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-inset-bg)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         fontFamily: 'var(--font-sans)',

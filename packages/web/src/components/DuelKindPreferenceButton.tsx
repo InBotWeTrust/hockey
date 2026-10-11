@@ -28,7 +28,7 @@ export function DuelKindPreferenceButton({
         minHeight: 30,
         borderRadius: 999,
         border: active ? '1px solid rgba(15,23,42,0.32)' : '1px solid rgba(255,255,255,0.7)',
-        background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
+        background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
         color: active ? '#fff' : 'var(--ink)',
         display: 'flex',
         alignItems: 'center',

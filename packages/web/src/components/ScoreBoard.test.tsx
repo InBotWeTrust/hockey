@@ -24,11 +24,10 @@ describe('ScoreBoard', () => {
   });
 
   it('uses a translucent liquid-glass surface instead of an opaque fill', () => {
-    const scoreboardRule = designSystemCss.match(/\.game-scoreboard \{(?<body>[\s\S]*?)\n\}/)?.groups
+    const scoreboardRule = designSystemCss.match(/\.modal-card\.bar-conversation \{(?<body>[\s\S]*?)\n\}/)?.groups
       ?.body;
 
-    expect(scoreboardRule).toContain('rgba(7, 24, 45, 0.12)');
-    expect(scoreboardRule).toContain('rgba(15, 51, 78, 0.06)');
+    expect(scoreboardRule).toContain('background: var(--liquid-chrome-bg)');
     expect(scoreboardRule).toContain('backdrop-filter: blur(18px) saturate(145%);');
     expect(scoreboardRule).not.toMatch(/rgba\([^)]*,\s*(?:0\.8[5-9]|0\.9\d?|1)\)/);
     expect(designSystemCss).toContain('@media (prefers-reduced-transparency: reduce)');

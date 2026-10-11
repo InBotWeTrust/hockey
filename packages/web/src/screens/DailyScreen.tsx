@@ -1970,7 +1970,7 @@ function ArenaVideoCube({
                     padding: 0,
                     border: 0,
                     borderRadius: 999,
-                    background: active ? 'rgba(244, 253, 255, 0.96)' : 'rgba(178, 232, 255, 0.42)',
+                    background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)' ,
                     boxShadow: active
                       ? '0 0 7px rgba(212, 249, 255, 0.74)'
                       : '0 0 5px rgba(86, 205, 255, 0.24)',
@@ -2007,9 +2007,8 @@ function ArenaVideoCube({
                 fontWeight: activeEntry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
                 letterSpacing: '0.06em',
                 lineHeight: 1,
-                background:
-                  'linear-gradient(180deg, rgba(246, 252, 255, 0.98), rgba(214, 234, 247, 0.96))',
-                color: '#132033',
+                background: 'var(--liquid-inset-bg)',
+                color: 'var(--liquid-ink)',
                 border: '1px solid rgba(255, 255, 255, 0.78)',
                 boxShadow:
                   '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
@@ -2697,7 +2696,7 @@ function DailyPeriodTab({
         fontFamily: 'var(--font-mono)',
         fontSize: 11,
         fontWeight: 900,
-        background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
+        background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
         border: active
           ? '1px solid rgba(182, 238, 255, 0.72)'
           : '1px solid rgba(118, 215, 255, 0.24)',
@@ -2800,7 +2799,7 @@ function ModeInfoModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         zIndex: 250,
@@ -2872,7 +2871,7 @@ function DailyGameStatsModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         zIndex: 260,
@@ -2916,7 +2915,7 @@ function DailyGameStatsModal({
             <div
               style={{
                 marginTop: 5,
-                color: 'rgba(15, 23, 42, 0.55)',
+                color: 'var(--liquid-muted)',
                 fontSize: 12,
                 fontWeight: 800,
               }}
@@ -2932,7 +2931,7 @@ function DailyGameStatsModal({
         {!stats ? (
           <div
             style={{
-              color: 'rgba(15, 23, 42, 0.64)',
+              color: 'var(--liquid-muted)',
               fontSize: 13,
               fontWeight: 700,
               lineHeight: 1.55,
@@ -3018,7 +3017,7 @@ function DuelStatsModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         zIndex: 260,
@@ -3064,7 +3063,7 @@ function DuelStatsModal({
             <div
               style={{
                 marginTop: 5,
-                color: 'rgba(15, 23, 42, 0.55)',
+                color: 'var(--liquid-muted)',
                 fontSize: 12,
                 fontWeight: 800,
                 overflowWrap: 'anywhere',
@@ -3153,13 +3152,13 @@ function DuelStatsInfoGrid({
             minWidth: 0,
             borderRadius: 14,
             padding: '10px 9px',
-            background: 'rgba(255, 255, 255, 0.42)',
+            background: 'var(--liquid-inset-bg)',
             border: '1px solid rgba(255, 255, 255, 0.58)',
           }}
         >
           <div
             style={{
-              color: 'rgba(15, 23, 42, 0.52)',
+              color: 'var(--liquid-muted)',
               fontSize: 9,
               fontWeight: 900,
               letterSpacing: '0.12em',
@@ -3208,7 +3207,7 @@ function DuelStatsParticipantRow({
       style={{
         borderRadius: 16,
         padding: '11px 12px',
-        background: 'rgba(255, 255, 255, 0.42)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.58)',
       }}
     >
@@ -3233,7 +3232,7 @@ function DuelStatsParticipantRow({
         </div>
         <div
           style={{
-            color: 'rgba(15, 23, 42, 0.5)',
+            color: 'var(--liquid-muted)',
             fontSize: 10,
             fontWeight: 900,
             textTransform: 'uppercase',
@@ -3254,7 +3253,7 @@ function DuelStatsParticipantRow({
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
-                color: 'rgba(15, 23, 42, 0.46)',
+                color: 'var(--liquid-muted)',
                 fontSize: 8,
                 fontWeight: 900,
                 letterSpacing: '0.08em',
@@ -3303,14 +3302,14 @@ function DailyStatsMetric({ label, value }: { label: string; value: string }): J
         borderRadius: 16,
         padding: '12px 8px',
         textAlign: 'center',
-        background: 'rgba(255, 255, 255, 0.52)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.7)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
       }}
     >
       <div
         style={{
-          color: 'rgba(15, 23, 42, 0.52)',
+          color: 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 900,
           letterSpacing: '0.12em',
@@ -3359,7 +3358,7 @@ function DailyStatsPeriodRow({
         gap: 10,
         borderRadius: 16,
         padding: '10px 12px',
-        background: 'rgba(255, 255, 255, 0.42)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.58)',
       }}
     >
@@ -3376,7 +3375,7 @@ function DailyStatsPeriodRow({
         <div
           style={{
             marginTop: 3,
-            color: 'rgba(15, 23, 42, 0.44)',
+            color: 'var(--liquid-muted)',
             fontSize: 10,
             fontWeight: 800,
             lineHeight: 1.15,
@@ -3387,7 +3386,7 @@ function DailyStatsPeriodRow({
       </div>
       <div
         style={{
-          color: period ? 'rgba(15, 23, 42, 0.78)' : 'rgba(15, 23, 42, 0.32)',
+          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
           fontFamily: 'var(--font-mono)',
           fontSize: 14,
           fontWeight: 800,
@@ -3400,7 +3399,7 @@ function DailyStatsPeriodRow({
       <div
         style={{
           minWidth: 42,
-          color: period ? 'rgba(15, 23, 42, 0.58)' : 'rgba(15, 23, 42, 0.32)',
+          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
           fontFamily: 'var(--font-mono)',
           fontSize: 13,
           fontWeight: 800,
@@ -4283,7 +4282,7 @@ function DuelDevStatePanel({
         margin: '0 auto',
         borderRadius: 18,
         padding: '12px 14px',
-        background: 'rgba(225, 238, 249, 0.92)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.82)',
         boxShadow: '0 16px 38px rgba(15, 23, 42, 0.18)',
         backdropFilter: 'blur(18px) saturate(140%)',
@@ -4315,7 +4314,7 @@ function DuelDevStatePanel({
       <div
         style={{
           marginTop: 8,
-          color: 'rgba(15, 23, 42, 0.68)',
+          color: 'var(--liquid-muted)',
           fontSize: 12,
           fontWeight: 750,
           lineHeight: 1.35,
@@ -6825,9 +6824,9 @@ function DuelResultCard({
                   marginTop: 8,
                   borderRadius: 16,
                   padding: '12px 14px',
-                  background: 'rgba(255,255,255,0.42)',
+                  background: 'var(--liquid-inset-bg)',
                   border: '1px solid rgba(255,255,255,0.62)',
-                  color: 'rgba(15, 23, 42, 0.58)',
+                  color: 'var(--liquid-muted)',
                   fontSize: 12,
                   fontWeight: 750,
                   lineHeight: 1.35,
@@ -7283,7 +7282,7 @@ function DuelResultPeriodComparison({
             style={{
               borderRadius: 16,
               padding: 10,
-              background: 'rgba(255,255,255,0.42)',
+              background: 'var(--liquid-inset-bg)',
               border: '1px solid rgba(255,255,255,0.62)',
             }}
           >
@@ -7321,7 +7320,7 @@ function DuelResultPeriodComparison({
                 style={{
                   borderRadius: 999,
                   padding: '5px 9px',
-                  background: 'rgba(255,255,255,0.48)',
+                  background: 'var(--liquid-inset-bg)',
                   border: '1px solid rgba(255,255,255,0.62)',
                   color: 'var(--ink)',
                   fontFamily: 'var(--font-mono)',
@@ -7337,7 +7336,7 @@ function DuelResultPeriodComparison({
                 strokeWidth={2.4}
                 aria-hidden="true"
                 style={{
-                  color: 'rgba(15,23,42,0.58)',
+                  color: 'var(--liquid-muted)',
                   transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 140ms ease',
                 }}
@@ -7448,13 +7447,13 @@ function DuelResultParticipantPeriodStats({
         minWidth: 0,
         borderRadius: 14,
         padding: '9px 8px',
-        background: muted ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.54)',
+        background: muted ? 'var(--liquid-inset-bg)' : 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.62)',
       }}
     >
       <div
         style={{
-          color: muted ? 'rgba(15,23,42,0.38)' : 'rgba(15,23,42,0.72)',
+          color: muted ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 950,
           lineHeight: 1.1,
@@ -7473,7 +7472,7 @@ function DuelResultParticipantPeriodStats({
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           gap: '6px 8px',
-          color: muted ? 'rgba(15,23,42,0.35)' : 'var(--ink)',
+          color: muted ? 'var(--liquid-muted)' : 'var(--ink)',
           fontSize: 11,
           fontWeight: 850,
         }}
@@ -7495,7 +7494,7 @@ function DuelResultTinyStat({ label, value }: { label: string; value: string }):
     <div style={{ minWidth: 0 }}>
       <div
         style={{
-          color: 'rgba(15,23,42,0.46)',
+          color: 'var(--liquid-muted)',
           fontSize: 8,
           fontWeight: 900,
           lineHeight: 1,
@@ -7711,7 +7710,7 @@ function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element 
         style={{
           borderRadius: 999,
           padding: '7px 10px 7px 8px',
-          background: 'rgba(15, 23, 42, 0.08)',
+          background: 'var(--liquid-inset-bg)',
           color: 'var(--ink)',
           fontSize: 11,
           fontWeight: 900,
@@ -7768,7 +7767,7 @@ function duelOpponentStatus(match: AmateurDuelMatch): {
     };
   }
   if (participant.state === 'break_active') {
-    return { label: 'перерыв', color: '#64748b', glow: 'rgba(100, 116, 139, 0.18)' };
+    return { label: 'перерыв', color: 'var(--liquid-muted)', glow: 'rgba(100, 116, 139, 0.18)' };
   }
   if (participant.state === 'completed') {
     return { label: 'завершил', color: '#6366f1', glow: 'rgba(99, 102, 241, 0.2)' };
@@ -7913,8 +7912,7 @@ const DUEL_INVENTORY_SLOTS = [
 ] as const;
 
 export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
-  background:
-    'radial-gradient(circle at 28% 0%, rgba(255,255,255,0.94), rgba(255,255,255,0) 42%), linear-gradient(145deg, rgba(255,255,255,0.76), rgba(226,242,250,0.5) 58%, rgba(255,255,255,0.64))',
+  background: 'var(--liquid-inset-bg)',
   border: '1px solid rgba(255,255,255,0.82)',
   boxShadow:
     '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
@@ -7968,7 +7966,7 @@ function duelEquipmentStockLineStyle(): CSSProperties {
   return {
     display: 'inline-block',
     marginTop: 3,
-    color: '#334155',
+    color: 'var(--liquid-muted)',
     fontSize: 12,
     fontWeight: 920,
     lineHeight: 1.15,
@@ -8111,7 +8109,7 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
               gap: 7,
               alignItems: 'center',
               justifyItems: 'center',
-              background: item ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.34)',
+              background: 'var(--liquid-inset-bg)',
               border: '1px solid rgba(255,255,255,0.74)',
               color: item ? 'var(--ink)' : 'var(--muted)',
               minWidth: 0,
@@ -8292,7 +8290,7 @@ function DuelRinkLoadoutHud({
                   minWidth: 'max-content',
                   transform: 'translateX(-50%)',
                   display: 'block',
-                  color: '#16233b',
+                  color: 'var(--liquid-ink)',
                   fontFamily: 'var(--font-ui)',
                   fontSize: 9.5,
                   fontWeight: 950,
@@ -8392,7 +8390,7 @@ function DuelRinkLoadoutModal({
                   borderRadius: 14,
                   overflow: 'hidden',
                   border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(255,255,255,0.28)',
+                  background: 'var(--liquid-inset-bg)',
                 }}
               >
                 <img
@@ -8798,7 +8796,7 @@ export function DuelInventoryMiniHud({
                   minWidth: 'max-content',
                   transform: 'translateX(-50%)',
                   display: 'block',
-                  color: '#16233b',
+                  color: 'var(--liquid-ink)',
                   fontFamily: 'var(--font-ui)',
                   fontSize: 9.5,
                   fontWeight: 950,
@@ -8856,7 +8854,7 @@ function PeriodSpeedSummary({
       style={{
         padding: 12,
         borderRadius: 18,
-        background: 'rgba(255, 255, 255, 0.34)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.64)',
         boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.68)',
         display: 'flex',
@@ -8875,7 +8873,7 @@ function PeriodSpeedSummary({
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
-                color: 'rgba(15, 23, 42, 0.54)',
+                color: 'var(--liquid-muted)',
                 fontSize: 'clamp(8px, 2.5vw, 10px)',
                 fontWeight: 800,
                 lineHeight: 1.1,
@@ -8911,8 +8909,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
       style={{
         padding: '10px 4px',
         borderRadius: 14,
-        background:
-          'linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(226, 232, 240, 0.55) 100%)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(15, 23, 42, 0.06)',
         boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.95)',
         textAlign: 'center',
@@ -9502,7 +9499,7 @@ function ClassicRinkLoadoutHud({
                   minWidth: 'max-content',
                   transform: 'translateX(-50%)',
                   display: 'block',
-                  color: '#16233b',
+                  color: 'var(--liquid-ink)',
                   fontFamily: 'var(--font-ui)',
                   fontSize: 9.5,
                   fontWeight: 950,
@@ -9581,7 +9578,7 @@ function ClassicRinkLoadoutModal({
                 borderRadius: 14,
                 overflow: 'hidden',
                 border: '1px solid rgba(255,255,255,0.78)',
-                background: 'rgba(255,255,255,0.28)',
+                background: 'var(--liquid-inset-bg)',
               }}
             >
               <img
@@ -9603,7 +9600,7 @@ function ClassicRinkLoadoutModal({
               </strong>
               <span
                 style={{
-                  color: 'rgba(15, 23, 42, 0.62)',
+                  color: 'var(--liquid-muted)',
                   fontSize: 12,
                   fontWeight: 760,
                   lineHeight: 1.25,
@@ -9641,7 +9638,7 @@ function ClassicRinkLoadoutModal({
                   borderRadius: 14,
                   overflow: 'hidden',
                   border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(255,255,255,0.28)',
+                  background: 'var(--liquid-inset-bg)',
                 }}
               >
                 <img
@@ -9663,7 +9660,7 @@ function ClassicRinkLoadoutModal({
                 </strong>
                 <span
                   style={{
-                    color: 'rgba(15, 23, 42, 0.62)',
+                    color: 'var(--liquid-muted)',
                     fontSize: 12,
                     fontWeight: 760,
                     lineHeight: 1.25,
@@ -10044,7 +10041,7 @@ function TrainingHitboxesToggle({
         height: 34,
         padding: 0,
         borderRadius: 999,
-        background: checked ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+        background: checked ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
         border: checked
           ? '1px solid rgba(255, 255, 255, 0.34)'
           : '1px solid rgba(15, 23, 42, 0.12)',
@@ -10053,7 +10050,7 @@ function TrainingHitboxesToggle({
           : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
-        color: checked ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+        color: checked ? '#ffffff' : 'var(--liquid-muted)',
         cursor: 'pointer',
       }}
     >
@@ -10139,7 +10136,7 @@ function TrainingSpeedControls({
           height: 34,
           padding: 0,
           borderRadius: 999,
-          background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+          background: hasCustomSpeeds ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
           border: hasCustomSpeeds
             ? '1px solid rgba(255, 255, 255, 0.34)'
             : '1px solid rgba(15, 23, 42, 0.12)',
@@ -10148,7 +10145,7 @@ function TrainingSpeedControls({
             : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+          color: hasCustomSpeeds ? '#ffffff' : 'var(--liquid-muted)',
           cursor: 'pointer',
         }}
       >
@@ -10626,7 +10623,7 @@ export function DemoCompletionModal({
             onClick={onVkLogin}
             style={{
               padding: '0 14px',
-              background: '#0077ff',
+              background: 'var(--liquid-selected-bg)',
               color: '#ffffff',
               justifyContent: 'center',
               fontWeight: 700,

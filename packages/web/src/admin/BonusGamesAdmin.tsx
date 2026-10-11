@@ -574,7 +574,7 @@ function BonusGameCard({
         ) : (
           <div
             aria-label="Медиа площадки не загружено"
-            style={{ width: 84, height: 70, borderRadius: 14, background: 'rgba(255,255,255,0.4)' }}
+            style={{ width: 84, height: 70, borderRadius: 14, background: 'var(--liquid-inset-bg)' }}
           />
         )}
         <div style={{ minWidth: 0 }}>

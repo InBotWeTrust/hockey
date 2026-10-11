@@ -47,3 +47,6 @@ caddy-config
 
 # loose notes at repo root (keep curated docs under docs/)
 /ovi universe.md
+
+# local Liquid Glass browser acceptance artifacts
+/output/playwright/liquid-glass/

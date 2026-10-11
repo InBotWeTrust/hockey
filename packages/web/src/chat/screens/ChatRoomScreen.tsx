@@ -270,13 +270,13 @@ function DuelInviteMetric({ label, value }: { label: string; value: string }): J
         minWidth: 0,
         padding: '7px 8px',
         borderRadius: 12,
-        background: 'rgba(255,255,255,0.5)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(148, 163, 184, 0.28)',
       }}
     >
       <div
         style={{
-          color: 'rgba(71, 85, 105, 0.72)',
+          color: 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 900,
           letterSpacing: 0,
@@ -344,7 +344,7 @@ function DuelInviteActions({
           style={{
             padding: '8px 10px',
             borderRadius: 999,
-            background: 'rgba(15, 23, 42, 0.08)',
+            background: 'var(--liquid-inset-bg)',
             color: 'var(--ink)',
             fontSize: 12,
             fontWeight: 900,
@@ -365,8 +365,7 @@ function DuelInviteActions({
               padding: '8px 10px',
               fontSize: 12,
               color: '#fff',
-              background:
-                'linear-gradient(180deg, rgba(34, 197, 94, 0.84), rgba(21, 128, 61, 0.88))',
+              background: 'linear-gradient(180deg, rgba(34, 197, 94, 0.84), rgba(21, 128, 61, 0.88))',
               border: '1px solid rgba(22, 101, 52, 0.38)',
               boxShadow: '0 8px 16px rgba(22, 101, 52, 0.16)',
             }}
@@ -383,8 +382,7 @@ function DuelInviteActions({
               padding: '8px 10px',
               fontSize: 12,
               color: '#fff',
-              background:
-                'linear-gradient(180deg, rgba(244, 63, 94, 0.82), rgba(190, 18, 60, 0.88))',
+              background: 'linear-gradient(180deg, rgba(244, 63, 94, 0.82), rgba(190, 18, 60, 0.88))',
               border: '1px solid rgba(159, 18, 57, 0.38)',
               boxShadow: '0 8px 16px rgba(159, 18, 57, 0.15)',
             }}
@@ -1642,7 +1640,7 @@ export function ChatRoomScreen(): JSX.Element {
                     gap: 8,
                     padding: '8px 10px',
                     borderRadius: 16,
-                    background: 'rgba(255,255,255,0.72)',
+                    background: 'var(--liquid-inset-bg)',
                     border: '1px solid rgba(255,255,255,0.74)',
                   }}
                 >
@@ -1713,7 +1711,7 @@ export function ChatRoomScreen(): JSX.Element {
                       minWidth: 32,
                       minHeight: 32,
                       borderRadius: 10,
-                      background: 'rgba(255,255,255,0.88)',
+                      background: 'var(--liquid-inset-bg)',
                       color: 'var(--ink)',
                     }}
                   >
@@ -1793,7 +1791,7 @@ export function ChatRoomScreen(): JSX.Element {
               margin: '0 auto',
               objectFit: 'contain',
               borderRadius: 18,
-              background: 'rgba(15, 23, 42, 0.08)',
+              background: 'var(--liquid-inset-bg)',
             }}
           />
         </AccessibleModal>

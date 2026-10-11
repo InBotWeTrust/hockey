@@ -922,7 +922,7 @@ function InventoryProductCard({
           border: '1px solid rgba(255,255,255,0.78)',
           padding: 0,
           overflow: 'hidden',
-          background: 'rgba(255,255,255,0.3)',
+          background: 'var(--liquid-inset-bg)',
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 8px 14px rgba(15,23,42,0.08)',
           cursor: 'pointer',
         }}
@@ -1289,7 +1289,7 @@ function ReceiptEmailModal({
               minHeight: 46,
               borderRadius: 14,
               border: `1px solid ${error === null ? 'var(--border)' : 'var(--red-deep)'}`,
-              background: 'rgba(255, 255, 255, 0.72)',
+              background: 'var(--liquid-inset-bg)',
               padding: '0 14px',
               color: 'var(--text)',
               font: 'inherit',

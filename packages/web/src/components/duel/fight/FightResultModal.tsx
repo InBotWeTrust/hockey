@@ -29,7 +29,7 @@ export function FightResultModal({
       cardClassName="fight-result-card"
       backdropStyle={{
         zIndex: 440,
-        background: 'rgba(15, 23, 42, .12)',
+        background: 'var(--liquid-inset-bg)',
         backdropFilter: 'none',
         WebkitBackdropFilter: 'none',
       }}

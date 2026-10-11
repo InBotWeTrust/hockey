@@ -45,7 +45,7 @@ export function ReactionPicker({ open, anchorRect, onPick, onClose }: Props): JS
         data-reaction-picker-backdrop
         aria-hidden
         onPointerDown={onClose}
-        style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.04)', zIndex: 850 }}
+        style={{ position: 'fixed', inset: 0, background: 'var(--liquid-scrim)', zIndex: 850 }}
       />
       <div
         role="dialog"

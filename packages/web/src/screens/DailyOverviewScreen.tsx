@@ -351,7 +351,7 @@ export function DailyOverviewScreen(): JSX.Element {
                   aspectRatio: '1 / 1',
                   borderRadius: 22,
                   overflow: 'hidden',
-                  background: 'rgba(255,255,255,0.48)',
+                  background: 'var(--liquid-inset-bg)',
                   border: '1px solid rgba(255,255,255,0.72)',
                   boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 8px 18px rgba(15,23,42,0.1)',
                 }}
@@ -390,7 +390,7 @@ export function DailyOverviewScreen(): JSX.Element {
                   <span
                     style={{
                       minWidth: 0,
-                      color: 'rgba(15,23,42,0.56)',
+                      color: 'var(--liquid-muted)',
                       fontSize: 10,
                       fontWeight: 900,
                       textTransform: 'uppercase',
@@ -762,7 +762,7 @@ function SummaryTile({
         borderRadius: 14,
         padding: '9px 6px',
         textAlign: 'center',
-        background: 'rgba(255,255,255,0.48)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.7)',
       }}
     >
@@ -817,13 +817,13 @@ function StatTile({ label, value }: { label: string; value: string }): JSX.Eleme
         borderRadius: 16,
         padding: '12px 8px',
         textAlign: 'center',
-        background: 'rgba(255,255,255,0.46)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.66)',
       }}
     >
       <div
         style={{
-          color: 'rgba(15,23,42,0.52)',
+          color: 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 900,
           textTransform: 'uppercase',

@@ -69,10 +69,10 @@ describe('ChatBubble — author tap', () => {
     );
 
     expect(screen.getByTestId('reply-preview')).toHaveStyle({
-      color: 'rgba(255, 255, 255, 0.9)',
+      color: 'var(--liquid-ink)',
     });
     expect(screen.getByText('Открыл игру в Mi browser')).toHaveStyle({
-      color: 'rgba(255, 255, 255, 0.74)',
+      color: 'var(--liquid-muted)',
     });
   });
 
