@@ -4318,6 +4318,7 @@
   overflow: hidden;
 }
 
+.duel-stumble-notice.fitted-scoreboard-notice.initial-training-feedback-notice--scoreboard,
 .duel-fatigue-notice.fitted-scoreboard-notice.initial-training-feedback-notice--scoreboard {
   width: max-content;
   max-width: 100%;
