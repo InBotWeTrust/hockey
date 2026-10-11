@@ -1,6 +1,10 @@
 import type { AmateurDuelKind, checkAmateurDuelChallengeAvailability } from '../../api/amateurDuel.js';
 
-type Availability = NonNullable<Awaited<ReturnType<typeof checkAmateurDuelChallengeAvailability>>['formats']>[AmateurDuelKind];
+type Availability = NonNullable<
+  NonNullable<
+    Awaited<ReturnType<typeof checkAmateurDuelChallengeAvailability>>['formats']
+  >[AmateurDuelKind]
+>;
 
 export function duelAvailabilityCopy(format: Availability): string {
   const who = format.player === 'opponent' ? 'У соперника' : 'У вас';

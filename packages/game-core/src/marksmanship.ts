@@ -19,7 +19,13 @@ import type { SessionPhaseOffsets } from './session.js';
 import { simulateShooter } from './shooter/simulate.js';
 import { SHOOTER_FREQUENCY, SHOOTER_MAX_X, SHOOTER_MIN_X } from './shooter/types.js';
 import { GOALIE_HITBOX_EXPAND, GOAL_HITBOX_MARGIN } from './shot/resolve.js';
-import { PUCK_SPEED_PER_MS, STICK_NEUTRAL, type ShotInput, type ShotResult } from './shot/types.js';
+import {
+  PUCK_SPEED_PER_MS,
+  STICK_NEUTRAL,
+  type ShotInput,
+  type ShotResult,
+  type StickEffects,
+} from './shot/types.js';
 import {
   classifyMarksmanshipV5Score,
   type MarksmanshipV5Measurements,
@@ -300,8 +306,9 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
 }
 
 export interface MarksmanshipShotInput {
-  shooterMotionAt?: ((time:number)=>number) | undefined;
-  courtCrossings?: ((shot: ShotInput) => {goalieTimeMs: number; goalTimeMs: number}) | undefined;
+  shooterMotionAt?: ((time: number) => number) | undefined;
+  courtCrossings?: ((shot: ShotInput) => { goalieTimeMs: number; goalTimeMs: number }) | undefined;
+  stickEffects?: StickEffects;
   shotInput: ShotInput;
   goalie: GoalieConfig;
   seed: string;
@@ -596,7 +603,7 @@ function goalWindowDuration(input: MarksmanshipShotInput): number {
       input.goalie,
       input.seed,
       input.shotIndex,
-      STICK_NEUTRAL,
+      input.stickEffects ?? STICK_NEUTRAL,
       input.phaseOffsets,
 
     input.courtCrossings?.(shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt)),
@@ -612,7 +619,7 @@ function goalWindowDuration(input: MarksmanshipShotInput): number {
       input.goalie,
       input.seed,
       input.shotIndex,
-      STICK_NEUTRAL,
+      input.stickEffects ?? STICK_NEUTRAL,
       input.phaseOffsets,
 
     input.courtCrossings?.(shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt)),
@@ -628,9 +635,14 @@ function goalWindowDurationV4(input: MarksmanshipShotInput): number {
   const coarse = goalWindowDuration(input);
   if (coarse > 40) return coarse;
   const step = input.scoring.scanStepMs;
-  const isGoal = (delta: number): boolean => resolvePerspectiveCourtShot(
-    shiftedShotInput(input.shotInput, delta, input.shooterMotionAt), input.goalie, input.seed, input.shotIndex,
-    STICK_NEUTRAL, input.phaseOffsets,
+  const isGoal = (delta: number): boolean =>
+    resolvePerspectiveCourtShot(
+      shiftedShotInput(input.shotInput, delta, input.shooterMotionAt),
+      input.goalie,
+      input.seed,
+      input.shotIndex,
+      input.stickEffects ?? STICK_NEUTRAL,
+      input.phaseOffsets,
 
     input.courtCrossings?.(shiftedShotInput(input.shotInput, delta, input.shooterMotionAt)),
 ).type === 'goal';
@@ -836,7 +848,13 @@ function measurementsForV5Shot(input: MarksmanshipShotInput, puckX: number): Mar
   const goalieCrossTime = input.courtCrossings?.(input.shotInput).goalieTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOALIE_Y) / speed);
   const goalCrossTime = input.courtCrossings?.(input.shotInput).goalTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed);
   const goalie = getPerspectiveCourtGoalieHitbox(
-    shot, effectiveGoalie, input.seed, input.shotIndex, STICK_NEUTRAL, input.phaseOffsets, goalieCrossTime,
+    shot,
+    effectiveGoalie,
+    input.seed,
+    input.shotIndex,
+    input.stickEffects ?? STICK_NEUTRAL,
+    input.phaseOffsets,
+    goalieCrossTime,
   );
   const goal = getPerspectiveCourtGoalOpening(shot, effectiveGoalie, input.phaseOffsets, goalCrossTime);
   const shooterTime = ((input.shooterMotionAt?shot.shooterMotionTime:undefined) ?? shot.shooterTapTime ?? shot.tapTime) + input.phaseOffsets.shooter;
@@ -874,7 +892,7 @@ function nearestGoalDelta(input: MarksmanshipShotInput): number | null {
         input.goalie,
         input.seed,
         input.shotIndex,
-        STICK_NEUTRAL,
+        input.stickEffects ?? STICK_NEUTRAL,
         input.phaseOffsets,
 
     input.courtCrossings?.(shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt)),
@@ -893,7 +911,7 @@ export function resolveMarksmanshipShotContext(
     input.goalie,
     input.seed,
     input.shotIndex,
-    STICK_NEUTRAL,
+    input.stickEffects ?? STICK_NEUTRAL,
     input.phaseOffsets,
 
     input.courtCrossings?.(input.shotInput),

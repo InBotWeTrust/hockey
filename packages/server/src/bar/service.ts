@@ -1,6 +1,9 @@
+import { projectMarathon } from '../duel/amateur/scoredFormats.js';
 import { sampleBarMotion } from './motion.js';
 import type { Pool } from 'pg';
 import {
+  PUCK_START,
+  GOAL_OPENING,
   getGoalie,
   GOALIES,
   getSessionPhaseOffsets,
@@ -74,7 +77,7 @@ interface MatchRow {
   match_id: string | null;
   status: string;
   duel_status: string | null;
-  duel_kind: 'express' | 'express_plus' | 'classic' | null;
+  duel_kind: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | null;
   match_seed?: string;
   starts_at: Date | null;
   ends_at: Date | null;
@@ -85,6 +88,7 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
+    marathonWindowMs?: 4000 | 7000;
     goalieId?: string;
     periodDurationMs?: number;
     breakDurationMs?: number;
@@ -191,6 +195,27 @@ async function playersFor(
       delayedAt,
     ],
   );
+  const scoredIds = rows
+    .filter((row) => row.duel_kind === 'sniper' || row.duel_kind === 'marathon')
+    .map((row) => row.match_id)
+    .filter(Boolean);
+  const scoringShots =
+    scoredIds.length === 0
+      ? []
+      : (
+          await pool.query<{
+            amateur_duel_match_id: string;
+            user_id: string;
+            input_payload: { tapTime: number; puckSpeedPerMs: number };
+            server_result: string;
+            awarded_points: number;
+          }>(
+            `select amateur_duel_match_id,user_id,input_payload,server_result,awarded_points from shot_session
+         where amateur_duel_match_id=any($1::uuid[]) and mode='amateur_duel'
+           and ($2::timestamptz is null or created_at <= $2) order by period_number,shot_index`,
+            [scoredIds, delayedAt],
+          )
+        ).rows;
   return rows.flatMap((row) => {
     const player = (id: string) =>
       players.rows.find((p) => p.user_id === id && p.match_id === row.match_id) ??
@@ -219,10 +244,48 @@ async function playersFor(
         row,
         now,
       );
+    const scoredPlayer = (
+      p: PlayerRow & { match_id: string | null },
+      legacyScore: number,
+    ): BarPlayer => {
+      const result = publicPlayer(p, legacyScore);
+      if (row.duel_kind !== 'sniper' && row.duel_kind !== 'marathon') return result;
+      const shots = scoringShots.filter(
+        (shot) => shot.amateur_duel_match_id === row.match_id && shot.user_id === p.user_id,
+      );
+      const goals = shots.filter((shot) => shot.server_result === 'goal').length;
+      const elapsed =
+        p.period_started_at === null
+          ? p.state === 'completed'
+            ? 240000
+            : 0
+          : Math.max(0, (delayedAt ?? now).getTime() - p.period_started_at.getTime());
+      return {
+        ...result,
+        goals,
+        shotsTaken: shots.length,
+        score:
+          row.duel_kind === 'sniper'
+            ? shots.reduce((total, shot) => total + Number(shot.awarded_points), 0) / 10
+            : projectMarathon({
+                durationMs: row.rules_snapshot?.periodRules?.[0]?.durationMs ?? 240000,
+                windowMs: row.rules_snapshot?.marathonWindowMs ?? 7000,
+                elapsedMs: elapsed,
+                shots: shots.map((shot) => ({
+                  startedMs: shot.input_payload.tapTime,
+                  flightMs: (PUCK_START.y - GOAL_OPENING.y) / shot.input_payload.puckSpeedPerMs,
+                  goal: shot.server_result === 'goal',
+                })),
+              }).score,
+      };
+    };
     return [
       {
         id: row.id,
         format: row.duel_kind ?? null,
+        ...(row.duel_kind === 'marathon'
+          ? { marathonWindowMs: row.rules_snapshot?.marathonWindowMs ?? 7000 }
+          : {}),
         totalPeriods: row.rules_snapshot?.totalPeriods ?? null,
         kind: row.kind,
         title: row.title,
@@ -230,7 +293,7 @@ async function playersFor(
         status: row.status,
         startsAt: row.starts_at?.toISOString() ?? null,
         expiresAt: (row.ready_expires_at ?? row.ends_at)?.toISOString() ?? null,
-        players: [publicPlayer(home, row.home_score), publicPlayer(away, row.away_score)],
+        players: [scoredPlayer(home, row.home_score), scoredPlayer(away, row.away_score)],
       },
     ];
   });

@@ -1,3 +1,5 @@
+import { getGoalie } from '../src/balance/goalies.js';
+import { getSessionPhaseOffsets } from '../src/session.js';
 import { describe, expect, it } from 'vitest';
 import { getPerspectiveCourtGoalOpening, getPerspectiveCourtGoalieHitbox, resolvePerspectiveCourtShot } from '../src/court/perspective.js';
 import type { GoalieConfig } from '../src/goalie/types.js';
@@ -831,4 +833,48 @@ describe('classifyMarksmanshipShot', () => {
       difficultyCode: 'very_narrow',
     });
   });
+});
+
+it('classifies the same inventory-assisted shots as the perspective duel resolver', () => {
+  const stick = { ...STICK_NEUTRAL, shotZoneMultiplier: 2 };
+  let assistedGoals = 0;
+  for (let tapTime = 0; tapTime < 10000; tapTime += 137) {
+    const input = {
+      tapTime,
+      puckSpeedPerMs: 0.85,
+      shooterFrequency: 0.75,
+      goalieFrequency: 0.6,
+      goalFrequency: 0.5,
+    };
+    const offsets = getSessionPhaseOffsets('inventory-sniper');
+    const expected = resolvePerspectiveCourtShot(
+      input,
+      getGoalie('rookie'),
+      'inventory-sniper',
+      1,
+      stick,
+      offsets,
+    );
+    const plain = resolvePerspectiveCourtShot(
+      input,
+      getGoalie('rookie'),
+      'inventory-sniper',
+      1,
+      STICK_NEUTRAL,
+      offsets,
+    );
+    if (expected.type !== plain.type) assistedGoals++;
+    const actual = classifyMarksmanshipShot({
+      shotInput: input,
+      goalie: getGoalie('rookie'),
+      seed: 'inventory-sniper',
+      shotIndex: 1,
+      phaseOffsets: offsets,
+      scoring: DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+      earliestTapTime: 0,
+      stickEffects: stick,
+    } as Parameters<typeof classifyMarksmanshipShot>[0]);
+    expect(actual.result.type).toBe(expected.type);
+  }
+  expect(assistedGoals).toBeGreaterThan(0);
 });

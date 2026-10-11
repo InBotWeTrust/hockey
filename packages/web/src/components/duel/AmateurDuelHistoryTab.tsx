@@ -1,3 +1,4 @@
+import { duelFormatLabel } from './scoredDuel.js';
 import {
   useCallback,
   useEffect,
@@ -98,10 +99,11 @@ function monthGeometry(key: string): { days: number; offset: number } {
   };
 }
 
-function duelKindLabel(kind: AmateurDuelHistoryCalendarMatch['duel_kind']): string {
-  if (kind === 'express') return 'Экспресс';
-  if (kind === 'express_plus') return 'Микс';
-  return 'Классика';
+function duelKindLabel(match: AmateurDuelHistoryCalendarMatch): string {
+  return duelFormatLabel({ duelKind: match.duel_kind, ...(match.marathon_window_ms ? { marathonWindowMs: match.marathon_window_ms } : {}) });
+}
+function historyScore(match: AmateurDuelHistoryCalendarMatch): string {
+  return `${match.my_score ?? match.my_goals}:${match.opponent_score ?? match.opponent_goals}`;
 }
 
 function resultLabel(result: AmateurDuelHistoryCalendarMatch['result']): string {
@@ -412,7 +414,7 @@ export function AmateurDuelHistoryTab({
                     <button
                       type="button"
                       className="duel-day-match"
-                      aria-label={`Дуэль с ${match.opponent.display_name}, ${duelKindLabel(match.duel_kind)}, счёт ${match.my_goals}:${match.opponent_goals}, ${venueLabel(match.venue_role)}, ${resultLabel(match.result)}`}
+                      aria-label={`Дуэль с ${match.opponent.display_name}, ${duelKindLabel(match)}, счёт ${historyScore(match)}, ${venueLabel(match.venue_role)}, ${resultLabel(match.result)}`}
                       aria-expanded={expanded}
                       onClick={() => (expanded ? onCloseMatch() : onOpenMatch(match.id))}
                     >
@@ -425,7 +427,7 @@ export function AmateurDuelHistoryTab({
                       <span className="duel-day-match__copy">
                         <strong>{match.opponent.display_name}</strong>
                         <span>
-                          {duelKindLabel(match.duel_kind)} · {match.my_goals}:{match.opponent_goals}{' '}
+                          {duelKindLabel(match)} · {historyScore(match)}{' '}
                           · {venueLabel(match.venue_role)}
                         </span>
                       </span>
