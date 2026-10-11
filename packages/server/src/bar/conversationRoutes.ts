@@ -1,11 +1,11 @@
 import { personaOf } from './personas.js';
 import { SqlDialoguePrivacy, type DialoguePrivacy } from './dialoguePrivacy.js';
-import { redactSecrets, immediateDanger, crisisReply, boundaryReply, checkedReply, createModeration, type Moderation } from './dialogueSafety.js';
+import { redactSecrets, immediateDanger, crisisReply, boundaryReply, checkedReply, type Moderation } from './dialogueSafety.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { SqlConversationStore } from './conversationStore.js';
-import { createConfiguredAnswer, createConfiguredJSON } from './openAIAnswer.js';
+import { createConfiguredAnswer, createConfiguredJSON, createConfiguredModeration } from './openAIAnswer.js';
 import type { ConversationContext, GeneratedAnswer } from './conversationMemoryTypes.js';
 import { cardResultSchema, SqlCardHistoryStore, type CardHistoryStore } from './cardHistory.js';
 import { SqlConversationMemory, createStoryValidator, createStoryCreator } from './conversationMemory.js';
@@ -121,13 +121,13 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       throw new AppError('card_history_conflict', 'Запись партии уже существует.', 409);
     return { saved: true };
   });
-  const providers = { closeRouterProvider: options.closeRouterProvider ?? 'provider-7', model: options.model ?? 'gpt-5.6-terra', closeRouterModel: options.closeRouterModel ?? 'openai/gpt-5.6-terra',
+  const providers = { closeRouterProvider: options.closeRouterProvider ?? 'auto', model: options.model ?? 'gpt-5.6-terra', closeRouterModel: options.closeRouterModel ?? 'openai/gpt-5.6-terra',
     ...(options.apiKey ? { openAIKey: options.apiKey } : {}), ...(options.closeRouterKey ? { closeRouterKey: options.closeRouterKey } : {}) };
   const available = !!(options.apiKey || options.closeRouterKey);
   const answer = options.answer ?? createConfiguredAnswer(providers);
   const infer = createConfiguredJSON(providers);
   const requireModeration=available || !!options.moderate;
-  const moderate=options.moderate ?? createModeration(options.apiKey);
+  const moderate=options.moderate ?? createConfiguredModeration(providers);
   const memory = options.memory ?? (!options.store ? new SqlConversationMemory(app.pg,
     available ? createStoryValidator(infer) : undefined,available ? createStoryCreator(infer) : undefined) : undefined);
   if (!options.store && available && memory instanceof SqlConversationMemory) {
