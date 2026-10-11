@@ -1,3 +1,4 @@
+import { FittedHudLabel } from '../components/FittedHudLabel.js';
 import { MarksmanshipScoreNotice, marksmanshipV6TechniqueLabel } from '../components/MarksmanshipScoreNotice.js';
 import { duelDisplayScore, duelFormatLabel, duelScorePairText } from '../components/duel/scoredDuel.js';
 import { duelTemplateChoices } from '../components/duel/duelTemplateChoices.js';
@@ -8502,12 +8503,9 @@ function DuelRinkLoadoutHud({
               }}
             />
             {inventoryBadge && (
-              <span
-                aria-hidden="true"
-                style={DUEL_INVENTORY_BADGE_STYLE}
-              >
+              <FittedHudLabel aria-hidden="true" style={DUEL_INVENTORY_BADGE_STYLE}>
                 {inventoryBadge}
-              </span>
+              </FittedHudLabel>
             )}
           </button>
         );
@@ -8992,12 +8990,9 @@ export function DuelInventoryMiniHud({
               }}
             />
             {inventoryBadge && (
-              <span
-                aria-hidden="true"
-                style={DUEL_INVENTORY_BADGE_STYLE}
-              >
+              <FittedHudLabel aria-hidden="true" style={DUEL_INVENTORY_BADGE_STYLE}>
                 {inventoryBadge}
-              </span>
+              </FittedHudLabel>
             )}
           </button>
         );

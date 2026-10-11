@@ -1,3 +1,4 @@
+import { FittedHudLabel } from '../../FittedHudLabel.js';
 import { useRef, useState, type CSSProperties } from 'react';
 import type { AmateurDuelMatchState } from '../../../api/amateurDuel.js';
 import { challengeAmateurFight, respondAmateurFight } from '../../../api/amateurDuel.js';
@@ -117,9 +118,9 @@ export function FightControls({
           {calls}
         </span>
       )}
-      <span className={`fight-challenge__label${!forced && !offered ? ' fight-challenge__label--call' : ''}`} aria-hidden="true">
+      <FittedHudLabel className={`fight-challenge__label${!forced && !offered ? ' fight-challenge__label--call' : ''}`} aria-hidden="true">
         {forced ? 'БОЙ' : offered ? incoming ? 'ПРИНЯТЬ' : 'ЖДЁМ' : 'ВЫЗВАТЬ'}
-      </span>
+      </FittedHudLabel>
       {error && <p className="fight-challenge__error" role="status">{error}</p>}
     </div>
   );

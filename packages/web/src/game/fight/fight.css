@@ -367,7 +367,9 @@
   position: absolute;
   left: 50%;
   bottom: -18px;
-  min-width: max-content;
+  width: 48px;
+  min-width: 0;
+  overflow: hidden;
   transform: translateX(-50%);
   display: flex;
   height: 16px;
