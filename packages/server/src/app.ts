@@ -38,6 +38,7 @@ import { tournamentRoutes } from './tournament/routes.js';
 import { durakRoutes } from './bar/durakRoutes.js';
 import { barLayoutRoutes } from './bar/layoutRoutes.js';
 import { conversationRoutes } from './bar/conversationRoutes.js';
+import { olegFightRoutes } from './bar/olegFightRoutes.js';
 import { barRoutes } from './bar/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
@@ -262,6 +263,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
+  await app.register(olegFightRoutes);
   await app.register(barLayoutRoutes);
   await app.register(conversationRoutes, {
     model: config.BAR_CONVERSATION_MODEL,

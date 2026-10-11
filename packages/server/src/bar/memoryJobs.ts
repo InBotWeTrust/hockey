@@ -44,12 +44,12 @@ export async function processMemoryJob(pool: Pool, reflect: Reflect): Promise<bo
     const nextProcessed = Math.min(processed + 4, row.turns.length);
     const summaryEnd = Math.max(0,row.turns.length - 20);
     const nextSummarized = Math.max(summarized,Math.min(summarized + 2,summaryEnd));
-    const newTurns = row.turns.slice(processed,nextProcessed);
+    const newTurns = row.turns.slice(processed,nextProcessed).filter(turn=>turn.event!=='physical');
     const facts = await pool.query<MemoryFact>(`select id,kind,content,source_turn_id as "sourceTurnId",source_quote as quote
       from bar_memory_facts where user_id=$1 and character_id=$2 order by updated_at desc,id limit 32`, [job.user_id,job.character_id]);
     const bounded = (turn: ConversationTurn) => ({ ...turn, user: safeMemoryText(turn.user) ? redactSecrets(turn.user) : '[не использовать для памяти]', assistant: '[ответ персонажа не источник фактов]' });
     const result = reflectionSchema.parse(await reflect({ summary: safeMemoryText(row.summary ?? '') ? row.summary ?? '' : '', facts: facts.rows.filter(fact=>safeMemoryText(fact.content) && safeMemoryText(fact.quote)),
-      summaryTurns: row.turns.slice(summarized,nextSummarized).map(bounded), newTurns: newTurns.map(bounded) }));
+      summaryTurns: row.turns.slice(summarized,nextSummarized).filter(turn=>turn.event!=='physical').map(bounded), newTurns: newTurns.map(bounded) }));
     const source = new Map(newTurns.map(turn => [turn.id,turn]));
     const valid = result.facts.filter(fact => source.get(fact.sourceTurnId)?.user.includes(fact.quote) && safeMemoryText(fact.quote) && safeMemoryText(source.get(fact.sourceTurnId)!.user));
     const db = await pool.connect();

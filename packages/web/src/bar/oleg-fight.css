@@ -1,0 +1,70 @@
+.bar-oleg-screen {
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  min-height: 0;
+}
+.bar-oleg-fight {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+.bar-oleg-fight .fight-stage {
+  background: url('/bar/fight/street-v1.webp') center center/cover no-repeat;
+}
+.bar-oleg-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 24px;
+  text-align: center;
+}
+.bar-oleg-result {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  overflow: auto;
+  text-align: center;
+}
+.bar-oleg-result img {
+  display: block;
+  width: min(100%, 52dvh);
+  height: auto;
+  aspect-ratio: 1;
+  object-fit: contain;
+  border-radius: 18px;
+  margin: 0 auto;
+}
+.modal-card.bar-oleg-result {
+  width: min(100%, 420px);
+  height: auto;
+}
+.bar-oleg-result > div {
+  width: 100%;
+  min-width: 0;
+}
+.bar-oleg-result .modal-header,
+.bar-oleg-result .modal-actions {
+  width: 100%;
+}
+.bar-oleg-result .btn {
+  width: 100%;
+}
+
+/* Oleg's ten lives use two rows without covering the timer. */
+.bar-oleg-fight .fight-reserve--health {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 2px 4px;
+}
+.bar-oleg-fight .fight-reserve--health > span {
+  width: 100%;
+}
+.bar-oleg-fight .fight-health--1 .fight-reserve--health svg {
+  width: 14px;
+  height: 14px;
+}

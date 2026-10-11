@@ -1,4 +1,5 @@
 import fp from 'fastify-plugin';
+import { assertBarAccess } from './olegFightService.js';
 import { joinBarChat } from './chat.js';
 import { checkAndConsumeRateLimit } from '../chat/cache.js';
 import type { FastifyPluginAsync } from 'fastify';
@@ -86,6 +87,7 @@ const plugin: FastifyPluginAsync<{ accessSecret: string }> = async (app, options
         socket.close(4403, 'forbidden');
         return;
       }
+      await assertBarAccess(app.pg,userId);
       if (closed || socket.readyState !== socket.OPEN) return;
       if ((viewers.get(userId) ?? 0) >= 3 || sockets.size >= 5000) {
         socket.close(4429, 'viewer limit');
@@ -101,14 +103,18 @@ const plugin: FastifyPluginAsync<{ accessSecret: string }> = async (app, options
         parsed.data.kind === undefined
           ? `board:${parsed.data.page}`
           : `match:${parsed.data.kind}:${parsed.data.id}`;
+      let checking=false;
       off = hub.subscribe(key, (data) => {
+        if(checking)return;checking=true;
+        void assertBarAccess(app.pg,userId).then(()=>{
+          if(socket.readyState===socket.OPEN)socket.send(data);
+        }).catch(()=>socket.close(4403,'bar access closed')).finally(()=>{checking=false;});
         if (socket.readyState !== socket.OPEN) return;
         if (socket.bufferedAmount > 128 * 1024) {
           socket.close(1013, 'slow connection');
           cleanup();
           return;
         }
-        socket.send(data);
       });
       // No spectator-originated gameplay actions are accepted on this transport.
       socket.on('message', () => undefined);

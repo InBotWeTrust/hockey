@@ -97,7 +97,9 @@ export class SqlConversationMemory {
     const words = content.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length > 2).slice(0, 12);
     const relevant = [...facts.rows.filter(fact=>safeMemoryText(fact.content))].sort((a,b) => words.reduce((score,word) => score + (b.content.toLowerCase().includes(word) ? 1 : 0) - (a.content.toLowerCase().includes(word) ? 1 : 0), 0));
     const selected = [...new Map([...relevant.slice(0,8), ...facts.rows.slice(0,4)].map(fact => [fact.id,fact])).values()];
+    const fights=character==='oleg' ? await this.pool.query(`select id,outcome,ended_at from bar_oleg_fights where user_id=$1 and outcome is not null order by created_at desc limit 5`,[user]).catch(()=>({rows:[]})) : {rows:[]};
     return {
+      ...(fights.rows.length ? {fightMemories:fights.rows} : {}),
       historyStart, ...(recentGames ? {recentGames} : {}), summary: enabled && safeMemoryText(summary.rows[0]?.summary ?? '') ? summary.rows[0]!.summary : '', facts: enabled ? selected : [],
       relationship: (enabled ? selected : []).filter(fact => fact.kind !== 'fact').map(fact => fact.content),
       tool: async (name, args, signal) => {

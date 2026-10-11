@@ -16,7 +16,7 @@ export function createFightState(rules: FightRules, phaseStartMs: number): Fight
     phaseStartedAtMs: phaseStartMs,
     deadlineMs: phaseStartMs + rules.mainDurationMs,
     status: 'fighting',
-    hp: [rules.initialHp, rules.initialHp],
+    hp: [...(rules.initialHpByPlayer ?? [rules.initialHp, rules.initialHp])],
     winner: null,
     actions: [],
     moves: [],

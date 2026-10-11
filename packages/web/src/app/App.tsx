@@ -1,3 +1,4 @@
+import { BarAccessGate } from '../bar/BarAccessGate.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { CardInviteToast } from '../bar/cards/CardInviteToast.js';
 import { lazy, Suspense, useCallback, useEffect } from 'react';
@@ -396,14 +397,14 @@ function AppExperience(): JSX.Element {
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route path="/bar/cards/online" element={<PrivateRoute><OnlineDurakLobby /></PrivateRoute>} />
-              <Route path="/bar/cards/room/:id" element={<PrivateRoute><DurakRoomScreen /></PrivateRoute>} />
-              <Route path="/bar/cards/match/:id" element={<PrivateRoute><OnlineDurakScreen /></PrivateRoute>} />
-              <Route path="/bar/cards/computer/:opponentId" element={<PrivateRoute><DurakScreen /></PrivateRoute>} />
-              <Route path="/bar/cards/maria" element={<PrivateRoute><DurakScreen /></PrivateRoute>} />
-              <Route path="/bar/broadcasts" element={<PrivateRoute><BarBroadcastsScreen /></PrivateRoute>} />
-              <Route path="/bar" element={<PrivateRoute><BarScreen /></PrivateRoute>} />
-              <Route path="/bar/:kind/:id" element={<PrivateRoute><BarMatchScreen /></PrivateRoute>} />
+              <Route path="/bar/cards/online" element={<PrivateRoute><BarAccessGate><OnlineDurakLobby /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/room/:id" element={<PrivateRoute><BarAccessGate><DurakRoomScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/match/:id" element={<PrivateRoute><BarAccessGate><OnlineDurakScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/computer/:opponentId" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/maria" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/broadcasts" element={<PrivateRoute><BarAccessGate><BarBroadcastsScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar" element={<PrivateRoute><BarAccessGate><BarScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/:kind/:id" element={<PrivateRoute><BarAccessGate><BarMatchScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/invite/:code" element={<InviteScreen />} />
               <Route path="/prices" element={<PricesScreen />} />

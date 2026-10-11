@@ -14,7 +14,7 @@ export interface ConversationSnapshot {
   greeting: string;
   revision: number;
   pending: boolean;
-  turns: { id: string; user: string; assistant: string; createdAt: string }[];
+  turns: { id: string; user: string; assistant: string; createdAt: string; speaker?: BarCharacter; intervention?: string; fightId?: string; event?: 'physical' }[];
   preview?: boolean;
 }
 export interface ConversationMessage {
@@ -30,3 +30,5 @@ export const sendConversation = (character: BarCharacter, message: ConversationM
     body: JSON.stringify(message),
     signal: AbortSignal.timeout(45000),
   });
+
+export const sendPhysicalIncident=(character:BarCharacter,eventId:string)=>apiFetch<ConversationSnapshot>(`/bar/conversations/${character}/physical-incident`,{method:'POST',body:JSON.stringify({eventId})});

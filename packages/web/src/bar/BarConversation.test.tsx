@@ -168,3 +168,13 @@ it('anchors the dialogue above the keyboard using the visible application viewpo
   expect(backdrop?.style.height).toBe('var(--app-viewport-height, 100dvh)');
   expect(backdrop?.style.bottom).toBe('auto');
 });
+it('identifies intervening Oleg with his avatar instead of the conversation character',async()=>{
+ vi.mocked(fetchConversation).mockResolvedValue({...snapshot,turns:[{id:'warning',user:'Грубость',assistant:'Хватит хамить.',createdAt:'now',speaker:'oleg',intervention:'intervention'}]});
+ open();
+ expect(await screen.findByLabelText('Сообщение Олег')).toHaveTextContent('Хватит хамить.');
+ expect(screen.getByRole('img',{name:'Олег'})).toHaveAttribute('src','/bar/cards/oleg-avatar-v2.webp');
+});
+it('renders a physical intervention from Oleg without an empty user bubble', async()=>{
+ vi.mocked(fetchConversation).mockResolvedValue({...snapshot,turns:[{id:'gesture',user:'',assistant:'Руки убрал.',createdAt:'now',speaker:'oleg',intervention:'intervention',event:'physical'}]});
+ open();expect(await screen.findByText('Руки убрал.')).toBeInTheDocument();expect(screen.getByRole('img',{name:'Олег'})).toBeInTheDocument();expect(screen.queryByLabelText('Твоё сообщение')).not.toBeInTheDocument();
+});

@@ -9,6 +9,8 @@ export interface MemoryFact {
   quote: string;
 }
 export interface ConversationContext {
+  boundaryWarning?: 'insult'|'sexual';
+  fightMemories?: unknown;
   historyStart?: number;
   recentGames?: Awaited<ReturnType<SqlCardHistoryStore['memories']>>;
   summary: string;

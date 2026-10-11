@@ -1,3 +1,5 @@
+import { recordPhysicalIncident } from './physicalIncident.js';
+import { SqlConflictStore,createConflictClassifier,nextConflict,type ClassifyConflict,type ConflictEffect } from './conflict.js';
 import { personaOf } from './personas.js';
 import { SqlDialoguePrivacy, type DialoguePrivacy } from './dialoguePrivacy.js';
 import { redactSecrets, immediateDanger, crisisReply, boundaryReply, checkedReply, type Moderation } from './dialogueSafety.js';
@@ -27,6 +29,10 @@ export interface ConversationTurn {
   user: string;
   assistant: string;
   createdAt: string;
+  speaker?: Character;
+  intervention?: string;
+  fightId?: string;
+  event?: 'physical';
 }
 export interface ConversationRecord {
   revision: number;
@@ -39,7 +45,7 @@ export type Reservation =
 export interface ConversationStore {
   read(user: string, character: Character): Promise<ConversationRecord>;
   reserve(user: string, character: Character, id: string, revision: number): Promise<Reservation>;
-  complete(user: string, character: Character, turn: ConversationTurn): Promise<ConversationRecord>;
+  complete(user: string, character: Character, turn: ConversationTurn, usedStoryIds?: string[], conflict?: ConflictEffect): Promise<ConversationRecord>;
   release(user: string, character: Character, id: string): Promise<void>;
 }
 export const characterVoices: Record<Character, { name: string; greeting: string; voice: string }> =
@@ -92,6 +98,8 @@ export type Answer = (
   signal?: AbortSignal,
 ) => Promise<string | GeneratedAnswer>;
 interface Options {
+  classifyConflict?: ClassifyConflict;
+  conflicts?: Pick<SqlConflictStore, 'state'|'phrase'>;
   privacy?: DialoguePrivacy;
   moderate?: Moderation;
   store?: ConversationStore;
@@ -111,6 +119,20 @@ const messageSchema = z
     content: z.string().trim().min(1).max(4000),
   })
   .strict();
+// The entire check, including its database read, shares one bounded deadline.
+function conflictDeadline<T>(check:(signal:AbortSignal)=>Promise<T>,parent:AbortSignal):Promise<T>{
+ const controller=new AbortController();
+ const signal=AbortSignal.any([parent,controller.signal]);
+ let expired=()=>{};
+ const timer=setTimeout(()=>controller.abort(),6000);
+ const result=new Promise<T>((resolve,reject)=>{
+  expired=()=>reject(new Error('bar_conflict_check_timeout'));
+  if(signal.aborted){expired();return;}
+  signal.addEventListener('abort',expired,{once:true});
+  check(signal).then(resolve,reject);
+ });
+ return result.finally(()=>{clearTimeout(timer);signal.removeEventListener('abort',expired);});
+}
 export const conversationRoutes: FastifyPluginAsync<Options> = async (app, options) => {
   const store = options.store ?? new SqlConversationStore(app.pg);
   const games = options.gameStore ?? new SqlCardHistoryStore(app.pg);
@@ -128,6 +150,8 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
   const available = !!(options.apiKey || options.closeRouterKey);
   const answer = options.answer ?? createConfiguredAnswer(providers);
   const infer = createConfiguredJSON(providers);
+  const conflicts=options.conflicts ?? (!options.store ? new SqlConflictStore(app.pg) : undefined);
+  const classify=options.classifyConflict ?? createConflictClassifier(infer);
   const requireModeration=available || !!options.moderate;
   const moderate=options.moderate ?? createConfiguredModeration(providers);
   const memory = options.memory ?? (!options.store ? new SqlConversationMemory(app.pg,
@@ -176,6 +200,14 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
     ...record,
     greeting: characterVoices[character].greeting,
   });
+  app.post('/bar/conversations/:character/physical-incident', { preHandler: [app.authenticate] }, async request => {
+    const character=characterOf(request.params);
+    const parsed=z.object({eventId:z.string().uuid()}).strict().safeParse(request.body);
+    if(!parsed.success)throw new AppError('invalid_incident','Не удалось распознать нажатие.',400);
+    const {eventId}=parsed.data;
+    await recordPhysicalIncident(app.pg,request.user.id,character,eventId);
+    return snapshot(character,await store.read(request.user.id,character));
+  });
   app.get('/bar/conversations/:character', { preHandler: [app.authenticate] }, async (request) => {
     const character = characterOf(request.params);
     return snapshot(character, await store.read(request.user.id, character));
@@ -213,11 +245,20 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       try { context = await memory?.context(user,character,content,reserved.record.turns); }
       catch { app.log.warn({ code: 'bar_memory_context_failed' }, 'Conversation continues without memory'); }
       const signal=AbortSignal.timeout(25000);
-      const incoming=immediateDanger(content) ? 'crisis' : await moderate(content,signal);
+      const assessmentPromise=conflicts&&!immediateDanger(content)?conflictDeadline(checkSignal=>conflicts.state(user).then(async current=>({current,verdict:await classify(character,reserved.record.turns,content,current.intervening,checkSignal)})),signal).catch(()=>{app.log.warn({code:'bar_conflict_check_failed'},'Conversation continues without conflict escalation');return null;}):Promise.resolve(null);
+      const [incoming,assessment]=await Promise.all([immediateDanger(content)?Promise.resolve('crisis' as const):moderate(content,signal),assessmentPromise]);
       if(incoming==='unavailable' && requireModeration) throw new Error('moderation_unavailable');
+      let conflict:ConflictEffect|undefined;
+      if(incoming==='allow'&&assessment) {
+        const {current,verdict}=assessment;
+        conflict={...nextConflict(current,verdict),day:current.day,category:verdict};
+        if(conflict.kind==='warning')context={...(context??{summary:'',facts:[],relationship:[],tool:async()=>({unavailable:true})}),boundaryWarning:verdict==='sexual'?'sexual':'insult'};
+      }
+      const scripted=conflict&&['intervention','apology','calm','fight'].includes(conflict.kind);
       let response: string | GeneratedAnswer;
       if(incoming==='crisis') response=crisisReply;
       else if(incoming==='block') response=boundaryReply;
+      else if(scripted&&conflicts&&conflict) response=await conflicts.phrase(conflict.kind,conflict.category);
       else {
         const history=memory && !context ? [] : reserved.record.turns.slice(context?.historyStart ?? 0);
         const generation=answer(character,history,content,context,signal);
@@ -239,10 +280,12 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
           user: content,
           assistant: typeof response === 'string' ? response : response.text,
           createdAt: new Date().toISOString(),
-        }, typeof response === 'string' ? [] : response.usedStoryIds),
+          ...(scripted&&conflict ? {speaker:'oleg' as const,intervention:conflict.kind} : {}),
+        }, typeof response === 'string' ? [] : response.usedStoryIds, conflict),
       );
-    } catch {
+    } catch (error) {
       await store.release(user, character, id);
+      if(error instanceof AppError)throw error;
       throw new AppError(
         'conversation_unavailable',
         'Собеседник пока не отвечает. Попробуй ещё раз.',

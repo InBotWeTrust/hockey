@@ -238,3 +238,10 @@ it('uses preloaded recent games without a redundant game lookup',async()=>{
  expect(body.input.some((item:{role:string;content:string})=>item.role==='user' && item.content.includes('client_reported'))).toBe(true);
  expect(body.tools.some((item:{name:string})=>item.name==='game_memories')).toBe(false);
 });
+it('keeps a physical Oleg intervention without fabricating an empty user message',async()=>{
+ const transport=vi.fn().mockResolvedValue(Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'Ладно.'}]}]}));
+ await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('maria',[{id:'gesture',user:'',assistant:'Не трогай её.',speaker:'oleg',intervention:'intervention',event:'physical',createdAt:'now'}],'Извини');
+ const body=JSON.parse(transport.mock.calls[0]![1].body) as ProviderBody;
+ expect(body.input.some(item=>item.role==='user'&&item.content==='')).toBe(false);
+ expect(body.input.some(item=>item.content?.includes('Олег, вмешательство охранника: Не трогай её.'))).toBe(true);
+});
