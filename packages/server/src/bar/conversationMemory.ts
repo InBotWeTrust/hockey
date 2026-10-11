@@ -88,16 +88,17 @@ export class SqlConversationMemory {
     const setting=await this.pool.query<{enabled:boolean;history_start:number;generation:number}>('select enabled,history_start,generation from bar_memory_settings where user_id=$1 and character_id=$2',[user,character]);
     const enabled=setting.rows[0]?.enabled ?? true;
     const historyStart=setting.rows[0]?.history_start ?? 0;
-    const [summary, facts] = await Promise.all([
+    const [summary, facts, recentGames] = await Promise.all([
       this.pool.query<{ summary: string }>('select summary from bar_conversation_memory where user_id=$1 and character_id=$2', [user,character]),
       this.pool.query<MemoryFact>(`select id,kind,content,source_turn_id as "sourceTurnId",source_quote as quote
         from bar_memory_facts where user_id=$1 and character_id=$2 order by updated_at desc,id limit 64`, [user,character]),
+      this.games.memories(user,character).catch(()=>undefined),
     ]);
     const words = content.toLowerCase().split(/[^\p{L}\p{N}]+/u).filter(word => word.length > 2).slice(0, 12);
     const relevant = [...facts.rows.filter(fact=>safeMemoryText(fact.content))].sort((a,b) => words.reduce((score,word) => score + (b.content.toLowerCase().includes(word) ? 1 : 0) - (a.content.toLowerCase().includes(word) ? 1 : 0), 0));
     const selected = [...new Map([...relevant.slice(0,8), ...facts.rows.slice(0,4)].map(fact => [fact.id,fact])).values()];
     return {
-      historyStart, summary: enabled && safeMemoryText(summary.rows[0]?.summary ?? '') ? summary.rows[0]!.summary : '', facts: enabled ? selected : [],
+      historyStart, ...(recentGames ? {recentGames} : {}), summary: enabled && safeMemoryText(summary.rows[0]?.summary ?? '') ? summary.rows[0]!.summary : '', facts: enabled ? selected : [],
       relationship: (enabled ? selected : []).filter(fact => fact.kind !== 'fact').map(fact => fact.content),
       tool: async (name, args, signal) => {
         signal?.throwIfAborted();

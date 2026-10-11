@@ -60,11 +60,11 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
       recent.unshift({ role: 'user', content: redactSecrets(turn.user) }, { role: 'assistant', content: redactSecrets(turn.assistant) });
       available -= size;
     }
-    const memoryData = { summary: context?.summary && safeMemoryText(context.summary) ? context.summary.slice(0,1800) : '', facts: context?.facts.filter(fact=>safeMemoryText(fact.content)).slice(0,12) ?? [], relationship: context?.relationship.filter(safeMemoryText).slice(0,6) ?? [] };
+    const memoryData = { ...(context?.recentGames ? {recentGames:context.recentGames} : {}), summary: context?.summary && safeMemoryText(context.summary) ? context.summary.slice(0,1800) : '', facts: context?.facts.filter(fact=>safeMemoryText(fact.content)).slice(0,12) ?? [], relationship: context?.relationship.filter(safeMemoryText).slice(0,6) ?? [] };
     while (JSON.stringify(memoryData).length > 6500 && memoryData.facts.length) memoryData.facts.pop();
     while (JSON.stringify(memoryData).length > 6500 && memoryData.relationship.length) memoryData.relationship.pop();
     const memories = context ? JSON.stringify(memoryData) : '';
-    const instructions = `${persona.soul}\n${persona.common}\nАвторские основные факты: ${JSON.stringify(persona.biography.facts)}\nВерсия души: ${persona.biography.version}\n${context ? 'Верни JSON с полями text (ответ игроку) и usedStoryIds (ID только тех полученных историй, которые действительно рассказал или явно вспомнил в ответе). Если не использовал историю — пустой массив.' : ''}`;
+    const instructions = `${context?.recentGames ? 'Недавние партии и общий счёт уже переданы в untrusted_conversation_memory.data.recentGames. Результаты относительно игрока: loss означает твою победу. Используй эти записи, не выдумывай ходы; источник клиентский. ' : ''}${persona.soul}\n${persona.common}\nАвторские основные факты: ${JSON.stringify(persona.biography.facts)}\nВерсия души: ${persona.biography.version}\n${context ? 'Верни JSON с полями text (ответ игроку) и usedStoryIds (ID только тех полученных историй, которые действительно рассказал или явно вспомнил в ответе). Если не использовал историю — пустой массив.' : ''}`;
     const input: unknown[] = [{ role: 'assistant', content: voice.greeting }, ...(context ? [{ role: 'developer', content: 'Return only valid JSON with text and usedStoryIds.' },{role:'user',content: JSON.stringify({type:'untrusted_conversation_memory',data:JSON.parse(memories)})}] : []), ...recent, { role: 'user', content }];
     let removableTurns = recent.length / 2;
     const known = new Set<string>();
@@ -79,7 +79,7 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
         method: 'POST', signal,
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, store: false, ...(options.routerProvider ? { provider: options.routerProvider } : {}), max_output_tokens: 2200, reasoning: { effort: 'none' }, include: ['reasoning.encrypted_content'], instructions, input,
-          ...(context ? { tools: step < 2 ? tools : [], parallel_tool_calls: false, text: { format: { type: 'json_object' } } } : {}) }),
+          ...(context ? { tools: step < 2 ? tools.filter(tool=>!context.recentGames || tool.name!=='game_memories') : [], parallel_tool_calls: false, text: { format: { type: 'json_object' } } } : {}) }),
       });
       if (!response.ok) throw new Error('provider_failed');
       const data = responseSchema.parse(await response.json());

@@ -42,6 +42,12 @@ describe.skipIf(!url)('dedicated bar memory database', () => {
     expect((await games.memories(alice,'maria')).counts).toEqual([{ result: 'loss', count: 1 }]);
     expect((await games.memories(bob,'maria')).recent).toEqual([]);
     expect((await games.memories(alice,'daria')).recent).toEqual([]);
+    const memory=new SqlConversationMemory(pool);
+    expect((await memory.context(alice,'maria','последняя партия',[])).recentGames?.recent[0]?.surrendered).toBe(true);
+    expect((await memory.context(bob,'maria','последняя партия',[])).recentGames?.recent).toEqual([]);
+    expect((await memory.context(alice,'daria','последняя партия',[])).recentGames?.recent).toEqual([]);
+    const failed=vi.spyOn(SqlCardHistoryStore.prototype,'memories').mockRejectedValueOnce(new Error('database_unavailable'));
+    try {expect((await memory.context(alice,'maria','привет',[])).recentGames).toBeUndefined();} finally {failed.mockRestore();}
   });
   it('extracts only evidenced user statements and consumes the durable job', async () => {
     const store = new SqlConversationStore(pool);

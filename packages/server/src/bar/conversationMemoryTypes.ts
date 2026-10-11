@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { SqlCardHistoryStore } from './cardHistory.js';
 import type { Story } from './personas.js';
 export interface MemoryFact {
   id: string;
@@ -9,6 +10,7 @@ export interface MemoryFact {
 }
 export interface ConversationContext {
   historyStart?: number;
+  recentGames?: Awaited<ReturnType<SqlCardHistoryStore['memories']>>;
   summary: string;
   facts: MemoryFact[];
   relationship: string[];

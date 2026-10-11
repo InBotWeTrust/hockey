@@ -230,3 +230,11 @@ it('accepts a seven-second safety decision while still cancelling at the request
  await expect(check('Обычное приветствие',AbortSignal.timeout(25000))).resolves.toBe('allow');
  await expect(check('Обычное приветствие',AbortSignal.timeout(10))).resolves.toBe('unavailable');
 },10000);
+it('uses preloaded recent games without a redundant game lookup',async()=>{
+ const transport=vi.fn().mockResolvedValue(Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:'{"text":"Ты сдался, выиграла я.","usedStoryIds":[]}'}]}]}));
+ const recentGames={perspective:'Результаты относительно игрока',counts:[{result:'loss',count:1}],recent:[{result:'loss',surrendered:true,provenance:'client_reported'}]};
+ await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('maria',[],'Кто выиграл?',{summary:'',facts:[],relationship:[],recentGames,tool:vi.fn()});
+ const body=JSON.parse(transport.mock.calls[0]![1].body);
+ expect(body.input.some((item:{role:string;content:string})=>item.role==='user' && item.content.includes('client_reported'))).toBe(true);
+ expect(body.tools.some((item:{name:string})=>item.name==='game_memories')).toBe(false);
+});
