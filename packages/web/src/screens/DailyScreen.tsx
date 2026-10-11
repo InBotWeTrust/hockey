@@ -6899,22 +6899,20 @@ function DuelResultCard({
                 )}
               </div>
             </div>
-            {match.rules.duelKind === 'marathon' && (
-              <div className="duel-result-card__penalties">
-                <h3>Штрафы за таймер</h3>
-                <strong>{`${match.me.marathon_penalties ?? 0}:${match.opponent.marathon_penalties ?? 0}`}</strong>
-              </div>
-            )}
-            {tiebreaker && (
-              <div
-                style={{
-                  marginTop: 10,
-                  display: 'grid',
-                  gap: 8,
-                }}
-              >
-                <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
-                <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+            {(match.rules.duelKind === 'marathon' || tiebreaker) && (
+              <div style={{ marginTop: 10, display: 'grid', gap: 8 }}>
+                {match.rules.duelKind === 'marathon' && (
+                  <DuelResultDetailRow
+                    label="Штрафы за таймер"
+                    value={`${match.me.marathon_penalties ?? 0}:${match.opponent.marathon_penalties ?? 0}`}
+                  />
+                )}
+                {tiebreaker && (
+                  <>
+                    <DuelResultDetailRow label={tiebreaker.label} value={tiebreaker.value} />
+                    <DuelResultDetailRow label="Итог" value={tiebreaker.result} />
+                  </>
+                )}
               </div>
             )}
           </>
@@ -7704,7 +7702,7 @@ function DuelResultDetailRow({
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '82px minmax(0, 1fr)',
+        gridTemplateColumns: '108px minmax(0, 1fr)',
         gap: 10,
         alignItems: 'baseline',
         color: 'var(--ink)',
@@ -7721,7 +7719,9 @@ function DuelResultDetailRow({
           textTransform: 'uppercase',
         }}
       >
-        {label}
+        {label === 'Среднее время на гол' ? (
+          <><span style={{ whiteSpace: 'nowrap' }}>Среднее время</span><br />на гол</>
+        ) : label}
       </span>
       <span
         style={{
