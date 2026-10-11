@@ -5834,9 +5834,9 @@ function AmateurDuelPlayView({
   }, [matchId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : 1000);
+    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : match?.rules.duelKind === 'marathon' && match?.me.state === 'period_active' ? 100 : 1000);
     return () => window.clearInterval(id);
-  }, [match?.fight?.status, match?.fight_paused_at, match?.me.fight_aid_until, match?.me.recovery_until]);
+  }, [match?.fight?.status, match?.fight_paused_at, match?.me.fight_aid_until, match?.me.recovery_until, match?.rules.duelKind, match?.me.state]);
 
   useEffect(() => {
     const inventory = inventoryQuery.data;
@@ -6085,6 +6085,10 @@ function AmateurDuelPlayView({
       !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
   const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
+  const marathonRemainingMs = Math.max(
+    0,
+    Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - fightNow,
+  );
   const fight = match.fight;
   const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
   const medicalAid = medicalAidUntilMs !== undefined;
@@ -6394,24 +6398,23 @@ function AmateurDuelPlayView({
             return { ...condition, canShoot: false };
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
+          scoreboardAccessory={match.rules.duelKind === 'marathon' ? (
+            <div
+              className={`game-scoreboard game-scoreboard--stable-surface bonus-game-endurance-timer bonus-game-endurance-timer--${
+                marathonRemainingMs <= 1000
+                  ? 'danger' : 'warning'
+              }`}
+              role="timer"
+              aria-label="До обязательного гола"
+            >
+              <span className="game-scoreboard__label">ТАЙМЕР</span>
+              <span className="bonus-game-endurance-timer__value">
+                {(Math.ceil(marathonRemainingMs / 100) / 10).toFixed(1)}
+              </span>
+            </div>
+          ) : undefined}
           hudAddon={
             <>
-              {match.rules.duelKind === 'marathon' && (
-                <p role="status" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                  До следующего гола:{' '}
-                  {Math.max(
-                    0,
-                    Math.ceil(
-                      ((match.me.marathon_window_ends_at
-                        ? Date.parse(match.me.marathon_window_ends_at)
-                        : fightNow) -
-                        fightNow) /
-                        1000,
-                    ),
-                  )}{' '}
-                  сек · штрафы: {match.me.marathon_penalties ?? 0}
-                </p>
-              )}
               {match.fight?.status === 'resolved' &&
                 match.fight.resolved_at &&
                 fightNow - Date.parse(match.fight.resolved_at) < 1500 && (
@@ -6897,6 +6900,14 @@ function DuelResultCard({
                 )}
               </div>
             </div>
+            {match.rules.duelKind === 'marathon' && (
+              <div style={{ marginTop: 10 }}>
+                <DuelResultDetailRow
+                  label="Штрафы за таймер"
+                  value={`Вы: ${match.me.marathon_penalties ?? 0} · Соперник: ${match.opponent.marathon_penalties ?? 0}`}
+                />
+              </div>
+            )}
             {tiebreaker && (
               <div
                 style={{
