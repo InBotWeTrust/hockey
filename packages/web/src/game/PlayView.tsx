@@ -2568,10 +2568,7 @@ export function PlayView<TState>({
               width: 56,
               height: 56,
               borderRadius: 20,
-              background: 'var(--liquid-inset-bg)',
               color: 'var(--muted)',
-              border: '1px solid rgba(15, 23, 42, 0.08)',
-              opacity: 0.72,
             }}
           >
             <VolumeX size={22} />

@@ -168,7 +168,14 @@ export function GameScoreboard({
                   >
                     {metric.label}
                   </span>
-                  <span className="game-scoreboard__value">{metric.value}</span>
+                  <span
+                    className="game-scoreboard__value"
+                    style={metric.id === 'score' && metric.value.length > 4
+                      ? { fontSize: `min(20px, ${30 / metric.value.length}cqw)` }
+                      : undefined}
+                  >
+                    {metric.value}
+                  </span>
                 </div>
               );
             })}

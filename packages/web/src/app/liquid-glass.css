@@ -374,3 +374,15 @@
   clip-path: none;
   overflow: hidden;
 }
+
+/* Keep gameplay controls readable against the bright ice and arena backdrop. */
+.app-shell .play-controls :is(.btn--cta, .icon-btn) {
+  background: rgba(30, 35, 40, 0.86);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+  color: var(--liquid-ink);
+}
+
+.app-shell .play-controls .btn--cta:disabled {
+  background: rgba(30, 35, 40, 0.64);
+}

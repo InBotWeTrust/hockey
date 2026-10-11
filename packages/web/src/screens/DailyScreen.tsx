@@ -6354,6 +6354,9 @@ function AmateurDuelPlayView({
           continuousClockDuringResult={
             match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
           }
+          freezeRenderingDuringResult={
+            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
+          }
           canStartAction={
             match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
               ? () =>
@@ -8446,7 +8449,10 @@ function DuelRinkLoadoutHud({
                   letterSpacing: 0,
                   textAlign: 'center',
                   whiteSpace: 'nowrap',
-                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+                  background: 'rgba(25, 30, 35, 0.88)',
+                  borderRadius: 5,
+                  padding: '2px 4px',
                   zIndex: 2,
                 }}
               >
@@ -8952,7 +8958,10 @@ export function DuelInventoryMiniHud({
                   letterSpacing: 0,
                   textAlign: 'center',
                   whiteSpace: 'nowrap',
-                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+                  textShadow: '0 1px 2px rgba(0,0,0,0.7)',
+                  background: 'rgba(25, 30, 35, 0.88)',
+                  borderRadius: 5,
+                  padding: '2px 4px',
                   zIndex: 2,
                 }}
               >
