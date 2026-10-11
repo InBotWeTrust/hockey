@@ -31,7 +31,7 @@
   background: #ffffff18;
 }
 .bar-admin select option {
-  color: #17202a;
+  color: var(--liquid-ink);
 }
 .bar-admin input[type='range'] {
   padding: 0;

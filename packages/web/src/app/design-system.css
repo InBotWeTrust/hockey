@@ -80,7 +80,7 @@
   padding: 12px;
   border: 1px solid rgba(100, 116, 139, 0.18);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--liquid-inset-bg);
 }
 
 .admin-achievement-stage__header {
@@ -204,25 +204,9 @@
   --chrome-surface-shadow: 0 14px 30px rgba(9, 31, 56, 0.2);
 }
 .app-shell--unified-glass {
-  --surface-card-bg: rgba(226, 233, 241, 0.64);
-  --surface-filter-bg: rgba(226, 236, 246, 0.76);
-  --surface-calendar-day-bg: rgba(226, 233, 241, 0.74);
-  --surface-calendar-day-muted-bg: rgba(226, 234, 243, 0.4);
-  --surface-calendar-day-border: rgba(255, 255, 255, 0.78);
-  --surface-elevated-bg: rgba(237, 244, 250, 0.74);
-  --surface-border: rgba(255, 255, 255, 0.78);
-  --surface-card-shadow:
-    0 12px 28px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.72);
-  --surface-elevated-shadow:
-    0 18px 42px rgba(15, 23, 42, 0.18), 0 0 0 2px rgba(74, 144, 226, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
-  --surface-filter-shadow: 0 8px 22px rgba(2, 8, 23, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.86);
-  --surface-blur: blur(10px) saturate(120%);
-  --surface-control-blur: blur(16px) saturate(125%);
-  --glass-bg: var(--surface-card-bg);
-  --glass-border: var(--surface-border);
-  --chrome-surface-bg: var(--surface-filter-bg);
-  --chrome-surface-border: rgba(255, 255, 255, 0.9);
+  --surface-card-bg: var(--liquid-card-bg);
+  --surface-filter-bg: var(--liquid-chrome-bg);
+  --surface-elevated-bg: var(--liquid-modal-bg);
 }
 .app-shell--login {
   background: #06172a;
@@ -425,7 +409,7 @@
   padding: 7px 10px;
   border-radius: 999px;
   color: var(--muted);
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--liquid-inset-bg);
   font-size: 10px;
   font-weight: 850;
   text-decoration: none;
@@ -433,7 +417,7 @@
 
 .tournament-result-preview-switcher a.is-active {
   color: #ffffff;
-  background: #18293e;
+  background: var(--liquid-selected-bg);
 }
 
 .app-shell:has(.tournament-result-preview-switcher) .bottom-nav-shell {
@@ -455,7 +439,7 @@
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 999px;
   color: #ffffff;
-  background: rgba(4, 18, 35, 0.66);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 8px 24px rgba(2, 10, 24, 0.24);
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -511,7 +495,7 @@
   padding: 4px 9px;
   border: 1px solid rgba(224, 240, 255, 0.68);
   border-radius: 999px;
-  background: rgba(5, 24, 48, 0.58);
+  background: var(--liquid-inset-bg);
   color: rgba(248, 252, 255, 0.96);
   font-size: 10px;
   font-weight: 800;
@@ -548,7 +532,7 @@
   padding: 0 15px;
   border: 1px solid rgba(220, 239, 255, 0.74);
   border-radius: 999px;
-  background: rgba(5, 24, 48, 0.82);
+  background: var(--liquid-inset-bg);
   color: #fff;
   font: inherit;
   letter-spacing: 0.08em;
@@ -575,7 +559,7 @@
 }
 .login-screen__actions > .btn--ghost {
   min-height: 40px;
-  background: rgba(5, 24, 48, 0.88);
+  background: var(--liquid-inset-bg);
   border-color: rgba(220, 239, 255, 0.86);
   color: #ffffff;
   box-shadow:
@@ -957,7 +941,7 @@
 }
 
 .chat-bubble--own {
-  background: linear-gradient(145deg, rgba(25, 42, 67, 0.97), rgba(12, 27, 49, 0.94));
+  background: var(--liquid-card-bg);
   border-color: rgba(195, 219, 242, 0.2);
   box-shadow:
     0 10px 24px rgba(2, 8, 23, 0.28),
@@ -999,7 +983,7 @@
 }
 
 .glass-dock-icon {
-  background: rgba(255, 255, 255, 0.55);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(255, 255, 255, 0.7);
   color: var(--muted);
   box-shadow: none;
@@ -1074,7 +1058,7 @@
 }
 
 .bottom-nav__icon-wrap--active {
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--liquid-selected-bg);
   border-color: rgba(15, 23, 42, 0.92);
   box-shadow:
     0 7px 16px rgba(5, 27, 50, 0.32),
@@ -1244,7 +1228,7 @@
   border: 1px solid rgba(205, 232, 255, 0.46);
   border-radius: clamp(14px, 5cqw, 22px);
   color: #f8fbff;
-  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06));
+  background: var(--liquid-chrome-bg);
   box-shadow:
     0 14px 30px rgba(0, 10, 27, 0.3),
     0 0 20px rgba(111, 190, 255, 0.11),
@@ -1278,7 +1262,7 @@
 }
 
 .game-scoreboard__row--secondary {
-  background: rgba(255, 255, 255, 0.012);
+  background: var(--liquid-card-bg);
 }
 
 .game-scoreboard__metric {
@@ -1406,7 +1390,7 @@
   align-items: center;
   gap: clamp(5px, 1.8cqw, 8px);
   color: rgba(228, 243, 255, 0.9);
-  background: rgba(255, 255, 255, 0.016);
+  background: var(--liquid-card-bg);
   font-size: clamp(7px, 2.5cqw, 10px);
   font-weight: 850;
   line-height: 1.1;
@@ -1430,7 +1414,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.1);
+  background: var(--liquid-card-bg);
   color: rgba(239, 248, 255, 0.92);
   font-size: clamp(7px, 2.5cqw, 10px);
 }
@@ -1469,7 +1453,7 @@
   padding: clamp(6px, 2.1cqw, 9px) clamp(10px, 3.2cqw, 14px);
   border-top: 1px solid rgba(157, 205, 249, 0.18);
   color: rgba(228, 243, 255, 0.9);
-  background: rgba(255, 255, 255, 0.016);
+  background: var(--liquid-card-bg);
   font-size: clamp(7px, 2.5cqw, 10px);
   font-weight: 850;
   line-height: 1.1;
@@ -1482,7 +1466,7 @@
 
 @media (prefers-reduced-transparency: reduce) {
   .game-scoreboard {
-    background: linear-gradient(135deg, rgba(9, 25, 48, 0.9), rgba(21, 49, 78, 0.86));
+    background: var(--liquid-card-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -1510,7 +1494,7 @@
 }
 
 .chat-list-search-input::placeholder {
-  color: rgba(21, 40, 61, 0.64);
+  color: var(--liquid-muted);
   font-weight: 500;
   opacity: 1;
 }
@@ -1549,7 +1533,7 @@
 .icon-btn.chat-room-header__control--surface {
   background: var(--chrome-surface-bg);
   border-color: var(--chrome-surface-border);
-  color: #10243a;
+  color: var(--liquid-ink);
   box-shadow:
     0 7px 18px rgba(2, 8, 23, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
@@ -1581,7 +1565,7 @@
   gap: 8px;
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 24px;
-  background: rgba(205, 222, 239, 0.66);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 5px 16px rgba(15, 35, 55, 0.14);
   backdrop-filter: blur(12px) saturate(116%);
   -webkit-backdrop-filter: blur(12px) saturate(116%);
@@ -1616,7 +1600,7 @@
 
 .chat-room-header__subtitle {
   margin-top: 1px;
-  color: rgba(51, 72, 96, 0.78);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 550;
   line-height: 14px;
@@ -1627,7 +1611,7 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 16px;
-  background: rgba(229, 239, 249, 0.88);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 10px 28px rgba(9, 27, 46, 0.2);
   color: var(--ink);
   backdrop-filter: blur(16px) saturate(118%);
@@ -1645,7 +1629,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  color: rgba(52, 73, 97, 0.72);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.04em;
@@ -1694,7 +1678,7 @@
 }
 
 .chat-search-results__chat-type {
-  color: rgba(52, 73, 97, 0.68);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 550;
 }
@@ -1710,7 +1694,7 @@
 }
 
 .chat-search-results__sender {
-  color: rgba(52, 73, 97, 0.72);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 650;
 }
@@ -1729,7 +1713,7 @@
 .chat-search-results__empty {
   margin: 0;
   padding: 7px 12px 11px;
-  color: rgba(52, 73, 97, 0.68);
+  color: var(--liquid-muted);
   font-size: 13px;
 }
 
@@ -1739,7 +1723,7 @@
   padding: 10px 16px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 999px;
-  background: rgba(9, 22, 45, 0.7);
+  background: var(--liquid-inset-bg);
   color: #ffffff;
   font-size: 13px;
   font-weight: 800;
@@ -1945,7 +1929,7 @@
 .bonus-games-attempt-progress__value {
   position: relative;
   z-index: 1;
-  color: #10223a;
+  color: var(--liquid-ink);
   font-size: 14px;
   font-weight: 950;
   letter-spacing: 0.04em;
@@ -1957,7 +1941,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  color: rgba(15, 23, 42, 0.78);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   line-height: 1.2;
@@ -1993,7 +1977,7 @@
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 18px;
   padding: 15px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
   color: var(--muted);
   font-size: 14px;
   font-weight: 750;
@@ -2003,7 +1987,7 @@
 .bonus-games-catalog__notice--error {
   background: rgba(241, 247, 252, 0.9);
   border-color: rgba(255, 255, 255, 0.94);
-  color: #132a44;
+  color: var(--liquid-muted);
   font-weight: 850;
   box-shadow:
     0 12px 28px rgba(2, 8, 23, 0.18),
@@ -2015,7 +1999,7 @@
   padding: 18px;
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 20px;
-  background: rgba(235, 243, 250, 0.88);
+  background: var(--liquid-inset-bg);
   box-shadow:
     0 14px 32px rgba(2, 8, 23, 0.16),
     inset 0 1px 0 rgba(255, 255, 255, 0.84);
@@ -2026,7 +2010,7 @@
 
 .chat-list-error__copy {
   margin-bottom: 10px;
-  color: #132a44;
+  color: var(--liquid-muted);
   font-size: 14px;
   font-weight: 800;
 }
@@ -2066,7 +2050,7 @@
   min-height: 236px;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 22px;
-  background: rgba(226, 233, 241, 0.74);
+  background: var(--liquid-card-bg);
   box-shadow:
     0 12px 28px rgba(15, 23, 42, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.72);
@@ -2074,7 +2058,7 @@
 
 .bonus-game-card--featured {
   border-color: rgba(255, 255, 255, 0.94);
-  background: rgba(237, 244, 250, 0.84);
+  background: var(--liquid-card-bg);
   box-shadow:
     0 18px 42px rgba(15, 23, 42, 0.18),
     0 0 0 2px rgba(74, 144, 226, 0.12),
@@ -2197,7 +2181,7 @@
   overflow: visible;
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.45);
+  background: var(--liquid-card-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
@@ -2251,8 +2235,8 @@
 }
 
 .bonus-game-card__status--locked {
-  background: rgba(59, 79, 104, 0.1);
-  color: #52677d;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-muted);
 }
 
 .bonus-game-card__completion-badge {
@@ -2266,7 +2250,7 @@
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 999px;
-  background: #18304d;
+  background: var(--liquid-card-bg);
   color: #fff;
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
 }
@@ -2288,7 +2272,7 @@
 }
 
 .bonus-game-card__eyebrow {
-  color: rgba(15, 23, 42, 0.52);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.1em;
@@ -2315,7 +2299,7 @@
 
 .bonus-game-card__description,
 .bonus-game-card__details {
-  color: rgba(15, 23, 42, 0.62);
+  color: var(--liquid-muted);
 }
 
 .bonus-game-card__details-primary,
@@ -2330,7 +2314,7 @@
 }
 
 .bonus-game-card__reward-note {
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--liquid-muted);
 }
 
 .bonus-game-card__reward {
@@ -2360,7 +2344,7 @@
 }
 
 .bonus-game-card__reward--muted .bonus-game-card__reward-item {
-  color: rgba(15, 23, 42, 0.62);
+  color: var(--liquid-muted);
 }
 
 .bonus-game-card__reward--muted .bonus-game-card__reward-icon {
@@ -2414,7 +2398,7 @@
   padding: 24px 20px;
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 24px;
-  background: rgba(226, 233, 241, 0.72);
+  background: var(--liquid-card-bg);
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
   text-align: center;
 }
@@ -2484,7 +2468,7 @@
   );
   overflow-y: auto;
   padding: 18px 16px 16px;
-  background: rgba(226, 233, 241, 0.94);
+  background: var(--liquid-modal-bg);
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -2503,7 +2487,7 @@
   border: 1px solid rgba(255, 255, 255, 0.82);
   border-radius: 18px;
   object-fit: cover;
-  background: rgba(219, 230, 240, 0.68);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14);
 }
 
@@ -2539,7 +2523,7 @@
 
 .bonus-game-preview-modal__condition-icon {
   flex: 0 0 auto;
-  color: rgba(15, 23, 42, 0.64);
+  color: var(--liquid-muted);
 }
 
 .bonus-game-preview-modal__condition-lines {
@@ -2556,7 +2540,7 @@
 .bonus-game-inventory-fields label {
   display: grid;
   gap: 5px;
-  color: rgba(15, 23, 42, 0.68);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 850;
 }
@@ -2568,7 +2552,7 @@
   border-radius: 13px;
   padding: 0 11px;
   color: var(--ink);
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--liquid-inset-bg);
   font: inherit;
 }
 
@@ -2596,8 +2580,8 @@
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.66);
   border-radius: 14px;
-  color: rgba(15, 23, 42, 0.86);
-  background: rgba(238, 247, 255, 0.58);
+  color: var(--liquid-ink);
+  background: var(--liquid-inset-bg);
   box-shadow:
     0 8px 22px rgba(15, 23, 42, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.54);
@@ -2625,7 +2609,7 @@
   border: 1px solid rgba(37, 99, 235, 0.2);
   border-radius: 999px;
   color: #1d4ed8;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--liquid-inset-bg);
   font: inherit;
 }
 
@@ -2651,7 +2635,7 @@
 .modal-card.bonus-game-result-modal {
   width: min(100%, 360px);
   padding: 20px 18px 18px;
-  background: rgba(226, 233, 241, 0.94);
+  background: var(--liquid-modal-bg);
   box-shadow: none;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -2667,7 +2651,7 @@
 
 .bonus-game-result-modal .modal-copy {
   margin-top: 6px;
-  color: rgba(15, 23, 42, 0.56);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 800;
 }
@@ -2696,14 +2680,14 @@
   padding: 12px 6px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
   text-align: center;
 }
 
 .bonus-game-result-metric span {
   display: block;
-  color: rgba(15, 23, 42, 0.52);
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.1em;
@@ -2726,7 +2710,7 @@
   display: grid;
   gap: 4px;
   margin-top: 10px;
-  color: #111827;
+  color: var(--liquid-ink);
   font-family: var(--font-sans);
   font-size: 14px;
   font-weight: 850;
@@ -2744,13 +2728,13 @@
   padding: 12px 14px;
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.4);
+  background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.64);
 }
 
 .bonus-game-result-reward-label {
   display: block;
-  color: rgba(15, 23, 42, 0.52);
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.12em;
@@ -2789,7 +2773,7 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 17px;
-  background: rgba(30, 41, 59, 0.95);
+  background: var(--liquid-card-bg);
   box-shadow: 0 14px 38px rgba(15, 23, 42, 0.3);
   color: #fff;
   pointer-events: none;
@@ -2843,7 +2827,7 @@
   align-items: center;
   justify-content: center;
   padding: calc(20px + var(--app-safe-top)) 20px calc(20px + var(--app-safe-bottom));
-  background: rgba(84, 101, 120, 0.36);
+  background: var(--liquid-scrim);
   backdrop-filter: blur(14px) saturate(115%);
   -webkit-backdrop-filter: blur(14px) saturate(115%);
 }
@@ -2852,7 +2836,7 @@
   width: min(100%, 320px);
   border-radius: 24px;
   padding: 24px 22px 22px;
-  background: rgba(226, 233, 241, 0.68);
+  background: var(--liquid-modal-bg);
   border: 1.5px solid rgba(255, 255, 255, 0.86);
   box-shadow:
     0 24px 70px rgba(15, 23, 42, 0.26),
@@ -3073,7 +3057,7 @@
   padding: 10px;
   border: 1px solid rgba(79, 101, 130, 0.16);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-pair-schedule__day > p {
@@ -3092,7 +3076,7 @@
   padding: 10px;
   border: 1px solid rgba(79, 101, 130, 0.16);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-playoff-day__title {
@@ -3143,7 +3127,7 @@
   resize: vertical;
   border: 1px solid rgba(255, 255, 255, 0.88);
   border-radius: 16px;
-  background: rgba(228, 239, 248, 0.9);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   padding: 11px 12px;
   font: inherit;
@@ -3174,7 +3158,7 @@
   padding: 11px 12px;
   border: 1px solid rgba(79, 101, 130, 0.2);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-admin-details > summary {
@@ -3225,7 +3209,7 @@
   padding: 12px;
   border: 1px solid rgba(79, 101, 130, 0.16);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--liquid-card-bg);
   color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
@@ -3278,7 +3262,7 @@
   margin: 0;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-schedule-shift__summary div {
@@ -3344,7 +3328,7 @@
   padding: 8px 10px;
   border: 1px solid rgba(79, 101, 130, 0.18);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   text-align: left;
 }
@@ -3377,7 +3361,7 @@
   min-height: 40px;
   padding: 6px 8px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-ordered-list__row > div,
@@ -3552,7 +3536,7 @@
   object-fit: cover;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
-  background: linear-gradient(145deg, #dff0ff, #95bee0);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 8px 18px rgba(15, 43, 68, 0.18);
 }
 
@@ -3619,7 +3603,7 @@
 
 .arsenich-introduction__actions .btn--cta {
   border-color: rgba(255, 255, 255, 0.22);
-  background: rgba(15, 23, 42, 0.78);
+  background: var(--liquid-selected-bg);
   color: #ffffff;
   box-shadow: 0 8px 20px rgba(15, 23, 42, 0.22);
 }
@@ -3656,7 +3640,7 @@
   height: 5px;
   margin: -2px auto 12px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.2);
+  background: var(--liquid-card-bg);
 }
 
 .sheet-grabber--top {
@@ -3715,7 +3699,7 @@
   padding: 3px 7px;
   border: 1px solid rgba(255, 255, 255, 0.92);
   border-radius: 999px;
-  background: rgba(231, 239, 248, 0.96);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 4px 12px rgba(15, 43, 68, 0.22);
   color: var(--reward-experience);
   font-size: 12px;
@@ -3890,7 +3874,7 @@
   min-height: 44px;
   border: 1px solid rgba(255, 255, 255, 0.86);
   border-radius: 20px;
-  background: rgba(255, 255, 255, 0.92);
+  background: var(--liquid-inset-bg);
   padding: 0 16px;
   color: var(--ink);
   font: inherit;
@@ -3901,7 +3885,7 @@
 }
 
 .chat-create-field::placeholder {
-  color: rgba(15, 23, 42, 0.36);
+  color: var(--liquid-muted);
   font-weight: 400;
   opacity: 1;
 }
@@ -3943,7 +3927,7 @@
   white-space: nowrap;
 }
 .pill--dark {
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--liquid-selected-bg);
   border: 1px solid rgba(15, 23, 42, 0.9);
   color: #ffffff;
 }
@@ -3960,7 +3944,7 @@
   min-height: 34px;
   padding: 0 16px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(255, 255, 255, 0.68);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.68);
   font-size: 14px;
@@ -3978,7 +3962,7 @@
   line-height: 1;
 }
 .chip--active {
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--liquid-selected-bg);
   color: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.9);
   box-shadow:
@@ -3996,7 +3980,7 @@
   gap: 4px;
   padding: 4px;
   border-radius: var(--r-pill);
-  background: rgba(255, 255, 255, 0.38);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(255, 255, 255, 0.62);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
@@ -4006,7 +3990,7 @@
   border-radius: var(--r-pill);
   border: 1px solid transparent;
   background: transparent;
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--liquid-muted);
   font-family: inherit;
   font-size: 13px;
   font-weight: 800;
@@ -4052,7 +4036,7 @@
 }
 .segmented-tabs__item--active {
   border-color: rgba(15, 23, 42, 0.92);
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--liquid-selected-bg);
   color: #ffffff;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.08),
@@ -4068,7 +4052,7 @@
   -webkit-backdrop-filter: blur(16px) saturate(125%);
 }
 .app-shell--arena .segmented-tabs__item:not(.segmented-tabs__item--active) {
-  color: rgba(15, 23, 42, 0.9);
+  color: var(--liquid-ink);
   font-weight: 850;
 }
 .segmented-tabs__item:focus-visible {
@@ -4121,7 +4105,7 @@
 }
 
 .btn--cta {
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--liquid-selected-bg);
   color: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.92);
   backdrop-filter: var(--blur-sm);
@@ -4132,7 +4116,7 @@
     var(--shadow-cta);
 }
 .btn--cta:disabled {
-  background: rgba(15, 23, 42, 0.35);
+  background: var(--liquid-selected-bg);
   border-color: rgba(15, 23, 42, 0.16);
   box-shadow:
     inset 0 1.5px 0 rgba(255, 255, 255, 0.12),
@@ -4142,7 +4126,7 @@
 .btn--cta.bonus-game-card__action--repeat,
 .btn--cta.bonus-game-card__action--repeat:disabled {
   opacity: 1;
-  background: #0f172a;
+  background: var(--liquid-selected-bg);
   border-color: #0f172a;
   color: #ffffff;
   box-shadow:
@@ -4153,7 +4137,7 @@
 
 .btn--duel-blocked:disabled {
   opacity: 0.92;
-  background: rgba(100, 116, 139, 0.72);
+  background: var(--liquid-inset-bg);
   border-color: rgba(148, 163, 184, 0.54);
   color: rgba(255, 255, 255, 0.96);
   box-shadow:
@@ -4181,7 +4165,7 @@
   padding: 9px 13px 10px;
   border-radius: clamp(14px, 5cqw, 22px);
   border: 1px solid rgba(205, 232, 255, 0.46);
-  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06));
+  background: var(--liquid-inset-bg);
   color: rgba(255, 255, 255, 0.96);
   font-size: 12px;
   font-weight: 500;
@@ -4355,7 +4339,7 @@
   .duel-stumble-notice,
   .duel-fatigue-notice,
   .initial-training-feedback-notice {
-    background: rgba(15, 23, 42, 0.96);
+    background: var(--liquid-inset-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -4366,7 +4350,7 @@
   .duel-fatigue-notice,
   .initial-training-feedback-notice {
     border-color: rgba(255, 255, 255, 0.72);
-    background: rgba(15, 23, 42, 0.94);
+    background: var(--liquid-inset-bg);
   }
 }
 
@@ -4423,12 +4407,12 @@
   width: 34px;
   height: 34px;
   border-radius: var(--r-pill);
-  background: rgba(15, 23, 42, 0.035);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(15, 23, 42, 0.1);
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: rgba(15, 23, 42, 0.52);
+  color: var(--liquid-muted);
   cursor: pointer;
   padding: 0;
   box-shadow:
@@ -4444,7 +4428,7 @@
   transform: scale(var(--motion-icon-press-scale));
 }
 .icon-btn--dark {
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(15, 23, 42, 0.9);
   color: #ffffff;
 }
@@ -4458,7 +4442,7 @@
   min-height: 38px;
   background: var(--chrome-surface-bg);
   border-color: var(--chrome-surface-border);
-  color: #10243a;
+  color: var(--liquid-ink);
   box-shadow:
     0 7px 18px rgba(2, 8, 23, 0.2),
     inset 0 1px 0 rgba(255, 255, 255, 0.82);
@@ -4563,7 +4547,7 @@
 
 .profile-screen--locker-bg,
 .mode-shell--locker {
-  background-color: #071427;
+  background-color: var(--liquid-inset-bg);
 }
 
 .locker-room-bg--beginner {
@@ -4604,7 +4588,7 @@
   padding: 22px;
   border: 1px solid rgba(255, 255, 255, 0.86);
   border-radius: 24px;
-  background: rgba(248, 252, 255, 0.76);
+  background: var(--liquid-inset-bg);
   box-shadow: var(--shadow-glass);
   text-align: center;
 }
@@ -4712,7 +4696,7 @@
   overflow: hidden;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
-  background: linear-gradient(145deg, #dff0ff, #95bee0);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 8px 18px rgba(15, 43, 68, 0.18);
 }
 
@@ -4729,7 +4713,7 @@
 }
 
 .profile-identity__avatar span {
-  color: #17324c;
+  color: var(--liquid-muted);
   font-size: 21px;
   font-weight: 950;
 }
@@ -4761,7 +4745,7 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.36);
+  background: var(--liquid-inset-bg);
 }
 
 .profile-balance {
@@ -4907,7 +4891,7 @@
   gap: 10px;
   padding: 10px;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.32);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(255, 255, 255, 0.5);
 }
 .profile-trophy-history__tournament img {
@@ -4945,7 +4929,7 @@
   display: grid;
   overflow: hidden;
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.32);
+  background: var(--liquid-inset-bg);
   border: 1px solid rgba(255, 255, 255, 0.5);
 }
 .profile-trophy-history__challenge-toggle {
@@ -4981,7 +4965,7 @@
 .profile-trophy-history__challenge-chevron {
   width: 18px;
   height: 18px;
-  color: rgba(15, 23, 42, 0.42);
+  color: var(--liquid-muted);
   transition: transform 160ms ease;
 }
 .profile-trophy-history__challenge-toggle[aria-expanded='true']
@@ -4996,7 +4980,7 @@
   display: grid;
   gap: 10px;
   padding: 10px 16px 16px;
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--liquid-inset-bg);
 }
 .profile-trophy-history__challenge-details > strong {
   color: var(--ink);
@@ -5024,7 +5008,7 @@
   gap: 8px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font-size: 13px;
   font-weight: 800;
@@ -5100,7 +5084,7 @@
   grid-template-columns: repeat(4, minmax(0, 1fr));
   border-radius: 17px;
   overflow: hidden;
-  background: linear-gradient(135deg, rgba(11, 35, 58, 0.9), rgba(22, 67, 96, 0.82));
+  background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13);
 }
 
@@ -5126,7 +5110,7 @@
 }
 
 .profile-sporting-metrics__item--button:active {
-  background: rgba(255, 255, 255, 0.08);
+  background: var(--liquid-selected-bg);
 }
 
 .stat-rating__eligibility {
@@ -5135,8 +5119,8 @@
   margin: 0 0 10px;
   padding: 10px 12px;
   border-radius: 14px;
-  background: rgba(226, 232, 240, 0.72);
-  color: #334155;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
   font-size: 12px;
 }
 
@@ -5245,7 +5229,7 @@
   overflow: hidden;
   border: 1px solid rgba(255,255,255,.82);
   border-radius: 22px;
-  background: rgba(15,23,42,.1);
+  background: var(--liquid-card-bg);
 }
 .profile-referral-panel__artwork img {
   width: 100%;
@@ -5285,7 +5269,7 @@
   padding: 0 7px;
   border: 1px solid rgba(255,255,255,.22);
   border-radius: 9px;
-  background: #0f304d;
+  background: var(--liquid-inset-bg);
   color: #fff;
   box-shadow: 0 3px 8px rgba(15,48,77,.2);
   display: inline-flex;
@@ -5307,25 +5291,25 @@
 .referral-invite-card__copy h2 { margin: 0; color: var(--ink); font-size: 17px; line-height: 1.1; }
 .referral-invite-card__copy p { margin: 0; color: var(--muted); font-size: 11px; font-weight: 700; line-height: 1.35; }
 .referral-invite-card__fields { min-width: 0; display: grid; gap: 8px; }
-.referral-invite-field { min-width: 0; min-height: 52px; padding: 8px 8px 8px 11px; border: 1px solid rgba(255,255,255,.62); border-radius: 15px; background: rgba(255,255,255,.26); display: flex; align-items: center; gap: 9px; }
+.referral-invite-field { min-width: 0; min-height: 52px; padding: 8px 8px 8px 11px; border: 1px solid rgba(255,255,255,.62); border-radius: 15px; background: var(--liquid-inset-bg); display: flex; align-items: center; gap: 9px; }
 .referral-invite-field > span { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .referral-invite-field small { color: var(--muted-soft); font-size: 8px; font-weight: 850; letter-spacing: .05em; text-transform: uppercase; }
 .referral-invite-field strong { min-width: 0; overflow: hidden; color: var(--ink); font-size: 13px; line-height: 1.1; text-overflow: ellipsis; white-space: nowrap; }
 .referral-invite-field:first-child strong { font-size: 17px; letter-spacing: .05em; }
-.referral-invite-field button { flex: 0 0 auto; height: 34px; padding: 0 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 10px; background: #0f304d; color: #fff; box-shadow: 0 3px 8px rgba(15,48,77,.2); display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 800 9px/1 var(--font-sans); cursor: pointer; }
+.referral-invite-field button { flex: 0 0 auto; height: 34px; padding: 0 11px; border: 1px solid rgba(255,255,255,.22); border-radius: 10px; background: var(--liquid-inset-bg); color: #fff; box-shadow: 0 3px 8px rgba(15,48,77,.2); display: inline-flex; align-items: center; justify-content: center; gap: 5px; font: 800 9px/1 var(--font-sans); cursor: pointer; }
 .referral-invite-field button:active { transform: scale(.97); }
 .referral-rewards-section { width: 100%; max-width: 100%; min-width: 0; display: grid; gap: 7px; }
 .referral-rewards-section > .section-label { width: max-content; margin: 0; padding: 2px 8px; }
 .referral-rewards { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; padding: 14px; border-radius: 24px; }
 .referral-rewards__track { width: 100%; min-width: 0; display: flex; gap: 7px; overflow-x: auto; overscroll-behavior-inline: contain; padding: 2px; }
-.referral-reward { min-width: 66px; padding: 9px 6px; border: 1px solid var(--glass-border); border-radius: 16px; background: rgba(255,255,255,.48); color: var(--ink); display: grid; justify-items: center; gap: 5px; }
-.referral-reward > span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: rgba(15,23,42,.1); font: 800 11px var(--font-mono); }
+.referral-reward { min-width: 66px; padding: 9px 6px; border: 1px solid var(--glass-border); border-radius: 16px; background: var(--liquid-inset-bg); color: var(--ink); display: grid; justify-items: center; gap: 5px; }
+.referral-reward > span { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; background: var(--liquid-inset-bg); font: 800 11px var(--font-mono); }
 .referral-reward strong { display: flex; align-items: center; gap: 3px; color: var(--reward-star); font-size: 12px; }
 .referral-reward small { font-size: 9px; font-weight: 850; }
 .referral-reward--claimable { border-color: rgba(217,119,6,.45); cursor: pointer; box-shadow: 0 6px 16px rgba(217,119,6,.14); }
 .referral-rewards__progress { position: relative; height: 23px; margin-top: 11px; overflow: hidden; border: 1px solid rgba(255,255,255,.72); border-radius: 999px; background: rgba(92,115,137,.17); box-shadow: inset 0 1px 3px rgba(15,23,42,.08); }
 .referral-rewards__progress > span { position: absolute; inset: 0 auto 0 0; border-radius: inherit; background: linear-gradient(90deg,#3d8fc4,#64b7da); }
-.referral-rewards__progress > strong { position: absolute; inset: 0; display: grid; place-items: center; color: #10263d; font-size: 10px; font-weight: 950; font-variant-numeric: tabular-nums; text-shadow: 0 1px 1px rgba(255,255,255,.74); }
+.referral-rewards__progress > strong { position: absolute; inset: 0; display: grid; place-items: center; color: var(--liquid-muted); font-size: 10px; font-weight: 950; font-variant-numeric: tabular-nums; text-shadow: 0 1px 1px rgba(255,255,255,.74); }
 .referral-list-section { width: 100%; max-width: 100%; min-width: 0; display: grid; gap: 7px; }
 .referral-list-section > .section-label { width: max-content; margin: 0; padding: 2px 8px; }
 .referral-list-section > .section-label { display: inline-flex; align-items: center; gap: 4px; }
@@ -5333,7 +5317,7 @@
 .referral-player-list { width: 100%; max-width: 100%; min-width: 0; overflow: hidden; border-radius: 24px; }
 .referral-player { width: 100%; min-height: 64px; padding: 10px 13px; border: 0; border-bottom: 1px solid rgba(255,255,255,.56); background: transparent; color: var(--ink); display: flex; align-items: center; gap: 10px; text-align: left; cursor: pointer; }
 .referral-player:last-child { border-bottom: 0; }
-.referral-player__avatar { width: 42px; height: 42px; flex: 0 0 42px; overflow: hidden; border-radius: 50%; background: rgba(15,23,42,.1); display: grid; place-items: center; font-weight: 850; }
+.referral-player__avatar { width: 42px; height: 42px; flex: 0 0 42px; overflow: hidden; border-radius: 50%; background: var(--liquid-inset-bg); display: grid; place-items: center; font-weight: 850; }
 .referral-player__avatar img { width: 100%; height: 100%; object-fit: cover; }
 .referral-player__copy { min-width: 0; flex: 1; display: grid; gap: 3px; }
 .referral-player__copy strong { overflow: hidden; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
@@ -5374,7 +5358,7 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.88);
   border-radius: 20px;
-  background-color: #18263a;
+  background-color: var(--liquid-inset-bg);
   background-position: center;
   background-size: cover;
   box-shadow: 0 14px 28px rgba(15, 23, 42, 0.16);
@@ -5386,7 +5370,7 @@
   padding: 10px 14px 11px;
   border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 14px;
-  background: rgba(9, 19, 35, 0.78);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 8px 22px rgba(3, 8, 18, 0.24);
   color: #fff;
   text-align: center;
@@ -5542,7 +5526,7 @@
   padding: 8px;
   border: 1px solid rgba(148, 163, 184, 0.42);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   text-align: left;
@@ -5584,7 +5568,7 @@
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.84);
   border-radius: 18px;
-  background: rgba(216, 232, 244, 0.66);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 7px 16px rgba(19, 49, 75, 0.12);
 }
 
@@ -5604,7 +5588,7 @@
   padding: 3px 6px;
   border: 1px solid rgba(255, 255, 255, 0.28);
   border-radius: 999px;
-  background: rgba(8, 26, 43, 0.86);
+  background: var(--liquid-inset-bg);
   color: #fff;
   font-size: 9px;
   font-variant-numeric: tabular-nums;
@@ -5701,7 +5685,7 @@
   overflow: visible;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 999px;
-  background: rgba(15, 43, 77, 0.86);
+  background: var(--liquid-inset-bg);
   color: #fff;
   font-size: 8px;
   font-weight: 800;
@@ -5779,7 +5763,7 @@
 }
 
 .profile-picker-list .duel-equipment-option small {
-  color: rgba(15, 23, 42, 0.62);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 760;
   line-height: 1.25;
@@ -5799,7 +5783,7 @@
 
 .profile-haptic-diagnostic p {
   margin: 0;
-  color: rgba(15, 23, 42, 0.74);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 750;
   line-height: 1.35;
@@ -5814,7 +5798,7 @@
 
 /* Keep achievement artwork in a separate, unfiltered compositing layer on WebKit. */
 .modal-card.achievement-details-modal--crisp {
-  background: rgba(226, 233, 241, 0.92);
+  background: var(--liquid-modal-bg);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
@@ -5844,7 +5828,7 @@
   padding: 4px 8px;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 999px;
-  background: rgba(15, 43, 77, 0.88);
+  background: var(--liquid-inset-bg);
   color: #fff;
   font-size: 10px;
   font-weight: 800;
@@ -5898,7 +5882,7 @@
   place-items: center;
   overflow: hidden;
   border-radius: 13px;
-  background: rgba(208, 228, 244, 0.76);
+  background: var(--liquid-card-bg);
 }
 
 .profile-utility-card--settings .profile-utility-card__visual {
@@ -5913,13 +5897,13 @@
 }
 
 .profile-utility-card__visual--icon {
-  background: rgba(15, 35, 55, 0.9);
+  background: var(--liquid-card-bg);
 }
 
 .profile-utility-card__visual svg {
   width: 20px;
   height: 20px;
-  color: #2f5778;
+  color: var(--liquid-muted);
 }
 
 .profile-utility-card__visual--icon svg {
@@ -6036,7 +6020,7 @@
   border: 1px solid rgba(255, 255, 255, 0.88);
   border-radius: 19px;
   padding: 0;
-  background: rgba(226, 232, 240, 0.82);
+  background: var(--liquid-card-bg);
   color: #fff;
   cursor: pointer;
   text-align: left;
@@ -6064,7 +6048,7 @@
 }
 
 .profile-story-card__shade {
-  background: linear-gradient(180deg, transparent 36%, rgba(5, 13, 25, 0.86) 100%);
+  background: var(--liquid-card-bg);
 }
 
 .profile-story-card > svg {
@@ -6300,7 +6284,7 @@ button.profile-story-series-card {
   place-items: center;
   overflow: hidden;
   border-radius: 15px;
-  background: linear-gradient(145deg, #f8fdff, #b8daee);
+  background: var(--liquid-inset-bg);
 }
 
 .profile-equipment-slot__image img {
@@ -6370,7 +6354,7 @@ button.profile-story-series-card {
   align-items: center;
   justify-content: center;
   color: var(--reward-coin);
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--liquid-card-bg);
 }
 
 .inventory-bank-card__copy {
@@ -6407,9 +6391,9 @@ button.profile-story-series-card {
 }
 
 .inventory-bank-card__bonus {
-  color: #183e64;
+  color: var(--liquid-muted);
   border: 1px solid rgba(30, 91, 151, 0.18);
-  background: rgba(213, 233, 249, 0.82);
+  background: var(--liquid-card-bg);
 }
 
 .inventory-bank-card__marker {
@@ -6537,7 +6521,7 @@ button.profile-story-series-card {
   align-items: center;
   justify-content: center;
   color: var(--reward-coin);
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--liquid-card-bg);
 }
 
 .prices-package-card__marker {
@@ -6609,7 +6593,7 @@ button.profile-story-series-card {
   padding: 3px 7px;
   border: 1px solid rgba(30, 91, 151, 0.18);
   border-radius: var(--r-pill);
-  color: #183e64;
+  color: var(--liquid-muted);
   background: rgba(213, 233, 249, 0.82);
   font-size: 9px;
   font-weight: 950;
@@ -6638,7 +6622,7 @@ button.profile-story-series-card {
 .prices-screen__legal,
 .legal-screen__section {
   padding: 20px;
-  color: #334155;
+  color: var(--liquid-muted);
 }
 
 .prices-screen__legal {
@@ -6648,7 +6632,7 @@ button.profile-story-series-card {
 .prices-screen__legal h2,
 .legal-screen__section h2 {
   margin: 0 0 10px;
-  color: #0f172a;
+  color: var(--liquid-ink);
   font-size: 18px;
 }
 
@@ -6764,11 +6748,11 @@ button.profile-story-series-card {
   align-items: center;
   justify-content: center;
   color: var(--ink);
-  background: rgba(15, 23, 42, 0.08);
+  background: var(--liquid-inset-bg);
 }
 
 .inventory-history-row__icon--reward {
-  color: #0f766e;
+  color: var(--liquid-muted);
   background: rgba(13, 148, 136, 0.12);
 }
 
@@ -6978,7 +6962,7 @@ button.profile-story-series-card {
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
-  color: rgba(15, 23, 42, 0.62);
+  color: var(--liquid-muted);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -7006,7 +6990,7 @@ button.profile-story-series-card {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 18px;
-  background: linear-gradient(145deg, rgba(224, 234, 243, 0.97), rgba(190, 207, 221, 0.97));
+  background: var(--liquid-card-bg);
   box-shadow: 0 8px 22px rgba(15, 23, 42, 0.09);
 }
 
@@ -7052,7 +7036,7 @@ button.profile-story-series-card {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 14px;
-  background: rgba(15, 23, 42, 0.08);
+  background: var(--liquid-card-bg);
   box-shadow: 0 5px 14px rgba(15, 23, 42, 0.12);
 }
 
@@ -7073,13 +7057,13 @@ button.profile-story-series-card {
   display: grid;
   place-items: center;
   border: 1px solid rgba(255, 255, 255, 0.82);
-  background: rgba(235, 242, 248, 0.94);
-  color: #52677d;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-muted);
   box-shadow: 0 3px 10px rgba(15, 23, 42, 0.18);
 }
 
 .achievement-card__status--claimed {
-  background: #18304d;
+  background: var(--liquid-card-bg);
   color: white;
 }
 
@@ -7088,7 +7072,7 @@ button.profile-story-series-card {
   display: grid;
   align-content: start;
   gap: 6px;
-  color: #0f1d32;
+  color: var(--liquid-ink);
 }
 
 .achievement-card__heading {
@@ -7145,8 +7129,8 @@ button.profile-story-series-card {
   max-width: 100%;
   padding: 3px 7px;
   border-radius: 999px;
-  background: rgba(15, 48, 77, 0.1);
-  color: #31516e;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-muted);
   font-size: 9px;
   line-height: 1.1;
   font-weight: 800;
@@ -7155,7 +7139,7 @@ button.profile-story-series-card {
 
 .achievement-card__status-copy {
   flex: 0 0 auto;
-  color: #52677d;
+  color: var(--liquid-muted);
   font-size: 9px;
   line-height: 1.1;
   font-weight: 750;
@@ -7166,7 +7150,7 @@ button.profile-story-series-card {
 }
 
 .achievement-card__requirement {
-  color: #3b4f68;
+  color: var(--liquid-muted);
   font-size: 11px;
   line-height: 1.25;
   font-weight: 650;
@@ -7200,7 +7184,7 @@ button.profile-story-series-card {
   inset: 0;
   display: grid;
   place-items: center;
-  color: #10263d;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 950;
   font-variant-numeric: tabular-nums;
@@ -7243,7 +7227,7 @@ button.profile-story-series-card {
 .advanced-training-course-progress > strong {
   position: relative;
   z-index: 1;
-  color: #10223a;
+  color: var(--liquid-ink);
   font-size: 14px;
   font-weight: 950;
   letter-spacing: 0.04em;
@@ -7274,7 +7258,7 @@ button.profile-story-series-card {
   place-items: center;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
-  background: rgba(15, 35, 57, 0.66);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.32);
   color: #fff;
   font-size: 29px;
@@ -7288,7 +7272,7 @@ button.profile-story-series-card {
 }
 
 .advanced-training-exercise-card__skill {
-  color: #0f1d32;
+  color: var(--liquid-ink);
   font-weight: 850;
 }
 
@@ -7300,7 +7284,7 @@ button.profile-story-series-card {
 }
 
 .advanced-training-exercise-card__rewards--claimed {
-  color: #52677d;
+  color: var(--liquid-muted);
   filter: grayscale(1);
   opacity: 0.72;
 }
@@ -7311,7 +7295,7 @@ button.profile-story-series-card {
   min-height: 14px;
   align-items: center;
   gap: 6px;
-  color: #3b4f68;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.25;
@@ -7328,8 +7312,8 @@ button.profile-story-series-card {
 }
 
 .training-exercise-card__stage--locked {
-  background: rgba(59, 79, 104, 0.1);
-  color: #52677d;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-muted);
 }
 
 .advanced-training-mode-card:disabled {
@@ -7346,7 +7330,7 @@ button.profile-story-series-card {
 
 .advanced-training-start-modal__goal {
   margin: 0;
-  color: #0f1d32;
+  color: var(--liquid-ink);
   font-size: 14px;
   line-height: 1.4;
 }
@@ -7395,7 +7379,7 @@ button.profile-story-series-card {
   padding: 2px 22px;
   font-size: 10px;
   font-weight: 600;
-  color: rgba(15, 23, 42, 0.55);
+  color: var(--liquid-muted);
   text-transform: uppercase;
   letter-spacing: 0.14em;
 }
@@ -7412,7 +7396,7 @@ button.profile-story-series-card {
 
 .app-shell--arena .glass .section-label,
 .app-shell--arena .modal-card .section-label {
-  color: rgba(15, 23, 42, 0.64);
+  color: var(--liquid-muted);
   text-shadow: none;
 }
 
@@ -7429,7 +7413,7 @@ button.profile-story-series-card {
   padding: 16px;
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 26px;
-  background: rgba(230, 239, 248, 0.88);
+  background: var(--liquid-card-bg);
   box-shadow:
     0 16px 36px rgba(2, 8, 23, 0.18),
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
@@ -7438,13 +7422,13 @@ button.profile-story-series-card {
 }
 
 .mode-setup-card .segmented-tabs {
-  background: rgba(174, 193, 211, 0.38);
+  background: var(--liquid-card-bg);
   border-color: rgba(255, 255, 255, 0.74);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .app-shell--arena .mode-setup-card .section-label {
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--liquid-muted);
   text-shadow: none;
 }
 
@@ -7558,7 +7542,7 @@ button.profile-story-series-card {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.28);
+  background: var(--liquid-inset-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.78),
     0 10px 18px rgba(15, 23, 42, 0.1);
@@ -7589,7 +7573,7 @@ button.profile-story-series-card {
 }
 
 .duel-equipment-empty__message {
-  color: rgba(51, 65, 85, 0.78);
+  color: var(--liquid-muted);
   font-size: 13px;
   font-weight: 700;
   line-height: 1.4;
@@ -7606,13 +7590,13 @@ button.profile-story-series-card {
 .duel-equipment-option {
   color: var(--ink);
   border: 1px solid rgba(255, 255, 255, 0.76);
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.56);
 }
 
 .duel-equipment-option--selected {
   border-color: rgba(255, 255, 255, 0.92);
-  background: rgba(245, 249, 253, 0.88);
+  background: var(--liquid-selected-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.86),
     0 8px 18px rgba(15, 23, 42, 0.1);
@@ -7690,7 +7674,7 @@ button.profile-story-series-card {
 .duel-rating-empty {
   margin: 0;
   padding: 8px 0 2px;
-  color: rgba(38, 56, 77, 0.78);
+  color: var(--liquid-muted);
   font-size: 14px;
   font-weight: 750;
   line-height: 1.4;
@@ -7714,8 +7698,8 @@ button.profile-story-series-card {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.48);
-  color: rgba(15, 23, 42, 0.62);
+  background: var(--liquid-card-bg);
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 850;
   line-height: 1;
@@ -7741,7 +7725,7 @@ button.profile-story-series-card {
 
 .duel-card-venue {
   width: fit-content;
-  color: rgba(15, 23, 42, 0.58);
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 760;
 }
@@ -7780,7 +7764,7 @@ button.profile-story-series-card {
 
 .glass .duel-section-title,
 .modal-card .duel-section-title {
-  color: rgba(15, 23, 42, 0.78);
+  color: var(--liquid-muted);
   text-shadow: none;
 }
 
@@ -7838,7 +7822,7 @@ button.profile-story-series-card {
 .duel-limits-period__meta {
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 10px;
-  color: rgba(15, 23, 42, 0.64);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.25;
@@ -7850,7 +7834,7 @@ button.profile-story-series-card {
 }
 
 .duel-limits-period__remaining {
-  color: rgba(15, 23, 42, 0.78);
+  color: var(--liquid-muted);
   font-weight: 750;
   white-space: nowrap;
 }
@@ -7886,7 +7870,7 @@ button.profile-story-series-card {
   display: grid;
   gap: 6px;
   padding: 0 2px 12px;
-  color: rgba(15, 23, 42, 0.68);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 650;
 }
@@ -7898,7 +7882,7 @@ button.profile-story-series-card {
 
 .duel-limits-card__loading {
   padding: 12px 2px;
-  color: rgba(15, 23, 42, 0.6);
+  color: var(--liquid-muted);
   font-size: 13px;
 }
 
@@ -7914,8 +7898,8 @@ button.profile-story-series-card {
   padding: 14px;
   border-radius: 18px;
   border: 1px solid rgba(255, 255, 255, 0.82);
-  background: rgba(230, 239, 248, 0.88);
-  color: rgba(15, 23, 42, 0.74);
+  background: var(--liquid-card-bg);
+  color: var(--liquid-muted);
   font-size: 14px;
   font-weight: 750;
   display: flex;
@@ -8015,7 +7999,7 @@ button.profile-story-series-card {
   padding: 9px 3px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
   text-align: center;
 }
 
@@ -8089,7 +8073,7 @@ button.profile-story-series-card {
   justify-content: center;
   padding-bottom: 4px;
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(231, 238, 246, 0), rgba(231, 238, 246, 0.96) 74%);
+  background: var(--liquid-inset-bg);
 }
 
 .duel-day-scroll-hint button {
@@ -8097,9 +8081,9 @@ button.profile-story-series-card {
   height: 20px;
   border: 1px solid rgba(15, 23, 42, 0.12);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.88);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
-  color: rgba(15, 23, 42, 0.58);
+  color: var(--liquid-muted);
   display: grid;
   place-items: center;
   padding: 0;
@@ -8118,12 +8102,12 @@ button.profile-story-series-card {
   padding: 8px 10px;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--liquid-inset-bg);
   display: grid;
   grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  color: #0f172a;
+  color: var(--liquid-ink);
   font: inherit;
   text-align: left;
   cursor: pointer;
@@ -8134,7 +8118,7 @@ button.profile-story-series-card {
   overflow: hidden;
   border: 1px solid rgba(15, 23, 42, 0.08);
   border-radius: 18px;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--liquid-inset-bg);
 }
 
 .duel-day-match-group .duel-day-match {
@@ -8194,7 +8178,7 @@ button.profile-story-series-card {
   font-size: 14px;
 }
 .duel-day-match__copy span {
-  color: rgba(15, 23, 42, 0.62);
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 750;
 }
@@ -8208,7 +8192,7 @@ button.profile-story-series-card {
   gap: 3px;
 }
 .duel-day-match__chevron {
-  color: rgba(15, 23, 42, 0.42);
+  color: var(--liquid-muted);
   transition: transform 160ms ease;
 }
 .duel-day-match[aria-expanded='true'] .duel-day-match__chevron {
@@ -8234,7 +8218,7 @@ button.profile-story-series-card {
   padding: 12px;
   border: 0;
   border-radius: 0 0 17px 17px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--liquid-card-bg);
   box-shadow: none;
 }
 
@@ -8266,7 +8250,7 @@ button.profile-story-series-card {
 }
 
 .duel-result-card__compact-fact span {
-  color: rgba(15, 23, 42, 0.5);
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 900;
   letter-spacing: 0.1em;
@@ -8368,7 +8352,7 @@ button.profile-story-series-card {
 }
 
 .duel-result-compact-period__table thead th {
-  color: rgba(15, 23, 42, 0.46);
+  color: var(--liquid-muted);
   font-size: 8px;
   font-weight: 900;
   letter-spacing: 0.05em;
@@ -8387,7 +8371,7 @@ button.profile-story-series-card {
 }
 
 .duel-result-compact-period__table tbody th {
-  color: rgba(15, 23, 42, 0.7);
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 900;
 }
@@ -8402,7 +8386,7 @@ button.profile-story-series-card {
   display: grid;
   gap: 8px;
   padding: 14px;
-  color: rgba(15, 23, 42, 0.62);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 750;
 }
@@ -8434,24 +8418,24 @@ button.profile-story-series-card {
 .duel-kind-picker,
 .duel-quick-pick {
   border: 1px solid rgba(255, 255, 255, 0.92);
-  background: #dce6ef;
+  background: var(--liquid-inset-bg);
   box-shadow:
     0 8px 18px rgba(4, 15, 28, 0.12),
     inset 0 1px 0 rgba(255, 255, 255, 0.92);
 }
 
 .duel-kind-picker__info-icon {
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--liquid-muted);
 }
 
 .duel-quick-pick__opponent,
 .duel-quick-pick__empty {
-  color: rgba(51, 65, 85, 0.88);
+  color: var(--liquid-muted);
   text-shadow: none;
 }
 
 .duel-quick-pick__opponent--active {
-  color: #0f172a;
+  color: var(--liquid-ink);
 }
 
 .duel-quick-pick__name {
@@ -8459,7 +8443,7 @@ button.profile-story-series-card {
 }
 
 .duel-opponent-search {
-  background: #dce6ef;
+  background: var(--liquid-inset-bg);
   border-color: rgba(255, 255, 255, 0.96);
   box-shadow:
     0 8px 18px rgba(4, 15, 28, 0.1),
@@ -8477,8 +8461,8 @@ button.profile-story-series-card {
   padding: 10px 12px;
   border: 1px solid rgba(255, 255, 255, 0.88);
   border-radius: 14px;
-  background: rgba(220, 230, 239, 0.94);
-  color: #334155;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
   box-shadow:
     0 8px 18px rgba(4, 15, 28, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);
@@ -8487,22 +8471,22 @@ button.profile-story-series-card {
 
 .duel-opponent-search__icon {
   flex: 0 0 auto;
-  color: rgba(15, 23, 42, 0.72);
+  color: var(--liquid-muted);
 }
 
 .duel-opponent-search__input {
   min-width: 0;
-  color: #0f172a;
+  color: var(--liquid-ink);
 }
 
 .duel-opponent-search__input::placeholder {
-  color: rgba(15, 23, 42, 0.58);
+  color: var(--liquid-muted);
   opacity: 1;
 }
 
 .duel-challenge-submit:disabled {
   opacity: 1;
-  background: rgba(15, 23, 42, 0.72);
+  background: var(--liquid-inset-bg);
   border-color: rgba(15, 23, 42, 0.78);
   color: rgba(248, 252, 255, 0.9);
   box-shadow:
@@ -8529,7 +8513,7 @@ button.profile-story-series-card {
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 22px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
   box-shadow:
     0 8px 18px rgba(15, 23, 42, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.78);
@@ -8547,7 +8531,7 @@ button.profile-story-series-card {
 }
 
 .training-info-copy {
-  color: rgba(38, 56, 77, 0.82);
+  color: var(--liquid-muted);
   font-size: 14px;
   font-weight: 700;
   line-height: 1.45;
@@ -8607,7 +8591,7 @@ button.profile-story-series-card {
 .initial-training-course-progress > strong {
   position: relative;
   z-index: 1;
-  color: #10223a;
+  color: var(--liquid-ink);
   font-size: 14px;
   font-weight: 950;
   letter-spacing: 0.04em;
@@ -8638,7 +8622,7 @@ button.profile-story-series-card {
   place-items: center;
   border: 2px solid rgba(255, 255, 255, 0.9);
   border-radius: 50%;
-  background: rgba(15, 35, 57, 0.66);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 4px 12px rgba(15, 23, 42, 0.32);
   color: #fff;
   font-size: 29px;
@@ -8648,7 +8632,7 @@ button.profile-story-series-card {
 }
 
 .initial-training-exercise-card__skill {
-  color: #0f1d32;
+  color: var(--liquid-ink);
   font-weight: 850;
 }
 
@@ -8660,7 +8644,7 @@ button.profile-story-series-card {
 }
 
 .initial-training-exercise-card__rewards--claimed {
-  color: #52677d;
+  color: var(--liquid-muted);
   filter: grayscale(1);
   opacity: 0.72;
 }
@@ -8671,7 +8655,7 @@ button.profile-story-series-card {
   min-height: 14px;
   align-items: center;
   gap: 6px;
-  color: #3b4f68;
+  color: var(--liquid-muted);
   font-size: 11px;
   line-height: 1.25;
   font-weight: 650;
@@ -8767,7 +8751,7 @@ button.profile-story-series-card {
 }
 
 .daily-calendar__weekdays span {
-  color: rgba(15, 23, 42, 0.48);
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 900;
   text-align: center;
@@ -8787,7 +8771,7 @@ button.profile-story-series-card {
   justify-content: center;
   border: 1px solid var(--surface-calendar-day-border, rgba(255, 255, 255, 0.72));
   border-radius: 12px;
-  color: rgba(15, 23, 42, 0.76);
+  color: var(--liquid-muted);
   font-family: var(--font-mono);
   font-size: 12px;
   font-weight: 900;
@@ -8808,7 +8792,7 @@ button.daily-calendar__day:active {
 
 .daily-calendar__day--neutral {
   background: var(--surface-calendar-day-bg, rgba(255, 255, 255, 0.42));
-  color: rgba(15, 23, 42, 0.4);
+  color: var(--liquid-muted);
 }
 
 .daily-calendar__day--completed {
@@ -8817,8 +8801,8 @@ button.daily-calendar__day:active {
 }
 
 .daily-calendar__day--duel {
-  background: rgba(162, 216, 248, 0.72);
-  color: #103f68;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .daily-calendar__day-number {
@@ -8829,7 +8813,7 @@ button.daily-calendar__day:active {
   position: absolute;
   top: 4px;
   right: 5px;
-  color: rgba(16, 63, 104, 0.68);
+  color: var(--liquid-muted);
   font-family: var(--font-sans);
   font-size: 6px;
   font-weight: 900;
@@ -8968,7 +8952,7 @@ button.daily-calendar__day:active {
   padding: 9px 5px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
   text-align: center;
 }
 
@@ -9021,8 +9005,8 @@ button.daily-calendar__day:active {
 }
 
 .daily-calendar__day--missed {
-  background: linear-gradient(145deg, rgba(226, 232, 240, 0.92), rgba(148, 163, 184, 0.62));
-  color: #475569;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .daily-calendar__legend {
@@ -9030,7 +9014,7 @@ button.daily-calendar__day:active {
   flex-wrap: wrap;
   justify-content: center;
   gap: 8px 12px;
-  color: rgba(15, 23, 42, 0.58);
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 800;
 }
@@ -9093,7 +9077,7 @@ button.daily-calendar__day:active {
   padding: 10px 6px;
   border: 1px solid rgba(255, 255, 255, 0.68);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--liquid-inset-bg);
   text-align: center;
 }
 
@@ -9125,29 +9109,29 @@ button.daily-calendar__day:active {
 }
 
 .daily-result-modal__period--empty {
-  background: rgba(226, 232, 240, 0.34);
+  background: var(--liquid-inset-bg);
   border-style: dashed;
 }
 
 .daily-result-modal__period--empty strong {
-  color: rgba(71, 85, 105, 0.62);
+  color: var(--liquid-muted);
   font-family: var(--font-sans);
   font-size: 11px;
 }
 
 .section-card-surface {
-  background: rgba(239, 246, 252, 0.8);
+  background: var(--liquid-card-bg);
   backdrop-filter: blur(20px) saturate(116%);
   -webkit-backdrop-filter: blur(20px) saturate(116%);
 }
 
 .section-card-surface--active,
 .sections-quick-card--active {
-  background: rgba(245, 249, 253, 0.88);
+  background: var(--liquid-selected-bg);
 }
 
 .section-card-surface--muted {
-  background: rgba(226, 235, 244, 0.76);
+  background: var(--liquid-card-bg);
 }
 
 .sections-group {
@@ -9203,7 +9187,7 @@ button.daily-calendar__day:active {
   align-items: center;
   gap: 9px;
   color: inherit;
-  background: rgba(239, 246, 252, 0.8);
+  background: var(--liquid-card-bg);
   box-shadow:
     0 8px 20px rgba(15, 23, 42, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.8);
@@ -9219,7 +9203,7 @@ button.daily-calendar__day:active {
 }
 
 .sections-quick-card--active {
-  background: rgba(245, 249, 253, 0.88);
+  background: var(--liquid-selected-bg);
 }
 
 .sections-quick-card:active {
@@ -9241,7 +9225,7 @@ button.daily-calendar__day:active {
   border-radius: 18px;
   overflow: hidden;
   display: block;
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--liquid-card-bg);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.84),
     0 6px 14px rgba(15, 23, 42, 0.12);
@@ -9278,7 +9262,7 @@ button.daily-calendar__day:active {
 
 .sections-quick-card__meta {
   min-width: 0;
-  color: rgba(15, 23, 42, 0.56);
+  color: var(--liquid-muted);
   font-size: 10.5px;
   font-weight: 850;
   font-variant-numeric: tabular-nums;
@@ -9383,7 +9367,7 @@ button.daily-calendar__day:active {
 }
 
 .initial-training-mode-card:disabled .card-chevron {
-  color: rgba(15, 23, 42, 0.28);
+  color: var(--liquid-muted);
 }
 
 .amateur-hub-card__copy {
@@ -9399,7 +9383,7 @@ button.daily-calendar__day:active {
 }
 
 .amateur-hub-card__copy span {
-  color: rgba(15, 23, 42, 0.58);
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 750;
   line-height: 1.25;
@@ -9751,7 +9735,7 @@ button.daily-calendar__day:active {
   .glass,
   .glass-dock-surface,
   .modal-card {
-    background: rgba(241, 245, 249, 0.98) !important;
+    background: var(--liquid-modal-bg);
   }
 }
 
@@ -9759,7 +9743,7 @@ button.daily-calendar__day:active {
   .glass,
   .glass-dock-surface,
   .modal-card {
-    background: rgba(248, 250, 252, 0.98);
+    background: var(--liquid-modal-bg);
     border-color: rgba(15, 23, 42, 0.58);
   }
 
@@ -9789,7 +9773,7 @@ button.daily-calendar__day:active {
   height: 44px;
   border-radius: 14px;
   border: 1px solid rgba(255, 255, 255, 0.88);
-  background: rgba(228, 239, 248, 0.9);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   padding: 0 12px;
   font: inherit;
@@ -9826,7 +9810,7 @@ button.daily-calendar__day:active {
   gap: 10px;
   min-height: 44px;
   padding: 3px 0;
-  background: linear-gradient(180deg, rgba(7, 19, 34, 0.76), rgba(7, 19, 34, 0.18));
+  background: var(--liquid-inset-bg);
   border-radius: 999px;
   backdrop-filter: blur(10px) saturate(120%);
   -webkit-backdrop-filter: blur(10px) saturate(120%);
@@ -9853,7 +9837,7 @@ button.daily-calendar__day:active {
   display: flex;
   align-items: stretch;
   justify-content: flex-start;
-  background: rgba(3, 12, 24, 0.54);
+  background: var(--liquid-modal-bg);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   animation: admin-drawer-backdrop-in 160ms ease-out both;
@@ -9868,10 +9852,10 @@ button.daily-calendar__day:active {
   grid-template-rows: auto minmax(0, 1fr);
   gap: 14px;
   padding: calc(16px + var(--app-safe-top)) 14px calc(16px + var(--app-safe-bottom));
-  background: linear-gradient(155deg, rgba(231, 241, 249, 0.98), rgba(193, 215, 233, 0.97));
+  background: var(--liquid-modal-bg);
   border-right: 1px solid rgba(255, 255, 255, 0.9);
   box-shadow: 22px 0 56px rgba(2, 10, 23, 0.34);
-  color: #09162d;
+  color: var(--liquid-ink);
   animation: admin-drawer-in 240ms cubic-bezier(0.2, 0.82, 0.2, 1) both;
 }
 
@@ -9909,8 +9893,8 @@ button.daily-calendar__day:active {
   border: 1px solid rgba(255, 255, 255, 0.9);
   border-radius: 14px;
   padding: 9px 14px;
-  background: rgba(245, 250, 253, 0.72);
-  color: #13233c;
+  background: var(--liquid-modal-bg);
+  color: var(--liquid-ink);
   font: inherit;
   font-size: 14px;
   font-weight: 900;
@@ -10006,7 +9990,7 @@ button.daily-calendar__day:active {
   padding: 12px;
   border: 1px solid rgba(15, 23, 42, 0.14);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font-size: 13px;
   line-height: 1.45;
@@ -10019,7 +10003,7 @@ button.daily-calendar__day:active {
 }
 
 .admin-drawer__item--active {
-  background: linear-gradient(145deg, #263752, #111f36);
+  background: var(--liquid-modal-bg);
   border-color: rgba(7, 20, 40, 0.86);
   color: #ffffff;
   box-shadow:
@@ -10058,7 +10042,7 @@ button.daily-calendar__day:active {
 }
 
 .admin-screen .glass {
-  background: linear-gradient(155deg, rgba(232, 242, 250, 0.94), rgba(202, 222, 240, 0.91));
+  background: var(--liquid-inset-bg);
   border-color: rgba(255, 255, 255, 0.9);
   box-shadow:
     0 14px 34px rgba(3, 15, 31, 0.17),
@@ -10075,14 +10059,14 @@ button.daily-calendar__day:active {
 }
 
 .admin-screen .chip:not(.chip--active) {
-  background: rgba(244, 249, 253, 0.72);
+  background: var(--liquid-selected-bg);
   border-color: rgba(255, 255, 255, 0.9);
-  color: #13233c;
+  color: var(--liquid-ink);
 }
 
 .admin-screen .chip--active,
 .admin-screen .pill--dark {
-  background: linear-gradient(145deg, #263752, #111f36);
+  background: var(--liquid-selected-bg);
   border-color: rgba(7, 20, 40, 0.86);
   box-shadow:
     0 8px 20px rgba(3, 14, 30, 0.22),
@@ -10090,7 +10074,7 @@ button.daily-calendar__day:active {
 }
 
 .admin-screen .pill:not(.pill--dark) {
-  background: rgba(240, 247, 252, 0.84);
+  background: var(--liquid-selected-bg);
   border-color: rgba(255, 255, 255, 0.92);
 }
 
@@ -10098,7 +10082,7 @@ button.daily-calendar__day:active {
   .admin-screen .glass,
   .admin-screen input,
   .admin-screen select {
-    background: #dcebf7 !important;
+    background: var(--liquid-inset-bg);
     backdrop-filter: none;
     -webkit-backdrop-filter: none;
   }
@@ -10116,7 +10100,7 @@ button.daily-calendar__day:active {
   padding: 6px 7px;
   border: 1px solid rgba(100, 116, 139, 0.2);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.68);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   font-size: 11px;
@@ -10174,7 +10158,7 @@ button.daily-calendar__day:active {
   gap: 8px;
   padding: 12px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--liquid-card-bg);
 }
 
 .tournament-picker img {
@@ -10367,7 +10351,7 @@ button.daily-calendar__day:active {
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 14px;
-  background: rgba(226, 233, 241, 0.58);
+  background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
@@ -10388,8 +10372,8 @@ button.daily-calendar__day:active {
   padding: 7px 13px;
   border: 1px solid rgba(255, 255, 255, 0.92);
   border-radius: 999px;
-  color: #13233c;
-  background: rgba(244, 249, 253, 0.78);
+  color: var(--liquid-ink);
+  background: var(--liquid-inset-bg);
   box-shadow:
     0 6px 16px rgba(4, 18, 36, 0.1),
     inset 0 1px 0 rgba(255, 255, 255, 0.88);
@@ -10413,7 +10397,7 @@ button.daily-calendar__day:active {
   padding: 9px 11px;
   border: 1px solid rgba(255, 255, 255, 0.78);
   border-radius: 14px;
-  background: rgba(226, 233, 241, 0.58);
+  background: var(--liquid-inset-bg);
 }
 
 .bonus-game-editor input[type='checkbox'] {
@@ -10441,7 +10425,7 @@ button.daily-calendar__day:active {
   margin: 0;
   padding: 14px 4px calc(16px + var(--app-safe-bottom));
   border-top: 1px solid rgba(255, 255, 255, 0.72);
-  background: linear-gradient(180deg, rgba(237, 244, 250, 0.3), rgba(237, 244, 250, 0.92) 28%);
+  background: var(--liquid-inset-bg);
 }
 
 .bonus-game-editor__actions .btn,
@@ -10494,8 +10478,8 @@ button.daily-calendar__day:active {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  color: rgba(15, 23, 42, 0.72);
-  background: rgba(255, 255, 255, 0.58);
+  color: var(--liquid-muted);
+  background: var(--liquid-inset-bg);
   font-size: 10px;
   font-weight: 900;
   line-height: 1;
@@ -10504,7 +10488,7 @@ button.daily-calendar__day:active {
 
 .venue-badge--home {
   border-color: rgba(37, 99, 235, 0.26);
-  background: rgba(219, 234, 254, 0.72);
+  background: var(--liquid-inset-bg);
   color: #1d4ed8;
 }
 
@@ -10516,13 +10500,13 @@ button.daily-calendar__day:active {
 
 .venue-badge--neutral {
   border-color: rgba(100, 116, 139, 0.24);
-  background: rgba(241, 245, 249, 0.74);
-  color: #475569;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .venue-badge--dark {
   border-color: rgba(174, 231, 255, 0.34);
-  background: rgba(8, 31, 51, 0.56);
+  background: var(--liquid-inset-bg);
   color: rgba(233, 251, 255, 0.94);
   box-shadow: 0 0 8px rgba(92, 211, 255, 0.16);
 }
@@ -10651,7 +10635,7 @@ button.daily-calendar__day:active {
 .tournament-catalog-card__date {
   display: block;
   margin-top: 3px;
-  color: #244d73;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 700;
 }
@@ -10666,8 +10650,8 @@ button.daily-calendar__day:active {
   display: inline-flex;
   align-items: center;
   flex: 0 1 auto;
-  background: rgba(213, 233, 249, 0.74);
-  color: #183e64;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 900;
   line-height: 1.25;
@@ -10682,7 +10666,7 @@ button.daily-calendar__day:active {
   padding: 0 10px;
   border: 1px solid rgba(100, 116, 139, 0.2);
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   font-size: 11px;
@@ -10736,7 +10720,7 @@ button.daily-calendar__day:active {
 
 .tournament-details__timing {
   margin-top: 7px;
-  color: #244d73;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.4;
@@ -10807,7 +10791,7 @@ button.daily-calendar__day:active {
   min-width: 0;
   padding: 10px;
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-overview-grid > button {
@@ -10845,7 +10829,7 @@ button.daily-calendar__day:active {
   min-height: 36px;
   padding: 6px 8px;
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.36);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-standing-table {
@@ -10867,7 +10851,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-standing-table th {
-  color: #45627e;
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 880;
   letter-spacing: 0.045em;
@@ -11020,7 +11004,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-standing-table tbody tr.tournament-standing-table__medal-place--silver td {
-  background: rgba(100, 116, 139, 0.28);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-standing-table--duel-rating tbody tr.tournament-standing-table__medal-place--bronze td {
@@ -11037,7 +11021,7 @@ button.daily-calendar__day:active {
   position: sticky;
   z-index: 2;
   top: 0;
-  background: rgb(186, 195, 208);
+  background: var(--liquid-solid-bg);
 }
 
 .tournament-standing-table--experience-rating th:first-child,
@@ -11132,12 +11116,12 @@ button.daily-calendar__day:active {
   padding: 10px;
   border: 1px solid rgba(100, 116, 139, 0.14);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.35);
+  background: var(--liquid-card-bg);
 }
 
 .tournament-fixture-card--mine {
   border-color: rgba(55, 139, 196, 0.32);
-  background: rgba(218, 240, 253, 0.62);
+  background: var(--liquid-card-bg);
 }
 
 .tournament-calendar {
@@ -11174,7 +11158,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-calendar__weekdays span {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 800;
   text-align: center;
@@ -11195,7 +11179,7 @@ button.daily-calendar__day:active {
   border: 1px solid var(--surface-calendar-day-border, rgba(255, 255, 255, 0.72));
   border-radius: 11px;
   background: var(--surface-calendar-day-bg, rgba(255, 255, 255, 0.42));
-  color: #526b82;
+  color: var(--liquid-muted);
   font: inherit;
   font-size: 11px;
   font-weight: 650;
@@ -11203,14 +11187,14 @@ button.daily-calendar__day:active {
 }
 
 .tournament-calendar__day--has-events {
-  background: rgba(255, 255, 255, 0.64);
-  color: #244d73;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
   font-weight: 780;
 }
 
 .tournament-calendar__day--regular {
-  background: rgba(162, 216, 248, 0.72);
-  color: #103f68;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-calendar__day--playoff {
@@ -11232,7 +11216,7 @@ button.daily-calendar__day:active {
 
 .tournament-calendar__day--selected {
   border-color: #173c5e;
-  background: #173c5e;
+  background: var(--liquid-selected-bg);
   color: #ffffff;
   box-shadow: 0 6px 14px rgba(23, 60, 94, 0.2);
 }
@@ -11273,7 +11257,7 @@ button.daily-calendar__day:active {
   gap: 7px 12px;
   margin: 0;
   padding: 0;
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 750;
   list-style: none;
@@ -11295,11 +11279,11 @@ button.daily-calendar__day:active {
 
 .tournament-calendar__legend-dot--events {
   border-color: rgba(36, 77, 115, 0.14);
-  background: rgba(255, 255, 255, 0.64);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-calendar__legend-dot--regular {
-  background: rgba(162, 216, 248, 0.72);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-calendar__legend-dot--playoff {
@@ -11310,7 +11294,7 @@ button.daily-calendar__day:active {
 .tournament-calendar__legend-dot--mine {
   width: 5px;
   height: 5px;
-  background: #173c5e;
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-calendar__legend-dot--empty-day {
@@ -11319,7 +11303,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-calendar__legend-dot--selected {
-  background: #173c5e;
+  background: var(--liquid-selected-bg);
 }
 
 .tournament-calendar__details,
@@ -11340,7 +11324,7 @@ button.daily-calendar__day:active {
 .tournament-calendar__details > p {
   margin: 0;
   padding: 8px 0;
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 620;
 }
@@ -11355,7 +11339,7 @@ button.daily-calendar__day:active {
 .tournament-fixture-section > h5,
 .tournament-matchday-past > h5 {
   margin: 0;
-  color: #17324d;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 820;
 }
@@ -11370,7 +11354,7 @@ button.daily-calendar__day:active {
   overflow: hidden;
   border: 1px solid rgba(100, 116, 139, 0.18);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-schedule-series__summary {
@@ -11385,7 +11369,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-schedule-series__time {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 720;
 }
@@ -11429,7 +11413,7 @@ button.daily-calendar__day:active {
   padding: 11px 12px;
   border: 1px solid rgba(112, 74, 179, 0.2);
   border-radius: 14px;
-  background: rgba(230, 224, 249, 0.5);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
 }
 
@@ -11456,7 +11440,7 @@ button.daily-calendar__day:active {
 .tournament-playoff-schedule-block > span,
 .tournament-playoff-schedule-block > p {
   margin: 0;
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 720;
   line-height: 1.35;
@@ -11466,7 +11450,7 @@ button.daily-calendar__day:active {
   display: grid;
   gap: 2px;
   padding: 3px 1px;
-  color: #17324d;
+  color: var(--liquid-muted);
 }
 
 .tournament-matchday-result strong {
@@ -11475,7 +11459,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-matchday-result span {
-  color: #405d78;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 520;
   line-height: 1.4;
@@ -11491,7 +11475,7 @@ button.daily-calendar__day:active {
 
 .tournament-matchday-past > p {
   margin: 0;
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 620;
 }
@@ -11513,7 +11497,7 @@ button.daily-calendar__day:active {
 
 .tournament-matchday-past__row strong {
   overflow: hidden;
-  color: #17324d;
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 780;
   text-overflow: ellipsis;
@@ -11521,7 +11505,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-matchday-past__row span {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 620;
 }
@@ -11537,7 +11521,7 @@ button.daily-calendar__day:active {
   padding: 5px 10px;
   border: 0;
   background: transparent;
-  color: #244d73;
+  color: var(--liquid-muted);
   font: inherit;
   font-size: 11px;
   font-weight: 760;
@@ -11567,7 +11551,7 @@ button.daily-calendar__day:active {
 
 .tournament-live__update,
 .tournament-live__message {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 650;
   text-align: center;
@@ -11582,7 +11566,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-live__score > div {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 680;
 }
@@ -11605,7 +11589,7 @@ button.daily-calendar__day:active {
   gap: 3px;
   padding: 10px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.56);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-live__participants strong,
@@ -11616,7 +11600,7 @@ button.daily-calendar__day:active {
 
 .tournament-live__participants span,
 .tournament-live__proposal p {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 640;
 }
@@ -11647,7 +11631,7 @@ button.daily-calendar__day:active {
 .tournament-live__warning p,
 .tournament-live__warning ul {
   margin: 5px 0 0;
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 640;
 }
@@ -11697,7 +11681,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-fixture-card__meta strong {
-  color: #244d73;
+  color: var(--liquid-muted);
   white-space: nowrap;
 }
 
@@ -11706,7 +11690,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-fixture-card__score {
-  color: #183f63;
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 900;
   white-space: nowrap;
@@ -11780,7 +11764,7 @@ button.daily-calendar__day:active {
 
 .tournament-fixture-card__action--primary {
   border-color: #173c5e;
-  background: #173c5e;
+  background: var(--liquid-card-bg);
   color: #ffffff;
   box-shadow: 0 7px 16px rgba(23, 60, 94, 0.2);
 }
@@ -11831,7 +11815,7 @@ button.daily-calendar__day:active {
   padding: 2px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-bracket-overview__density button {
@@ -11841,7 +11825,7 @@ button.daily-calendar__day:active {
   border: 0;
   border-radius: 999px;
   background: transparent;
-  color: #60768b;
+  color: var(--liquid-muted);
   font: inherit;
   font-size: 10px;
   font-weight: 850;
@@ -11849,7 +11833,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-overview__density button[aria-pressed='true'] {
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--liquid-inset-bg);
   color: #ffffff;
 }
 
@@ -11917,7 +11901,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-overview__column > header strong {
   overflow: hidden;
-  color: #173c5e;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 850;
   text-overflow: ellipsis;
@@ -11926,7 +11910,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket-overview__column > header span {
   overflow: hidden;
-  color: #60768b;
+  color: var(--liquid-muted);
   font-size: 8px;
   font-weight: 700;
   text-overflow: ellipsis;
@@ -12285,17 +12269,17 @@ button.daily-calendar__day:active {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-  color: #536d84;
+  color: var(--liquid-muted);
   font-size: 10px;
 }
 
 .tournament-bracket-series-modal__meta strong {
-  color: #173c5e;
+  color: var(--liquid-muted);
   font-size: 11px;
 }
 
 .tournament-bracket-series-modal__empty {
-  color: #61788e;
+  color: var(--liquid-muted);
   font-size: 11px;
   line-height: 1.4;
 }
@@ -12314,8 +12298,8 @@ button.daily-calendar__day:active {
   min-width: 0;
   padding: 8px 10px;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.48);
-  color: #294e70;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-bracket-series-modal__identity {
@@ -12328,7 +12312,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-series-modal__seed {
   width: 12px;
   flex: 0 0 12px;
-  color: #7a8b9b;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 750;
   line-height: 1;
@@ -12348,7 +12332,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-series-modal__score {
   display: block;
   margin-bottom: 8px;
-  color: #173c5e;
+  color: var(--liquid-muted);
   font-size: 13px;
   text-align: center;
 }
@@ -12372,8 +12356,8 @@ button.daily-calendar__day:active {
   padding: 5px 10px;
   border: 1px solid rgba(98, 127, 153, 0.2);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.34);
-  color: #567089;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
   font: inherit;
   font-size: 10px;
   font-weight: 720;
@@ -12383,7 +12367,7 @@ button.daily-calendar__day:active {
 
 .tournament-bracket__round-tabs button.is-active {
   border-color: #173c5e;
-  background: #173c5e;
+  background: var(--liquid-selected-bg);
   color: #ffffff;
 }
 
@@ -12436,7 +12420,7 @@ button.daily-calendar__day:active {
   padding: 11px;
   border: 1px solid rgba(98, 127, 153, 0.24);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.34);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-bracket-series__summary {
@@ -12467,7 +12451,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-series__summary > header span {
-  color: #58718a;
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 700;
 }
@@ -12485,11 +12469,11 @@ button.daily-calendar__day:active {
   min-width: 0;
   padding: 6px 7px;
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-bracket-player__seed {
-  color: #536d84;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 800;
   text-align: center;
@@ -12510,8 +12494,8 @@ button.daily-calendar__day:active {
   min-width: 0;
   width: 100%;
   overflow: hidden;
-  color: #61788e;
-  background: rgba(255, 255, 255, 0.24);
+  color: var(--liquid-muted);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-bracket-player__placeholder {
@@ -12541,14 +12525,14 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-player__wins {
-  color: #173c5e;
+  color: var(--liquid-muted);
   font-size: 14px;
   font-weight: 900;
   text-align: center;
 }
 
 .tournament-bracket-series__score {
-  color: #264e72;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 800;
 }
@@ -12568,7 +12552,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-game-day__title {
-  color: #294e70;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 800;
 }
@@ -12584,11 +12568,11 @@ button.daily-calendar__day:active {
   padding: 9px 10px;
   border: 1px solid rgba(98, 127, 153, 0.16);
   border-radius: 11px;
-  background: rgba(255, 255, 255, 0.22);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-bracket-game > span {
-  color: #536d84;
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 650;
 }
@@ -12596,7 +12580,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-game__result {
   display: block;
   min-width: 0;
-  color: #294e70;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 760;
 }
@@ -12617,7 +12601,7 @@ button.daily-calendar__day:active {
 .tournament-bracket-game__participant {
   min-width: 0;
   overflow: hidden;
-  color: #536d84;
+  color: var(--liquid-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -12627,7 +12611,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-bracket-game__score {
-  color: #294e70;
+  color: var(--liquid-muted);
   white-space: nowrap;
 }
 
@@ -12654,7 +12638,7 @@ button.daily-calendar__day:active {
   padding: 10px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.52);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font-size: 14px;
   font-weight: 850;
@@ -12685,7 +12669,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-duel-result__separator {
-  color: #7a8797;
+  color: var(--liquid-muted);
   font-size: inherit;
   font-weight: inherit;
 }
@@ -12716,7 +12700,7 @@ button.daily-calendar__day:active {
   margin-top: 8px;
   padding-top: 8px;
   border-top: 1px solid rgba(82, 98, 119, 0.14);
-  color: #667487;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.2;
@@ -12775,7 +12759,7 @@ button.daily-calendar__day:active {
 
 .tournament-duel-result__meta strong,
 .tournament-duel-result__meta b {
-  color: #4f5f73;
+  color: var(--liquid-muted);
   font-weight: 850;
 }
 
@@ -12784,7 +12768,7 @@ button.daily-calendar__day:active {
   flex: 0 0 auto;
   align-items: baseline;
   gap: 5px;
-  color: #667487;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 800;
   line-height: 1;
@@ -12792,7 +12776,7 @@ button.daily-calendar__day:active {
 }
 
 .duel-result-points strong {
-  color: #2f4055;
+  color: var(--liquid-muted);
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   font-weight: 900;
@@ -12801,7 +12785,7 @@ button.daily-calendar__day:active {
 .tournament-duel-result__next-game {
   display: grid;
   margin-top: 14px;
-  color: #294e70;
+  color: var(--liquid-muted);
   font-size: 13px;
   text-align: center;
 }
@@ -12813,7 +12797,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-duel-result__countdown > span {
-  color: #526277;
+  color: var(--liquid-muted);
   font-size: 13px;
   font-weight: 800;
 }
@@ -12838,8 +12822,8 @@ button.daily-calendar__day:active {
   padding: 10px;
   border: 1px solid rgba(72, 115, 153, 0.2);
   border-radius: 13px;
-  background: rgba(230, 242, 251, 0.72);
-  color: #173c5e;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-playoff-attempt > strong,
@@ -12874,7 +12858,7 @@ button.daily-calendar__day:active {
 .tournament-playoff-attempt__scheduled > span,
 .tournament-playoff-attempt__incident > span,
 .tournament-playoff-attempt__choice > span {
-  color: #536d84;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 560;
   line-height: 1.4;
@@ -12971,7 +12955,7 @@ button.daily-calendar__day:active {
   min-height: 52px;
   padding: 7px 9px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-participants-list__position {
@@ -13008,7 +12992,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-rules p {
-  color: #26384d;
+  color: var(--liquid-muted);
   font-size: 13px;
   font-weight: 440;
   line-height: 1.55;
@@ -13038,7 +13022,7 @@ button.daily-calendar__day:active {
   place-items: center;
   object-fit: cover;
   background: rgba(30, 91, 151, 0.13);
-  color: #244d73;
+  color: var(--liquid-muted);
   font-size: 14px;
   font-weight: 900;
 }
@@ -13096,7 +13080,7 @@ button.daily-calendar__day:active {
 
 .tournament-admin-card__status,
 .tournament-operations__heading > span {
-  color: #53657c;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -13133,7 +13117,7 @@ button.daily-calendar__day:active {
   padding: 11px 12px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 18px;
-  background: rgba(224, 237, 247, 0.78);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
   backdrop-filter: blur(18px) saturate(1.12);
   -webkit-backdrop-filter: blur(18px) saturate(1.12);
@@ -13236,7 +13220,7 @@ button.daily-calendar__day:active {
   padding: 5px;
   border: 1px solid rgba(100, 116, 139, 0.16);
   border-radius: 14px;
-  background: rgba(240, 247, 252, 0.9);
+  background: var(--liquid-modal-bg);
 }
 
 .tournament-player-search__results > button {
@@ -13249,7 +13233,7 @@ button.daily-calendar__day:active {
   padding: 5px 8px;
   border: 0;
   border-radius: 10px;
-  background: rgba(255, 255, 255, 0.54);
+  background: var(--liquid-modal-bg);
   color: var(--ink);
   font: inherit;
   text-align: left;
@@ -13264,7 +13248,7 @@ button.daily-calendar__day:active {
   place-items: center;
   object-fit: cover;
   background: rgba(30, 91, 151, 0.12);
-  color: #244d73;
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 900;
 }
@@ -13284,7 +13268,7 @@ button.daily-calendar__day:active {
   padding: 9px 10px;
   border: 0;
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.42);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   text-align: left;
@@ -13309,7 +13293,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-participant-admin-row__manage {
-  color: #244d73;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 720;
 }
@@ -13328,7 +13312,7 @@ button.daily-calendar__day:active {
   padding: 9px 10px;
   border: 1px solid rgba(100, 116, 139, 0.14);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.38);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   font-size: 11px;
@@ -13346,7 +13330,7 @@ button.daily-calendar__day:active {
   overflow: hidden;
   border: 1px solid rgba(100, 116, 139, 0.14);
   border-radius: 15px;
-  background: rgba(255, 255, 255, 0.3);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-schedule-day > summary,
@@ -13371,7 +13355,7 @@ button.daily-calendar__day:active {
 .tournament-schedule-upcoming > summary::after {
   content: '›';
   flex: 0 0 auto;
-  color: rgba(15, 23, 42, 0.48);
+  color: var(--liquid-muted);
   font-size: 20px;
   line-height: 1;
   transform: rotate(90deg);
@@ -13411,7 +13395,7 @@ button.daily-calendar__day:active {
   padding: 10px 11px;
   border: 1px solid rgba(100, 116, 139, 0.12);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.66);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   text-align: left;
@@ -13444,8 +13428,8 @@ button.daily-calendar__day:active {
 .tournament-schedule-fixture__status {
   padding: 3px 7px;
   border-radius: 999px;
-  background: rgba(100, 116, 139, 0.1);
-  color: rgba(51, 65, 85, 0.8);
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
   font-size: 9px;
   font-weight: 780;
 }
@@ -13458,8 +13442,8 @@ button.daily-calendar__day:active {
 
 .tournament-schedule-fixture__status.is-completed,
 .tournament-schedule-fixture__status.is-settled {
-  background: rgba(34, 77, 115, 0.1);
-  color: #244d73;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-schedule-fixture__meta {
@@ -13471,12 +13455,12 @@ button.daily-calendar__day:active {
 .tournament-schedule-fixture__meta > span + span::before {
   content: '·';
   margin-right: 8px;
-  color: rgba(100, 116, 139, 0.5);
+  color: var(--liquid-muted);
 }
 
 .tournament-schedule-upcoming {
   border-style: dashed;
-  background: rgba(255, 255, 255, 0.2);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-schedule-upcoming > p {
@@ -13522,7 +13506,7 @@ button.daily-calendar__day:active {
 .tournament-operation-list-row--incident {
   display: grid;
   gap: 2px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-operation-list-row--incident > span {
@@ -13537,7 +13521,7 @@ button.daily-calendar__day:active {
   padding: 11px;
   border: 1px solid rgba(100, 116, 139, 0.14);
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.46);
+  background: var(--liquid-inset-bg);
 }
 
 .tournament-admin-series__heading,
@@ -13589,8 +13573,8 @@ button.daily-calendar__day:active {
   padding: 10px 11px;
   border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 13px;
-  background: rgba(255, 255, 255, 0.78);
-  color: #17324d;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-matchday-row strong {
@@ -13599,7 +13583,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-matchday-row span {
-  color: #536b82;
+  color: var(--liquid-muted);
   font-size: 10px;
   font-weight: 560;
   line-height: 1.4;
@@ -13622,7 +13606,7 @@ button.daily-calendar__day:active {
 
 .tournament-matchday-row--current {
   border-color: rgba(58, 149, 216, 0.5);
-  background: rgba(213, 239, 255, 0.92);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 7px 20px rgba(20, 96, 154, 0.12);
 }
 
@@ -13633,18 +13617,18 @@ button.daily-calendar__day:active {
 
 .tournament-matchday-row--past {
   border-color: rgba(130, 149, 166, 0.16);
-  background: rgba(223, 232, 240, 0.58);
-  color: #5b7084;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-matchday-row--past .tournament-matchday-row__status {
-  background: rgba(83, 107, 130, 0.1);
-  color: #667b8e;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
 }
 
 .tournament-matchday-row--past .tournament-matchday-times span,
 .tournament-matchday-row--past .tournament-matchday-times b {
-  color: #718496;
+  color: var(--liquid-muted);
 }
 
 .tournament-matchday-times {
@@ -13659,7 +13643,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-matchday-times b {
-  color: #294b6b;
+  color: var(--liquid-muted);
   font-weight: 760;
 }
 
@@ -13932,7 +13916,7 @@ button.daily-calendar__day:active {
   max-width: min(82%, 520px);
   padding: 8px 10px;
   border-radius: 14px 14px 14px 5px;
-  background: rgba(255, 255, 255, 0.7);
+  background: var(--liquid-card-bg);
   color: var(--ink);
   font-size: 12px;
   line-height: 1.4;
@@ -13941,7 +13925,7 @@ button.daily-calendar__day:active {
 .admin-official-dialog__message--official {
   align-self: flex-end;
   border-radius: 14px 14px 5px 14px;
-  background: rgba(15, 23, 42, 0.9);
+  background: var(--liquid-card-bg);
   color: #fff;
 }
 
@@ -13982,7 +13966,7 @@ button.daily-calendar__day:active {
   min-width: 0;
   padding: 7px 9px;
   border-radius: 14px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--liquid-card-bg);
   color: var(--ink);
   font-size: 11px;
   font-weight: 750;
@@ -14144,7 +14128,7 @@ button.daily-calendar__day:active {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.1);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font-weight: 800;
 }
@@ -14213,7 +14197,7 @@ button.daily-calendar__day:active {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(15, 23, 42, 0.12);
+  background: var(--liquid-card-bg);
   color: var(--ink);
   font-size: 24px;
   font-weight: 900;
@@ -14244,7 +14228,7 @@ button.daily-calendar__day:active {
   padding: 0;
   border: 0;
   background: transparent;
-  color: #24324a;
+  color: var(--liquid-muted);
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
@@ -14278,7 +14262,7 @@ button.daily-calendar__day:active {
   border: 1px solid rgba(100, 116, 139, 0.24);
   border-radius: 13px;
   outline: none;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--liquid-card-bg);
   color: var(--ink);
   font: inherit;
   font-size: 14px;
@@ -14348,14 +14332,14 @@ button.daily-calendar__day:active {
   height: 22px;
   border: 1.5px solid rgba(255, 255, 255, 0.78);
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.16);
+  background: var(--liquid-inset-bg);
   color: #fff;
   box-shadow: 0 2px 7px rgba(15, 23, 42, 0.16);
 }
 
 .profile-settings-grip-option__indicator[data-selected='true'] {
   border-color: rgba(255, 255, 255, 0.94);
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--liquid-selected-bg);
 }
 
 .profile-logout-wrap {
@@ -14454,7 +14438,7 @@ button.daily-calendar__day:active {
   align-items: center;
   padding: 0 7px;
   border-radius: 9px;
-  background: rgba(255, 255, 255, 0.38);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font-size: 11px;
 }
@@ -14479,7 +14463,7 @@ button.daily-calendar__day:active {
 
 .admin-compact-btn--primary {
   border-color: rgba(15, 23, 42, 0.28);
-  background: rgba(15, 23, 42, 0.92);
+  background: var(--liquid-selected-bg);
   color: #fff;
 }
 
@@ -14553,7 +14537,7 @@ button.daily-calendar__day:active {
   border-radius: 14px;
   outline: none;
   resize: vertical;
-  background: rgba(240, 247, 252, 0.72);
+  background: var(--liquid-inset-bg);
   color: var(--ink);
   font: inherit;
   font-size: 13px;
@@ -14599,7 +14583,7 @@ button.daily-calendar__day:active {
 }
 
 .tournament-dispatch-feedback {
-  color: #244d73;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 650;
   line-height: 1.4;
@@ -14925,7 +14909,7 @@ button.daily-calendar__day:active {
   padding: 11px 12px;
   border: 1px solid rgba(71, 85, 105, 0.14);
   border-radius: 15px;
-  background: rgba(241, 245, 249, 0.74);
+  background: var(--liquid-inset-bg);
 }
 
 .weekly-challenge-start-modal__dates > div {
@@ -14963,7 +14947,7 @@ button.daily-calendar__day:active {
   place-self: center;
   width: 20px;
   height: 20px;
-  color: rgba(15, 39, 71, 0.4);
+  color: var(--liquid-muted);
   transform: translateX(-3px);
 }
 
@@ -15169,7 +15153,7 @@ button.daily-calendar__day:active {
 }
 
 .weekly-challenge-card__summary-chevron {
-  color: rgba(15, 23, 42, 0.42);
+  color: var(--liquid-muted);
   transition: transform 160ms ease;
 }
 
@@ -15182,7 +15166,7 @@ button.daily-calendar__day:active {
   display: grid;
   gap: 10px;
   border-top: 2px solid rgba(83, 136, 192, 0.16);
-  background: rgba(255, 255, 255, 0.12);
+  background: var(--liquid-card-bg);
 }
 
 .weekly-challenge-card__details > .weekly-challenge-card__description {
@@ -15200,7 +15184,7 @@ button.daily-calendar__day:active {
 .weekly-challenge-card__status {
   padding: 4px 8px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.1);
+  background: var(--liquid-card-bg);
   color: var(--ink);
   font-size: 10px;
   font-weight: 900;
@@ -15300,7 +15284,7 @@ button.daily-calendar__day:active {
 
 .weekly-challenge-task__check {
   flex: 0 0 auto;
-  color: #17233d;
+  color: var(--liquid-muted);
 }
 
 .weekly-challenge-task__value {
@@ -15341,7 +15325,7 @@ button.daily-calendar__day:active {
 
 .weekly-challenge-card__decline.btn {
   color: #b91c1c;
-  background: rgba(255, 255, 255, 0.48);
+  background: var(--liquid-card-bg);
   border-color: rgba(185, 28, 28, 0.2);
   box-shadow: none;
 }
@@ -15369,7 +15353,7 @@ button.daily-calendar__day:active {
   padding: 11px 15px;
   border: 1px solid rgba(255, 255, 255, 0.72);
   border-radius: 16px;
-  background: rgba(30, 41, 59, 0.94);
+  background: var(--liquid-card-bg);
   box-shadow: 0 14px 38px rgba(15, 23, 42, 0.28);
   color: #fff;
   font-size: 13px;
@@ -15448,7 +15432,7 @@ button.daily-calendar__day:active {
   padding: 0 8px 0 5px;
   border: 1px solid rgba(255, 255, 255, 0.76);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
+  background: var(--liquid-card-bg);
   box-shadow:
     0 0 0 2px rgba(255, 255, 255, 0.1),
     0 3px 10px rgba(255, 255, 255, 0.2);
@@ -15581,7 +15565,7 @@ button.daily-calendar__day:active {
   position: absolute;
   inset: 0;
   z-index: 12;
-  background: #eaf1f8;
+  background: var(--liquid-inset-bg);
   pointer-events: auto;
 }
 
@@ -15590,7 +15574,7 @@ button.daily-calendar__day:active {
   gap: 8px;
   max-width: min(340px, 86vw);
   padding: 12px;
-  color: #0f1d32;
+  color: var(--liquid-ink);
   font-size: 14px;
   line-height: 1.35;
   text-align: left;
@@ -15659,7 +15643,7 @@ button.daily-calendar__day:active {
   display: grid;
   gap: 6px;
   text-wrap: pretty;
-  color: #1c2d45;
+  color: var(--liquid-muted);
   font-size: 11px;
   font-weight: 500;
   line-height: 1.35;
@@ -15681,7 +15665,7 @@ button.daily-calendar__day:active {
   border-left: 2px solid rgba(69, 95, 118, .22);
   font-size: 12px;
   line-height: 1.45;
-  color: #475569;
+  color: var(--liquid-muted);
   font-weight: 500;
 }
 
@@ -15740,7 +15724,7 @@ button.daily-calendar__day:active {
 .bonus-game-level-reward span { display: inline-flex; gap: 6px; align-items: center; }
 .bonus-game-level-reward svg { width: 20px; height: 20px; }
 .bonus-game-level-reward--received span { color: #64748b !important; }
-.bonus-game-preview-modal .bonus-game-levels__received { color: #64748b; }
+.bonus-game-preview-modal .bonus-game-levels__received { color: var(--liquid-muted); }
 
 .bonus-game-levels__choices .bonus-game-level-choice--completed { background: rgba(34, 197, 94, .10); }
 .bonus-game-levels__choices .bonus-game-level-choice--available { background: rgba(250, 204, 21, .10); }
@@ -15770,13 +15754,13 @@ button.daily-calendar__day:active {
 
 .bonus-records-modal__explanation { flex: none; margin: 0 0 12px; font-size: 12px; line-height: 1.4; }
 
-.bonus-records-result__secondary { display: block; margin-top: 3px; color: #536b83; font-size: 11px; font-weight: 500; line-height: 1.35; }
+.bonus-records-result__secondary { display: block; margin-top: 3px; color: var(--liquid-muted); font-size: 11px; font-weight: 500; line-height: 1.35; }
 
 .bonus-game-record-result { margin: 12px 0; padding-top: 12px; border-top: 1px solid rgba(100,116,139,.18); display: grid; gap: 8px; font-size: 13px; }
 .bonus-game-record-result > div { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; }
-.bonus-game-record-result dt { flex-shrink: 0; color: #536b83; }
+.bonus-game-record-result dt { flex-shrink: 0; color: var(--liquid-muted); }
 .bonus-game-record-result dd { margin: 0; text-align: right; font-weight: 700; }
-.bonus-game-result-reward-sources { display: grid; gap: 4px; margin-top: 8px; font-size: 12px; color: #536b83; }
+.bonus-game-result-reward-sources { display: grid; gap: 4px; margin-top: 8px; font-size: 12px; color: var(--liquid-muted); }
 
 .bonus-game-result-reward-breakdown {
   margin-top: 14px;
@@ -15784,13 +15768,13 @@ button.daily-calendar__day:active {
   border-top: 1px solid rgba(100, 116, 139, .18);
 }
 
-.bonus-records-modal__rewards { flex: none; margin: 0 0 12px; font-size: 12px; line-height: 1.45; color: #334155; }
+.bonus-records-modal__rewards { flex: none; margin: 0 0 12px; font-size: 12px; line-height: 1.45; color: var(--liquid-muted); }
 .bonus-records-modal__rewards p { margin: 0 0 6px; }
 .bonus-records-modal__reward { display: inline-flex; align-items: center; gap: 3px; font-weight: 700; white-space: nowrap; vertical-align: middle; }
 
 .bonus-records-entry__summary { margin: 0 0 12px; font-size: 12px; line-height: 1.45; }
 .bonus-records-entry__summary > div { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.bonus-records-entry__summary dt { color: #536b83; flex-shrink: 0; }
+.bonus-records-entry__summary dt { color: var(--liquid-muted); flex-shrink: 0; }
 .bonus-records-entry__summary dd { margin: 0; text-align: right; font-weight: 700; }
 
 .bonus-records-entry__action-row { margin-top: 12px; }

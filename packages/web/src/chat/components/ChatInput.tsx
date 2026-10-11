@@ -282,7 +282,7 @@ export function ChatInput({
                   minWidth: 32,
                   minHeight: 32,
                   borderRadius: 10,
-                  background: 'rgba(255,255,255,0.88)',
+                  background: 'var(--liquid-inset-bg)',
                   color: 'var(--ink)',
                 }}
               >
@@ -301,7 +301,7 @@ export function ChatInput({
                   minWidth: 32,
                   minHeight: 32,
                   borderRadius: 10,
-                  background: 'rgba(255,255,255,0.88)',
+                  background: 'var(--liquid-inset-bg)',
                   color: 'var(--ink)',
                 }}
               >
@@ -435,7 +435,7 @@ export function ChatInput({
             // height (the previous `999` produced an ever-rounder pill that
             // grew "less square" as the box got taller).
             borderRadius: CORNER_RADIUS,
-            background: 'rgba(255,255,255,0.92)',
+            background: 'var(--liquid-inset-bg)',
             color: 'var(--ink)',
             fontSize: 14,
             lineHeight: `${ROW_HEIGHT}px`,

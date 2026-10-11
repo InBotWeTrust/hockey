@@ -68,7 +68,7 @@ function PollVoteActionsMenu({
         style={{
           position: 'fixed',
           inset: 0,
-          background: 'rgba(15,23,42,0.04)',
+          background: 'var(--liquid-scrim)',
           zIndex: 840,
         }}
       />
@@ -177,7 +177,7 @@ export function ChannelPoll({
                 ? '1px solid rgba(15, 23, 42, 0.26)'
                 : '1px solid rgba(255, 255, 255, 0.72)',
               borderRadius: 14,
-              background: option.selectedByMe ? 'rgba(255,255,255,0.88)' : 'rgba(255,255,255,0.54)',
+              background: option.selectedByMe ? 'var(--liquid-inset-bg)' : 'var(--liquid-inset-bg)',
               color: 'var(--ink)',
               padding: '10px 12px',
               display: 'grid',

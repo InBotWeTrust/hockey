@@ -9,7 +9,7 @@
   height: 92px;
   border-radius: 12px;
   object-fit: cover;
-  background: rgba(255, 255, 255, 0.5);
+  background: var(--liquid-card-bg);
 }
 
 .onboarding-admin__thumbnail-fallback {

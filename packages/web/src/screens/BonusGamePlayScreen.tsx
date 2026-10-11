@@ -549,7 +549,7 @@ export function BonusResult({
       onClose={() => undefined}
       cardClassName="bonus-game-result-modal"
       backdropStyle={{
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-inset-bg)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
       }}

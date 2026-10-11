@@ -6,8 +6,8 @@
   gap: 12px;
   padding: max(12px, env(safe-area-inset-top)) 14px max(24px, env(safe-area-inset-bottom));
   overflow-y: auto;
-  background: #dceaf5;
-  color: #14253a;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-ink);
 }
 
 .marksmanship-constructor-header {
@@ -35,8 +35,8 @@
   padding: 8px 5px;
   border: 1px solid #aabfd2;
   border-radius: 12px;
-  background: rgba(239, 246, 252, 0.9);
-  color: #14253a;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-ink);
   font: inherit;
   font-size: clamp(11px, 2.6vw, 15px);
   font-weight: 800;
@@ -44,20 +44,20 @@
 
 .marksmanship-replay-tabs button[aria-selected='true'] {
   border-color: #1e3a5f;
-  background: #1e3a5f;
+  background: var(--liquid-selected-bg);
   color: #fff;
 }
 
 .marksmanship-constructor-playback button {
   width: 100%;
   min-height: 50px;
-  background: #1e3a5f !important;
+  background: var(--liquid-inset-bg);
   color: #fff !important;
 }
 
 .marksmanship-replay-note {
   margin: 0;
-  color: #304b64;
+  color: var(--liquid-muted);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -99,7 +99,7 @@
   padding: clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px);
   border-radius: 24px;
   border: 1.5px solid rgba(255, 255, 255, 0.86);
-  background: rgba(172, 184, 198, 0.74);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 0 0 2px var(--result-glow-soft), 0 0 34px var(--result-glow),
     0 0 86px var(--result-glow-soft), 0 22px 58px rgba(15, 23, 42, 0.24),
     inset 0 1px 0 rgba(255, 255, 255, 0.38);
@@ -125,7 +125,7 @@
   font-size: clamp(38px, 6vmin, 58px);
   line-height: 1;
   letter-spacing: 0.06em;
-  color: #111827;
+  color: var(--liquid-ink);
   text-shadow: 0 1px 0 rgba(255, 255, 255, 0.42);
 }
 
@@ -162,15 +162,15 @@
   padding: 8px 12px;
   border: 1px solid rgba(255, 255, 255, 0.86);
   border-radius: 12px;
-  background: rgba(239, 246, 252, 0.9);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 4px 12px rgba(15, 42, 71, 0.12);
-  color: #14253a;
+  color: var(--liquid-ink);
   font: inherit;
   font-weight: 800;
 }
 
 .marksmanship-constructor-primary-controls button[aria-pressed='true'] {
-  background: #1e3a5f;
+  background: var(--liquid-inset-bg);
   color: #fff;
 }
 
@@ -230,7 +230,7 @@
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.86);
   border-radius: 18px;
-  background: rgba(239, 246, 252, 0.9);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 8px 24px rgba(15, 42, 71, 0.1);
 }
 
@@ -241,7 +241,7 @@
 }
 
 .marksmanship-constructor-detail-label {
-  color: #14253a;
+  color: var(--liquid-ink);
   font-weight: 900;
 }
 
@@ -259,7 +259,7 @@
   padding: 14px;
   border: 1px solid rgba(255, 255, 255, 0.86);
   border-radius: 18px;
-  background: rgba(239, 246, 252, 0.9);
+  background: var(--liquid-inset-bg);
   box-shadow: 0 8px 24px rgba(15, 42, 71, 0.1);
 }
 
@@ -276,8 +276,8 @@
   padding: 8px 12px;
   border: 1px solid #c8d9e8;
   border-radius: 12px;
-  background: #fff;
-  color: #14253a;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-ink);
   font: inherit;
   font-weight: 800;
 }
@@ -298,7 +298,7 @@
   padding: 9px 12px;
   border: 1px solid #c8d9e8;
   border-radius: 12px;
-  background: #fff;
+  background: var(--liquid-inset-bg);
 }
 
 .marksmanship-constructor-episodes__copy { min-width: 0; font-size: 13px; line-height: 1.25; }

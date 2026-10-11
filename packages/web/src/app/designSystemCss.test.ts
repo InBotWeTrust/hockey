@@ -102,7 +102,7 @@ describe('bonus game modal depth', () => {
     const result = rule('.modal-card.bonus-game-result-modal');
 
     for (const bonusModal of [preview, result]) {
-      expect(bonusModal).toContain('background: rgba(226, 233, 241, 0.94)');
+      expect(bonusModal).toContain('background: var(--liquid-modal-bg)');
       expect(bonusModal).toContain('box-shadow: none');
       expect(bonusModal).toContain('backdrop-filter: none');
     }
@@ -129,7 +129,7 @@ describe('experience rating scroll containment', () => {
     const header = rule('.tournament-standing-table--experience-rating th');
 
     expect(viewport).toContain('overscroll-behavior: none');
-    expect(header).toContain('background: rgb(186, 195, 208)');
+    expect(header).toContain('background: var(--liquid-solid-bg)');
     expect(header).not.toContain('background: transparent');
   });
 });

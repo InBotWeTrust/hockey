@@ -773,7 +773,7 @@ describe('TournamentCatalog', () => {
 
   it('keeps tournament rule copy visually lighter than its headings', () => {
     expect(designSystemCss).toContain(
-      '.tournament-rules p {\n  color: #26384d;\n  font-size: 13px;\n  font-weight: 440;',
+      '.tournament-rules p {\n  color: var(--liquid-muted);\n  font-size: 13px;\n  font-weight: 440;',
     );
   });
 

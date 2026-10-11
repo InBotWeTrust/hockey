@@ -30,7 +30,7 @@ export function UserAvatar({
         width: size,
         height: size,
         borderRadius: '50%',
-        background: 'linear-gradient(135deg, #0f172a 0%, #334155 100%)',
+        background: 'var(--liquid-inset-bg)',
         color: '#ffffff',
         display: 'flex',
         alignItems: 'center',

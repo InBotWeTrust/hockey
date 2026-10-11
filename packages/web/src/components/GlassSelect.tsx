@@ -168,8 +168,7 @@ export function GlassSelect<T extends string>({
           borderRadius: 14,
           border:
             '1px solid var(--glass-select-border, rgba(255, 255, 255, 0.72))',
-          background:
-            'var(--glass-select-background, rgba(255, 255, 255, 0.52))',
+          background: 'var(--glass-select-background, rgba(255, 255, 255, 0.52))',
           color: 'var(--ink)',
           padding: '0 10px 0 12px',
           font: 'inherit',
@@ -261,11 +260,11 @@ function GlassSelectMenu<T extends string>({
         overflowY: 'auto',
         borderRadius: 18,
         padding: 6,
-        background: 'rgba(43, 56, 69, 0.96)',
-        border: '1px solid rgba(255, 255, 255, 0.36)',
-        boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.18), 0 16px 34px rgba(15, 23, 42, 0.28)',
-        backdropFilter: 'blur(18px)',
-        WebkitBackdropFilter: 'blur(18px)',
+        background: 'var(--liquid-modal-bg)',
+        border: '1px solid var(--liquid-border)',
+        boxShadow: 'var(--liquid-modal-shadow)',
+        backdropFilter: 'var(--liquid-modal-blur)',
+        WebkitBackdropFilter: 'var(--liquid-modal-blur)',
       }}
     >
       {options.map((option, index) => {
@@ -295,7 +294,7 @@ function GlassSelectMenu<T extends string>({
               height: 38,
               border: 'none',
               borderRadius: 12,
-              background: active ? 'rgba(255, 255, 255, 0.1)' : 'transparent',
+              background: active ? 'var(--liquid-inset-bg)' : 'transparent',
               color: disabled ? 'rgba(255, 255, 255, 0.48)' : '#ffffff',
               padding: '0 10px',
               display: 'grid',

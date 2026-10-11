@@ -548,7 +548,7 @@ function SectionCard({
             right: 0,
             bottom: 0,
             height: 3,
-            background: 'rgba(15,23,42,0.08)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div
@@ -569,7 +569,7 @@ function SectionCard({
           borderRadius: 22,
           display: 'block',
           overflow: 'hidden',
-          background: muted ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.58)',
+          background: muted ? 'var(--liquid-inset-bg)' : 'var(--liquid-inset-bg)',
           border: '1px solid rgba(255,255,255,0.78)',
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 8px 18px rgba(15,23,42,0.12)',
         }}
@@ -601,7 +601,7 @@ function SectionCard({
         </span>
         <span
           style={{
-            color: 'rgba(15,23,42,0.62)',
+            color: 'var(--liquid-muted)',
             fontSize: 12,
             fontWeight: 850,
             fontVariantNumeric: 'tabular-nums',

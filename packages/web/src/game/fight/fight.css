@@ -368,7 +368,7 @@
   min-width: max-content;
   transform: translateX(-50%);
   display: block;
-  color: #16233b;
+  color: var(--liquid-ink);
   font-family: var(--font-ui);
   font-size: 9.5px;
   font-weight: 950;
@@ -400,8 +400,8 @@
   display: grid;
   place-items: center;
   border-radius: 999px;
-  color: #16233b;
-  background: rgba(255,255,255,.88);
+  color: var(--liquid-ink);
+  background: var(--liquid-selected-bg);
   border: 1px solid rgba(255,255,255,.95);
   font-family: var(--font-ui);
   font-size: 9.5px;

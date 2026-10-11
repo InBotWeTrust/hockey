@@ -85,7 +85,7 @@ export function UserPickerModal({
               borderRadius: 12,
               border: 'none',
               outline: 'none',
-              background: 'rgba(255,255,255,0.72)',
+              background: 'var(--liquid-inset-bg)',
               color: 'var(--ink)',
               fontSize: 14,
             }}

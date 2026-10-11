@@ -115,7 +115,7 @@ export function ChannelPostCard({
                   gap: 10,
                   padding: '10px 12px',
                   borderRadius: 16,
-                  background: 'rgba(255,255,255,0.65)',
+                  background: 'var(--liquid-inset-bg)',
                   color: 'inherit',
                   textDecoration: 'none',
                 }}

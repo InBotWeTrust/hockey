@@ -1,0 +1,282 @@
+/* Neutral material shared by application chrome, content and portal overlays.
+ * Artwork and semantic status colors stay independent of the material. */
+:root {
+  --liquid-ink: #f8f9fb;
+  --liquid-muted: rgba(248, 249, 251, 0.82);
+  --liquid-muted-soft: rgba(248, 249, 251, 0.66);
+  --liquid-chrome-bg: linear-gradient(135deg, rgba(18, 20, 23, 0.12), rgba(30, 32, 35, 0.06));
+  --liquid-card-bg: linear-gradient(135deg, rgba(18, 20, 23, 0.28), rgba(30, 32, 35, 0.16));
+  --liquid-modal-bg: linear-gradient(135deg, rgba(37, 39, 43, 0.66), rgba(23, 25, 29, 0.57));
+  --liquid-solid-bg: #25272b;
+  --liquid-selected-bg: rgba(255, 255, 255, 0.16);
+  --liquid-inset-bg: rgba(18, 20, 23, 0.12);
+  --liquid-border: rgba(255, 255, 255, 0.38);
+  --liquid-border-soft: rgba(255, 255, 255, 0.18);
+  --liquid-shadow: 0 14px 30px rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(255, 255, 255, 0.07);
+  --liquid-selected-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), 0 3px 9px rgba(0, 0, 0, 0.16);
+  --liquid-modal-shadow: 0 24px 70px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  --liquid-blur: blur(18px) saturate(145%);
+  --liquid-modal-blur: blur(24px) saturate(135%);
+  --liquid-scrim: rgba(0, 0, 0, 0.34);
+  --liquid-text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+
+  --ink: var(--liquid-ink);
+  --muted: var(--liquid-muted);
+  --muted-soft: var(--liquid-muted-soft);
+  --card-chevron-color: var(--liquid-muted);
+  --red-deep: #ff8b98;
+  --green-deep: #83e3a5;
+  --reward-coin: #83e3a5;
+  --reward-star: #f7d477;
+  --reward-experience: #91c4ff;
+  --reward-token: #d2acff;
+  --glass-select-background: var(--liquid-inset-bg);
+  --glass-select-border: var(--liquid-border);
+  --glass-select-shadow: var(--liquid-selected-shadow);
+  --glass-bg: var(--liquid-card-bg);
+  --glass-bg-dark: var(--liquid-card-bg);
+  --glass-bg-strong-dark: var(--liquid-modal-bg);
+  --glass-border: var(--liquid-border);
+  --glass-border-dark: var(--liquid-border);
+  --blur-md: var(--liquid-blur);
+  --blur-sm: var(--liquid-blur);
+  --blur-dark: var(--liquid-blur);
+  --shadow-glass: var(--liquid-shadow);
+  --shadow-elev: var(--liquid-modal-shadow);
+  --shadow-cta: var(--liquid-selected-shadow);
+}
+
+/* Repeat aliases at the shell boundary: legacy route-specific declarations
+ * must not reintroduce a cold or milky material on a warm location. */
+.app-shell {
+  --surface-card-bg: var(--liquid-card-bg);
+  --surface-filter-bg: var(--liquid-chrome-bg);
+  --surface-calendar-day-bg: var(--liquid-inset-bg);
+  --surface-calendar-day-muted-bg: rgba(18, 20, 23, 0.06);
+  --surface-calendar-day-border: var(--liquid-border-soft);
+  --surface-elevated-bg: var(--liquid-modal-bg);
+  --surface-border: var(--liquid-border);
+  --surface-card-shadow: var(--liquid-shadow);
+  --surface-elevated-shadow: var(--liquid-modal-shadow);
+  --surface-filter-shadow: var(--liquid-shadow);
+  --surface-blur: var(--liquid-blur);
+  --surface-control-blur: var(--liquid-blur);
+  --glass-bg: var(--liquid-card-bg);
+  --glass-border: var(--liquid-border);
+  --chrome-surface-bg: var(--liquid-chrome-bg);
+  --chrome-surface-border: var(--liquid-border);
+  --chrome-surface-shadow: var(--liquid-shadow);
+  color: var(--liquid-ink);
+  text-shadow: var(--liquid-text-shadow);
+}
+
+.glass, .glass-dark {
+  color: var(--liquid-ink);
+}
+
+.app-shell :is(.bottom-nav__dock, .segmented-tabs, .glass-dock-surface, .glass-dock-field, .chat-create-search, .header-bar.glass, .chat-dock-header:not(.chat-dock-header--bare), .icon-btn, .catalog-header-back, .bar-game-filter, .onboarding-story-action, .onboarding-story-close) {
+  background: var(--liquid-chrome-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+  color: var(--liquid-ink);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+
+.app-shell :is(.bottom-nav__icon-wrap--active, .segmented-tabs__item--active, .chip--active, .pill--dark, .bar-game-filter--active, .tournament-bracket__round-tabs button.is-active) {
+  background: var(--liquid-selected-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-selected-shadow);
+  color: var(--liquid-ink);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.app-shell :is(.bottom-nav__tab, .segmented-tabs__item, .bar-game-filter) {
+  color: var(--liquid-ink);
+  text-shadow: var(--liquid-text-shadow);
+}
+
+.app-shell :is(.btn--cta, .btn--primary, .btn--ghost, .modal-primary, .duel-rating-info-modal__confirm, .bonus-game-card__action--repeat) {
+  background: var(--liquid-selected-bg);
+  border: 1px solid var(--liquid-border);
+  box-shadow: var(--liquid-selected-shadow);
+  color: var(--liquid-ink);
+  text-shadow: var(--liquid-text-shadow);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.app-shell :is(.btn--ghost, .segmented-tabs__item:not(.segmented-tabs__item--active)) {
+  background: var(--liquid-inset-bg);
+  box-shadow: none;
+}
+
+.app-shell :is(.btn, .icon-btn, .segmented-tabs__item):disabled {
+  background: var(--liquid-inset-bg);
+  border-color: var(--liquid-border-soft);
+  box-shadow: none;
+}
+
+.app-shell :is(.glass, .section-card-surface, .sections-quick-card, .bonus-game-card, .achievement-card, .profile-equipment-section, .profile-settings-card) {
+  color: var(--liquid-ink);
+}
+
+.app-shell :is(.section-card-surface--active, .sections-quick-card--active, .bonus-game-card--featured, .achievement-card--claimable) {
+  background: var(--liquid-card-bg);
+  border-color: rgba(255, 255, 255, 0.58);
+  box-shadow: var(--liquid-shadow);
+}
+
+/* Nested content gets a light inset, not another backdrop-blur layer. */
+.app-shell :is(.modal-card, .glass) :is(.glass, .daily-result-modal__period, .duel-history-summary__tiles > div, .tournament-operation-rewards__row > span) {
+  background: var(--liquid-inset-bg);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.modal-backdrop {
+  background: var(--liquid-scrim);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+.app-shell :is(.modal-card, .admin-drawer, .tournament-player-search__results),
+.modal-card,
+[data-glass-select-menu='true'] {
+  background: var(--liquid-modal-bg);
+  color: var(--liquid-ink);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-modal-shadow);
+  text-shadow: var(--liquid-text-shadow);
+  backdrop-filter: var(--liquid-modal-blur);
+  -webkit-backdrop-filter: var(--liquid-modal-blur);
+}
+
+.app-shell .modal-card.bar-conversation {
+  background: var(--liquid-modal-bg);
+}
+
+.app-shell :is(.section-label, .modal-title, .modal-copy, .bar-intro, .chat-room-header__title) {
+  color: var(--liquid-ink);
+}
+
+.app-shell :is(input, textarea, select) {
+  color: var(--liquid-ink);
+  caret-color: var(--liquid-ink);
+}
+
+.app-shell :is(input, textarea)::placeholder {
+  color: var(--liquid-muted);
+  opacity: 1;
+}
+
+.app-shell select option {
+  background: #25272b;
+  color: var(--liquid-ink);
+}
+
+.app-shell :is(.bottom-nav__icon-wrap svg, .icon-btn svg) {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.65));
+}
+
+.app-shell .bottom-nav__active-glow::after {
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
+  box-shadow: 0 -2px 6px rgba(255, 255, 255, 0.16);
+}
+
+.app-shell .bottom-nav__badge {
+  box-shadow: 0 0 0 2px rgba(25, 27, 30, 0.9);
+}
+
+.app-shell .game-scoreboard {
+  background: var(--liquid-chrome-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+}
+
+.app-shell :is(.home-arena-option, .home-arena-modal-status, .duel-history-summary, .onboarding-flow__speech) {
+  background: var(--liquid-card-bg);
+  border-color: var(--liquid-border);
+  color: var(--liquid-ink);
+  box-shadow: var(--liquid-shadow);
+}
+
+.app-shell :is(.home-arena-option:has(input:checked), .onboarding-flow__actions .btn--cta, .fight-held.btn.btn--cta[aria-pressed='true']) {
+  background: var(--liquid-selected-bg);
+  border-color: var(--liquid-border);
+  color: var(--liquid-ink);
+}
+
+.fight-challenge__count {
+  background: var(--liquid-selected-bg);
+  color: var(--liquid-ink);
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --liquid-chrome-bg: #303236;
+    --liquid-card-bg: #303236;
+    --liquid-modal-bg: #25272b;
+    --liquid-selected-bg: #52555b;
+    --liquid-muted: #f8f9fb;
+    --liquid-muted-soft: #f8f9fb;
+  }
+}
+
+/* Lazy bar styles have their own selectors. Keep shared controls neutral even
+ * when those styles load after the application stylesheet. */
+.app-shell .bar-space .online-durak-lobby--embedded :is(.segmented-tabs, .glass),
+.app-shell .bar-space :is(.bar-space__actions:not(.bar-space__actions--terminal), .bar-place-preview, .icon-btn) {
+  background: var(--liquid-chrome-bg);
+  border-color: var(--liquid-border);
+  color: var(--liquid-ink);
+  box-shadow: var(--liquid-shadow);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+
+.app-shell .bar-space .online-durak-lobby--embedded .glass {
+  background: var(--liquid-card-bg);
+}
+
+.app-shell .bar-space .online-durak-lobby--embedded :is(.segmented-tabs__item--active, .btn--cta),
+.app-shell .bar-space .bar-game-filter--active {
+  background: var(--liquid-selected-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-selected-shadow);
+}
+
+/* Essential distinctions survive settings and browsers without backdrop blur. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root {
+    --liquid-chrome-bg: #303236;
+    --liquid-card-bg: #303236;
+    --liquid-modal-bg: #25272b;
+    --liquid-selected-bg: #52555b;
+  }
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --liquid-chrome-bg: #303236;
+    --liquid-card-bg: #303236;
+    --liquid-modal-bg: #25272b;
+    --liquid-selected-bg: #52555b;
+    --liquid-blur: none;
+    --liquid-modal-blur: none;
+  }
+}
+
+.app-shell :is(.login-screen__mini-app-card a, .tournament-rules a) {
+  color: #a4d3ff;
+}
+.app-shell .chat-bubble--own {
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--liquid-ink);
+}
+.app-shell :is(.onboarding-flow__speech, .login-screen__auth-button) {
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+}
