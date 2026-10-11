@@ -221,3 +221,12 @@ it('never treats malformed safety JSON as an approval',async()=>{
  const check=providers.createConfiguredModeration({closeRouterKey:'router-placeholder',model:'gpt-5.6-terra',closeRouterModel:'openai/gpt-5.6-terra'},async()=>Response.json({choices:[{finish_reason:'stop',message:{content:'{"decision":"maybe","text":"Привет"}'}}]}));
  expect(await check('Привет')).toBe('unavailable');
 });
+it('accepts a seven-second safety decision while still cancelling at the request deadline', async () => {
+ const transport:typeof fetch=async(_url,init)=>new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>resolve(Response.json({choices:[{finish_reason:'stop',message:{content:'{"decision":"allow"}'}}]})),7000);
+  init?.signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new Error('aborted'));},{once:true});
+ });
+ const check=providers.createConfiguredModeration({closeRouterKey:'router-placeholder',model:'gpt-5.6-terra',closeRouterModel:'openai/gpt-5.6-terra'},transport);
+ await expect(check('Обычное приветствие',AbortSignal.timeout(25000))).resolves.toBe('allow');
+ await expect(check('Обычное приветствие',AbortSignal.timeout(10))).resolves.toBe('unavailable');
+},10000);
