@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { Assets, type Sprite, Texture, TextureSource } from 'pixi.js';
-import { Fighter, FIGHT_ASSETS, type FighterPose } from './Fighter.js';
+import { Fighter, FIGHT_ASSETS, BAR_FIGHT_ASSETS, type FighterPose } from './Fighter.js';
 import { FIGHT_ART } from './fightArt.js';
 
 const poses: FighterPose[] = [
@@ -118,4 +118,18 @@ it('retracts authored strike into its neutral pose during responsive recovery',(
  const strike=f.view.children[0] as Sprite,guard=f.view.children[2] as Sprite;
  expect(strike.alpha).toBe(.5);expect(guard.visible).toBe(true);expect(guard.alpha).toBe(.5);expect(guard.texture).toBe(neutral);
  f.update('idle',384,512,false);expect(strike.alpha).toBe(1);expect(guard.visible).toBe(false);
+});
+
+it('loads revised bar player poses and preserves their aspect ratio',()=>{
+ expect(BAR_FIGHT_ASSETS).toContain('/bar/fight/player-idle-v2.webp');
+ expect(BAR_FIGHT_ASSETS).toContain('/bar/fight/oleg-idle-v1.webp');
+ prepareAtlas();
+ for(const path of BAR_FIGHT_ASSETS)Assets.cache.set(path,new Texture({source:new TextureSource({width:384,height:512})}));
+ try {
+  const fighter=new Fighter(0,'player');
+  for(const pose of poses){fighter.update(pose,240,300,true);const sprite=fighter.view.children[0] as Sprite;
+   expect(Math.abs(sprite.scale.x)).toBe(sprite.scale.y);
+   expect(sprite.texture.frame.width).toBe(384);expect(sprite.texture.frame.height).toBe(512);
+  }
+ }finally{for(const path of BAR_FIGHT_ASSETS)Assets.cache.remove(path);}
 });

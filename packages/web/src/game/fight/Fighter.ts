@@ -14,7 +14,7 @@ export type FighterPose =
   | 'hit'
   | 'lose';
 export const BAR_FIGHT_POSES = ['idle','attack_head','attack_body','block_head','block_body','hit','lose','crouch','crouch_block','crouch_attack'] as const;
-export const BAR_FIGHT_ASSETS = ['player','oleg'].flatMap(actor=>BAR_FIGHT_POSES.map(pose=>`/bar/fight/${actor}-${pose}-v1.webp`));
+export const BAR_FIGHT_ASSETS = ['player','oleg'].flatMap(actor=>BAR_FIGHT_POSES.map(pose=>`/bar/fight/${actor}-${pose}-${actor==='player'?'v2':'v1'}.webp`));
 export const FIGHT_ASSETS = ['/sprites/fight/jersey-atlas-v1.png','/sprites/fight/crouch-atlas-v1.webp'] as const;
 
 /** Prepared pose frames share a canvas and skate baseline. The opponent is mirrored. */
@@ -33,7 +33,7 @@ export class Fighter {
       Object.entries(FIGHT_ART.frames).map(([pose, frame]) => [
         pose,
         new Texture({
-          source: (actor ? Assets.get<Texture>(`/bar/fight/${actor}-${pose}-v1.webp`) : pose.startsWith('crouch') ? crouchAtlas : atlas).source,
+          source: (actor ? Assets.get<Texture>(`/bar/fight/${actor}-${pose}-${actor==='player'?'v2':'v1'}.webp`) : pose.startsWith('crouch') ? crouchAtlas : atlas).source,
           frame: actor ? new Rectangle(0,0,384,512) : new Rectangle(frame.x, frame.y, frame.width, frame.height),
           orig: new Rectangle(0, 0, FIGHT_ART.canvas.width, FIGHT_ART.canvas.height),
           trim: actor ? new Rectangle(0,0,384,512) : new Rectangle(

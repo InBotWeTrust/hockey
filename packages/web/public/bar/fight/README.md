@@ -31,3 +31,14 @@ files and original source generations remain preserved.
 
 All three square scenes use the version 2 facade as an environment reference
 and the version 1 characters as identity, clothing and pose references.
+
+## Player poses version 2
+
+Ten transparent 384×512 poses from generation
+`exec-15778675-ceae-4d51-8ccc-1f84fb25fe3f.png`, using the original player identity
+sheet and version 1 poses as references. Revised taller stance and longer legs;
+navy beanie, blue hoodie and striped trousers, black sneakers with white soles,
+bare hands. Uniform scaling across all poses; foot baseline at y=460.
+Oleg continues to use his unchanged version 1 frames.
+
+Preparation: `pnpm --filter @hockey/web exec node scripts/prepare-bar-player-v2.mjs <source-sheet-path>`.
