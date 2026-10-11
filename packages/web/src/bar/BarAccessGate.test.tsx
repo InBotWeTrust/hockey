@@ -1,8 +1,9 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { render, screen,fireEvent,act } from '@testing-library/react';
+import { MemoryRouter,useLocation } from 'react-router-dom';
 import { BarAccessGate } from './BarAccessGate.js';
 import { fetchBarAccess } from './olegFightApi.js';
+vi.mock('./OlegFightPanel.js',()=>({OlegFightPanel:({onDone}:{onDone:(access:{blockedUntil:string|null;fightId:string|null})=>void})=><div>Fight result fixture<button onClick={()=>onDone({blockedUntil:'2026-10-12T00:00:00Z',fightId:null})}>Close loss</button></div>}));
 vi.mock('./olegFightApi.js', () => ({ fetchBarAccess: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
@@ -54,4 +55,27 @@ it('rechecks access changes received while a request is pending', async () => {
   window.dispatchEvent(new Event('bar-access-changed'));
   resolve({ blockedUntil: null, fightId: null });
   expect(await screen.findByText('«4-й период» закрыт для тебя')).toBeInTheDocument();
+});
+
+it('keeps the fight result visible despite access refreshes announcing a block',async()=>{
+ vi.mocked(fetchBarAccess).mockResolvedValueOnce({blockedUntil:null,fightId:'fight'}).mockResolvedValue({blockedUntil:'2026-10-12T00:00:00Z',fightId:null});
+ render(<MemoryRouter><BarAccessGate><p>Private bar contents</p></BarAccessGate></MemoryRouter>);
+ await screen.findByText('Fight result fixture');
+ await act(async()=>{window.dispatchEvent(new Event('bar-access-changed'));});
+ expect(screen.getByText('Fight result fixture')).toBeInTheDocument();
+ expect(screen.queryByText('«4-й период» закрыт для тебя')).not.toBeInTheDocument();
+});
+
+function Location(){const location=useLocation();return <p data-testid="location">{location.pathname}</p>;}
+it('returns a closed loss result to the second main-menu tab',async()=>{
+ vi.mocked(fetchBarAccess).mockResolvedValue({blockedUntil:null,fightId:'fight'});
+ render(<MemoryRouter initialEntries={['/bar']}><BarAccessGate><p>Private bar contents</p></BarAccessGate><Location/></MemoryRouter>);
+ fireEvent.click(await screen.findByRole('button',{name:'Close loss'}));
+ expect(screen.getByTestId('location')).toHaveTextContent('/sections');
+});
+it('shows a blocked re-entry in a modal with Oleg at the entrance',async()=>{
+ vi.mocked(fetchBarAccess).mockResolvedValue({blockedUntil:'2026-10-12T00:00:00Z',fightId:null});
+ render(<MemoryRouter><BarAccessGate><p>Private bar contents</p></BarAccessGate></MemoryRouter>);
+ expect(await screen.findByRole('dialog',{name:'Бар закрыт'})).toBeInTheDocument();
+ expect(screen.getByRole('img',{name:'Олег стоит у входа и не пускает в бар'})).toHaveAttribute('src','/bar/fight/oleg-blocked-v1.webp');
 });

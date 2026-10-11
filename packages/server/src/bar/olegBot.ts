@@ -11,6 +11,7 @@ export interface OlegFightRuntime {
   state: FightState;
   random: number;
   nextDecisionAt: number;
+  nextAttackAt?: number;
 }
 export function createOlegRuntime(at: number, seed: number): OlegFightRuntime {
   return {
@@ -20,6 +21,7 @@ export function createOlegRuntime(at: number, seed: number): OlegFightRuntime {
     ),
     random: seed >>> 0 || 1,
     nextDecisionAt: at + 300,
+    nextAttackAt: at + 1800,
   };
 }
 export function advanceOlegRuntime(
@@ -29,6 +31,7 @@ export function advanceOlegRuntime(
 ): OlegFightRuntime {
   if (['resolved', 'cancelled'].includes(input.state.status)) return input;
   const runtime: OlegFightRuntime = structuredClone(input);
+  runtime.nextAttackAt ??= runtime.state.phaseStartedAtMs + 1800;
   const random = () => {
     let n = runtime.random;
     n ^= n << 13;
@@ -67,8 +70,9 @@ export function advanceOlegRuntime(
       seq: runtime.state.lastSeq[1] + 1,
       effectiveAtMs: at,
     };
-    if (at >= posture.readyAtMs && positions[1] - positions[0] <= 0.4 && choose < 0.44) {
+    if (at >= runtime.nextAttackAt! && at >= posture.readyAtMs && positions[1] - positions[0] <= 0.4 && choose < 0.44) {
       command = { ...base, kind: 'attack', zone: posture.crouch ? 'body' : 'head' };
+      runtime.nextAttackAt = at + 1800 + Math.floor(random() * 701);
     } else {
       const cautious = runtime.state.hp[1] < 4;
       command = {
