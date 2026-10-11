@@ -62,18 +62,19 @@ it('renders identity, safe actions and stable navigation', () => {
   );
   expect(screen.getByRole('heading', { name: 'Мария' })).toBeInTheDocument();
 });
-it('does not expose actions for missing future features', () => {
+it('shows Veronika and enables conversation without unsupported card games', () => {
   render(
     <BarScene
       layout={createDefaultBarLayout()}
       activeSlotId="bar-8"
       onSelectSlot={vi.fn()}
       onAction={vi.fn()}
+      onTalk={vi.fn()}
     />,
   );
-  expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
-  expect(screen.queryByText('Вероника')).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
+  expect(screen.getByRole('heading', { name: 'Вероника' })).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
+  expect(screen.getByRole('button', { name: 'Поговорить' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Сыграть в карты' })).not.toBeInTheDocument();
 });
 
@@ -83,7 +84,7 @@ it('shows a silhouette and no interactions for an empty place', () => {
   const { container } = render(<BarScene layout={layout} activeSlotId="bar-8"
     onSelectSlot={vi.fn()} onAction={vi.fn()} onTalk={vi.fn()} />);
   expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
-  expect(container.querySelectorAll('.bar-space__silhouette')).toHaveLength(3);
+  expect(container.querySelectorAll('.bar-space__silhouette')).toHaveLength(1);
   expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Сыграть в карты' })).not.toBeInTheDocument();
 });

@@ -7,6 +7,7 @@ export const barOccupants = [
   'oleg',
   'timofey',
   'veronika',
+  'igor',
   'news',
   'broadcasts',
 ] as const;
@@ -17,7 +18,8 @@ export type BarCharacterId =
   | 'arsenich'
   | 'oleg'
   | 'timofey'
-  | 'veronika';
+  | 'veronika'
+  | 'igor';
 export type BarOccupantId = (typeof barOccupants)[number];
 export type BarAction = 'cards' | 'online' | 'broadcasts';
 export interface BarSlot {
@@ -61,7 +63,7 @@ export function createDefaultBarLayout(): BarLayout {
   ): BarProfile => ({ name, role, description, avatar, composition });
   return {
     defaultSlotId: 'bar-8',
-    slots: barOccupants.map((occupantId, i) => ({
+    slots: barOccupants.filter((id) => id !== 'news').map((occupantId, i) => ({
       id: `bar-${i + 1}`,
       occupantId,
       x: 50,
@@ -104,9 +106,10 @@ export function createDefaultBarLayout(): BarLayout {
         null,
         '/bar/cards/online-terminal-v1.webp',
       ),
-      oleg: profile('Олег', 'Охранник', ''),
-      timofey: profile('Тимофей', 'Работник стадиона', ''),
-      veronika: profile('Вероника', 'Управляющая баром', ''),
+      oleg: profile('Олег', 'Охранник', 'Немногословный и внимательный. Следит за порядком, ценит прямоту и иногда неожиданно шутит.', '/bar/cards/oleg-avatar-v1.webp', '/bar/cards/oleg-composition-v1.webp'),
+      timofey: profile('Тимофей', 'Работник стадиона', 'Вечно что-то забывает и ищет повод передохнуть. Курит, флиртует и выпутывается из неловких ситуаций с хитрой улыбкой.', '/bar/cards/timofey-avatar-v1.webp', '/bar/cards/timofey-composition-v1.webp'),
+      veronika: profile('Вероника', 'Управляющая баром', 'Собранная и гостеприимная. Держит бар в порядке, замечает каждую мелочь и умеет найти подход к людям.', '/bar/cards/veronika-avatar-v1.webp', '/bar/cards/veronika-composition-v1.webp'),
+      igor: profile('Игорь', 'Бармен', 'Общительный парень, который всегда в курсе спортивных новостей. Любит обсуждать матчи, результаты и спорить о любимых командах.', '/bar/cards/igor-avatar-v1.webp', '/bar/cards/igor-composition-v1.webp'),
       news: profile('Газеты на стойке', '', ''),
       broadcasts: profile('Трансляции', '', 'Смотри хоккейные матчи.'),
     },
@@ -177,4 +180,24 @@ export function barLayoutErrors(layout: BarLayout): string[] {
         errors.push('Изображение должно быть локальным файлом в /bar/.');
   }
   return [...new Set(errors)];
+}
+
+// Upgrade empty shipped profiles without overriding administrator edits or placement.
+export function upgradeBarLayout(layout: BarLayout): BarLayout {
+  const next = structuredClone(layout);
+  const defaults = createDefaultBarLayout();
+  for (const id of ['oleg', 'timofey', 'veronika', 'igor'] as const) {
+    const current = next.profiles[id];
+    next.profiles[id] = current ? {
+      ...current,
+      avatar: current.avatar || defaults.profiles[id].avatar,
+      composition: current.composition || defaults.profiles[id].composition,
+      description: current.description || defaults.profiles[id].description,
+    } : defaults.profiles[id];
+  }
+  if (!next.slots.some((slot) => slot.occupantId === 'igor')) {
+    const newspapers = next.slots.find((slot) => slot.occupantId === 'news');
+    if (newspapers) newspapers.occupantId = 'igor';
+  }
+  return next;
 }

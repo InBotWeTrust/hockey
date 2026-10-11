@@ -7,6 +7,7 @@ export const barCharacters = [
   'veronika',
   'oleg',
   'timofey',
+  'igor',
 ] as const;
 export type BarCharacter = (typeof barCharacters)[number];
 export interface ConversationSnapshot {

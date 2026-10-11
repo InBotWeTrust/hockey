@@ -1,4 +1,4 @@
-import { createDefaultBarLayout, barLayoutErrors, type BarLayoutSnapshot } from '@hockey/game-core';
+import { createDefaultBarLayout, upgradeBarLayout, barLayoutErrors, type BarLayoutSnapshot } from '@hockey/game-core';
 // Synthetic local preview only: no account, credentials or real API persistence.
 export function installBarLayoutPreview() {
   const original = window.fetch.bind(window);
@@ -30,7 +30,7 @@ export function installBarLayoutPreview() {
       if (!profile.description.trim() || profile.description === descriptions[id][0])
         profile.description = descriptions[id][1];
     }
-    return snapshot;
+    return { ...snapshot, layout: upgradeBarLayout(snapshot.layout) };
   };
   const read = (): BarLayoutSnapshot => {
     try {
