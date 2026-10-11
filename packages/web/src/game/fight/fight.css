@@ -507,3 +507,7 @@
 .fight-scene--responsive .fight-reserve svg { width:100%; height:auto; }
 .fight-scene--responsive .fight-health--0 .fight-reserve--guard { justify-content:flex-start; }
 .fight-scene--responsive .fight-health--1 .fight-reserve--guard { justify-content:flex-end; }
+
+.fight-challenge__label--call {
+  font-weight: 800;
+}

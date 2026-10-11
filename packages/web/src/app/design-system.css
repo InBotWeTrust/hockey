@@ -4324,6 +4324,17 @@
   max-width: 100%;
 }
 
+.duel-condition-notice--ice {
+  left: 50%;
+  bottom: clamp(112px, 22%, 156px);
+  width: max-content;
+  max-width: calc(100% - 40px);
+  box-sizing: border-box;
+  justify-content: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
 .fitted-scoreboard-notice > span {
   flex: 1 1 auto;
   min-width: 0;

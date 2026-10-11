@@ -6341,6 +6341,7 @@ function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
+          noticesOnIce
           suppressedByModal={!!fightOverlay}
           preserveSceneOnModalReturn
           showIceCar={false}
@@ -8131,7 +8132,7 @@ const DUEL_INVENTORY_BADGE_STYLE: CSSProperties = {
   letterSpacing: 0,
   whiteSpace: 'nowrap',
   textShadow: 'none',
-  background: 'rgba(218, 227, 236, 0.9)',
+  background: 'transparent',
   borderRadius: 5,
   padding: '2px 4px',
   zIndex: 2,

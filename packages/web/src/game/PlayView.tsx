@@ -401,6 +401,7 @@ export interface PlayViewProps<TState> {
   conditionNoticeOverride?: boolean | undefined;
   statusNoticeDelayMs?: number | undefined;
   statusNoticeUnderScoreboard?: boolean | undefined;
+  noticesOnIce?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -690,6 +691,7 @@ export function PlayView<TState>({
   conditionNoticeOverride,
   statusNoticeDelayMs = 0,
   statusNoticeUnderScoreboard = false,
+  noticesOnIce = false,
   inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
@@ -2234,25 +2236,27 @@ export function PlayView<TState>({
     willChange: isRouteCameraZoomed ? 'opacity' : 'auto',
   };
   const noticeInScoreboard =
+    !noticesOnIce &&
     !rinkLayer &&
     !hideRinkScoreboard &&
     (showDuelStumbleNotice || Boolean(duelFatigueNotice) || (statusNoticeUnderScoreboard && Boolean(effectiveStatusNotice)));
+  const iceNoticeClass = noticesOnIce && !noticeInScoreboard ? ' duel-condition-notice--ice' : '';
   const challengeNoticeClass = statusNoticeClassName === 'bonus-challenge-environment-notice'
     ? ' bonus-challenge-environment-notice' : '';
   const gameNotice = showDuelStumbleNotice ? (
-    <FittedNotice fit={noticeInScoreboard}
+    <FittedNotice fit={noticeInScoreboard || noticesOnIce}
       role="status"
       aria-live="polite"
-      className={`duel-stumble-notice${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
+      className={`duel-stumble-notice${iceNoticeClass}${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
       style={routeGameStyle}
     >
       Споткнулся · бросок недоступен
     </FittedNotice>
   ) : duelFatigueNotice ? (
-    <FittedNotice fit={noticeInScoreboard}
+    <FittedNotice fit={noticeInScoreboard || noticesOnIce}
       role="status"
       aria-live="polite"
-      className={`duel-fatigue-notice${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+      className={`duel-fatigue-notice${iceNoticeClass}${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
         currentDuelCondition?.status === 'exhausted_stop'
           ? ' duel-rest-notice'
           : currentDuelCondition?.status === 'nutrition_slowdown' ||
@@ -2265,10 +2269,10 @@ export function PlayView<TState>({
       {duelFatigueNotice}
     </FittedNotice>
   ) : effectiveStatusNotice ? (
-    <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
+    <FittedNotice fit={noticesOnIce || (noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice')}
       role="status"
       aria-live="polite"
-      className={`initial-training-feedback-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+      className={`initial-training-feedback-notice${iceNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
         effectiveStatusNoticeTone === 'magnetic'
           ? ' initial-training-feedback-notice--magnetic'
           : effectiveStatusNoticeTone === 'slip'

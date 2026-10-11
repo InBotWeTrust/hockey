@@ -117,7 +117,7 @@ export function FightControls({
           {calls}
         </span>
       )}
-      <span className="fight-challenge__label" aria-hidden="true">
+      <span className={`fight-challenge__label${!forced && !offered ? ' fight-challenge__label--call' : ''}`} aria-hidden="true">
         {forced ? 'БОЙ' : offered ? incoming ? 'ПРИНЯТЬ' : 'ЖДЁМ' : 'ВЫЗВАТЬ'}
       </span>
       {error && <p className="fight-challenge__error" role="status">{error}</p>}
