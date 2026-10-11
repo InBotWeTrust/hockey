@@ -366,7 +366,7 @@
   box-shadow: none;
 }
 /* Moving panorama previews use a stable material rather than clipped blur. */
-.app-shell .bar-space button.bar-place-preview {
+.app-shell .bar-space .bar-space__places button.bar-place-preview {
   background: #29282b;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
