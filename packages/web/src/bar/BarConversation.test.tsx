@@ -178,3 +178,33 @@ it('renders a physical intervention from Oleg without an empty user bubble', asy
  vi.mocked(fetchConversation).mockResolvedValue({...snapshot,turns:[{id:'gesture',user:'',assistant:'Руки убрал.',createdAt:'now',speaker:'oleg',intervention:'intervention',event:'physical'}]});
  open();expect(await screen.findByText('Руки убрал.')).toBeInTheDocument();expect(screen.getByRole('img',{name:'Олег'})).toBeInTheDocument();expect(screen.queryByLabelText('Твоё сообщение')).not.toBeInTheDocument();
 });
+
+it('replaces the composer with explicit Oleg choices and restores it after apology', async()=>{
+ vi.mocked(fetchConversation).mockResolvedValue({...snapshot,interventionActive:true} as typeof snapshot);
+ vi.mocked(sendConversation).mockImplementation(async(_character,message)=>({...snapshot,interventionActive:false,revision:1,turns:[{id:message.id,user:message.content,assistant:'Ладно. Давай без этого.',speaker:'oleg',intervention:'apology',createdAt:'now'}]}));
+ open();await screen.findByText(snapshot.greeting);
+ expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Пойти на конфликт'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Извиниться'}));
+ await screen.findByRole('textbox');
+ expect(vi.mocked(sendConversation).mock.calls[0]?.[1]).toMatchObject({conflictAction:'apologize'});
+});
+
+it('keeps the same explicit challenge for network retries and disables a second choice',async()=>{
+ vi.mocked(fetchConversation).mockResolvedValue({...snapshot,interventionActive:true});
+ vi.mocked(sendConversation).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({...snapshot,interventionActive:false});
+ open();await screen.findByText(snapshot.greeting);
+ fireEvent.click(screen.getByRole('button',{name:'Пойти на конфликт'}));
+ await screen.findByRole('alert');
+ expect(screen.getByRole('button',{name:'Извиниться'})).toBeDisabled();
+ fireEvent.click(screen.getByRole('button',{name:'Повторить отправку'}));
+ await screen.findByRole('textbox');
+ expect(vi.mocked(sendConversation).mock.calls[0]?.[1]).toMatchObject({conflictAction:'challenge'});
+ expect(vi.mocked(sendConversation).mock.calls[1]?.[1]).toEqual(vi.mocked(sendConversation).mock.calls[0]?.[1]);
+});
+it('does not revive old intervention controls after the daily reset',async()=>{
+ vi.mocked(fetchConversation).mockResolvedValue({...snapshot,interventionActive:false,turns:[{id:'old',user:'',assistant:'Руки убрал.',createdAt:'yesterday',speaker:'oleg',intervention:'intervention'}]});
+ open();await screen.findByText('Руки убрал.');
+ expect(screen.getByRole('textbox')).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Извиниться'})).not.toBeInTheDocument();
+});

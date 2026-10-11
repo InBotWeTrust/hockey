@@ -13,3 +13,7 @@ Player: original face, navy beanie, blue hoodie and trousers, black sneakers,
 bare hands. Pose files share a transparent 384×512 canvas and a ground baseline.
 Original source sheets were preserved. Results are square; the fight background
 is portrait. Only the bar sign contains text.
+
+Blocked-entry modal: `oleg-blocked-v1.webp`, square 1024×1024, generated from
+Oleg's existing avatar and the winter street reference. Source generation:
+`exec-e409eb45-5ff1-496a-94dc-d0df93e863b4.png`. Original source preserved.

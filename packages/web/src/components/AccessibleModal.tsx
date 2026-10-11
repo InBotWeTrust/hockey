@@ -51,11 +51,13 @@ export function AccessibleModal({
   copy,
   onClose,
   onRequestClose,
+  onExitComplete,
   open = true,
   presentation = 'modal',
   onDragEnd,
   dragControls,
   dragListener,
+  smoothSheet = false,
   closeBlocked = false,
   initialFocusRef,
   restoreFocusTo,
@@ -71,12 +73,14 @@ export function AccessibleModal({
   ariaLabel?: string;
   copy?: ReactNode;
   onClose?: () => void;
+  onExitComplete?: () => void;
   onRequestClose?: (reason: DismissReason) => void;
   open?: boolean;
   presentation?: 'modal' | 'sheet';
   onDragEnd?: (offsetY: number, velocityY: number) => void;
   dragControls?: DragControls;
   dragListener?: boolean;
+  smoothSheet?: boolean;
   closeBlocked?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
   restoreFocusTo?: HTMLElement | null;
@@ -191,7 +195,7 @@ export function AccessibleModal({
   }, [initialFocusRef, open]);
 
   return createPortal(
-    <AnimatePresence>
+    <AnimatePresence {...(onExitComplete ? { onExitComplete } : {})}>
       {open && (
         <motion.div
           ref={backdropRef}
@@ -237,8 +241,8 @@ export function AccessibleModal({
                   : { opacity: 0, y: 10, scale: 0.96 }
             }
             transition={
-              reduceMotion
-                ? { type: 'tween', duration: 0.12 }
+              reduceMotion || smoothSheet
+                ? { type: 'tween', duration: reduceMotion ? 0.12 : 0.22, ease: 'easeOut' }
                 : {
                     type: 'spring',
                     stiffness: presentation === 'sheet' ? 430 : 360,
@@ -251,6 +255,7 @@ export function AccessibleModal({
             {...(dragListener === undefined ? {} : { dragListener })}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0.06, bottom: 0.62 }}
+            {...(smoothSheet ? { dragMomentum: false, dragTransition: { bounceStiffness: 600, bounceDamping: 50 } } : {})}
             dragSnapToOrigin
             {...(onDragEnd === undefined
               ? {}

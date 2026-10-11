@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, it, vi } from 'vitest';
 import { createFightState, DEFAULT_FIGHT_RULES } from '@hockey/game-core';
 import { OlegFightPanel } from './OlegFightPanel.js';
-import { commandOlegFight, fetchOlegFight, type OlegSnapshot } from './olegFightApi.js';
+import { commandOlegFight, fetchOlegFight,acknowledgeOlegFight, type OlegSnapshot } from './olegFightApi.js';
 vi.mock('./olegFightApi.js', () => ({
   fetchOlegFight: vi.fn(),
   commandOlegFight: vi.fn(),
@@ -60,4 +60,22 @@ it('retries a command with the same action ID and sequence after a network failu
   expect(vi.mocked(commandOlegFight).mock.calls[1]).toEqual(
     vi.mocked(commandOlegFight).mock.calls[0],
   );
+});
+
+it('presents the live fight inside the same modal as duels',async()=>{
+ render(<OlegFightPanel id="one" onDone={()=>{}}/>);
+ await screen.findByText('Attack fixture');
+ expect(screen.getByRole('dialog',{name:'Драка'})).toHaveClass('duel-fight-card');
+});
+
+it('shows loss result before acknowledging it and keeps it visible when acknowledgment fails',async()=>{
+ vi.mocked(fetchOlegFight).mockResolvedValue({...snapshot('one'),outcome:'loss'});
+ vi.mocked(acknowledgeOlegFight).mockRejectedValueOnce(new Error('offline')).mockResolvedValue({blockedUntil:'2026-10-12T00:00:00Z',fightId:null});
+ const done=vi.fn();render(<OlegFightPanel id="one" onDone={done}/>);
+ await screen.findByRole('dialog',{name:'Результат драки'});
+ expect(acknowledgeOlegFight).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Понятно'}));
+ await screen.findByRole('alert');expect(done).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Понятно'}));
+ await waitFor(()=>expect(done).toHaveBeenCalledOnce());
 });

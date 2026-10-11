@@ -1,5 +1,5 @@
 import {it,expect,vi} from 'vitest';
-import {render,screen,fireEvent,act} from '@testing-library/react';
+import {render,screen,fireEvent,act,waitFor} from '@testing-library/react';
 import {BarConversation} from './BarConversation.js';
 import {fetchConversation} from './conversationApi.js';
 vi.mock('./conversationApi.js',()=>({fetchConversation:vi.fn(),sendConversation:vi.fn()}));
@@ -16,5 +16,6 @@ it('expands and collapses from the top handle without closing the conversation',
  };
  await drag(300,180);expect(screen.getByRole('dialog')).toHaveClass('bar-conversation--expanded');
  await drag(180,300);expect(screen.getByRole('dialog')).not.toHaveClass('bar-conversation--expanded');expect(close).not.toHaveBeenCalled();
- await drag(300,310);expect(screen.getByRole('dialog')).not.toHaveClass('bar-conversation--expanded');
+ await drag(300,310);expect(close).not.toHaveBeenCalled();
+ await drag(300,420);await waitFor(()=>expect(close).toHaveBeenCalledOnce());
 });

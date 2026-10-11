@@ -14,6 +14,7 @@ export interface ConversationSnapshot {
   greeting: string;
   revision: number;
   pending: boolean;
+  interventionActive?: boolean;
   turns: { id: string; user: string; assistant: string; createdAt: string; speaker?: BarCharacter; intervention?: string; fightId?: string; event?: 'physical' }[];
   preview?: boolean;
 }
@@ -21,6 +22,7 @@ export interface ConversationMessage {
   id: string;
   revision: number;
   content: string;
+  conflictAction?: 'apologize' | 'challenge';
 }
 export const fetchConversation = (character: BarCharacter) =>
   apiFetch<ConversationSnapshot>(`/bar/conversations/${character}`);

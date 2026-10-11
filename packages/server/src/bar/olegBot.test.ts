@@ -23,3 +23,10 @@ it('does not inspect or react to future player commands',()=>{
  const future={player:0 as const,phaseId:0,seq:1,effectiveAtMs:15000,kind:'input' as const,input:{direction:-1 as const,crouch:true,guard:true}};
  expect(advanceOlegRuntime(initial,6000,[future])).toEqual(advanceOlegRuntime(initial,6000));
 });
+
+it('leaves reaction time instead of landing a rapid opening knockout',()=>{
+ for(let seed=1;seed<=40;seed++){
+  const state=advanceOlegRuntime(createOlegRuntime(1000,seed),6000).state;
+  expect(state.hp[0],`seed ${seed}`).toBeGreaterThanOrEqual(3);
+ }
+});

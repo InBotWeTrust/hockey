@@ -1,3 +1,4 @@
+import { FightModal } from '../components/duel/fight/FightModal.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
@@ -127,9 +128,9 @@ export function OlegFightPanel({
   };
   if (!data)
     return (
-      <div className="bar-oleg-status">
+      <FightModal><div className="bar-oleg-status">
         <p role="status">{error || 'Готовим драку…'}</p>
-      </div>
+      </div></FightModal>
     );
   const finish = () => {
     if (finishing) return;
@@ -190,6 +191,7 @@ export function OlegFightPanel({
       </AccessibleModal>
     );
   return (
+    <FightModal>
     <div className="bar-oleg-fight">
       <FightView
         state={data.state}
@@ -204,5 +206,6 @@ export function OlegFightPanel({
       />
       {error && <p role="status">{error}</p>}
     </div>
+    </FightModal>
   );
 }

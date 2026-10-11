@@ -68,3 +68,17 @@
   width: 14px;
   height: 14px;
 }
+
+.bar-oleg-fight .fight-arena {
+  background: url('/bar/fight/street-v1.webp') center/cover no-repeat;
+}
+.bar-oleg-fight .fight-responsive-controls .fight-held {
+  background: rgba(20, 27, 39, .88);
+  color: #fff;
+  border-color: rgba(255, 255, 255, .4);
+  text-shadow: none;
+}
+.bar-oleg-fight .fight-responsive-controls .fight-held[aria-pressed="true"],
+.bar-oleg-fight .fight-responsive-controls .fight-held:active {
+  background: rgba(59, 76, 98, .96);
+}

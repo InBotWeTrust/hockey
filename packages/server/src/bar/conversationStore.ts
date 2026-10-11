@@ -18,13 +18,17 @@ interface Row {
 export class SqlConversationStore implements ConversationStore {
   constructor(private readonly pool: Pool) {}
   async read(user: string, character: Character): Promise<ConversationRecord> {
-    const { rows } = await this.pool.query<Row>(
-      `select revision,turns,(pending_until > now()) as pending from bar_conversations where user_id=$1 and character_id=$2`,
+    const { rows } = await this.pool.query<Row & { interventionActive: boolean }>(
+      `select coalesce(b.revision,0) as revision,coalesce(b.turns,'[]'::jsonb) as turns,
+        coalesce(b.pending_until > now(),false) as pending,
+        coalesce(c.day=(now() at time zone coalesce(u.timezone,'UTC'))::date and c.intervening,false) as "interventionActive"
+       from users u left join bar_conversations b on b.user_id=u.id and b.character_id=$2
+       left join bar_conflicts c on c.user_id=u.id where u.id=$1`,
       [user, character],
     );
-    const row = rows[0];
-    return row ? { ...row, pending: !!row.pending } : { revision: 0, turns: [], pending: false };
+    return rows[0] ?? { revision: 0, turns: [], pending: false, interventionActive: false };
   }
+
   async reserve(
     user: string,
     character: Character,
@@ -124,8 +128,11 @@ export class SqlConversationStore implements ConversationStore {
       }
       if(enabled) await db.query(`insert into bar_memory_jobs(user_id,character_id,target_revision) values($1,$2,$3)
         on conflict(user_id,character_id) do update set target_revision=excluded.target_revision,attempts=0,next_at=now()`, [user,character,rows[0].revision]);
+      const active = await db.query<{ interventionActive: boolean }>(
+        `select coalesce(c.day=(now() at time zone coalesce(u.timezone,'UTC'))::date and c.intervening,false) as "interventionActive"
+         from users u left join bar_conflicts c on c.user_id=u.id where u.id=$1`, [user]);
       await db.query('commit');
-      return rows[0];
+      return {...rows[0], interventionActive: active.rows[0]?.interventionActive ?? false};
     } catch (error) {
       await db.query('rollback');
       throw error;

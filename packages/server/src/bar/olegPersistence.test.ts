@@ -79,12 +79,14 @@ describe.skipIf(!enabled)('isolated Oleg persistence', () => {
     expect((await restarted.read(user, id)).outcome).toBe('loss');
     const first = await readBarAccess(pool, user);
     expect(first.blockedUntil).toBeTruthy();
+    expect(first.fightId).toBe(id);
     expect(
       new Date(first.blockedUntil!).toLocaleTimeString('en-GB', { timeZone: 'Europe/Moscow' }),
     ).toBe('00:00:00');
     await restarted.read(user, id);
     expect((await readBarAccess(pool, user)).blockedUntil).toBe(first.blockedUntil);
     await restarted.acknowledge(user, id);
+    expect((await readBarAccess(pool, user)).fightId).toBeNull();
     await expect(assertBarAccess(pool, user)).rejects.toMatchObject({ code: 'bar_closed' });
   });
   it('guards all bar HTTP endpoints including direct links while allowing result recovery', async () => {
