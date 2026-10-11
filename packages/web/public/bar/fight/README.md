@@ -17,3 +17,28 @@ is portrait. Only the bar sign contains text.
 Blocked-entry modal: `oleg-blocked-v1.webp`, square 1024×1024, generated from
 Oleg's existing avatar and the winter street reference. Source generation:
 `exec-e409eb45-5ff1-496a-94dc-d0df93e863b4.png`. Original source preserved.
+
+## Version 2: standalone city bar
+
+The active environment is a substantial detached two-story sports bar in a
+well-maintained city neighborhood, without festive decorations. Version 1
+files and original source generations remain preserved.
+
+- `street-v2.webp`: portrait 1024×1536; source `exec-a24845c7-ae7a-4468-95aa-802f09c1d741.png`.
+- `player-win-v2.webp`: square 1024×1024; source `exec-46532302-78fc-4a9f-91fd-3067c352e642.png`.
+- `player-loss-v2.webp`: square 1024×1024; source `exec-d5ca7292-8cda-4300-b560-461703ecbc66.png`.
+- `oleg-blocked-v2.webp`: square 1024×1024; source `exec-3b71dc1b-5746-47d8-b334-b91865fd22cf.png`.
+
+All three square scenes use the version 2 facade as an environment reference
+and the version 1 characters as identity, clothing and pose references.
+
+## Player poses version 2
+
+Ten transparent 384×512 poses from generation
+`exec-15778675-ceae-4d51-8ccc-1f84fb25fe3f.png`, using the original player identity
+sheet and version 1 poses as references. Revised taller stance and longer legs;
+navy beanie, blue hoodie and striped trousers, black sneakers with white soles,
+bare hands. Uniform scaling across all poses; foot baseline at y=460.
+Oleg continues to use his unchanged version 1 frames.
+
+Preparation: `pnpm --filter @hockey/web exec node scripts/prepare-bar-player-v2.mjs <source-sheet-path>`.
