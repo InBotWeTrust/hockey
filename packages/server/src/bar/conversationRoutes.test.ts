@@ -223,3 +223,27 @@ it('validates physical gestures before accessing storage and requires auth',asyn
  expect((await app.inject({method:'POST',url,headers:{authorization:'alice'},payload:{eventId:'bad'}})).statusCode).toBe(400);
  expect((await app.inject({method:'POST',url:'/bar/conversations/online/physical-incident',headers:{authorization:'alice'},payload:{eventId:'11111111-1111-4111-8111-111111111111'}})).statusCode).toBe(400);
 });
+
+it('handles explicit conflict choices without generation, deduplicates retries and rejects stale choices',async()=>{
+ await app.close();app=Fastify();app.decorate('authenticate',async(request:{user?:{id:string}})=>{request.user={id:'alice'};});
+ let row={revision:0,turns:[],pending:false} as ConversationRecord;
+ let intervening=true;
+ const complete=vi.fn<Parameters<ConversationStore['complete']>,ReturnType<ConversationStore['complete']>>(async(_u,_c,t,_stories,effect)=>{
+  intervening=effect?.intervening ?? intervening;
+  row={...row,revision:row.revision+1,turns:[...row.turns,t]};return row;
+ });
+ const classify=vi.fn();
+ await app.register(conversationRoutes,{store:{read:async()=>row,reserve:async(_u:string,_c:Character,id:string)=>({kind:row.turns.some(t=>t.id===id)?'duplicate':'reserved',record:row}),complete,release:async()=>{}},answer,moderate,gameStore:{save:async()=>true},classifyConflict:classify,conflicts:{state:async()=>({day:'2026-10-11',warnings:2,intervening}),phrase:async()=> 'Ладно.'}});
+ const payload={id:'11111111-1111-4111-8111-111111111111',revision:0,content:'Извини, больше не буду.',conflictAction:'apologize'};
+ const post=()=>app.inject({method:'POST',url:'/bar/conversations/maria',headers:{authorization:'alice'},payload});
+ expect((await post()).statusCode).toBe(200);
+ expect(complete.mock.calls[0]?.[2]).toMatchObject({speaker:'oleg',intervention:'apology'});
+ expect(complete.mock.calls[0]?.[4]).toMatchObject({warnings:2,intervening:false});
+ expect((await post()).statusCode).toBe(200);expect(complete).toHaveBeenCalledOnce();
+ intervening=true;payload.id='22222222-2222-4222-8222-222222222222';payload.revision=1;payload.conflictAction='challenge';payload.content='Подменённый текст';
+ expect((await post()).statusCode).toBe(200);expect(complete.mock.calls[1]?.[2]).toMatchObject({user:'Давай выйдем, Олег.',intervention:'fight'});
+ expect((await post()).statusCode).toBe(200);expect(complete).toHaveBeenCalledTimes(2);
+ payload.id='33333333-3333-4333-8333-333333333333';payload.revision=2;
+ expect((await post()).statusCode).toBe(409);
+ expect(answer).not.toHaveBeenCalled();expect(classify).not.toHaveBeenCalled();expect(moderate).not.toHaveBeenCalled();
+});

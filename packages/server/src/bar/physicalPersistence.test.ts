@@ -13,11 +13,12 @@ describe.skipIf(!url?.includes('uh_bar_oleg_test_'))('physical incidents in isol
  it('deduplicates concurrent delivery, isolates ownership, records no fabricated user message',async()=>{
   const id=randomUUID();await Promise.all([recordPhysicalIncident(pool,user,'maria',id),recordPhysicalIncident(pool,user,'maria',id)]);
   expect((await state.state(user)).warnings).toBe(1);expect((await state.state(other)).warnings).toBe(0);
-  const turns=(await store.read(user,'maria')).turns;expect(turns).toHaveLength(1);expect(turns[0]).toMatchObject({user:'',event:'physical',speaker:'oleg',intervention:'intervention'});
+  const turns=(await store.read(user,'maria')).turns;expect((await store.read(user,'daria')).interventionActive).toBe(true);expect((await store.read(other,'daria')).interventionActive).toBe(false);expect(turns).toHaveLength(1);expect(turns[0]).toMatchObject({user:'',event:'physical',speaker:'oleg',intervention:'intervention'});
   await expect(recordPhysicalIncident(pool,user,'daria',id)).rejects.toMatchObject({statusCode:409});
  });
  it('reset starts a new intervention; next gesture against another character starts one fight',async()=>{
   await pool.query("update bar_conflicts set day=day-1 where user_id=$1",[user]);
+  expect((await store.read(user,'maria')).interventionActive).toBe(false);
   await recordPhysicalIncident(pool,user,'oleg',randomUUID());expect((await state.state(user)).warnings).toBe(1);
   const id=randomUUID();await recordPhysicalIncident(pool,user,'grigory',id);await recordPhysicalIncident(pool,user,'grigory',id);
   expect((await state.state(user)).warnings).toBe(2);expect((await store.read(user,'grigory')).turns[0]?.fightId).toBeTruthy();

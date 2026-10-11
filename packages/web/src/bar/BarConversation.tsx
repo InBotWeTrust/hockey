@@ -40,11 +40,14 @@ export function BarConversation({
   const [showMemory,setShowMemory]=useState(false);
   const [confirmFight,setConfirmFight]=useState(false);
   const dragControls = useDragControls();
+  const [closing, setClosing] = useState(false);
+  const close = () => setClosing(true);
   const [expanded, setExpanded] = useState(false);
   const [avatarFailed, setAvatarFailed] = useState(false);
   const inFlight = useRef(false);
   const [localMessages, setLocalMessages] = useState<LocalMessage[]>([]);
   const [thinkingIndex, setThinkingIndex] = useState(0);
+  const interventionActive = data?.interventionActive ?? data?.turns.at(-1)?.intervention === 'intervention';
   const waiting = sending || !!data?.pending;
   useEffect(() => {
     setThinkingIndex(0);
@@ -97,13 +100,13 @@ export function BarConversation({
   useEffect(() => {
     if (log.current) log.current.scrollTop = log.current.scrollHeight;
   }, [data, sending, localMessages]);
-  const send = async (content: string, retryMessage?: LocalMessage) => {
+  const send = async (content: string, retryMessage?: LocalMessage, conflictAction?: ConversationMessage['conflictAction']) => {
     if (!data || loading || data.pending || inFlight.current || !content) return;
     inFlight.current = true;
     setSending(true);
     setError('');
     const previous = retryMessage ?? localMessages.find(item => item.failed && item.message.content === content);
-    const message = previous?.message ?? { id: crypto.randomUUID(), revision: data.revision, content };
+    const message = previous?.message ?? { id: crypto.randomUUID(), revision: data.revision, content, ...(conflictAction ? { conflictAction } : {}) };
     const localId = previous?.localId ?? message.id;
     setLocalMessages(items => [...items.filter(item => item.localId !== localId), {localId, message, failed: false}]);
     try {
@@ -163,13 +166,19 @@ export function BarConversation({
       }
       ariaLabel={`Разговор: ${name}`}
       presentation="sheet"
-      onClose={onClose}
+      open={!closing}
+      onClose={close}
+      onExitComplete={onClose}
       backdropStyle={{ background: 'var(--liquid-inset-bg)', backdropFilter: 'none', height: 'var(--app-viewport-height, 100dvh)', bottom: 'auto' }}
+      smoothSheet
       dragListener={false}
       dragControls={dragControls}
       onDragEnd={(offset,velocity)=>{
         if(offset < -60 || (offset < -12 && velocity < -450))setExpanded(true);
-        else if(offset > 60 || (offset > 12 && velocity > 450))setExpanded(false);
+        else if(offset > 60 || (offset > 12 && velocity > 450)) {
+          if (expanded) setExpanded(false);
+          else close();
+        }
       }}
       beforeHeader={<div className="sheet-drag-handle" aria-hidden="true" onPointerDown={event=>dragControls.start(event)}><div className="sheet-grabber"/></div>}
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface bar-conversation${!data?.turns.length ? ' bar-conversation--empty' : ''}${expanded ? ' bar-conversation--expanded' : ''}`}
@@ -184,7 +193,7 @@ export function BarConversation({
           >
             {expanded ? <Minimize2 size={18} /> : <Expand size={18} />}
           </button>
-          <button className="icon-btn" aria-label="Закрыть разговор" onClick={onClose}>
+          <button className="icon-btn" aria-label="Закрыть разговор" onClick={close}>
             <X size={18} />
           </button>
         </div>
@@ -226,7 +235,7 @@ export function BarConversation({
               {item.failed && <button className="bar-conversation__retry bar-conversation__message-retry" disabled={waiting || loading || !data} onClick={() => void send(item.message.content, item)}>Повторить отправку</button>}
             </div>
           ))}
-          {waiting && <p className="bar-conversation__thinking" role="status">{name} {thinkingPhrases[thinkingIndex]}</p>}
+          {waiting && <p className="bar-conversation__thinking" role="status">{interventionActive ? 'Олег' : name} {thinkingPhrases[thinkingIndex]}</p>}
         </div>
         {error && (
           <div className="bar-conversation__error" role="alert">
@@ -239,13 +248,19 @@ export function BarConversation({
           </div>
         )}
         <div className="bar-chat-input bar-conversation__composer">
-          <ChatInput
+          {interventionActive ? <div className="bar-conversation__conflict-actions">
+            <p>Если пойдёшь на конфликт, начнётся драка с Олегом.</p>
+            <div className="modal-actions">
+              <button className="btn btn--ghost" disabled={waiting || loading || localMessages.some(item=>item.failed)} onClick={()=>void send('Извини, больше не буду.', undefined, 'apologize')}>Извиниться</button>
+              <button className="btn btn--cta" disabled={waiting || loading || localMessages.some(item=>item.failed)} onClick={()=>void send('Давай выйдем, Олег.', undefined, 'challenge')}>Пойти на конфликт</button>
+            </div>
+          </div> : <ChatInput
             replyTo={null}
             onClearReply={() => {}}
             onSend={(content) => { void send(content); }}
             placeholder="Сообщение..."
             disabled={!data || loading || sending || !!data.pending}
-          />
+          />}
         </div>
         </>}
       </div>

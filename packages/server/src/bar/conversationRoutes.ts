@@ -38,6 +38,7 @@ export interface ConversationRecord {
   revision: number;
   turns: ConversationTurn[];
   pending: boolean;
+  interventionActive?: boolean;
 }
 export type Reservation =
   | { kind: 'reserved' | 'duplicate'; record: ConversationRecord }
@@ -117,6 +118,7 @@ const messageSchema = z
     id: z.string().uuid(),
     revision: z.number().int().min(0),
     content: z.string().trim().min(1).max(4000),
+    conflictAction: z.enum(['apologize', 'challenge']).optional(),
   })
   .strict();
 // The entire check, including its database read, shares one bounded deadline.
@@ -218,9 +220,9 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
     if (!parsed.success)
       throw new AppError('bad_request', 'Напиши сообщение до 4000 символов.', 400);
     const { id, revision } = parsed.data;
-    const content=redactSecrets(parsed.data.content);
+    const content=parsed.data.conflictAction === 'apologize' ? 'Извини, больше не буду.' : parsed.data.conflictAction === 'challenge' ? 'Давай выйдем, Олег.' : redactSecrets(parsed.data.content);
     const user = request.user.id;
-    if (!options.answer && !available)
+    if (!parsed.data.conflictAction && !options.answer && !available)
       throw new AppError(
         'conversation_unavailable',
         'Собеседник пока не отвечает. Попробуй позже.',
@@ -230,7 +232,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
     if (reserved.kind === 'duplicate') {
       if (reserved.record.turns.find((t) => t.id === id)?.user !== content)
         throw new AppError('conversation_stale', 'Обнови разговор.', 409);
-      return snapshot(character, reserved.record);
+      return snapshot(character, await store.read(user, character));
     }
     if (reserved.kind === 'limit')
       throw new AppError('conversation_limit', 'Сегодня много поговорили. Продолжим завтра.', 429);
@@ -241,6 +243,18 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
         409,
       );
     try {
+      if (parsed.data.conflictAction) {
+        if (!conflicts) throw new AppError('conversation_stale', 'Обнови разговор.', 409);
+        const current = await conflicts.state(user);
+        if (!current.intervening) throw new AppError('conversation_stale', 'Олег уже не вмешивается. Обнови разговор.', 409);
+        const verdict = parsed.data.conflictAction === 'apologize' ? 'apology' : 'insult';
+        const effect: ConflictEffect = {...nextConflict(current, verdict), day: current.day, category: verdict};
+        const reply = await conflicts.phrase(effect.kind, verdict);
+        return snapshot(character, await store.complete(user, character, {
+          id, user: content, assistant: reply, createdAt: new Date().toISOString(),
+          speaker: 'oleg', intervention: effect.kind,
+        }, [], effect));
+      }
       let context: ConversationContext | undefined;
       try { context = await memory?.context(user,character,content,reserved.record.turns); }
       catch { app.log.warn({ code: 'bar_memory_context_failed' }, 'Conversation continues without memory'); }
