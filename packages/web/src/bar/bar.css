@@ -609,7 +609,7 @@
 .bar-screen .bar-section-label { margin:16px 0 12px; }
 .bar-screen .bar-header .icon-btn { width:36px; height:36px; min-width:36px; padding:0; }
 .bar-screen .bar-header .icon-btn svg { width:22px; height:22px; }
-.bar-screen .bar-filters .segmented-tabs { background:var(--surface-card-bg,var(--liquid-card-bg)); border:1px solid var(--liquid-border); box-shadow:var(--surface-card-shadow,var(--liquid-shadow)); backdrop-filter:var(--surface-blur,var(--liquid-blur)); -webkit-backdrop-filter:var(--surface-blur,var(--liquid-blur)); }
+.bar-screen .bar-filters .segmented-tabs { background:var(--liquid-card-bg); border:1px solid var(--liquid-border); box-shadow:var(--surface-card-shadow,var(--liquid-shadow)); backdrop-filter:var(--surface-blur,var(--liquid-blur)); -webkit-backdrop-filter:var(--surface-blur,var(--liquid-blur)); }
 .bar-screen .bar-filters .segmented-tabs__item { color:var(--liquid-ink); }
 .bar-screen .bar-filters .segmented-tabs__item--active { background:var(--liquid-selected-bg); border-color:var(--liquid-border); box-shadow:var(--liquid-selected-shadow); color:var(--liquid-ink); }
 .bar-screen .bar-header { margin-bottom:8px; }

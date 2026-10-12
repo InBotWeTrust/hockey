@@ -164,7 +164,7 @@ document.documentElement.style.setProperty('--app-safe-bottom', safeAreaPreview 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={new QueryClient()}>
-      <div className="app-shell--unified-glass">
+      <div className="app-shell app-shell--unified-glass">
         <MotionConfig reducedMotion="user">
           <HashRouter>
             <PreviewChrome />
