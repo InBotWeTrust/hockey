@@ -81,6 +81,13 @@ describe('ChannelPostCommentsScreen', () => {
     });
   });
 
+  it('uses the shared shell viewport for the comment composer', () => {
+    vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
+    vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([]);
+    renderScreen();
+    expect(screen.getByRole('main')).toHaveStyle({ height: 'var(--app-viewport-height, 100dvh)', minHeight: '0' });
+  });
+
   it('sends replies to comments with replyToId', async () => {
     vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
     vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);

@@ -285,7 +285,6 @@ export function ChannelPostCommentsScreen(): JSX.Element {
   const me = useAuthStore((s) => s.user);
   const meId = me?.id ?? null;
   const isAdmin = me?.role === 'admin';
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
   const [replyToComment, setReplyToComment] = useState<ChannelPostCommentDTO | null>(null);
   const [actionTarget, setActionTarget] = useState<ActionTarget | null>(null);
   const [pickerTarget, setPickerTarget] = useState<{
@@ -312,23 +311,6 @@ export function ChannelPostCommentsScreen(): JSX.Element {
     setActive(chatId);
     return () => setActive(null);
   }, [chatId, setActive]);
-
-  useEffect(() => {
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    const desktopPointer =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
-    if (desktopPointer) return;
-    if (!vv) return;
-    const update = (): void => setViewportHeight(vv.height);
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
 
   useEffect(() => clearPendingAttachment, [clearPendingAttachment]);
 
@@ -539,7 +521,8 @@ export function ChannelPostCommentsScreen(): JSX.Element {
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
-        height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
+        height: 'var(--app-viewport-height, 100dvh)',
+        minHeight: 0,
         overflow: 'hidden',
       }}
     >

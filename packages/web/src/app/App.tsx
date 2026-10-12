@@ -378,6 +378,7 @@ function AppExperience(): JSX.Element {
           height: 'var(--app-viewport-height, 100dvh)',
           minHeight: 'var(--app-viewport-height, 100dvh)',
           position: 'relative',
+          top: 'var(--app-viewport-top, 0px)',
           transform: 'translateZ(0)',
           overflow: 'hidden',
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',

@@ -448,27 +448,6 @@ export function ChatRoomScreen(): JSX.Element {
   const emptyUnreadRefetchChatIdRef = useRef<string | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceRecordingState>('idle');
   latestGotoRef.current = goto;
-  // Android (especially MIUI WebView) and some iOS Safari builds don't shrink
-  // `100dvh` when the soft keyboard opens, so the composer ends up beneath
-  // the keyboard. visualViewport.height is the source of truth — track it
-  // and pin the screen height to it so the layout adapts in real time.
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-  useEffect(() => {
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    const desktopPointer =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
-    if (desktopPointer) return;
-    if (!vv) return;
-    const update = (): void => setViewportHeight(vv.height);
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
   // Auto-follow only when the user is already near the bottom; pagination
   // (loading older messages) keeps the viewport stable instead of jumping.
   const isNearBottomRef = useRef(true);
@@ -1357,20 +1336,12 @@ export function ChatRoomScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        // `position: fixed` was previously used to pin the chat to the viewport,
-        // but `app-shell` has `transform: translateZ(0)` which turns any
-        // descendant `fixed` element into a containing-block-relative `absolute`
-        // — so the document scroll dragged the header up and pushed the input
-        // below the screen. Sizing exactly to the visual viewport + clipping
-        // overflow keeps the header pinned and the messages list owning its
-        // own scroll. visualViewport.height adapts to the soft keyboard
-        // (where 100dvh on Android often does not), so the composer stays
-        // visible while typing. Fallback to 100dvh on browsers without
-        // visualViewport.
+        // Share the shell viewport, including keyboard resize and Safari panning.
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
-        height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
+        height: 'var(--app-viewport-height, 100dvh)',
+        minHeight: 0,
         overflow: 'hidden',
       }}
     >
