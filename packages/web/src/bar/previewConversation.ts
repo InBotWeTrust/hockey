@@ -9,7 +9,7 @@ const greetings: Record<BarCharacter, string> = {
   veronika: 'Добро пожаловать в «4-й период»! Как тебе наш бар?',
   oleg: 'Привет. Всё спокойно? Присаживайся, рассказывай.',
   igor: 'Привет! Что смотрел в последнее время? Давай обсудим матч.',
-  timofey: 'Привет! Наконец можно передохнуть. Как твои дела?',
+  timofey: 'Привет! Присаживайся. Как дела на льду?',
 };
 export function installConversationPreview() {
   const original = window.fetch.bind(window);
