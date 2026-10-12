@@ -828,6 +828,17 @@
   min-height: 36px;
   font-size: 12px;
 }
+/* Keep incoming card invitations readable over the bar scene. */
+.online-durak-invite__actions .duel-invite-action--decline {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #fff;
+}
+.online-durak-invite__actions .duel-invite-action--accept {
+  background: #15803d;
+  border-color: #22c55e;
+  color: #fff;
+}
 .online-durak-search .duel-form-section-title {
   color: rgba(240, 248, 255, 0.86);
   font-size: 10px;
