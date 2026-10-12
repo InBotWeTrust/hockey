@@ -1,0 +1,254 @@
+[
+  {
+    "character": "igor",
+    "emotion": "neutral",
+    "file": "igor/neutral-v1.webp",
+    "sourceSha256": "aae3fee9a83560924b3cd6e93188730229e0f1e9245d26bc690146d0f87b1f6c"
+  },
+  {
+    "character": "igor",
+    "emotion": "joy",
+    "file": "igor/joy-v1.webp",
+    "sourceSha256": "c74ee698870934b77d17c04ce59d88eb04f3e80b106bd567194d5b417f131bd7"
+  },
+  {
+    "character": "igor",
+    "emotion": "interest",
+    "file": "igor/interest-v1.webp",
+    "sourceSha256": "6856126900f0aacfd4bb1a4ee6fd7c57d5ebdba933943e280249b9cc87cec0e3"
+  },
+  {
+    "character": "igor",
+    "emotion": "surprise",
+    "file": "igor/surprise-v1.webp",
+    "sourceSha256": "e586c05102627475172a7b893272947c5fa00d0ca093c7e46ac5d8221ba3a18c"
+  },
+  {
+    "character": "igor",
+    "emotion": "empathy",
+    "file": "igor/empathy-v1.webp",
+    "sourceSha256": "f6625979efabeff355b0fededa472de3974ed95d75dbf70869b387f2fa6922b7"
+  },
+  {
+    "character": "igor",
+    "emotion": "displeasure",
+    "file": "igor/displeasure-v1.webp",
+    "sourceSha256": "c5e1537b2d90be3dffb4aa2b0308db5a5c6c6940ed26460bf0fb5aff3316dcf0"
+  },
+  {
+    "character": "veronika",
+    "emotion": "neutral",
+    "file": "veronika/neutral-v1.webp",
+    "sourceSha256": "1d69d7262ffb4c9a2c140d85c3ec7011f29fd5e70cc31eacdfc2519de1e81a22"
+  },
+  {
+    "character": "veronika",
+    "emotion": "joy",
+    "file": "veronika/joy-v1.webp",
+    "sourceSha256": "99a5f23d4c1a79a31d34d2f039a1ec812466d9babfdd59c951ecf703d8b65278"
+  },
+  {
+    "character": "veronika",
+    "emotion": "interest",
+    "file": "veronika/interest-v1.webp",
+    "sourceSha256": "5294d30d301d6f4621f60de85dd7eac2a1ebfe3950bc4e74331f8c3b451c4e40"
+  },
+  {
+    "character": "veronika",
+    "emotion": "surprise",
+    "file": "veronika/surprise-v1.webp",
+    "sourceSha256": "267258b9c959f29fff8a6e30341fd029785429e4e6d21c591b6c449c279e9695"
+  },
+  {
+    "character": "veronika",
+    "emotion": "empathy",
+    "file": "veronika/empathy-v1.webp",
+    "sourceSha256": "6b2406690badccb72da8bedf37567f7114081b9f9989b481f7dc76dc151a0401"
+  },
+  {
+    "character": "veronika",
+    "emotion": "displeasure",
+    "file": "veronika/displeasure-v1.webp",
+    "sourceSha256": "ab95bd315d43c00ce3b97bdb2510e0549b8461ccd6ee5bf09dcbd54e27317f22"
+  },
+  {
+    "character": "oleg",
+    "emotion": "neutral",
+    "file": "oleg/neutral-v1.webp",
+    "sourceSha256": "d80fce39543db5cdb6218fab1e490d0e669894eb5e4e3fdd57ed65c7b9939fbf"
+  },
+  {
+    "character": "oleg",
+    "emotion": "joy",
+    "file": "oleg/joy-v1.webp",
+    "sourceSha256": "0430f0ff90be163472754150eb6b62d5f369742540d65bd84065b10b9afbe6e3"
+  },
+  {
+    "character": "oleg",
+    "emotion": "interest",
+    "file": "oleg/interest-v1.webp",
+    "sourceSha256": "ebf01ac62b384f403a798933e234b6e594008f45a84291921d50db25a1c50d91"
+  },
+  {
+    "character": "oleg",
+    "emotion": "surprise",
+    "file": "oleg/surprise-v1.webp",
+    "sourceSha256": "f23e8648f904126eaf4f1d5ce778d18aaf1a30eb26e5374ba49f993e9f2cf544"
+  },
+  {
+    "character": "oleg",
+    "emotion": "empathy",
+    "file": "oleg/empathy-v1.webp",
+    "sourceSha256": "bc2bc0d2ef1c7de07f78fb7aa4a98e1b937c89663a329e354ba4ace929c2eaaa"
+  },
+  {
+    "character": "oleg",
+    "emotion": "displeasure",
+    "file": "oleg/displeasure-v1.webp",
+    "sourceSha256": "bfcd9588fa34fadeed302b310d0a63f63754098d7093927beec19082a3e5e221"
+  },
+  {
+    "character": "grigory",
+    "emotion": "neutral",
+    "file": "grigory/neutral-v1.webp",
+    "sourceSha256": "826da6f0507e58eedd89bdc53038725e5f74d0e48ae4c5dc8c922cecdcbfcb91"
+  },
+  {
+    "character": "grigory",
+    "emotion": "joy",
+    "file": "grigory/joy-v1.webp",
+    "sourceSha256": "1b78491158e60bd48ec22fce6f2c1bf64c92933c3cc36152d164e6b1c1cd735a"
+  },
+  {
+    "character": "grigory",
+    "emotion": "interest",
+    "file": "grigory/interest-v1.webp",
+    "sourceSha256": "af343ea8d0beb4f424c1a8f2446fad5f838199f3c28c0b2664cf2c73a99afed2"
+  },
+  {
+    "character": "grigory",
+    "emotion": "surprise",
+    "file": "grigory/surprise-v1.webp",
+    "sourceSha256": "912217031e82eeb7f8b8424d5c64fe6584e92abdf9ab4d3fc49cb7203a19efcc"
+  },
+  {
+    "character": "grigory",
+    "emotion": "empathy",
+    "file": "grigory/empathy-v1.webp",
+    "sourceSha256": "12c42382662e9312a6657538076afbfb7d0663fd0ece1ae3114f2763a66f72dc"
+  },
+  {
+    "character": "grigory",
+    "emotion": "displeasure",
+    "file": "grigory/displeasure-v1.webp",
+    "sourceSha256": "85174b4b6745dedb3ec6b52902a16525e900df2480b210dd6cc90b4b7e0dc614"
+  },
+  {
+    "character": "arsenich",
+    "emotion": "neutral",
+    "file": "arsenich/neutral-v1.webp",
+    "sourceSha256": "54efd0afe72ee30515900105621241c2e045c04986e428624a88289abbe68f52"
+  },
+  {
+    "character": "arsenich",
+    "emotion": "joy",
+    "file": "arsenich/joy-v1.webp",
+    "sourceSha256": "ce6c8a4c3dc6fa9a054d1c8ddddfccb7c0bd3621e440fe5d21f4cb818d2f25c6"
+  },
+  {
+    "character": "arsenich",
+    "emotion": "interest",
+    "file": "arsenich/interest-v1.webp",
+    "sourceSha256": "737dc47231d0cd15199cb1a9f0efbd343427f96f99cef34551f6e16b63848198"
+  },
+  {
+    "character": "arsenich",
+    "emotion": "surprise",
+    "file": "arsenich/surprise-v1.webp",
+    "sourceSha256": "82c8be355bdd108247dd11f70bee315338e31f5b9b893951ffa861e274d9c53d"
+  },
+  {
+    "character": "arsenich",
+    "emotion": "empathy",
+    "file": "arsenich/empathy-v1.webp",
+    "sourceSha256": "8ff3ff8e21b8642f72176e4c478166ce5a1e75d90d17d8650c4e32b0a5483d35"
+  },
+  {
+    "character": "arsenich",
+    "emotion": "displeasure",
+    "file": "arsenich/displeasure-v1.webp",
+    "sourceSha256": "39468219d0adb0a34b27fe41e5570fa9803ed632809864781f141eb0e91bea40"
+  },
+  {
+    "character": "daria",
+    "emotion": "neutral",
+    "file": "daria/neutral-v1.webp",
+    "sourceSha256": "55276936ea94f4535988572d4de3265cd4e2ff218326a8b053f147b885a630b8"
+  },
+  {
+    "character": "daria",
+    "emotion": "joy",
+    "file": "daria/joy-v1.webp",
+    "sourceSha256": "6aa2de81648d0fd8a949895f9b1f251d88ec7a651c280e26a017dcb202081561"
+  },
+  {
+    "character": "daria",
+    "emotion": "interest",
+    "file": "daria/interest-v1.webp",
+    "sourceSha256": "4b91a667e9752996d1b3906edb3c3f4f97340ddc2f040d834387f4cc03aee65b"
+  },
+  {
+    "character": "daria",
+    "emotion": "surprise",
+    "file": "daria/surprise-v1.webp",
+    "sourceSha256": "73520c678b079ebef54ce7edb4ec5707e4267e30419280caa91dc667d3aa3bf2"
+  },
+  {
+    "character": "daria",
+    "emotion": "empathy",
+    "file": "daria/empathy-v1.webp",
+    "sourceSha256": "e680736d9eaa7dbec52ce126395d6dd86078050d87ec564f79f118b28aa11090"
+  },
+  {
+    "character": "daria",
+    "emotion": "displeasure",
+    "file": "daria/displeasure-v1.webp",
+    "sourceSha256": "2876f545323813384846730fcc4e19018034fce7450c59577dbf391aea54fdf5"
+  },
+  {
+    "character": "maria",
+    "emotion": "neutral",
+    "file": "maria/neutral-v1.webp",
+    "sourceSha256": "74c0cfeec8eeeb4b99aa0e2427e258b07d770f668ff720dcfe93e272ccfba021"
+  },
+  {
+    "character": "maria",
+    "emotion": "joy",
+    "file": "maria/joy-v1.webp",
+    "sourceSha256": "79914926785cfff458739119083e4060426b0cacbb4d8d46e0624d0a6ae9a267"
+  },
+  {
+    "character": "maria",
+    "emotion": "interest",
+    "file": "maria/interest-v1.webp",
+    "sourceSha256": "9d17dd9ef5e7fecd7d78913d5320d91414f0e082128680399fd069f48b6eaf17"
+  },
+  {
+    "character": "maria",
+    "emotion": "surprise",
+    "file": "maria/surprise-v1.webp",
+    "sourceSha256": "706511113b22a0c3fc90d139e0389f9d4c7d009a63fcd75eb0d451fc8a19ff60"
+  },
+  {
+    "character": "maria",
+    "emotion": "empathy",
+    "file": "maria/empathy-v1.webp",
+    "sourceSha256": "606d53ba973760484f8a2ae8596d8e89520b3ae64320a871b83ab3479d1ff906"
+  },
+  {
+    "character": "maria",
+    "emotion": "displeasure",
+    "file": "maria/displeasure-v1.webp",
+    "sourceSha256": "f386ef88077f63c4257beed046cffeeedd4ed5d924e7b1a8749b19fb5c3db5c0"
+  }
+]

@@ -7,6 +7,8 @@ import {
   type BarOccupantId,
   type BarAction,
 } from '@hockey/game-core';
+import { CharacterEmotionFigure } from './CharacterEmotionFigure.js';
+import type {CharacterEmotion} from './characterEmotion.js';
 import { CharacterGesture } from './characterGesture.js';
 import { CharacterHitArea } from './CharacterHitArea.js';
 import { OnlineDurakLobby } from './cards/OnlineDurakLobby.js';
@@ -33,6 +35,7 @@ export function BarScene({
   conversationStarted = false,
   hideIdentity = false,
   onPhysicalIncident,
+  characterEmotions = {},
 }: {
   layout: BarLayout;
   activeSlotId: string;
@@ -45,6 +48,7 @@ export function BarScene({
   conversationStarted?: boolean;
   hideIdentity?: boolean;
   onPhysicalIncident?: (character: BarCharacter) => void;
+  characterEmotions?:Partial<Record<BarCharacter,CharacterEmotion>>;
 }) {
   const incident = useRef(onPhysicalIncident);
   incident.current = onPhysicalIncident;
@@ -186,11 +190,12 @@ export function BarScene({
           return (
             <div key={s.id} className="bar-space__figure" style={{ left: `${i * 10}%` }}>
               {isUnfinished(s.occupantId) ? <CharacterSilhouette /> : isBarAssetPath(composition) && (
-                <img
-                  src={composition}
-                  alt=""
-                  draggable={false}
-                  onError={() =>
+                <CharacterEmotionFigure
+                  key={s.occupantId}
+                  character={preview ? '' : s.occupantId??''}
+                  emotion={characterEmotions[s.occupantId as BarCharacter]??'neutral'}
+                  fallback={composition}
+                  onFallbackError={() =>
                     setFailedImages((current) =>
                       current.includes(composition) ? current : [...current, composition],
                     )

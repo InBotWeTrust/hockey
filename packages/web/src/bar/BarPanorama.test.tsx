@@ -1,5 +1,5 @@
 import { it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act,waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { createDefaultBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
 import { BarPanorama } from './BarPanorama.js';
@@ -122,4 +122,37 @@ it('expands character actions from the identity row without a modal', async () =
   fireEvent.click(await screen.findByRole('button', { name: 'О персонаже: Мария' }));
   expect(screen.getByRole('button', { name: 'Сыграть в карты' })).toBeInTheDocument();
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+});
+
+it('shows a brief authored smile on entering a calm character and returns to neutral',async()=>{
+ const image=globalThis.Image;
+ vi.stubGlobal('Image',class{onload:(()=>void)|null=null;onerror:null=null;set src(_value:string){queueMicrotask(()=>this.onload?.());}});
+ const random=vi.spyOn(Math,'random').mockReturnValue(0);
+ try{
+  const data=fixture();data.layout.defaultSlotId='bar-3';data.layout.profiles.maria.composition='/bar/cards/maria-selection-v1.webp';
+  vi.mocked(fetchBarLayout).mockResolvedValue(data);
+  const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
+  await waitFor(()=>expect(view.container.querySelector('img[data-current][src="/bar/emotions/maria/joy-v1.webp"]')).not.toBeNull());
+  await waitFor(()=>expect(view.container.querySelector('img[data-current][src="/bar/emotions/maria/neutral-v1.webp"]')).not.toBeNull(),{timeout:3000});
+ }finally{random.mockRestore();vi.stubGlobal('Image',image);}
+});
+it('does not overwrite a newer conversation emotion with a delayed entry read',async()=>{
+ const image=globalThis.Image;
+ vi.stubGlobal('Image',class{onload:(()=>void)|null=null;onerror:null=null;set src(_value:string){queueMicrotask(()=>this.onload?.());}});
+ let old!:(value:{revision:number;greeting:string;pending:boolean;turns:[]})=>void,reads=0;
+ const data=fixture();data.layout.defaultSlotId='bar-3';data.layout.profiles.maria.composition='/bar/cards/maria-selection-v1.webp';
+ vi.mocked(fetchBarLayout).mockResolvedValue(data);
+ vi.mocked(fetchConversation).mockImplementation(async character=>{
+  if(character==='maria'&&++reads===1)return new Promise(resolve=>{old=resolve;});
+  return {revision:2,greeting:'Привет!',pending:false,turns:[{id:'new',user:'Устал',assistant:'Бывает.',createdAt:'now',emotion:'empathy' as const}]};
+ });
+ try{
+  const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
+  await screen.findByRole('heading',{name:'Мария'});
+  fireEvent.click(screen.getByRole('button',{name:'Показать действия'}));fireEvent.click(screen.getByRole('button',{name:'Поговорить'}));
+  await screen.findByText('Бывает.');
+  await waitFor(()=>expect(view.container.querySelector('img[src="/bar/emotions/maria/empathy-v1.webp"]')).not.toBeNull());
+  await act(async()=>old({revision:0,greeting:'Привет!',pending:false,turns:[]}));
+  expect(view.container.querySelector('img[src="/bar/emotions/maria/empathy-v1.webp"]')).not.toBeNull();
+ }finally{vi.stubGlobal('Image',image);}
 });

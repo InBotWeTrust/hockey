@@ -1,3 +1,4 @@
+import type { CharacterEmotion } from './characterEmotion.js';
 import { z } from 'zod';
 import type { SqlCardHistoryStore } from './cardHistory.js';
 import type { Story } from './personas.js';
@@ -18,7 +19,7 @@ export interface ConversationContext {
   relationship: string[];
   tool: (name: ToolName, args: ToolArguments, signal?: AbortSignal) => Promise<unknown>;
 }
-export interface GeneratedAnswer { text: string; usedStoryIds: string[] }
+export interface GeneratedAnswer { text: string; usedStoryIds: string[]; emotion?:CharacterEmotion }
 export const newStorySchema = z.object({
   title: z.string().trim().min(1).max(100),
   content: z.string().trim().min(20).max(1200),

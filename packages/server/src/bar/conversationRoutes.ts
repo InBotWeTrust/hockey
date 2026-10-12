@@ -1,3 +1,4 @@
+import {safeEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { recordPhysicalIncident } from './physicalIncident.js';
 import { SqlConflictStore,createConflictClassifier,nextConflict,type ClassifyConflict,type ConflictEffect } from './conflict.js';
 import { personaOf } from './personas.js';
@@ -33,6 +34,7 @@ export interface ConversationTurn {
   intervention?: string;
   fightId?: string;
   event?: 'physical';
+  emotion?:CharacterEmotion;
 }
 export interface ConversationRecord {
   revision: number;
@@ -252,7 +254,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
         const reply = await conflicts.phrase(effect.kind, verdict);
         return snapshot(character, await store.complete(user, character, {
           id, user: content, assistant: reply, createdAt: new Date().toISOString(),
-          speaker: 'oleg', intervention: effect.kind,
+          speaker: 'oleg', intervention: effect.kind, emotion:effect.kind==='fight'?'displeasure':'neutral',
         }, [], effect));
       }
       let context: ConversationContext | undefined;
@@ -294,6 +296,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
           user: content,
           assistant: typeof response === 'string' ? response : response.text,
           createdAt: new Date().toISOString(),
+          emotion: response===crisisReply ? 'empathy' : response===boundaryReply || conflict && ['warning','intervention','fight'].includes(conflict.kind) ? 'displeasure' : scripted ? 'neutral' : safeEmotion(typeof response==='string'?undefined:response.emotion),
           ...(scripted&&conflict ? {speaker:'oleg' as const,intervention:conflict.kind} : {}),
         }, typeof response === 'string' ? [] : response.usedStoryIds, conflict),
       );

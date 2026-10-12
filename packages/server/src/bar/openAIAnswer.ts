@@ -1,3 +1,4 @@
+import {safeEmotion} from './characterEmotion.js';
 import { closeRouterTransport } from './closeRouterTransport.js';
 import { redactSecrets, checkedReply, safeMemoryText, createModeration, type Moderation } from './dialogueSafety.js';
 import { z } from 'zod';
@@ -36,7 +37,7 @@ export async function requestJSON<T>(
   if (!response.ok) throw new Error('provider_failed');
   return schema.parse(JSON.parse(outputText(await response.json())));
 }
-const answerSchema = z.object({ text: z.string().trim().min(1).max(6000), usedStoryIds: z.array(z.string().max(100)).max(4) }).strict();
+const answerSchema = z.object({ text: z.string().trim().min(1).max(6000), usedStoryIds: z.array(z.string().max(100)).max(4), emotion:z.unknown().optional() }).strict();
 const tools = [
   ...(['find_stories', 'game_memories'] as const).map(name => ({
     type: 'function', name, description: name === 'find_stories' ? 'Найти свои истории по теме с отметками, что уже рассказал этому игроку.' : 'Вспомнить совместные партии в дурака. Не раскрывает чужие партии.',
@@ -64,8 +65,8 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
     while (JSON.stringify(memoryData).length > 6500 && memoryData.facts.length) memoryData.facts.pop();
     while (JSON.stringify(memoryData).length > 6500 && memoryData.relationship.length) memoryData.relationship.pop();
     const memories = context ? JSON.stringify(memoryData) : '';
-    const instructions = `В истории реплики с пометкой «Олег, вмешательство охранника» принадлежат Олегу. Не приписывай их себе. ${context?.boundaryWarning ? 'Игрок нарушил границу: ' + (context.boundaryWarning==='sexual'?'интимное предложение. Откажи коротко, своим голосом, попроси больше не делать таких предложений.':'оскорбление. Коротко попроси не оскорблять тебя, своим голосом.') + ' Не продолжай прежнюю тему и не добавляй новый вопрос. ' : ''}${context?.recentGames ? 'Недавние партии и общий счёт уже переданы в untrusted_conversation_memory.data.recentGames. Результаты относительно игрока: loss означает твою победу. Используй эти записи, не выдумывай ходы; источник клиентский. ' : ''}${persona.soul}\n${persona.common}\nАвторские основные факты: ${JSON.stringify(persona.biography.facts)}\nВерсия души: ${persona.biography.version}\n${context ? 'Верни JSON с полями text (ответ игроку) и usedStoryIds (ID только тех полученных историй, которые действительно рассказал или явно вспомнил в ответе). Если не использовал историю — пустой массив.' : ''}`;
-    const input: unknown[] = [{ role: 'assistant', content: voice.greeting }, ...(context ? [{ role: 'developer', content: 'Return only valid JSON with text and usedStoryIds.' },{role:'user',content: JSON.stringify({type:'untrusted_conversation_memory',data:JSON.parse(memories)})}] : []), ...recent, { role: 'user', content }];
+    const instructions = `В истории реплики с пометкой «Олег, вмешательство охранника» принадлежат Олегу. Не приписывай их себе. ${context?.boundaryWarning ? 'Игрок нарушил границу: ' + (context.boundaryWarning==='sexual'?'интимное предложение. Откажи коротко, своим голосом, попроси больше не делать таких предложений.':'оскорбление. Коротко попроси не оскорблять тебя, своим голосом.') + ' Не продолжай прежнюю тему и не добавляй новый вопрос. ' : ''}${context?.recentGames ? 'Недавние партии и общий счёт уже переданы в untrusted_conversation_memory.data.recentGames. Результаты относительно игрока: loss означает твою победу. Используй эти записи, не выдумывай ходы; источник клиентский. ' : ''}${persona.soul}\n${persona.common}\nАвторские основные факты: ${JSON.stringify(persona.biography.facts)}\nВерсия души: ${persona.biography.version}\n${context ? 'Верни JSON с полями text (ответ игроку), emotion (твоё выражение лица: neutral, joy, interest, surprise, empathy или displeasure; выбирай по собственной реакции, а не просто по словам игрока; нейтральный ответ полноценен; это метаданные, не упоминай их в тексте) и usedStoryIds (ID только тех полученных историй, которые действительно рассказал или явно вспомнил в ответе). Если не использовал историю — пустой массив.' : ''}`;
+    const input: unknown[] = [{ role: 'assistant', content: voice.greeting }, ...(context ? [{ role: 'developer', content: 'Return only valid JSON with text, usedStoryIds and emotion.' },{role:'user',content: JSON.stringify({type:'untrusted_conversation_memory',data:JSON.parse(memories)})}] : []), ...recent, { role: 'user', content }];
     let removableTurns = recent.length / 2;
     const known = new Set<string>();
     const timeout = AbortSignal.timeout(options.timeoutMs ?? 45000);
@@ -111,7 +112,7 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
         return checkedReply(text,`${persona.soul}\n${persona.common}`);
       }
       const answer = answerSchema.parse(JSON.parse(text));
-      return { text: checkedReply(answer.text,`${persona.soul}\n${persona.common}`), usedStoryIds: [...new Set(answer.usedStoryIds)].filter(id => known.has(id)) };
+      return { text: checkedReply(answer.text,`${persona.soul}\n${persona.common}`), usedStoryIds: [...new Set(answer.usedStoryIds)].filter(id => known.has(id)), ...(answer.emotion===undefined?{}:{emotion:safeEmotion(answer.emotion)}) };
     }
     throw new Error('provider_tool_limit');
   };

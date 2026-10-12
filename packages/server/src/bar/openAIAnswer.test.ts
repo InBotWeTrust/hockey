@@ -245,3 +245,9 @@ it('keeps a physical Oleg intervention without fabricating an empty user message
  expect(body.input.some(item=>item.role==='user'&&item.content==='')).toBe(false);
  expect(body.input.some(item=>item.content?.includes('Олег, вмешательство охранника: Не трогай её.'))).toBe(true);
 });
+
+it('returns a validated emotion with the same response request',async()=>{
+ const transport=vi.fn().mockResolvedValue(Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Вот это победа!',usedStoryIds:[],emotion:'joy'})}]}]}));
+ const result=await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('maria',[],'Я победил',{summary:'',facts:[],relationship:[],tool:async()=>[]});
+ expect(result).toMatchObject({text:'Вот это победа!',emotion:'joy'});expect(transport).toHaveBeenCalledOnce();
+});

@@ -30,7 +30,7 @@ export async function recordPhysicalIncident(pool:Pool,user:string,character:Cha
   if(!phrase)throw new Error('oleg_phrase_unavailable');
   await db.query(`insert into bar_conflicts(user_id,day,warnings,intervening) values($1,$2,$3,$4)
    on conflict(user_id) do update set day=excluded.day,warnings=excluded.warnings,intervening=excluded.intervening,updated_at=now()`,[user,row.day,effect.warnings,effect.intervening]);
-  const turn:ConversationTurn={id:eventId,user:'',assistant:phrase.content,createdAt:new Date().toISOString(),speaker:'oleg',intervention:effect.kind,event:'physical'};
+  const turn:ConversationTurn={id:eventId,user:'',assistant:phrase.content,createdAt:new Date().toISOString(),speaker:'oleg',intervention:effect.kind,event:'physical',emotion:'displeasure'};
   if(effect.kind==='fight')turn.fightId=await startOlegFight(db,user,eventId);
   await db.query(`insert into bar_conversations(user_id,character_id,revision,turns) values($1,$2,1,$3::jsonb)
    on conflict(user_id,character_id) do update set revision=bar_conversations.revision+1,turns=bar_conversations.turns||excluded.turns`,[user,character,JSON.stringify([turn])]);
