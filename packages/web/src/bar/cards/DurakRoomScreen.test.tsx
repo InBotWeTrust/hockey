@@ -90,3 +90,20 @@ it('ignores an older snapshot arriving after a command', async () => {
   });
   expect(screen.queryByRole('button', { name: 'Продолжить поиск' })).not.toBeInTheDocument();
 });
+
+it('shows the invited player in the reserved seat and cancels with a right-hand icon',async()=>{
+ const invited={...room,capacity:2,seats:[room.seats[0]!],searchUntil:null,pending:['c'],invitations:[{id:'invite-c',userId:'c',displayName:'ренго か',avatarUrl:'/invited-avatar.png'}]};
+ vi.mocked(api.readRoom).mockResolvedValueOnce(invited).mockResolvedValue({...invited,pending:[],invitations:[]});renderRoom();await act(async()=>{});
+ expect(screen.getByText('ренго か')).toBeInTheDocument();
+ expect(document.querySelector('img[src="/invited-avatar.png"]')).not.toBeNull();
+ expect(screen.queryByText('Свободное место')).not.toBeInTheDocument();
+ expect(screen.getAllByText('Ждём ответ на приглашение')).toHaveLength(1);
+ expect(screen.queryByRole('button',{name:'Продолжить поиск'})).not.toBeInTheDocument();
+ expect(screen.queryByText(/Поиск завершён/)).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Отменить'})).not.toBeInTheDocument();
+ const cancel=screen.getByRole('button',{name:'Отменить приглашение: ренго か'});
+ expect(cancel).toHaveClass('icon-btn');fireEvent.click(cancel);await act(async()=>{});
+ expect((await import('./onlineApi.js')).respond).toHaveBeenCalledWith('invite-c','cancel');
+ expect(screen.queryByText('ренго か')).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Начать поиск'})).toBeInTheDocument();
+});

@@ -44,7 +44,7 @@ export type RoomView = {
     status: string;
   }[];
   pending: string[];
-  invitations: { id: string; userId: string; displayName: string }[];
+  invitations: { id: string; userId: string; displayName: string; avatarUrl: string | null }[];
   left?: boolean;
   game: null | {
     player: number;
@@ -215,8 +215,8 @@ async function view(
   );
   const player = data.seats.indexOf(user);
   const g = data.game;
-  const invited = await client.query<{ id: string; receiver_id: string; display_name: string }>(
-    "select i.id,i.receiver_id,u.display_name from bar_card_invites i join users u on u.id=i.receiver_id where i.room_id=$1 and i.status='pending' order by i.created_at",
+  const invited = await client.query<{ id: string; receiver_id: string; display_name: string; avatar_url: string | null }>(
+    "select i.id,i.receiver_id,u.display_name,u.avatar_url from bar_card_invites i join users u on u.id=i.receiver_id where i.room_id=$1 and i.status='pending' order by i.created_at",
     [id],
   );
   return {
@@ -244,6 +244,7 @@ async function view(
       id: i.id,
       userId: i.receiver_id,
       displayName: i.display_name,
+      avatarUrl: i.avatar_url,
     })),
     game: g
       ? {

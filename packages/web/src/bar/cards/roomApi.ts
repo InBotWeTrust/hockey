@@ -15,7 +15,7 @@ export type RoomView = {
   revision: number;
   serverNow: number;
   pending: string[];
-  invitations?: { id: string; userId: string; displayName: string }[];
+  invitations?: { id: string; userId: string; displayName: string; avatarUrl?: string | null }[];
   left?: boolean;
   seats: {
     userId: string;

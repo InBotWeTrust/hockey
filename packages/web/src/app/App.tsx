@@ -151,7 +151,6 @@ const ProfileStorySeriesScreen = lazy(() =>
   })),
 );
 const DurakRoomScreen = lazy(() => import('../bar/cards/DurakRoomScreen.js').then(m => ({default:m.DurakRoomScreen})));
-const OnlineDurakLobby = lazy(() => import('../bar/cards/OnlineDurakLobby.js').then(m => ({default:m.OnlineDurakLobby})));
 const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js').then(m => ({default:m.OnlineDurakScreen})));
 const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
 const BarBroadcastsScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarBroadcastsScreen })));
@@ -400,7 +399,7 @@ function AppExperience(): JSX.Element {
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route path="/bar/cards/online" element={<PrivateRoute><BarAccessGate><OnlineDurakLobby /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/online" element={<PrivateRoute><BarAccessGate><Navigate to="/bar" replace /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/cards/room/:id" element={<PrivateRoute><BarAccessGate><DurakRoomScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/cards/match/:id" element={<PrivateRoute><BarAccessGate><OnlineDurakScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/cards/computer/:opponentId" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />

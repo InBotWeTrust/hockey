@@ -6,7 +6,7 @@
   flex-direction: column;
   gap: 8px;
   height: var(--app-viewport-height, 100dvh);
-  padding: calc(10px + var(--app-safe-top, 0px)) 12px calc(10px + var(--app-safe-bottom, 0px));
+  padding: max(10px, var(--app-safe-top, 0px)) 12px max(10px, var(--app-play-safe-bottom, 0px));
   overflow: hidden;
   background: #164c3c url('/bar/cards/table-v1.webp') center/cover;
   color: white;
@@ -828,6 +828,17 @@
   min-height: 36px;
   font-size: 12px;
 }
+/* Keep incoming card invitations readable over the bar scene. */
+.online-durak-invite__actions .duel-invite-action--decline {
+  background: #dc2626;
+  border-color: #ef4444;
+  color: #fff;
+}
+.online-durak-invite__actions .duel-invite-action--accept {
+  background: #15803d;
+  border-color: #22c55e;
+  color: #fff;
+}
 .online-durak-search .duel-form-section-title {
   color: rgba(240, 248, 255, 0.86);
   font-size: 10px;
@@ -1190,18 +1201,23 @@
   inset: 0 !important;
   max-width: 100%;
 }
-.durak-screen .durak-ready-panel {
+/* Pregame only needs a ready action; status is already shown above the table. */
+.durak-screen .durak-ready-actions {
   position: absolute;
-  bottom: calc(12px + var(--app-safe-bottom, 0px));
+  bottom: calc(20px + var(--app-safe-bottom, 0px));
   left: 16px;
   right: 16px;
-  width: auto;
-  padding: 16px;
-  box-sizing: border-box;
-  text-align: center;
+  display: flex;
+  justify-content: center;
   z-index: 3;
+  pointer-events: none;
 }
-.durak-ready-panel p { margin: 0 0 12px; }
+.durak-ready-actions .btn {
+  min-width: 180px;
+  min-height: 44px;
+  max-width: 100%;
+  pointer-events: auto;
+}
 
 .durak-room-lobby .bar-header { margin-bottom: 16px; }
 .durak-room-lobby .bar-content > .section-label {
@@ -1352,24 +1368,24 @@
 }
 .durak-screen .durak-pairs {
   gap: 8px;
-  --pair-card-width: 70px;
+  --pair-card-width: 64px;
   --pair-scale: 0.84;
 }
 .durak-screen .durak-pairs[data-count='0'],
 .durak-screen .durak-pairs[data-count='1'] {
-  --pair-card-width: 108px;
+  --pair-card-width: 72px;
   --pair-scale: 1;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pairs[data-count='2'] {
-  --pair-card-width: 90px;
+  --pair-card-width: 68px;
   --pair-scale: 0.92;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pairs[data-count='3'] {
-  --pair-card-width: 80px;
+  --pair-card-width: 64px;
   --pair-scale: 0.84;
   grid-template-rows: minmax(0, 1fr);
 }
@@ -1386,15 +1402,24 @@
   left: 14px;
   top: 14px;
 }
+/* Fit six cards with five 18px overlaps; additional cards scroll. */
 .durak-screen .durak-card {
-  width: auto;
-  height: clamp(110px, 19dvh, 150px);
-  margin-right: -24px;
+  width: min(84px, calc((100cqw + 90px) / 6));
+  height: auto;
+  aspect-ratio: 2 / 3;
+  margin-right: -18px;
+}
+.durak-screen .durak-card img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
 }
 .durak-screen .durak-card:last-child {
   margin-right: 0;
 }
 .durak-screen .durak-hand {
+  container-type: inline-size;
+  max-width: 426px;
   min-height: 0;
   padding-top: 14px;
 }
@@ -1426,7 +1451,6 @@
 @media (max-height: 650px) {
   .durak-screen--multi .durak-multi-seat .user-avatar { width: 24px !important; height: 24px !important; }
   .durak-screen--multi .durak-multi-seat { gap: 0; }
-  .durak-screen .durak-card { height: 110px; }
   .durak-screen .durak-turn-notice { padding-block: 8px; }
 }
 
@@ -1590,3 +1614,10 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+/* Pregame actions use the same compact bottom inset as the playing table. */
+.durak-screen :is(.durak-ready-panel, .durak-ready-actions) {
+  bottom: max(20px, var(--app-play-safe-bottom, 0px));
+}
+.durak-room-player__identity { flex: 1; min-width: 0; }
+.durak-room-invite-cancel { flex: none; margin-left: auto; align-self: center; }

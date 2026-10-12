@@ -111,7 +111,7 @@ export function createDefaultBarLayout(): BarLayout {
       veronika: profile('Вероника', 'Управляющая баром', 'Собранная и гостеприимная. Держит бар в порядке, замечает каждую мелочь и умеет найти подход к людям.', '/bar/cards/veronika-avatar-v1.webp', '/bar/cards/veronika-composition-v1.webp'),
       igor: profile('Игорь', 'Бармен', 'Общительный парень, который всегда в курсе спортивных новостей. Любит обсуждать матчи, результаты и спорить о любимых командах.', '/bar/cards/igor-avatar-v2.webp', '/bar/cards/igor-composition-v1.webp'),
       news: profile('Газеты на стойке', '', ''),
-      broadcasts: profile('Трансляции', '', 'Смотри хоккейные матчи.'),
+      broadcasts: profile('Трансляции', '', 'Смотри хоккейные матчи.', null, '/bar/broadcasts-entry-v1.webp'),
     },
   };
 }
@@ -186,7 +186,7 @@ export function barLayoutErrors(layout: BarLayout): string[] {
 export function upgradeBarLayout(layout: BarLayout): BarLayout {
   const next = structuredClone(layout);
   const defaults = createDefaultBarLayout();
-  for (const id of ['oleg', 'timofey', 'veronika', 'igor'] as const) {
+  for (const id of ['oleg', 'timofey', 'veronika', 'igor', 'broadcasts'] as const) {
     const current = next.profiles[id];
     next.profiles[id] = current ? {
       ...current,

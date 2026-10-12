@@ -1,11 +1,11 @@
 .modal-card.bar-conversation {
   width: min(100%, 560px);
-  height: min(52dvh, 480px);
+  height: min(50dvh, 460px);
   max-height: calc(var(--app-viewport-height, 100dvh) - env(safe-area-inset-top) - 16px);
   transition: height 220ms ease-out;
   display: flex;
   flex-direction: column;
-  padding: 16px 16px calc(12px + env(safe-area-inset-bottom));
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
   border-radius: 24px;
 }
 .modal-card.bar-conversation--empty {
@@ -20,6 +20,13 @@
   color: #f5f7fb;
 }
 .bar-conversation__identity {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -192,5 +199,3 @@
 .bar-conversation__conflict-actions .modal-actions { display: flex; gap: 8px; }
 .bar-conversation__conflict-actions .btn { flex: 1; min-height: 44px; padding: 10px 8px; font-size: 13px; line-height: 1.25; letter-spacing: normal; text-transform: none; }
 @media (prefers-reduced-motion: reduce) { .modal-card.bar-conversation { transition: none; } }
-
-.bar-conversation .sheet-grabber { background: rgba(255, 255, 255, .4); }

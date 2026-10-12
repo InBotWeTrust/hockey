@@ -101,6 +101,8 @@ export function MultiDurakTable({
       ? `${turn.displayName}: ${g.phase === 'defend' ? 'отбивается' : g.phase === 'throw' ? 'подкидывает' : 'ходит'}`
       : g.phase === 'defend'
         ? 'Отбей карту или возьми'
+        : g.phase === 'throw' && g.taking
+          ? `${view.seats[g.defender]!.displayName} берёт. ${actions.some(a=>a.type==='play') ? 'Подкинь или заверши ход.' : 'Заверши ход.'}`
         : g.phase === 'throw'
           ? actions.some((a) => a.type === 'play')
             ? `Подкинь карту или нажми «${finishLabel}»`
@@ -282,6 +284,7 @@ export function MultiDurakTable({
           })}
         </div>
       </section>
+      {!pregame && (
       <section className="durak-controls">
         <button
           className="icon-btn durak-tool"
@@ -314,9 +317,9 @@ export function MultiDurakTable({
           <span className="durak-tool__question">?</span>
         </button>
       </section>
-      {pregame && (
-        <div className="durak-ready-panel game-scoreboard">
-          <p role="status">{pregameText}</p>
+      )}
+      {pregame && view.status !== 'countdown' && (
+        <div className="durak-ready-actions">
           {view.status === 'confirming' && (
             <button
               className="btn btn--cta"
@@ -327,7 +330,7 @@ export function MultiDurakTable({
             </button>
           )}
           {view.status === 'ended' && (
-            <button className="btn btn--cta" onClick={() => navigate('/bar/cards/online')}>
+            <button className="btn btn--cta" onClick={() => navigate('/bar', { replace: true })}>
               Вернуться
             </button>
           )}
@@ -383,7 +386,7 @@ export function MultiDurakTable({
       {g.result !== null && (
         <AccessibleModal
           title={g.result === 'won' ? 'Победа' : 'Поражение'}
-          onRequestClose={() => navigate('/bar/cards/online')}
+          onRequestClose={() => navigate('/bar', { replace: true })}
         >
           <p className="modal-copy">
             {g.result === 'won'
@@ -397,7 +400,7 @@ export function MultiDurakTable({
                 : 'Ты остался с картами последним.'}
           </p>
           <div className="modal-actions">
-            <button className="btn btn--cta" onClick={() => navigate('/bar/cards/online')}>
+            <button className="btn btn--cta" onClick={() => navigate('/bar', { replace: true })}>
               Понятно
             </button>
           </div>

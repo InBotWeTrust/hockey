@@ -61,3 +61,12 @@ it('updates distorted legacy portraits while keeping custom avatar paths', () =>
   expect(upgraded.profiles.oleg.avatar).toBe('/bar/cards/oleg-avatar-v2.webp');
   expect(upgraded.profiles.veronika.avatar).toBe('/bar/cards/custom.png');
 });
+
+it('restores the broadcast television for default and saved layouts without replacing custom images', () => {
+  const layout = createDefaultBarLayout();
+  expect(layout.profiles.broadcasts.composition).toBe('/bar/broadcasts-entry-v1.webp');
+  layout.profiles.broadcasts.composition = null;
+  expect(upgradeBarLayout(layout).profiles.broadcasts.composition).toBe('/bar/broadcasts-entry-v1.webp');
+  layout.profiles.broadcasts.composition = '/bar/custom-tv.webp';
+  expect(upgradeBarLayout(layout).profiles.broadcasts.composition).toBe('/bar/custom-tv.webp');
+});

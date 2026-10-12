@@ -101,7 +101,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
       const next = await roomCommand(id!, current.current.revision, command);
       if (ticket !== generation.current) return;
       if (next.left) {
-        navigate('/bar/cards/online');
+        navigate('/bar', { replace: true });
         return;
       }
       receive(next);
@@ -119,7 +119,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
     return (
       <main className="screen bar-screen">
         <p role="status">{error ?? 'Загружаем стол…'}</p>
-        <button className="btn btn--ghost" onClick={() => navigate('/bar/cards/online')}>
+        <button className="btn btn--ghost" onClick={() => navigate('/bar', { replace: true })}>
           Вернуться
         </button>
       </main>
@@ -170,7 +170,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
           game: empty,
           dispatch: () => {},
           surrender: () => void send({ type: 'leave' }),
-          restart: () => navigate('/bar/cards/online'),
+          restart: () => navigate('/bar', { replace: true }),
           remainingSeconds: seconds,
           thinking: true,
         }}
@@ -196,6 +196,27 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
   const countdown =
     view.countdownAt === null ? 0 : Math.max(0, Math.ceil((view.countdownAt - serverNow) / 1000));
   const owner = view.owner === userId;
+  const awaitingInvitation = view.status === 'waiting' && view.pending.length > 0;
+  const cancelInvitation = (invitationId: string) => {
+    if (sending.current) return;
+    sending.current = true;
+    actionVersion.current++;
+    setBusy(true);
+    const ticket = generation.current;
+    void respond(invitationId, 'cancel')
+      .then(async () => {
+        const next = await readRoom(view.id);
+        if (ticket === generation.current) receive(next);
+      })
+      .catch((err) => {
+        if (ticket === generation.current)
+          setError(err instanceof Error ? err.message : 'Не удалось отменить приглашение.');
+      })
+      .finally(() => {
+        sending.current = false;
+        if (ticket === generation.current) setBusy(false);
+      });
+  };
   return (
     <main className="screen bar-screen online-durak-lobby durak-room-lobby">
       <header className="bar-header">
@@ -219,11 +240,12 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
         <div className="durak-room-seats">
           {Array.from({ length: view.capacity }, (_, i) => {
             const seat = view.seats[i];
+            const invitation = !seat ? view.invitations?.[i - view.seats.length] : undefined;
             return (
-              <div className="glass online-durak-player" key={seat?.userId ?? i}>
-                <UserAvatar name={seat?.displayName ?? '?'} avatarUrl={seat?.avatarUrl} size={44} />
-                <div>
-                  <strong>{seat?.displayName ?? 'Свободное место'}</strong>
+              <div className="glass online-durak-player" key={seat?.userId ?? invitation?.userId ?? i}>
+                <UserAvatar name={seat?.displayName ?? invitation?.displayName ?? '?'} avatarUrl={seat?.avatarUrl ?? invitation?.avatarUrl} size={44} />
+                <div className="durak-room-player__identity">
+                  <strong>{seat?.displayName ?? invitation?.displayName ?? 'Свободное место'}</strong>
                   <div className="duel-card-meta">
                     {seat
                       ? view.ready.includes(seat.userId)
@@ -240,49 +262,18 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
                         : 'Ожидаем игрока'}
                   </div>
                 </div>
+                {invitation && owner && <button
+                  className="icon-btn durak-room-invite-cancel"
+                  aria-label={`Отменить приглашение: ${invitation.displayName}`}
+                  disabled={busy}
+                  onClick={() => cancelInvitation(invitation.id)}
+                ><X size={20}/></button>}
               </div>
             );
           })}
         </div>
         <div className="online-durak-search">
-          {owner &&
-            view.invitations?.map((invitation) => (
-              <div className="glass online-durak-player" key={invitation.id}>
-                <div>
-                  <strong>{invitation.displayName}</strong>
-                  <div className="duel-card-meta">Ждём ответ на приглашение</div>
-                </div>
-                <button
-                  className="btn btn--ghost"
-                  disabled={busy}
-                  onClick={() => {
-                    if (sending.current) return;
-                    sending.current = true;
-                    actionVersion.current++;
-                    setBusy(true);
-                    const ticket = generation.current;
-                    void respond(invitation.id, 'cancel')
-                      .then(async () => {
-                        const next = await readRoom(view.id);
-                        if (ticket === generation.current) receive(next);
-                      })
-                      .catch((err) => {
-                        if (ticket === generation.current)
-                          setError(
-                            err instanceof Error ? err.message : 'Не удалось отменить приглашение.',
-                          );
-                      })
-                      .finally(() => {
-                        sending.current = false;
-                        if (ticket === generation.current) setBusy(false);
-                      });
-                  }}
-                >
-                  Отменить
-                </button>
-              </div>
-            ))}
-          <p role="status" className="duel-empty-current">
+          {!awaitingInvitation && <p role="status" className="duel-empty-current">
             {view.status === 'confirming'
               ? `Подтвердите готовность — ${Math.max(0, Math.ceil(((view.readyUntil ?? serverNow) - serverNow) / 1000))} сек. (${view.ready.length}/${view.seats.length})`
               : view.status === 'ended' && !view.game
@@ -293,8 +284,10 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
                     ? `Готовы: ${view.ready.length} из ${view.seats.length}`
                     : remaining
                       ? `Ищем игроков… ${Math.floor(remaining / 60)}:${String(remaining % 60).padStart(2, '0')}`
-                      : 'Поиск завершён. Можно продолжить поиск или начать текущим составом.'}
-          </p>
+                      : view.searchUntil === null
+                        ? 'Пригласи игрока или начни поиск.'
+                        : 'Поиск завершён. Можно продолжить поиск или начать текущим составом.'}
+          </p>}
           {error && (
             <p role="alert" className="bar-connection">
               {error}
@@ -311,7 +304,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
           )}
           {view.status === 'waiting' && (
             <>
-              {owner && !view.proposed && (
+              {owner && !view.proposed && view.seats.length + view.pending.length < view.capacity && (
                 <button
                   className="btn btn--ghost"
                   disabled={busy || view.seats.length + view.pending.length >= view.capacity}
@@ -320,7 +313,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
                   Пригласить игрока
                 </button>
               )}
-              {owner && remaining > 0 && !view.proposed && (
+              {owner && remaining > 0 && !view.proposed && !awaitingInvitation && (
                 <button
                   className="btn btn--ghost"
                   disabled={busy}
@@ -329,16 +322,16 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
                   Остановить поиск
                 </button>
               )}
-              {owner && !remaining && (
+              {owner && !remaining && !awaitingInvitation && (
                 <button
                   className="btn btn--cta"
                   disabled={busy}
                   onClick={() => void send({ type: 'renew' })}
                 >
-                  Продолжить поиск
+                  {view.searchUntil === null ? 'Начать поиск' : 'Продолжить поиск'}
                 </button>
               )}
-              {owner && !remaining && !view.proposed && view.seats.length >= 2 && (
+              {owner && !remaining && !view.proposed && !awaitingInvitation && view.seats.length >= 2 && (
                 <button
                   className="btn btn--ghost"
                   disabled={busy}

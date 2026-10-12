@@ -117,7 +117,7 @@ export function DurakTable({
     setTargetReady(false);
     setHint(null);
   }, [game.revision]);
-  const back = () => navigate(online ? '/bar/cards/online' : '/bar');
+  const back = () => navigate('/bar', { replace: true });
   const commit = (card: Card) => {
     const play = actions.find((a) => a.type === 'play' && a.cardId === card.id);
     const beats = actions.filter((a) => a.type === 'beat' && a.cardId === card.id);
@@ -157,8 +157,8 @@ export function DurakTable({
             ? 'Отбей карту или возьми'
             : game.phase === 'taking'
               ? actions.some((a) => a.type === 'play')
-                ? 'Можно подкинуть или завершить'
-                : 'Нажми «Завершить»'
+                ? `${opponent?.displayName ?? computer.name} берёт. Подкинь или заверши ход.`
+                : `${opponent?.displayName ?? computer.name} берёт. Заверши ход.`
               : game.table.length
                 ? actions.some((a) => a.type === 'play')
                   ? 'Подкинь карту или нажми «Бито»'
@@ -291,6 +291,7 @@ export function DurakTable({
           })}
         </div>
       </section>
+      {!pregame && (
       <section className="durak-controls">
         <button
           className="icon-btn durak-tool"
@@ -330,9 +331,9 @@ export function DurakTable({
           </span>
         </button>
       </section>
-      {pregame && (
-        <div className="durak-ready-panel game-scoreboard" role="status">
-          <p>{pregame.text}</p>
+      )}
+      {pregame && (!pregame.countdown || pregame.cancelled) && (
+        <div className="durak-ready-actions" role="status">
           {!pregame.cancelled && !pregame.countdown && (
             <button
               className="btn btn--cta"

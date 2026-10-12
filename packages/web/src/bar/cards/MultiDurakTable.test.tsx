@@ -102,6 +102,8 @@ it('shows readiness on the table without dealing cards or enabling moves', () =>
     readyUntil: 61000, ready: ['b'] }} userId="a" busy={false} error={null} now={1000} onCommand={send} /></MemoryRouter>);
   expect(screen.getByRole('timer')).toHaveTextContent('60');
   expect(screen.getAllByText('Готов')).toHaveLength(2);
+  expect(document.querySelector('.durak-ready-panel')).toBeNull();
+  expect(document.querySelector('.durak-controls')).toBeNull();
   expect(within(screen.getByRole('group', { name: 'Твои карты' })).queryByRole('button')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Готов' }));
   expect(send).toHaveBeenCalledWith({ type: 'ready' });
@@ -136,7 +138,7 @@ it('uses finish when the defender is taking instead of calling the cards beaten'
     </MemoryRouter>,
   );
   expect(screen.getByRole('button', { name: 'Завершить' })).toBeInTheDocument();
-  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Завершить»');
+  expect(screen.getByRole('status')).toHaveTextContent('Борис берёт. Заверши ход.');
 });
 it('does not ask an empty hand to throw in at the end of the game', () => {
   render(
@@ -169,4 +171,16 @@ it.each([2, 3, 4, 5, 6])('shows menu trump only at a six-player table (%i seats)
   const menu = screen.getByRole('region', { name: 'Меню игры' });
   if (capacity === 6) expect(within(menu).getByText('Козырь')).toBeInTheDocument();
   else expect(within(menu).queryByText('Козырь')).not.toBeInTheDocument();
+});
+
+it('keeps the countdown notice above the table with no lower readiness container',()=>{
+ render(<MemoryRouter><MultiDurakTable view={{...base,game:null,status:'countdown',countdownAt:4000,ready:['a','b']}} userId="a" busy={false} error={null} now={1000} onCommand={()=>{}}/></MemoryRouter>);
+ expect(screen.getAllByText('Игра начинается')).toHaveLength(1);
+ expect(document.querySelector('.durak-ready-actions')).toBeNull();
+ expect(document.querySelector('.durak-controls')).toBeNull();
+});
+it.each([true,false])('names the defender taking cards and offers valid choices (throw=%s)',canThrow=>{
+ const game={...base.game!,phase:'throw' as const,taking:true,table:[{attack:card}],actions:[{type:'pass' as const},...(canThrow?[{type:'play' as const,cardId:card.id}]:[])]};
+ render(<MemoryRouter><MultiDurakTable view={{...base,game}} userId="a" busy={false} error={null} now={1000} onCommand={()=>{}}/></MemoryRouter>);
+ expect(screen.getByRole('status')).toHaveTextContent(canThrow?'Борис берёт. Подкинь или заверши ход.':'Борис берёт. Заверши ход.');
 });
