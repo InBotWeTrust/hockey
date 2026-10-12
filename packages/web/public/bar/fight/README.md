@@ -42,3 +42,11 @@ bare hands. Uniform scaling across all poses; foot baseline at y=460.
 Oleg continues to use his unchanged version 1 frames.
 
 Preparation: `pnpm --filter @hockey/web exec node scripts/prepare-bar-player-v2.mjs <source-sheet-path>`.
+
+## Player poses version 3
+
+Active ten-pose set: drawn ink outlines and cel shading, retaining the original
+face, navy beanie, blue tracksuit, bare hands and black sneakers. Source:
+`exec-490d80fc-c61b-47db-8b6e-8222db6efa86.png`. Previous pose versions preserved.
+Preparation: `scripts/prepare-bar-player-v3.mjs`; uniform scaling, transparent
+384×512 canvas and foot baseline y=460. Only bar player assets change.

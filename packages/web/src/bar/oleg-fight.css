@@ -63,6 +63,7 @@
 }
 .bar-oleg-fight .fight-reserve--health > span {
   width: 100%;
+  justify-content: center;
 }
 .bar-oleg-fight .fight-health--1 .fight-reserve--health svg {
   width: 14px;

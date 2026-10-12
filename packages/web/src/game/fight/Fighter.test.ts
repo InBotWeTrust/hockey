@@ -121,7 +121,7 @@ it('retracts authored strike into its neutral pose during responsive recovery',(
 });
 
 it('loads revised bar player poses and preserves their aspect ratio',()=>{
- expect(BAR_FIGHT_ASSETS).toContain('/bar/fight/player-idle-v2.webp');
+ expect(BAR_FIGHT_ASSETS).toContain('/bar/fight/player-idle-v3.webp');
  expect(BAR_FIGHT_ASSETS).toContain('/bar/fight/oleg-idle-v1.webp');
  prepareAtlas();
  for(const path of BAR_FIGHT_ASSETS)Assets.cache.set(path,new Texture({source:new TextureSource({width:384,height:512})}));
