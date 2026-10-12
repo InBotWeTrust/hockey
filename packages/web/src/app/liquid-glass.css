@@ -518,3 +518,10 @@ svg.lucide { stroke-width: 1.5; }
 [data-glass-select-menu='true'] * {
   text-shadow: none !important;
 }
+
+.app-shell .profile-registration-account img,
+.app-shell .profile-registration-account__avatar,
+.app-shell .profile-customization-card__avatar {
+  border: 1px solid var(--liquid-border);
+  box-sizing: border-box;
+}

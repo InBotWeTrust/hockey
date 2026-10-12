@@ -6356,3 +6356,11 @@ Profile framing: avatar, balance/metric containers, internal separators and trop
 Material correction: bonus progress containers and segmented filter containers use the ordinary card background/blur/shadow (`--liquid-card-bg`, `--liquid-blur`, `--liquid-shadow`). No separate dense fill for these containers. Inactive filter values remain transparent.
 
 Received rewards: opaque #20252d pill, #d5d9e0 icons/values, no grayscale or opacity reduction. Shared card edge is 1 px `--liquid-border`, covering 38 named card/panel/surface selectors and their states.
+
+## Application themes
+
+Preference `hockey.theme`: auto/light/dark, default auto. Auto uses device-local time: dark [22:00,08:00), light [08:00,22:00). Root `data-theme` controls materials, including portal overlays. Boundary timer and focus/visibility events update an open app. Choice persists locally; server profile/auth remains untouched. Light material uses translucent white 58% to 40%, dark text; chat and modals are denser for reading. Artwork labels retain opaque neutral backgrounds for contrast.
+
+Theme settings use the shared SegmentedTabs filter control. Section spacing: no extra top margin, 20 px below, 8 px between heading and card. Theme options fill the control width with columns 1.5fr/1fr/1fr.
+
+Settings account and editable profile avatars use the shared 1 px edge, with border-box sizing.

@@ -295,7 +295,7 @@ function GlassSelectMenu<T extends string>({
               border: 'none',
               borderRadius: 12,
               background: active ? 'var(--liquid-inset-bg)' : 'transparent',
-              color: disabled ? 'rgba(255, 255, 255, 0.48)' : '#ffffff',
+              color: disabled ? 'var(--liquid-muted-soft)' : 'var(--liquid-ink)',
               padding: '0 10px',
               display: 'grid',
               gridTemplateColumns: '18px minmax(0, 1fr)',
