@@ -136,6 +136,11 @@ describe('ChatRoomScreen', () => {
     vi.useRealTimers();
   });
 
+  it('uses the shared shell viewport instead of a second height observer', () => {
+    renderRoom('c1');
+    expect(screen.getByRole('main')).toHaveStyle({ height: 'var(--app-viewport-height, 100dvh)', minHeight: '0' });
+  });
+
   it('renders messages from REST in chronological order', async () => {
     renderRoom('c1');
     await waitFor(() => expect(screen.getAllByTestId('chat-bubble').length).toBe(2));
