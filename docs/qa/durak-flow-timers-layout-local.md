@@ -8,7 +8,7 @@ Branch: `fix/durak-flow-timers-layout`.
 - Online throw-in action uses «Бито» for a defended bout and «Завершить» when taking. Other players retain their throw-in turns.
 - Empty hands with an exhausted deck automatically pass/finish after three seconds. An unbeatable final attack receives an automatic take after three seconds; a beatable attack keeps its normal response window. A last trump ace against each of the four computer opponents resolves in about six seconds without another click.
 - Readiness countdown is five seconds for legacy matches and rooms. Each new bout starts with 40 seconds; subsequent accepted actions renew the clock to 30 seconds. Invalid moves, stale retries and reads do not extend the deadline.
-- The menu uses one row: player, time and opponent/player count; trump is shown in the menu only for six players. Deck cards are 44 px wide; the trump is sideways with roughly a quarter exposed inside the reserve pocket. One pair is large; two and three pairs shrink progressively, with the fourth opening a second row. Four to six pairs stay visible in two rows, shrinking to the available space without table scrolling.
+- The menu uses one row: player, time and opponent/player count; trump is shown in the menu only for six players. Deck cards are 44 px wide; the trump is upright beside the deck, with the covering back offset down/left inside the reserve pocket. One pair is large; two and three pairs shrink progressively, with the fourth opening a second row. Four to six pairs stay visible in two rows, shrinking to the available space without table scrolling.
 - Game-core version increases from 86 to 87. Persisted card-state shapes are unchanged. Existing stored deadlines remain unchanged until the next accepted action/timeout. Release still needs its normal active-session/version checks: initial/advanced/open-window training routes reject stored runs from an older core version with 409. There is no release authorization or runtime change in this task.
 
 ## Verification
@@ -54,8 +54,10 @@ Open `/durak-layout-preview.html` on the local Vite server for interactive width
 
 CI, authenticated multi-browser online acceptance, database integration and deployed dev/production runtime evidence are not claimed. No deployment or merge into dev/main was performed.
 
-Follow-up visual QA: trump and deck vertical centers match; 1–6-pair scenarios are selectable in the local preview. At 360×640 and 390×844, 1–3 pairs progressively shrink, and 4–6 pairs fit in two rows without horizontal overflow.
+Follow-up visual QA: the upright trump is beside the deck and its corner is exposed by moving the covering back down/left; 1–6-pair scenarios are selectable in the local preview. At 360×640 and 390×844, 1–3 pairs progressively shrink, and 4–6 pairs fit in two rows without horizontal overflow.
 
 Menu follow-up: player names use one 11 px font and ellipsis; the hand count remains visible separately. Menu and seat avatars have an explicit 1 px rim. Hint side padding is 13 px, matching the shared ice-game notice style (previously 24 px). Browser verification covers 2–6 seats, including a computer opponent and long names on 320 px screens.
 
 Size/corner follow-up: played-card width caps are 108/90/80 px for one/two/three pairs and 70 px for four to six pairs. The complete artwork fills its common 2:3 box, so the bottom edge meets the same 8 px corner mask as the top (contain previously left unused space below the artwork).
+
+Overlap follow-up: defence cards shift down/right by 16–22 px according to available cell width, exposing the attack corner more clearly while preserving the centered combined footprint. The deck back shifts 16 px left and 18 px down relative to the upright trump.

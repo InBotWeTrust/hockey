@@ -1313,37 +1313,36 @@
 .durak-menu [role='timer'] .game-scoreboard__value { font-size: 24px; line-height: 1; }
 .durak-menu .durak-menu__trump-symbol { font-size: 24px; }
 
-/* Keep the reserve smaller than played cards, with a small part of the sideways trump exposed. */
+/* Keep the upright trump beside the deck, with the covering back staggered down/left. */
 .durak-screen .durak-deck {
   --deck-card-width: 44px;
-  width: 72px;
+  width: 76px;
   padding: 6px;
   box-sizing: border-box;
 }
 .durak-screen .durak-deck > div {
-  height: 76px;
+  height: 86px;
   overflow: hidden;
 }
 .durak-screen .durak-deck img {
   width: var(--deck-card-width);
   height: calc(var(--deck-card-width) * 1.5);
   object-fit: contain;
-  left: 0;
-  top: 4px;
+  left: 16px;
+  top: 0;
 }
 .durak-screen .durak-deck img:first-child:not(:last-child) {
   left: 0;
-  top: 4px;
+  top: 18px;
 }
 .durak-screen .durak-deck img:last-child:not(:first-child) {
-  left: 4px;
-  top: 4px;
-  transform: rotate(90deg);
-  transform-origin: center;
+  left: 16px;
+  top: 0;
+  transform: none;
   z-index: 0;
 }
 .durak-screen .durak-deck__count {
-  top: 37px;
+  top: 51px;
   width: 26px;
   height: 26px;
   font-size: 14px;
@@ -1375,7 +1374,7 @@
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pair {
-  --card-offset: 14px;
+  --card-offset: clamp(16px, 16cqw, 22px);
   max-height: none;
 }
 .durak-screen .durak-pair img {
