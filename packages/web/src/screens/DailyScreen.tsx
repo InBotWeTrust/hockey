@@ -2469,6 +2469,15 @@ export function duelRinkPrimaryLabel(match: AmateurDuelMatch, fallbackNow: numbe
   return arenaDuelCtaLabel(match, fallbackNow);
 }
 
+/** Pending server reconciliation must preserve intermediate breaks and final waiting. */
+export function duelExpiredPeriodPresentation(match: AmateurDuelMatchState, deadlineMs: number): AmateurDuelMatchState {
+  if (match.me.current_period >= match.rules.totalPeriods)
+    return { ...match, me: { ...match.me, state: 'completed' } };
+  const breakEndsAt = new Date(deadlineMs + match.rules.breakDurationMs).toISOString();
+  return { ...match, period_ends_at: null, break_ends_at: breakEndsAt,
+    me: { ...match.me, state: 'break_active', period_ends_at: null, break_ends_at: breakEndsAt } };
+}
+
 function duelNextPeriod(match: AmateurDuelMatch): number {
   if (match.me.state === 'period_active') return match.me.current_period;
   return Math.min(match.rules.totalPeriods, Math.max(1, match.me.current_period + 1));
@@ -6161,7 +6170,7 @@ export function AmateurDuelPlayView({
   const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
     (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
   const visibleMatch = periodLocallyExpired
-    ? { ...match, me: { ...match.me, state: 'completed' as const } }
+    ? duelExpiredPeriodPresentation(match, periodEndsAt ?? fightNow)
     : match;
   const fight = match.fight;
   const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
@@ -6193,7 +6202,7 @@ export function AmateurDuelPlayView({
   if ((directPlayOnly && match.me.state !== 'period_active') || periodLocallyExpired ||
       (match.status === 'active' && match.me.state === 'completed')) {
     const timing = duelEventTiming(visibleMatch, now);
-    const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
+    const inactivePeriodRule = duelParticipantPeriodRule(visibleMatch, visibleMatch.me);
     const showDirectResultModal =
       match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
     const canRunDirectDuelAction =
@@ -6220,7 +6229,7 @@ export function AmateurDuelPlayView({
           active={false}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
-          periodNumber={duelNextPeriod(match)}
+          periodNumber={duelNextPeriod(visibleMatch)}
           periodSpeedPresets={match.period_speed_presets}
           stickEffects={match.stick_effects}
           periodsTotal={match.rules.totalPeriods}
