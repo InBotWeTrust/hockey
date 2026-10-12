@@ -8,7 +8,7 @@ import {
   type BarAction,
 } from '@hockey/game-core';
 import { CharacterEmotionFigure } from './CharacterEmotionFigure.js';
-import type {CharacterEmotion} from './characterEmotion.js';
+import type {CharacterExpression} from './characterEmotion.js';
 import { CharacterGesture } from './characterGesture.js';
 import { CharacterHitArea } from './CharacterHitArea.js';
 import { OnlineDurakLobby } from './cards/OnlineDurakLobby.js';
@@ -48,7 +48,7 @@ export function BarScene({
   conversationStarted?: boolean;
   hideIdentity?: boolean;
   onPhysicalIncident?: (character: BarCharacter) => void;
-  characterEmotions?:Partial<Record<BarCharacter,CharacterEmotion>>;
+  characterEmotions?:Partial<Record<BarCharacter,CharacterExpression>>;
 }) {
   const incident = useRef(onPhysicalIncident);
   incident.current = onPhysicalIncident;

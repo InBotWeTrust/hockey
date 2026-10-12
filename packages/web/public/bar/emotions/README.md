@@ -13,3 +13,8 @@ in `manifest.json`.
 
 Prepare from repository root:
 `pnpm --filter @hockey/web exec node scripts/prepare-bar-emotions.mjs <common-folder> <maria-folder>`.
+
+Entry greetings use a separate client expression: the complete neutral frame
+plus a softly masked facial area from the approved joy frame. Hands, posture,
+furniture and background alpha remain from neutral. The greeting expression is
+not a model emotion and does not require another image or model request.

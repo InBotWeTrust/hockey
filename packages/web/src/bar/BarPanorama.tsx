@@ -120,7 +120,7 @@ export function BarPanorama() {
     <>
       <BarScene
         layout={layout}
-        characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'joy'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
+        characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
         hideIdentity={conversation !== null}
         activeSlotId={slot}
         onSelectSlot={(id) => {

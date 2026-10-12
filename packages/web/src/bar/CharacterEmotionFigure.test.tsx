@@ -45,3 +45,17 @@ it('finishes the current fade before applying a newer emotion',()=>{
   view.unmount();
  } finally {vi.useRealTimers();}
 });
+it('greets with the neutral body and only a masked smiling face',()=>{
+ const loaders:Array<{src:string;onload:(()=>void)|null}>=[];
+ vi.stubGlobal('Image',class{src='';onload=null;onerror=null;constructor(){loaders.push(this);}});
+ const view=render(<CharacterEmotionFigure character="maria" emotion="greeting" fallback="/bar/original.webp" style={{}} onFallbackError={()=>{}}/>);
+ expect(loaders[0]?.src).toBe('/bar/emotions/maria/joy-v1.webp');
+ act(()=>loaders[0]?.onload?.());
+ const frame=view.container.querySelector('svg[data-current]')!;
+ const images=frame.querySelectorAll('image');
+ expect(images[0]?.getAttribute('href')).toBe('/bar/emotions/maria/neutral-v1.webp');
+ expect(images[0]?.hasAttribute('mask')).toBe(false);
+ expect(images[1]?.getAttribute('href')).toBe('/bar/emotions/maria/joy-v1.webp');
+ expect(images[1]?.getAttribute('mask')).toContain('url(#');
+ expect(frame.querySelector('ellipse')?.getAttribute('cy')).toBe('280');
+});

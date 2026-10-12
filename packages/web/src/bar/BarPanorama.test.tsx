@@ -132,7 +132,7 @@ it('shows a brief authored smile on entering a calm character and returns to neu
   const data=fixture();data.layout.defaultSlotId='bar-3';data.layout.profiles.maria.composition='/bar/cards/maria-selection-v1.webp';
   vi.mocked(fetchBarLayout).mockResolvedValue(data);
   const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
-  await waitFor(()=>expect(view.container.querySelector('img[data-current][src="/bar/emotions/maria/joy-v1.webp"]')).not.toBeNull());
+  await waitFor(()=>expect(view.container.querySelector('svg[data-current][data-frame="/bar/emotions/maria/greeting-v1.webp"]')).not.toBeNull());
   await waitFor(()=>expect(view.container.querySelector('img[data-current][src="/bar/emotions/maria/neutral-v1.webp"]')).not.toBeNull(),{timeout:3000});
  }finally{random.mockRestore();vi.stubGlobal('Image',image);}
 });
