@@ -52,3 +52,25 @@ export function compareScoredDuel(input: {
   if (input.kind === 'marathon') return Math.sign(a.goals - b.goals);
   return Math.sign(a.goals * Math.max(1, b.shots) - b.goals * Math.max(1, a.shots));
 }
+
+export interface ScoredShotClock {
+  tapTime: number;
+  periodTapTime?: number;
+  shooterTapTime?: number;
+  resultPauseMs?: number;
+}
+
+/** Restore visual clocks without stopping the authoritative period clock. */
+export function restoreScoredSceneClocks(elapsedMs: number, last: ScoredShotClock | undefined, flightMs: number) {
+  const wallTap = last?.periodTapTime ?? last?.tapTime ?? 0;
+  const hasPausedScene = last?.periodTapTime !== undefined;
+  const priorScenePauseMs = hasPausedScene ? Math.max(0, wallTap - last!.tapTime) : 0;
+  const resultPauseMs = hasPausedScene
+    ? Math.min(last?.resultPauseMs ?? 1000, Math.max(0, elapsedMs - wallTap - flightMs)) : 0;
+  const sceneElapsedMs = Math.max(0, elapsedMs - priorScenePauseMs - resultPauseMs);
+  const priorShooterPauseMs = last ? Math.max(0, last.tapTime - (last.shooterTapTime ?? last.tapTime)) : 0;
+  return {
+    scene_elapsed_ms: sceneElapsedMs,
+    shooter_elapsed_ms: Math.max(0, sceneElapsedMs - priorShooterPauseMs - Math.min(flightMs, Math.max(0, elapsedMs - wallTap))),
+  };
+}

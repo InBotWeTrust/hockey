@@ -210,11 +210,6 @@
   color: var(--liquid-ink);
 }
 
-.fight-challenge__count {
-  background: var(--liquid-selected-bg);
-  color: var(--liquid-ink);
-}
-
 @media (prefers-contrast: more) {
   :root {
     --liquid-chrome-bg: #303236;

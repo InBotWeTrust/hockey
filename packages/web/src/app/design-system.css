@@ -1315,6 +1315,7 @@
   text-overflow: ellipsis;
   text-transform: uppercase;
   white-space: nowrap;
+  text-shadow: none;
 }
 
 .game-scoreboard__label--small {
@@ -4317,9 +4318,21 @@
   overflow: hidden;
 }
 
+.duel-stumble-notice.fitted-scoreboard-notice.initial-training-feedback-notice--scoreboard,
 .duel-fatigue-notice.fitted-scoreboard-notice.initial-training-feedback-notice--scoreboard {
   width: max-content;
   max-width: 100%;
+}
+
+.duel-condition-notice--ice {
+  left: 50%;
+  bottom: clamp(112px, 22%, 156px);
+  width: max-content;
+  max-width: calc(100% - 40px);
+  box-sizing: border-box;
+  justify-content: center;
+  transform: translateX(-50%);
+  white-space: nowrap;
 }
 
 .fitted-scoreboard-notice > span {
@@ -15787,34 +15800,3 @@ button.daily-calendar__day:active {
 .bonus-records-entry__action-row { margin-top: 12px; }
 .bonus-records-entry .bonus-records-entry__description { font-weight: 400; margin: 0 0 12px; }
 .bonus-records-entry__button { display: block; width: 100%; margin: 0; padding: 15px 20px; font-size: 16px; }
-
-.duel-result-card__penalties {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  margin-top: 12px;
-  padding: 0 10px;
-  font-family: inherit;
-}
-
-.duel-result-card__penalties h3 {
-  margin: 0;
-  color: var(--liquid-muted);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.3;
-  letter-spacing: normal;
-  text-transform: none;
-}
-
-.duel-result-card__penalties strong {
-  flex: 0 0 auto;
-  color: var(--ink);
-  font-size: 14px;
-  font-weight: 800;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.3;
-  white-space: nowrap;
-}

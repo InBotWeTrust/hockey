@@ -31,3 +31,11 @@ export function duelScoreText(
 ): string {
   return duelDisplayScore(kind, player).toLocaleString('ru-RU', { maximumFractionDigits: 1 });
 }
+
+export function duelScorePairText(
+  kind: AmateurDuelKind,
+  me: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
+  opponent: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
+): string {
+  return [duelScoreText(kind, me), duelScoreText(kind, opponent)].join(kind === 'sniper' ? '\u2009:\u2009' : ':');
+}

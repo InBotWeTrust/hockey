@@ -49,8 +49,8 @@ export interface ScoreBoardProps {
 }
 
 export interface ScoreBoardOpponent {
+  scoreSeparator?: string;
   name: string;
-  ownScoreOnly?: boolean;
   avatarUrl: string | null;
   goals: number;
   shots: number;
@@ -103,18 +103,16 @@ export function buildGameScoreboardModel({
   };
   const scoreMetric: GameScoreboardMetric = {
     id: opponent ? 'score' : 'goals',
-    label: opponent && !opponent.ownScoreOnly ? 'СЧЁТ' : scoreLabel,
-    value: opponent?.ownScoreOnly
-      ? goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })
-      : opponent ? `${goals}:${opponent.goals}` : padded(goals),
+    label: opponent ? 'СЧЁТ' : scoreLabel,
+    value: opponent
+      ? `${goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}${opponent.scoreSeparator ?? ':'}${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}`
+      : padded(goals),
   };
   const statusLine: GameScoreboardStatusLine | undefined = opponent
     ? {
         id: 'opponent',
         label: opponent.name,
-        value: opponent.ownScoreOnly
-          ? `${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })} · ${opponent.time.toUpperCase()}`
-          : `${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`,
+        value: `${opponent.shotsLabel ?? String(opponent.shots)} · ${opponent.time.toUpperCase()}`,
         avatarUrl: opponent.avatarUrl,
         tone: opponent.timeTone ?? 'muted',
       }
@@ -150,7 +148,9 @@ export function GameScoreboard({
               row.variant === 'secondary' ? ' game-scoreboard__row--secondary' : ''
             }${row.metrics.length >= 4 ? ' game-scoreboard__row--dense' : ''}`}
             data-testid={`scoreboard-row-${row.id}`}
-            style={{ gridTemplateColumns: `repeat(${row.metrics.length}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: row.metrics.map((metric) =>
+              metric.id === 'score' && metric.value.length > 7 ? 'minmax(0, 2fr)' : 'minmax(0, 1fr)',
+            ).join(' ') }}
           >
             {row.metrics.map((metric) => {
               const tone = metric.tone ?? 'default';
@@ -175,11 +175,19 @@ export function GameScoreboard({
                   </span>
                   <span
                     className="game-scoreboard__value"
-                    style={metric.id === 'score' && metric.value.length > 4
-                      ? { fontSize: `min(20px, ${30 / metric.value.length}cqw)` }
-                      : undefined}
+                    style={{ containerType: 'inline-size', width: '100%' }}
                   >
-                    {metric.value}
+                    <span style={{ fontSize: `min(1em, ${155 / Math.max(1, metric.value.length)}cqw)` }}>
+                      {metric.id === 'score' && metric.value.includes('\u2009:\u2009') ? (
+                        <>
+                          {metric.value.split('\u2009:\u2009')[0]}
+                          <span style={{ fontSize: '0.5em' }}>{'\u2009'}</span>
+                          :
+                          <span style={{ fontSize: '0.5em' }}>{'\u2009'}</span>
+                          {metric.value.split('\u2009:\u2009')[1]}
+                        </>
+                      ) : metric.value}
+                    </span>
                   </span>
                 </div>
               );
@@ -215,7 +223,7 @@ export function GameScoreboard({
 export function ScoreBoard(props: ScoreBoardProps): JSX.Element {
   const model = buildGameScoreboardModel({
     ...props,
-    scoreLabel: props.opponent && !props.opponent.ownScoreOnly ? 'СЧЁТ' : (props.scoreLabel ?? 'ШАЙБЫ'),
+    scoreLabel: props.opponent ? 'СЧЁТ' : (props.scoreLabel ?? 'ШАЙБЫ'),
   });
   return <GameScoreboard {...model} />;
 }

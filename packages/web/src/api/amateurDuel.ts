@@ -149,6 +149,8 @@ export interface AmateurDuelParticipant {
   current_period: number;
   shots_taken: number;
   last_shot_ends_ms?: number;
+  scene_elapsed_ms?: number;
+  shooter_elapsed_ms?: number;
   format_score?: number;
   sniper_points?: number;
   marathon_penalties?: number;
@@ -426,6 +428,7 @@ export interface SubmitAmateurDuelShotResponse {
   state_revision?:number;
   match_id: string;
   server_result: ShotResultType;
+  awarded_points?: number;
   confirmed_shot_index: number;
   participant: Partial<AmateurDuelParticipant> & {
     state: AmateurDuelParticipantState;
