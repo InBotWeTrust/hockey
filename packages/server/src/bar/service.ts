@@ -1,4 +1,4 @@
-import { projectMarathon } from '../duel/amateur/scoredFormats.js';
+import { projectMarathon, scoredElapsedFromShots } from '../duel/amateur/scoredFormats.js';
 import { sampleBarMotion } from './motion.js';
 import type { Pool } from 'pg';
 import {
@@ -88,6 +88,7 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
+    shotResultPauseMs?: 1000;
     marathonWindowMs?: 4000 | 7000;
     goalieId?: string;
     periodDurationMs?: number;
@@ -254,14 +255,29 @@ async function playersFor(
         (shot) => shot.amateur_duel_match_id === row.match_id && shot.user_id === p.user_id,
       );
       const goals = shots.filter((shot) => shot.server_result === 'goal').length;
-      const elapsed =
+      const wallElapsed =
         p.period_started_at === null
           ? p.state === 'completed'
             ? 240000
             : 0
           : Math.max(0, (delayedAt ?? now).getTime() - p.period_started_at.getTime());
+      const projectedShots = shots.map((shot) => ({
+        startedMs: shot.input_payload.periodTapTime ?? shot.input_payload.tapTime,
+        flightMs: (PUCK_START.y - GOAL_OPENING.y) / shot.input_payload.puckSpeedPerMs,
+        goal: shot.server_result === 'goal',
+      }));
+      const elapsed = row.rules_snapshot?.shotResultPauseMs && p.state === 'completed' && p.period_started_at === null
+        ? row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000
+        : row.rules_snapshot?.shotResultPauseMs
+        ? scoredElapsedFromShots(wallElapsed, projectedShots, row.rules_snapshot.shotResultPauseMs)
+        : wallElapsed;
       return {
         ...result,
+        ...(row.rules_snapshot?.shotResultPauseMs && p.period_started_at ? {
+          state: elapsed >= (row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000) ? 'completed' : p.state === 'period_active' ? 'period_active' : result.state,
+          until: new Date(p.period_started_at.getTime() + (wallElapsed - elapsed) +
+            (row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000)).toISOString(),
+        } : {}),
         goals,
         shotsTaken: shots.length,
         score:

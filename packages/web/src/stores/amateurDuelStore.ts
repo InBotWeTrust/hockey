@@ -71,6 +71,12 @@ function applyShotAcknowledgement(
   return {
     ...match,
     state_revision:acknowledgement.state_revision??match.state_revision??0,
+    ...(acknowledgement.server_now ? {
+      server_now: acknowledgement.server_now,
+      received_at_performance_ms: performance.now(),
+      period_started_at: acknowledgement.period_started_at ?? match.period_started_at,
+      period_ends_at: acknowledgement.period_ends_at ?? match.period_ends_at,
+    } : {}),
     current_period_shots: acknowledgement.participant.current_period_shots,
     current_period_goals: acknowledgement.participant.current_period_goals,
     me: {

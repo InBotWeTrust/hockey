@@ -74,3 +74,14 @@ export function restoreScoredSceneClocks(elapsedMs: number, last: ScoredShotCloc
     shooter_elapsed_ms: Math.max(0, sceneElapsedMs - priorShooterPauseMs - Math.min(flightMs, Math.max(0, elapsedMs - wallTap))),
   };
 }
+
+/** Reconstruct active time for delayed spectators without using future participant state. */
+export function scoredElapsedFromShots(wallElapsedMs: number, shots: readonly MarathonShot[], pauseMs: number): number {
+  let reserved = 0, elapsedPauses = 0;
+  for (const shot of shots) {
+    const pauseStart = shot.startedMs + shot.flightMs + reserved;
+    elapsedPauses += Math.min(pauseMs, Math.max(0, wallElapsedMs - pauseStart));
+    reserved += pauseMs;
+  }
+  return Math.max(0, wallElapsedMs - elapsedPauses);
+}

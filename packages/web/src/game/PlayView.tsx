@@ -1,3 +1,4 @@
+import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
 import { LONG_COURT_RINK_ASPECT_RATIO, LONG_COURT_GAME_LAYER_STYLE } from './matchCourt.js';
 export { LONG_COURT_GAME_LAYER_STYLE } from './matchCourt.js';
 import { PERSPECTIVE_PLAYER_OPTIONS, PERSPECTIVE_GOAL_OPTIONS, PERSPECTIVE_GOALIE_OPTIONS, PERSPECTIVE_PUCK_OPTIONS } from './perspectiveActors.js';
@@ -338,6 +339,13 @@ export interface PlayViewProps<TState> {
   initialShooterElapsedMs?: number | undefined;
   clockRebaseKey?: string | number | undefined;
   periodEndsAt?: number | undefined;
+  resultPauseStartsAt?: string | undefined;
+  resultPauseEndsAt?: string | undefined;
+  periodRemainingMs?: number | undefined;
+  getPeriodElapsedMs?: (() => number) | undefined;
+  stopAtPeriodEnd?: boolean | undefined;
+  shotResultPauseMs?: number | undefined;
+  applyShotStateAtContact?: boolean | undefined;
   scoreboardEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
   onSceneClock?: ((sceneElapsedMs: number, shooterElapsedMs: number) => void) | undefined;
@@ -474,6 +482,8 @@ interface PlaySessionTiming {
   sessionStartedAt: string | null;
   serverNow: string | null;
   receivedAtPerformanceMs: number | null;
+  resultPauseStartsAt?: string | null;
+  resultPauseEndsAt?: string | null;
   initialSceneElapsedMs?: number | null;
   initialShooterElapsedMs?: number | null;
 }
@@ -483,7 +493,10 @@ export function computeInitialPlayClocks(timing: PlaySessionTiming): {
   shooterElapsedMs: number;
 } {
   const receivedAt = timing.receivedAtPerformanceMs ?? performance.now();
-  const clientElapsed = Math.max(0, performance.now() - receivedAt);
+  const wallElapsed = Math.max(0, performance.now() - receivedAt);
+  const serverNowMsForPause = timing.serverNow ? Date.parse(timing.serverNow) : 0;
+  const clientElapsed = scoredActiveDeltaMs(serverNowMsForPause, serverNowMsForPause + wallElapsed,
+    timing.resultPauseStartsAt, timing.resultPauseEndsAt);
   if (timing.initialSceneElapsedMs != null && timing.initialShooterElapsedMs != null) {
     return {
       sceneElapsedMs: Math.max(0, timing.initialSceneElapsedMs) + clientElapsed,
@@ -643,6 +656,13 @@ export function PlayView<TState>({
   initialShooterElapsedMs,
   clockRebaseKey,
   periodEndsAt,
+  periodRemainingMs,
+  resultPauseStartsAt,
+  resultPauseEndsAt,
+  getPeriodElapsedMs,
+  stopAtPeriodEnd = false,
+  shotResultPauseMs,
+  applyShotStateAtContact = false,
   scoreboardEndsAt,
   onTimerExpired,
   onSceneClock,
@@ -738,6 +758,12 @@ export function PlayView<TState>({
   sceneShotIndexRef.current = sceneShotIndex;
   const onSceneClockRef = useRef(onSceneClock);
   onSceneClockRef.current = onSceneClock;
+  const periodExpiredRef = useRef(false);
+  const expiryCheckRef = useRef<() => boolean>(() => false);
+  const sampledPeriodElapsed = getPeriodElapsedMs?.();
+  expiryCheckRef.current = () => stopAtPeriodEnd && periodEndsAt !== undefined && (
+    getPeriodElapsedMs ? getPeriodElapsedMs() >= ((sampledPeriodElapsed ?? 0) + (periodRemainingMs ?? 0)) : Date.now() >= periodEndsAt
+  );
   const maxSceneTimeRef = useRef(maxSceneTimeMs);
   maxSceneTimeRef.current = maxSceneTimeMs;
   const sceneTimeScaleRef = useRef(sceneTimeScale);
@@ -752,6 +778,8 @@ export function PlayView<TState>({
     queuedPracticeShotRef.current = null;
   }, [active, clockRebaseKey, practiceShotWindow?.targetMs]);
   const sessionTimingRef = useRef<PlaySessionTiming>({
+    resultPauseStartsAt: resultPauseStartsAt ?? null,
+    resultPauseEndsAt: resultPauseEndsAt ?? null,
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
     receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
@@ -759,6 +787,8 @@ export function PlayView<TState>({
     initialShooterElapsedMs: initialShooterElapsedMs ?? null,
   });
   sessionTimingRef.current = {
+    resultPauseStartsAt: resultPauseStartsAt ?? null,
+    resultPauseEndsAt: resultPauseEndsAt ?? null,
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
     receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
@@ -1069,7 +1099,8 @@ export function PlayView<TState>({
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
   }, [periodEndsAt, scoreboardEndsAt]);
-  const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
+  const remaining = periodRemainingMs ?? (periodEndsAt ? Math.max(0, periodEndsAt - now) : 0);
+  periodExpiredRef.current = stopAtPeriodEnd && periodEndsAt !== undefined && remaining <= 0;
   const scoreboardRemaining = scoreboardEndsAt ? Math.max(0, scoreboardEndsAt - now) : remaining;
 
   useLayoutEffect(() => {
@@ -1490,7 +1521,9 @@ export function PlayView<TState>({
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
-        getMaxSceneTimeMs: () => queuedPracticeShotRef.current ?? maxSceneTimeRef.current,
+        getMaxSceneTimeMs: () => expiryCheckRef.current() && !shotAnimationInProgressRef.current
+          ? loopRef.current?.getSceneT() ?? 0
+          : queuedPracticeShotRef.current ?? maxSceneTimeRef.current,
         getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
           ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
         ...(courtMotionTimeRef.current ? { getCourtMotionTime: (target: 'goal' | 'goalie', ms: number) =>
@@ -1786,7 +1819,7 @@ export function PlayView<TState>({
     if (!loop || !puck || !goalie) return;
     if (puck.isFlying() || puck.isHeld()) return;
     if (shotSubmitPendingRef.current) return;
-    if (!cur.active) return;
+    if (!cur.active || expiryCheckRef.current()) return;
     if (!cur.seed) return;
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
 
@@ -1842,8 +1875,8 @@ export function PlayView<TState>({
       tapTime,
       shooterTapTime,
       ...(separatePeriodClock ? {
-        periodTapTime: computeInitialElapsedMs({ ...sessionTimingRef.current, initialSceneElapsedMs: null, initialShooterElapsedMs: null }),
-        resultPauseMs: reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS,
+        periodTapTime: getPeriodElapsedMs?.() ?? computeInitialElapsedMs({ ...sessionTimingRef.current, initialSceneElapsedMs: null, initialShooterElapsedMs: null }),
+        resultPauseMs: shotResultPauseMs ?? (reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS),
       } : {}),
       ...(shooterMotionT !== undefined ? { shooterMotionTime: shooterMotionT } : {}),
       puckSpeedPerMs: puckSpeed,
@@ -1881,8 +1914,8 @@ export function PlayView<TState>({
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
     const flightMs = beachShot?.flight.durationMs ?? (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
-    const visualFlightMs = reduceMotion ? 0 : flightMs;
-    const visualPauseMs = reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS;
+    const visualFlightMs = reduceMotion && !shotResultPauseMs ? 0 : flightMs;
+    const visualPauseMs = shotResultPauseMs ?? (reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS);
     const rawGoalCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOAL_OPENING.y) ?? flightMs);
     const tGoalCross = courtMotionTimeRef.current?.('goal', rawGoalCross) ?? rawGoalCross;
     const rawGoalieCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOALIE_Y) ?? (PUCK_START.y - GOALIE_Y) / puckSpeed);
@@ -2002,6 +2035,10 @@ export function PlayView<TState>({
         puck.holdAt(outcomeMotion?.end ?? puckShotPath.end, beachShot !== null && outcomeMotion === null);
       }
       if (freezeRenderingDuringResult && visualOutcomeDurationMs === 0) loop.detach();
+      if (applyShotStateAtContact) {
+        pendingMidShotApplyRef.current?.();
+        pendingMidShotApplyRef.current = null;
+      }
       if (result.type === 'save') goalie.setSavePose(true);
       setScoreboardSnapshot(null);
       setLastResult(result);
@@ -2093,7 +2130,7 @@ export function PlayView<TState>({
           if (res.isCurrent?.() === false) return;
           (applyResolvedState ?? applyState)(res.state);
         };
-        if (shotAnimationInProgressRef.current) {
+        if (shotAnimationInProgressRef.current && !(applyShotStateAtContact && resultVisibilityRef.current)) {
           pendingMidShotApplyRef.current = applyNextState;
           return;
         }
@@ -2111,6 +2148,9 @@ export function PlayView<TState>({
       });
   }, [
     separatePeriodClock,
+    getPeriodElapsedMs,
+    applyShotStateAtContact,
+    shotResultPauseMs,
     continuousClockDuringResult,
     waitForShotResponseBeforeResultClose,
     freezeRenderingDuringResult,
@@ -2299,7 +2339,7 @@ export function PlayView<TState>({
     isShotInProgress ||
     isShotSubmitPending ||
     isShowingResult ||
-    (!active && !inactiveAction) ||
+    periodExpiredRef.current || (!active && !inactiveAction) ||
     isDuelShotBlocked ||
     (active &&
       (routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting' || isEntrancePlaying)) ||

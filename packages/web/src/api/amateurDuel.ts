@@ -104,6 +104,7 @@ export interface AmateurDuelRules {
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duelKind: AmateurDuelKind;
+  shotResultPauseMs?: 1000;
   marathonWindowMs?: 4000 | 7000;
   sniperScoring?: MarksmanshipScoringRules;
   duelVariant: 'classic' | 'time_attack';
@@ -155,6 +156,8 @@ export interface AmateurDuelParticipant {
   sniper_points?: number;
   marathon_penalties?: number;
   average_goal_ms?: number | null;
+  result_pause_starts_at?: string | null;
+  result_pause_ends_at?: string | null;
   marathon_window_ends_at?: string | null;
   goals: number;
   accuracy: number;
@@ -425,6 +428,9 @@ export interface SubmitAmateurDuelShotRequest {
 }
 
 export interface SubmitAmateurDuelShotResponse {
+  server_now?: string;
+  period_started_at?: string | null;
+  period_ends_at?: string | null;
   state_revision?:number;
   match_id: string;
   server_result: ShotResultType;
