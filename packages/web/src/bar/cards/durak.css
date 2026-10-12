@@ -1313,7 +1313,7 @@
 .durak-menu [role='timer'] .game-scoreboard__value { font-size: 24px; line-height: 1; }
 .durak-menu .durak-menu__trump-symbol { font-size: 24px; }
 
-/* Keep the reserve smaller than played cards, with half the sideways trump exposed. */
+/* Keep the reserve smaller than played cards, with a small part of the sideways trump exposed. */
 .durak-screen .durak-deck {
   --deck-card-width: 44px;
   width: 72px;
@@ -1335,7 +1335,7 @@
   top: 4px;
 }
 .durak-screen .durak-deck img:last-child:not(:first-child) {
-  left: 23px;
+  left: 4px;
   top: 4px;
   transform: rotate(90deg);
   transform-origin: center;
