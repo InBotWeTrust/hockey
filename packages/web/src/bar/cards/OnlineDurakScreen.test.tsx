@@ -124,3 +124,11 @@ it('returns to the current bar when readiness is cancelled',async()=>{
  fireEvent.click(screen.getByRole('button',{name:'Вернуться'}));
  expect(await screen.findByText('Актуальный бар')).toBeInTheDocument();
 });
+it('shows only the upper notice while the game is starting',async()=>{
+ vi.mocked(api.snapshot).mockResolvedValue({...view,hand:[],readiness:{selfReady:true,opponentReady:true,expiresAt:Date.now()+60000,startsAt:Date.now()+3000,cancelled:false}});
+ mount();await act(async()=>{});
+ expect(screen.getAllByText('Игра начинается')).toHaveLength(1);
+ expect(document.querySelector('.durak-ready-actions')).toBeNull();
+ expect(document.querySelector('.durak-controls')).toBeNull();
+ expect(screen.queryByRole('button',{name:'Готов'})).not.toBeInTheDocument();
+});

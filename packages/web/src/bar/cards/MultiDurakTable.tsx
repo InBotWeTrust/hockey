@@ -316,7 +316,7 @@ export function MultiDurakTable({
         </button>
       </section>
       )}
-      {pregame && (
+      {pregame && view.status !== 'countdown' && (
         <div className="durak-ready-actions">
           {view.status === 'confirming' && (
             <button

@@ -172,3 +172,10 @@ it.each([2, 3, 4, 5, 6])('shows menu trump only at a six-player table (%i seats)
   if (capacity === 6) expect(within(menu).getByText('Козырь')).toBeInTheDocument();
   else expect(within(menu).queryByText('Козырь')).not.toBeInTheDocument();
 });
+
+it('keeps the countdown notice above the table with no lower readiness container',()=>{
+ render(<MemoryRouter><MultiDurakTable view={{...base,game:null,status:'countdown',countdownAt:4000,ready:['a','b']}} userId="a" busy={false} error={null} now={1000} onCommand={()=>{}}/></MemoryRouter>);
+ expect(screen.getAllByText('Игра начинается')).toHaveLength(1);
+ expect(document.querySelector('.durak-ready-actions')).toBeNull();
+ expect(document.querySelector('.durak-controls')).toBeNull();
+});

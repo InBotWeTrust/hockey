@@ -332,7 +332,7 @@ export function DurakTable({
         </button>
       </section>
       )}
-      {pregame && (
+      {pregame && (!pregame.countdown || pregame.cancelled) && (
         <div className="durak-ready-actions" role="status">
           {!pregame.cancelled && !pregame.countdown && (
             <button
