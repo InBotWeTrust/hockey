@@ -9,6 +9,7 @@ import './global.css';
 import './design-system.css';
 import './liquid-glass.css';
 import './light-theme.css';
+import './classic-light-theme.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
