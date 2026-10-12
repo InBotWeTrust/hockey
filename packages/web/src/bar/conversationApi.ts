@@ -1,3 +1,4 @@
+import type {CharacterEmotion} from './characterEmotion.js';
 import { apiFetch } from '../api/apiFetch.js';
 export const barCharacters = [
   'maria',
@@ -15,7 +16,7 @@ export interface ConversationSnapshot {
   revision: number;
   pending: boolean;
   interventionActive?: boolean;
-  turns: { id: string; user: string; assistant: string; createdAt: string; speaker?: BarCharacter; intervention?: string; fightId?: string; event?: 'physical' }[];
+  turns: { id: string; user: string; assistant: string; createdAt: string; speaker?: BarCharacter; intervention?: string; fightId?: string; event?: 'physical'; emotion?:CharacterEmotion }[];
   preview?: boolean;
 }
 export interface ConversationMessage {

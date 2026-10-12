@@ -8,13 +8,14 @@ export const storySchema = z.object({
 }).strict();
 const biographySchema = z.object({ version: z.number().int().positive(), facts: z.array(z.string().max(1000)).max(16), stories: z.array(storySchema).max(20) }).strict();
 export type Story = z.infer<typeof storySchema>;
-export interface Persona { soul: string; common: string; biography: z.infer<typeof biographySchema> }
+export interface Persona { soul: string; common: string; setting: string; biography: z.infer<typeof biographySchema> }
 const cache = new Map<Character, Persona>();
 export function personaOf(character: Character): Persona {
   let persona = cache.get(character);
   if (!persona) {
     const root = new URL('../../personas/', import.meta.url);
     persona = {
+      setting: readFileSync(new URL('bar-setting.md',root),'utf8'),
       soul: readFileSync(new URL(`${character}/soul.md`, root), 'utf8'),
       common: readFileSync(new URL('common-rules.md', root), 'utf8'),
       biography: biographySchema.parse(JSON.parse(readFileSync(new URL(`${character}/biography.json`, root), 'utf8'))),

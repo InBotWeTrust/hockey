@@ -1,3 +1,4 @@
+import {emotionFromSnapshot,canGreet,preloadEmotions,prepareGreeting,entryEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createDefaultBarLayout, type BarAction, type BarOccupantId } from '@hockey/game-core';
@@ -32,22 +33,36 @@ export function BarPanorama() {
       if(snapshot.turns.some(turn=>turn.fightId))window.dispatchEvent(new Event('bar-access-changed'));
     }catch{setIncidentError(true);}finally{incidentSending.current=false;}
   };
+  const activeConversation=useRef(conversation);activeConversation.current=conversation;
+  const moodRevision=useRef<Partial<Record<BarCharacter,number>>>({});
+  const [emotions,setEmotions]=useState<Partial<Record<BarCharacter,CharacterEmotion>>>({});
+  const [thinking,setThinking]=useState<BarCharacter|null>(null);
+  const [greeting,setGreeting]=useState<BarCharacter|null>(null);
+  useEffect(()=>{if(conversation){setGreeting(null);preloadEmotions(conversation);}},[conversation]);
   const [started, setStarted] = useState<Partial<Record<BarCharacter, boolean>>>({});
   const selectedCharacter = layout.slots.find((s) => s.id === slot)?.occupantId;
   useEffect(() => {
+    setGreeting(null);
     if (!selectedCharacter || !barCharacters.includes(selectedCharacter as BarCharacter)) return;
     let cancelled = false;
+    let timer:ReturnType<typeof setTimeout>|undefined;
     const character = selectedCharacter as BarCharacter;
     void fetchConversation(character)
-      .then((data) => {
-        if (!cancelled)
-          setStarted((previous) => ({ ...previous, [character]: data.turns.length > 0 }));
+      .then(async (data) => {
+        const greetingReady=canGreet(data)&&await prepareGreeting(character);
+        if (!cancelled) {
+          if(!activeConversation.current&&data.revision>=(moodRevision.current[character]??-1)){
+            setEmotions(previous=>({...previous,[character]:entryEmotion(data)}));
+            if(greetingReady){timer=setTimeout(()=>{if(activeConversation.current || (moodRevision.current[character]??-1)>data.revision)return;setGreeting(character);timer=setTimeout(()=>setGreeting(current=>current===character?null:current),2200);},650);}
+          }
+          if(data.revision>=(moodRevision.current[character]??-1))setStarted((previous) => ({ ...previous, [character]: data.turns.length > 0 }));
+        }
       })
       .catch(() => {
         /* The conversation panel provides a retryable error. */
       });
     return () => {
-      cancelled = true;
+      cancelled = true;clearTimeout(timer);
     };
   }, [selectedCharacter]);
   useEffect(() => {
@@ -106,6 +121,7 @@ export function BarPanorama() {
     <>
       <BarScene
         layout={layout}
+        characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
         hideIdentity={conversation !== null}
         activeSlotId={slot}
         onSelectSlot={(id) => {
@@ -134,10 +150,15 @@ export function BarPanorama() {
           name={layout.profiles[conversation].name}
           avatar={layout.profiles[conversation].avatar}
           role={layout.profiles[conversation].role}
-          onClose={() => setConversation(null)}
-          onUpdate={(data) =>
-            setStarted((previous) => ({ ...previous, [conversation]: data.turns.length > 0 }))
-          }
+          onClose={() => {setConversation(null);setThinking(null);}}
+          onWaiting={waiting=>setThinking(current=>waiting?conversation:current===conversation?null:current)}
+          onUpdate={(data) => {
+            setGreeting(null);
+            if(data.revision<(moodRevision.current[conversation]??-1))return;
+            moodRevision.current[conversation]=data.revision;
+            setEmotions(previous=>({...previous,[conversation]:emotionFromSnapshot(data)}));
+            setStarted((previous) => ({ ...previous, [conversation]: data.turns.length > 0 }));
+          }}
         />
       )}
       {opponent && (

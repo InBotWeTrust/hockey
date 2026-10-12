@@ -469,3 +469,15 @@
 
 .bar-space__character-hit { position:absolute; pointer-events:none; user-select:none; -webkit-touch-callout:none; }
 .bar-space__character-hit path { fill:transparent; pointer-events:fill; }
+
+.bar-emotion-base { animation: bar-emotion-out 700ms ease-in-out both; }
+.bar-emotion-current { animation: bar-emotion-in 700ms ease-in-out; }
+/* Add transparent frames before compositing onto the bar; avoid a backdrop dip. */
+.bar-space__figure { isolation: isolate; }
+.bar-emotion-base, .bar-emotion-current { mix-blend-mode: plus-lighter; }
+@keyframes bar-emotion-out { from { opacity: 1; } to { opacity: 0; } }
+@keyframes bar-emotion-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+ .bar-emotion-base { animation: none; opacity: 0; }
+ .bar-emotion-current { animation: none; }
+}

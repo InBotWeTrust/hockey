@@ -23,6 +23,7 @@ export function BarConversation({
   avatar,
   onClose,
   onUpdate,
+  onWaiting,
 }: {
   character: BarCharacter;
   name: string;
@@ -30,6 +31,7 @@ export function BarConversation({
   avatar?: string | null;
   onClose: () => void;
   onUpdate: (data: ConversationSnapshot) => void;
+  onWaiting?: (waiting:boolean)=>void;
 }) {
   const [data, setData] = useState<ConversationSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
@@ -49,6 +51,8 @@ export function BarConversation({
   const [thinkingIndex, setThinkingIndex] = useState(0);
   const interventionActive = data?.interventionActive ?? data?.turns.at(-1)?.intervention === 'intervention';
   const waiting = sending || !!data?.pending;
+  const waitingCallback=useRef(onWaiting);waitingCallback.current=onWaiting;
+  useEffect(()=>{waitingCallback.current?.(waiting);},[waiting]);
   useEffect(() => {
     setThinkingIndex(0);
     if (!waiting) return;

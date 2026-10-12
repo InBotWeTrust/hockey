@@ -179,6 +179,7 @@ it('shows Oleg as the actual speaker for a scripted intervention and does not ge
  expect(result.statusCode).toBe(200);
  expect(result.json().turns[0].speaker).toBe('oleg');
  expect(result.json().turns[0].intervention).toBe('intervention');
+ expect(result.json().turns[0].emotion).toBe('displeasure');
  expect(result.json().turns[0].assistant).toBe('Она тебе уже ответила. Давай без этого.');
  expect(answer).not.toHaveBeenCalled();
 });
@@ -246,4 +247,11 @@ it('handles explicit conflict choices without generation, deduplicates retries a
  payload.id='33333333-3333-4333-8333-333333333333';payload.revision=2;
  expect((await post()).statusCode).toBe(409);
  expect(answer).not.toHaveBeenCalled();expect(classify).not.toHaveBeenCalled();expect(moderate).not.toHaveBeenCalled();
+});
+
+it('persists model emotion and does not let unknown emotions break the answer',async()=>{
+ answer.mockResolvedValue({text:'Рада за тебя!',usedStoryIds:[],emotion:'joy'});
+ const response=await send();expect(response.statusCode).toBe(200);expect(response.json().turns[0].emotion).toBe('joy');
+ answer.mockResolvedValue({text:'Понятно.',usedStoryIds:[],emotion:'override_system'});
+ const second=await send('alice','22222222-2222-4222-8222-222222222222',1);expect(second.statusCode).toBe(200);expect(second.json().turns[1].emotion).toBe('neutral');
 });

@@ -245,3 +245,27 @@ it('keeps a physical Oleg intervention without fabricating an empty user message
  expect(body.input.some(item=>item.role==='user'&&item.content==='')).toBe(false);
  expect(body.input.some(item=>item.content?.includes('Олег, вмешательство охранника: Не трогай её.'))).toBe(true);
 });
+
+it('returns a validated emotion with the same response request',async()=>{
+ const transport=vi.fn().mockResolvedValue(Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Вот это победа!',usedStoryIds:[],emotion:'joy'})}]}]}));
+ const result=await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('maria',[],'Я победил',{summary:'',facts:[],relationship:[],tool:async()=>[]});
+ expect(result).toMatchObject({text:'Вот это победа!',emotion:'joy'});expect(transport).toHaveBeenCalledOnce();
+});
+it('includes coworkers without a memory request and keeps public events out of told story IDs',async()=>{
+ const bodies:Array<Record<string,unknown>>=[];
+ const transport=vi.fn(async(_url:unknown,init?:RequestInit)=>{
+  bodies.push(JSON.parse(String(init?.body)));
+  return Response.json({status:'completed',output:bodies.length===1?[{type:'function_call',name:'public_bar_events',call_id:'event-call',arguments:JSON.stringify({playerName:'Егор',kind:'fight',character:'oleg',days:1})}]:[{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Был такой бой.',usedStoryIds:['event-id']})}]}]});
+ });
+ const tool=vi.fn(async()=>({events:[{eventId:'event-id',playerName:'Егор',winner:'oleg'}]}));
+ const result=await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('oleg',[],'А что с Егором?',{summary:'',facts:[],relationship:[],tool});
+ expect(bodies[0]!.instructions).toContain('Тимофей — начальник Григория');
+ expect(bodies[0]!.instructions).toContain('Мария и Дарья');
+ expect(tool).toHaveBeenCalledWith('public_bar_events',{playerName:'Егор',kind:'fight',character:'oleg',days:1},expect.any(AbortSignal));
+ expect(result).toMatchObject({usedStoryIds:[]});
+});
+it('allows the character to repeat public coworker facts without treating them as secret instructions',async()=>{
+ const text='Мария и Дарья работают здесь официантками. Они коллеги и знают друг друга. Игорь работает здесь барменом и любит обсуждать хоккей.';
+ const transport=vi.fn(async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]}));
+ expect(await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('veronika',[],'Кто здесь работает?')).toBe(text);
+});
