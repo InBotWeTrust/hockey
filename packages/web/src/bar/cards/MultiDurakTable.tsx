@@ -282,6 +282,7 @@ export function MultiDurakTable({
           })}
         </div>
       </section>
+      {!pregame && (
       <section className="durak-controls">
         <button
           className="icon-btn durak-tool"
@@ -314,9 +315,9 @@ export function MultiDurakTable({
           <span className="durak-tool__question">?</span>
         </button>
       </section>
+      )}
       {pregame && (
-        <div className="durak-ready-panel game-scoreboard">
-          <p role="status">{pregameText}</p>
+        <div className="durak-ready-actions">
           {view.status === 'confirming' && (
             <button
               className="btn btn--cta"

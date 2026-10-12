@@ -94,6 +94,9 @@ it('waits for explicit readiness and hides the hand before starting', async () =
   mount();
   await act(async () => {});
   expect(screen.queryByRole('button', { name: '6 ♥' })).not.toBeInTheDocument();
+  expect(document.querySelector('.durak-ready-panel')).toBeNull();
+  expect(document.querySelector('.durak-controls')).toBeNull();
+  expect(screen.getAllByText('Подтвердите готовность')).toHaveLength(1);
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Готов' })); });
   expect(api.move).toHaveBeenCalledWith('match', 0, 'ready');
   expect(screen.getByRole('button', { name: 'Вы готовы' })).toBeDisabled();

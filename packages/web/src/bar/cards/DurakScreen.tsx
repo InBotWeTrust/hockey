@@ -291,6 +291,7 @@ export function DurakTable({
           })}
         </div>
       </section>
+      {!pregame && (
       <section className="durak-controls">
         <button
           className="icon-btn durak-tool"
@@ -330,9 +331,9 @@ export function DurakTable({
           </span>
         </button>
       </section>
+      )}
       {pregame && (
-        <div className="durak-ready-panel game-scoreboard" role="status">
-          <p>{pregame.text}</p>
+        <div className="durak-ready-actions" role="status">
           {!pregame.cancelled && !pregame.countdown && (
             <button
               className="btn btn--cta"

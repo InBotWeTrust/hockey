@@ -1201,18 +1201,23 @@
   inset: 0 !important;
   max-width: 100%;
 }
-.durak-screen .durak-ready-panel {
+/* Pregame only needs a ready action; status is already shown above the table. */
+.durak-screen .durak-ready-actions {
   position: absolute;
-  bottom: calc(12px + var(--app-safe-bottom, 0px));
+  bottom: calc(20px + var(--app-safe-bottom, 0px));
   left: 16px;
   right: 16px;
-  width: auto;
-  padding: 16px;
-  box-sizing: border-box;
-  text-align: center;
+  display: flex;
+  justify-content: center;
   z-index: 3;
+  pointer-events: none;
 }
-.durak-ready-panel p { margin: 0 0 12px; }
+.durak-ready-actions .btn {
+  min-width: 180px;
+  min-height: 44px;
+  max-width: 100%;
+  pointer-events: auto;
+}
 
 .durak-room-lobby .bar-header { margin-bottom: 16px; }
 .durak-room-lobby .bar-content > .section-label {

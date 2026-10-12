@@ -102,6 +102,8 @@ it('shows readiness on the table without dealing cards or enabling moves', () =>
     readyUntil: 61000, ready: ['b'] }} userId="a" busy={false} error={null} now={1000} onCommand={send} /></MemoryRouter>);
   expect(screen.getByRole('timer')).toHaveTextContent('60');
   expect(screen.getAllByText('Готов')).toHaveLength(2);
+  expect(document.querySelector('.durak-ready-panel')).toBeNull();
+  expect(document.querySelector('.durak-controls')).toBeNull();
   expect(within(screen.getByRole('group', { name: 'Твои карты' })).queryByRole('button')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Готов' }));
   expect(send).toHaveBeenCalledWith({ type: 'ready' });
