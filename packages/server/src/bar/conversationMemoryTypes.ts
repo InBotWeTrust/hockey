@@ -1,3 +1,4 @@
+import {publicEventQuerySchema} from './publicEvents.js';
 import type { CharacterEmotion } from './characterEmotion.js';
 import { z } from 'zod';
 import type { SqlCardHistoryStore } from './cardHistory.js';
@@ -28,7 +29,7 @@ export const newStorySchema = z.object({
 }).strict();
 export type NewStory = z.infer<typeof newStorySchema>;
 export const topicSchema = z.object({ topic: z.string().trim().max(200) }).strict();
-export const toolSchemas = { find_stories: topicSchema, game_memories: topicSchema, propose_story: newStorySchema };
+export const toolSchemas = { find_stories: topicSchema, game_memories: topicSchema, propose_story: newStorySchema, public_bar_events:publicEventQuerySchema };
 export type ToolName = keyof typeof toolSchemas;
-export type ToolArguments = z.infer<typeof topicSchema> | NewStory;
+export type ToolArguments = z.infer<typeof topicSchema> | NewStory | z.infer<typeof publicEventQuerySchema>;
 export type KnownStory = Story & { told: boolean };
