@@ -1,3 +1,5 @@
+import { finishAmateurDuelPeriod } from '../api/amateurDuel.js';
+import { EnduranceTimer } from '../components/EnduranceTimer.js';
 import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
 import { formatRecordDuration } from '../lib/recordDuration.js';
 import { FittedHudLabel } from '../components/FittedHudLabel.js';
@@ -5720,7 +5722,7 @@ export function tournamentAttemptRefetchInterval(
   return participantState === 'period_active' ? false : 1_000;
 }
 
-function AmateurDuelPlayView({
+export function AmateurDuelPlayView({
   matchId,
   tournamentId,
   tournamentFixtureId,
@@ -5776,8 +5778,12 @@ function AmateurDuelPlayView({
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
+  const [shotRequestActive, setShotRequestActive] = useState(false);
+  const [shotAnimationActive, setShotAnimationActive] = useState(false);
+  const marathonFrozenMsRef = useRef<number | null>(null);
+  const [marathonFrozenMs, setMarathonFrozenMs] = useState<number | null>(null);
   const [localShotClock, setLocalShotClock] = useState<{
-    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean;
+    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number;
   } | null>(null);
   const [sniperScoreParts, setSniperScoreParts] = useState<readonly { points: number; label: string }[] | null>(null);
   const sniperPendingPartsRef = useRef<readonly { points: number; label: string }[] | null>(null);
@@ -5936,6 +5942,17 @@ function AmateurDuelPlayView({
     );
     return () => window.clearTimeout(timer);
   }, [marathonDeadline, match?.id, match?.me.state, refresh]);
+
+  const finishingExpiredPeriodRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!match || match.rules.scoredClockVersion !== 2 || match.me.state !== 'period_active' ||
+        shotAnimationActive || shotRequestActive || !match.period_ends_at) return;
+    const serverNow = Date.parse(match.server_now) + Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now()));
+    if (serverNow < Date.parse(match.period_ends_at) || finishingExpiredPeriodRef.current === match.id) return;
+    finishingExpiredPeriodRef.current = match.id;
+    void finishAmateurDuelPeriod(match.id).then(({match: next}) => applyState(next))
+      .catch(() => { finishingExpiredPeriodRef.current = null; void refresh(); });
+  }, [match, now, shotAnimationActive, shotRequestActive, applyState, refresh]);
 
   const participantState = match?.me?.state;
   useEffect(() => {
@@ -6116,15 +6133,36 @@ function AmateurDuelPlayView({
     Date.parse(match.server_now) + Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now())),
     pauseStartsAt, pauseEndsAt);
   const pausedScoredClock = match.rules.shotResultPauseMs !== undefined;
-  const scoredRemainingMs = Math.max(0, (match.me.clock?.remainingMs ?? 0) - scoredClockDelta());
+  const continuousScoredPeriod = match.rules.scoredClockVersion === 2;
+  const wallClockDelta = () => Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now()));
+  const periodClockDelta = () => continuousScoredPeriod ? wallClockDelta() : scoredClockDelta();
+  const scoredRemainingMs = Math.max(0, (match.me.clock?.remainingMs ?? 0) - periodClockDelta());
   const authoritativeMarathonRemainingMs = Math.max(0,
     Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - Date.parse(match.server_now) -
     (pausedScoredClock ? scoredClockDelta() : fightNow - Date.parse(match.server_now)));
 
-  const marathonRemainingMs = localPausePending && localShotClock.goal && fightNow >= Date.parse(localShotClock.startsAt)
-    ? Math.max(0, localShotClock.goalAtMs + (match.rules.marathonWindowMs ?? 7000) -
-        ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta()))
-    : authoritativeMarathonRemainingMs;
+  const windowMs = match.rules.marathonWindowMs ?? 7000;
+  const resultPauseStart = pauseStartsAt ? Date.parse(pauseStartsAt) : 0;
+  const resultPauseEnd = pauseEndsAt ? Date.parse(pauseEndsAt) : 0;
+  const marathonResultPaused = resultPauseStart > 0 && fightNow >= resultPauseStart && fightNow < resultPauseEnd;
+  const frozenMarathonRemainingRefValue = marathonResultPaused
+    ? Math.max(0, Math.min(windowMs, Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - resultPauseStart))
+    : null;
+  const marathonRemainingMs = Math.min(windowMs, Math.max(0, continuousScoredPeriod
+    ? (shotAnimationActive && localShotClock && fightNow < Date.parse(localShotClock.startsAt)
+      ? Math.max(0, localShotClock.previousWindowEndsAt - fightNow)
+      : marathonResultPaused ? marathonFrozenMs ?? localShotClock?.frozenWindowMs ?? frozenMarathonRemainingRefValue ?? windowMs
+      : localPausePending && fightNow >= resultPauseEnd
+        ? windowMs - Math.max(0, fightNow - resultPauseEnd)
+        : Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - fightNow)
+    : localPausePending && localShotClock.goal && fightNow >= resultPauseStart
+      ? localShotClock.goalAtMs + windowMs - ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta())
+      : authoritativeMarathonRemainingMs));
+  const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
+    (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
+  const visibleMatch = periodLocallyExpired
+    ? { ...match, me: { ...match.me, state: 'completed' as const } }
+    : match;
   const fight = match.fight;
   const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
   const medicalAid = medicalAidUntilMs !== undefined;
@@ -6152,8 +6190,9 @@ function AmateurDuelPlayView({
   ) : null;
   const fightRecovery=match.me.recovery_until?Math.max(0,Date.parse(match.me.recovery_until)-fightNow):0;
   const fightAction = fight?.status === 'offered' || (match.fight_enabled && match.fight_availability?.allowed) ? <FightControls match={match} nowMs={fightNow} iconStyle={DUEL_INVENTORY_ICON_GLASS_STYLE}/> : null;
-  if (directPlayOnly && match.me.state !== 'period_active') {
-    const timing = duelEventTiming(match, now);
+  if ((directPlayOnly && match.me.state !== 'period_active') || periodLocallyExpired ||
+      (match.status === 'active' && match.me.state === 'completed')) {
+    const timing = duelEventTiming(visibleMatch, now);
     const inactivePeriodRule = duelParticipantPeriodRule(match, match.me);
     const showDirectResultModal =
       match.status === 'settled' && dismissedResultMatchId !== match.id && tournamentResultReady;
@@ -6162,7 +6201,7 @@ function AmateurDuelPlayView({
       ((match.status === 'ready_check' && match.me.state !== 'ready') ||
         canStartArenaDuelPeriod(match, duelMatchNowMs(match, now)));
     const { playerReady: meReady, goalieReady: opponentReady } =
-      duelRinkReadyPresenceForMatch(match);
+      duelRinkReadyPresenceForMatch(visibleMatch);
     const explainTournamentReadiness =
       match.source === 'tournament' &&
       match.status === 'ready_check' &&
@@ -6195,7 +6234,7 @@ function AmateurDuelPlayView({
           timer={timing.value}
           timerLabel={timing.label}
           shotButtonLabel={
-            inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(match, now).toUpperCase()
+            inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(visibleMatch, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
           primaryActionBlocked={duelBlocked || fightRecovery>0}
@@ -6399,7 +6438,7 @@ function AmateurDuelPlayView({
               ? () =>
                   periodEndsAt === undefined ||
                   periodEndsAt === null ||
-                  (pausedScoredClock ? (match.me.clock?.remainingMs ?? 0) - scoredClockDelta() > 0 : Date.parse(match.server_now) +
+                  (pausedScoredClock ? (match.me.clock?.remainingMs ?? 0) - periodClockDelta() > 0 : Date.parse(match.server_now) +
                     Math.max(
                       0,
                       performance.now() - (match.received_at_performance_ms ?? performance.now()),
@@ -6428,30 +6467,37 @@ function AmateurDuelPlayView({
               : undefined
           }
           optimisticAddShot={optimisticAddShot}
-          stopAtPeriodEnd={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          stopAtPeriodEnd
           {...(pausedScoredClock ? {
             periodRemainingMs: scoredRemainingMs,
             resultPauseStartsAt: pauseStartsAt ?? undefined,
             resultPauseEndsAt: pauseEndsAt ?? undefined,
             timer: formatMs(scoredRemainingMs),
-            getPeriodElapsedMs: () => (match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta(),
+            getPeriodElapsedMs: () => (match.me.clock?.periodElapsedMs ?? 0) + periodClockDelta(),
             applyShotStateAtContact: true,
             shotResultPauseMs: match.rules.shotResultPauseMs,
           } : {})}
           separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
-          onShotResolved={pausedScoredClock ? (context) => {
+          onShotResolved={(context) => {
+            setShotAnimationActive(true);
+            if (!pausedScoredClock) return null;
             const flightMs = context.flightMs ?? 0;
             const startsAt = Date.parse(match.server_now) +
               Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now())) + flightMs;
+            marathonFrozenMsRef.current = Math.min(windowMs, Math.max(0,
+              Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - startsAt));
             setLocalShotClock({startsAt: new Date(startsAt).toISOString(),
               endsAt: new Date(startsAt + 1000).toISOString(),
               previousEndsAt: match.me.result_pause_ends_at ?? null,
-              goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta() + flightMs,
-              goal: context.result.type === 'goal'});
+              goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + periodClockDelta() + flightMs,
+              goal: context.result.type === 'goal',
+              previousWindowEndsAt: Date.parse(match.me.marathon_window_ends_at ?? match.server_now),
+              frozenWindowMs: Math.min(windowMs, Math.max(0, Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - startsAt))});
             return null;
-          } : undefined}
+          }}
           submitShot={async (args) => {
-            const result = await submitShot(args);
+            setShotRequestActive(true);
+            const result = await submitShot(args).finally(() => setShotRequestActive(false));
             if (pausedScoredClock) {
               if (result === null) setLocalShotClock(null);
               else setLocalShotClock((previous) => previous ? {...previous, goal: result.serverResult === 'goal'} : null);
@@ -6465,6 +6511,8 @@ function AmateurDuelPlayView({
             return result;
           }}
           onResultVisibilityChange={(visible) => {
+            if (visible && match.rules.duelKind === 'marathon') setMarathonFrozenMs(marathonFrozenMsRef.current ?? localShotClock?.frozenWindowMs ?? marathonRemainingMs);
+            if (!visible) { setShotAnimationActive(false); setMarathonFrozenMs(null); marathonFrozenMsRef.current = null; }
             if (match.rules.duelKind !== 'sniper') return;
             sniperResultVisibleRef.current = visible;
             if (visible) showSniperScore(sniperPendingPartsRef.current);
@@ -6476,20 +6524,8 @@ function AmateurDuelPlayView({
             return { ...condition, canShoot: false };
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
-          scoreboardAccessory={match.rules.duelKind === 'marathon' ? (
-            <div
-              className={`game-scoreboard game-scoreboard--stable-surface bonus-game-endurance-timer bonus-game-endurance-timer--${
-                marathonRemainingMs <= 1000
-                  ? 'danger' : 'warning'
-              }`}
-              role="timer"
-              aria-label="До обязательного гола"
-            >
-              <span className="game-scoreboard__label">ТАЙМЕР</span>
-              <span className="bonus-game-endurance-timer__value">
-                {(Math.ceil(marathonRemainingMs / 100) / 10).toFixed(1)}
-              </span>
-            </div>
+          scoreboardAccessory={match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
+            <EnduranceTimer remainingMs={marathonRemainingMs} tone={marathonRemainingMs <= 1000 ? 'danger' : 'warning'} />
           ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
             <MarksmanshipScoreNotice parts={sniperScoreParts} scoring={match.rules.sniperScoring} />
           ) : undefined}
@@ -8138,6 +8174,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
     scoreSeparator: match.rules.duelKind === 'sniper' ? '\u2009:\u2009' : ':',
+    ...(['sniper','marathon'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
     shots: opponent.shots_taken,
     shotsLabel,
     time,

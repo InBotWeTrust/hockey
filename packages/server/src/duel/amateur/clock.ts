@@ -4,6 +4,7 @@ export interface DuelClockParticipant {
   active_duration_ms: number;
   period_paused_ms?: number;
   period_paused_at?: Date | null;
+  result_pause_stops_period?: boolean;
   result_paused_ms?: number;
   result_pause_starts_at?: Date | null;
   result_pause_ends_at?: Date | null;
@@ -16,6 +17,7 @@ export interface ParticipantClock {
 }
 /** Only the elapsed portion of a reserved shot-result pause stops the clock. */
 export function elapsedResultPauseMs(participant: DuelClockParticipant, nowMs: number): number {
+  if (participant.result_pause_stops_period === false) return 0;
   const remaining = participant.result_pause_starts_at && participant.result_pause_ends_at
     ? Math.max(0, participant.result_pause_ends_at.getTime() - Math.max(nowMs, participant.result_pause_starts_at.getTime()))
     : 0;
@@ -44,7 +46,7 @@ export function getParticipantClock(
     totalActiveMs: Number(participant.active_duration_ms) + periodElapsedMs,
     remainingMs: Math.max(0, durationMs - periodElapsedMs),
     running: active && pausedAt === null && periodElapsedMs < durationMs && !(
-      participant.result_pause_starts_at && participant.result_pause_ends_at &&
+      participant.result_pause_stops_period !== false && participant.result_pause_starts_at && participant.result_pause_ends_at &&
       nowMs >= participant.result_pause_starts_at.getTime() && nowMs < participant.result_pause_ends_at.getTime()
     ),
   };

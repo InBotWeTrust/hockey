@@ -88,6 +88,7 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
+    scoredClockVersion?: 2;
     shotResultPauseMs?: 1000;
     marathonWindowMs?: 4000 | 7000;
     goalieId?: string;
@@ -268,7 +269,7 @@ async function playersFor(
       }));
       const elapsed = row.rules_snapshot?.shotResultPauseMs && p.state === 'completed' && p.period_started_at === null
         ? row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000
-        : row.rules_snapshot?.shotResultPauseMs
+        : row.rules_snapshot?.shotResultPauseMs && row.rules_snapshot.scoredClockVersion !== 2
         ? scoredElapsedFromShots(wallElapsed, projectedShots, row.rules_snapshot.shotResultPauseMs)
         : wallElapsed;
       return {
@@ -286,6 +287,7 @@ async function playersFor(
             : projectMarathon({
                 durationMs: row.rules_snapshot?.periodRules?.[0]?.durationMs ?? 240000,
                 windowMs: row.rules_snapshot?.marathonWindowMs ?? 7000,
+                ...(row.rules_snapshot?.scoredClockVersion === 2 ? { resetAfterShotPauseMs: 1000 } : {}),
                 elapsedMs: elapsed,
                 shots: shots.map((shot) => ({
                   startedMs: shot.input_payload.periodTapTime ?? shot.input_payload.tapTime,

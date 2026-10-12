@@ -115,3 +115,19 @@ describe('delayed scored duel clocks', () => {
     expect(scoredElapsedFromShots(10500,shots,1000)).toBe(8500);
   });
 });
+
+
+describe('Marathon continuous-period windows', () => {
+  it.each([4000,7000] as const)('resets %i ms after every shot result', (windowMs) => {
+    for (const goal of [false,true]) {
+      const input={durationMs:240000,windowMs,resetAfterShotPauseMs:1000,shots:[{startedMs:2000,flightMs:500,goal}]};
+      const paused=project({...input,elapsedMs:2800});
+      expect(paused.windowEndsMs).toBe(3500+windowMs);
+      expect(project({...input,elapsedMs:3400}).penalties).toBe(paused.penalties);
+      expect(project({...input,elapsedMs:3500}).windowEndsMs-3500).toBe(windowMs);
+    }
+  });
+  it('keeps legacy goal-only reset unchanged', () => {
+    expect(project({durationMs:240000,windowMs:4000,elapsedMs:2800,shots:[{startedMs:2000,flightMs:500,goal:false}]}).windowEndsMs).toBe(4000);
+  });
+});
