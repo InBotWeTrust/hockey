@@ -1,6 +1,6 @@
 import { MarksmanshipScoreNotice, formatMarksmanshipPoints, marksmanshipResultPresentation } from '../components/MarksmanshipScoreNotice.js';
 import { ChallengeFinale } from '../game/ChallengeFinale.js';
-import { formatBonusRecord } from '../profile/BonusRecordsModal.js';
+import { formatBonusDuration, formatBonusRecord } from '../profile/BonusRecordsModal.js';
 import {CyberpunkEffects} from '../game/CyberpunkEffects';
 import {cyberpunkNotice} from '../game/cyberpunkNotice';
 import {cyberpunkEarliestTap,sampleCyberpunkEnvironment,cyberpunkCrossings,cyberpunkShooterMotion,cyberpunkEnvironmentForHistory,type CyberpunkPanelEvent} from '@hockey/game-core';
@@ -297,7 +297,7 @@ export function BonusResult({
   const averageEnduranceGoalText =
     averageEnduranceGoalMs === null
       ? '—'
-      : `${new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(averageEnduranceGoalMs / 1_000)} сек`;
+      : formatBonusDuration(averageEnduranceGoalMs);
   const awardedReward = {
     coins: attempt.reward_granted ? attempt.reward.coins : 0,
     stars: (attempt.reward_granted ? attempt.reward.stars : 0) + (attempt.record?.stars ?? 0),

@@ -518,16 +518,16 @@ export function BonusGamesScreen(): JSX.Element {
           ) : null}
           {previewGame.skill_code !== 'challenge' && <div className="bonus-records-entry">
             <dl className="bonus-records-entry__summary">
-              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Пройди игру, чтобы установить свой рекорд' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Ещё не установлен'}</dd></div>
+              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Не установлен' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Не установлен'}</dd></div>
               <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusRecord(previewGame.skill_code, previewRecords.data.rows[0]) : 'Ещё не установлен'}</dd></div>
             </dl>
             <div className="bonus-records-entry__action-row">
-            <p className="modal-copy bonus-records-entry__description">За новый рекорд – звёзды и опыт</p>
+            <p className="modal-copy bonus-records-entry__note bonus-records-entry__description">{previewGame.is_completed ? <>За новый рекорд – звёзды и&nbsp;опыт</> : <>За новый рекорд – звёзды и&nbsp;опыт. Рекорды откроются после&nbsp;прохождения.</>}</p>
             {previewGame.is_completed ? (
               <button type="button" className="modal-primary btn btn--cta bonus-records-entry__button" onClick={() => { setRecordsGame(previewGame); setPreviewGame(null); }}>
                 Рейтинг игроков
               </button>
-            ) : <p className="modal-copy">Рекорды откроются после прохождения.</p>}
+            ) : null}
             </div>
           </div>}
           <div className="modal-actions">

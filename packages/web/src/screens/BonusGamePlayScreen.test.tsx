@@ -656,8 +656,8 @@ describe('BonusGamePlayScreen', () => {
   });
 
   it.each([
-    ['failed', false, 'Не успел забить', ['Продержался01:05', 'В среднем на гол16,3 сек'], ['Броски7', 'Голы4', 'Попадания57%']],
-    ['completed', true, 'Награда за первое прохождение', ['Время03:00', 'В среднем на гол15,0 сек'], ['Броски18', 'Голы12', 'Попадания67%']],
+    ['failed', false, 'Не успел забить', ['Продержался01:05', 'В среднем на гол16,25 сек'], ['Броски7', 'Голы4', 'Попадания57%']],
+    ['completed', true, 'Награда за первое прохождение', ['Время03:00', 'В среднем на гол15,00 сек'], ['Броски18', 'Голы12', 'Попадания67%']],
   ] as const)(
     'renders endurance %s copy and two-row performance metrics',
     (status, rewardGranted, copy, firstRowMetrics, secondRowMetrics) => {
@@ -1708,7 +1708,7 @@ describe('BonusGamePlayScreen', () => {
     const dialog=screen.getByRole('dialog',{name:'Игра пройдена'});
     expect(dialog).toHaveTextContent('Награда за рекорд');
     expect(dialog).not.toHaveTextContent('без награды');
-    expect(dialog).toHaveTextContent('2 мин 10,0 сек');
+    expect(dialog).toHaveTextContent('2 мин 10,00 сек');
     expect(dialog).toHaveTextContent('Ты побил свой личный рекорд');
     expect(dialog).toHaveTextContent('Ты показал лучший результат');
     expect(dialog).toHaveTextContent('среди всех игроков');
