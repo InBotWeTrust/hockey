@@ -130,3 +130,10 @@ it('gives portal toasts a dense background independent of app shell', () => {
   expect(liquidGlassCss).toContain('--liquid-toast-bg: rgba(24, 28, 34, 0.94)');
   expect(liquidGlassCss).toContain('background: var(--liquid-toast-bg)');
 });
+
+it('keeps inactive filters clear and artwork values readable', () => {
+  expect(liquidGlassCss).toContain('.app-shell .segmented-tabs__item:not(.segmented-tabs__item--active) { background: transparent; }');
+  expect(liquidGlassCss).toContain('.app-shell .profile-loadout-slot__image > strong');
+  expect(liquidGlassCss).toContain('background: #20252d; color: #fff; text-shadow: none;');
+  expect(liquidGlassCss).toContain('.app-shell .bonus-games-attempt-progress');
+});
