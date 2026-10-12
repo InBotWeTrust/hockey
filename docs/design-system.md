@@ -6348,3 +6348,11 @@ Artwork badges (public profile experience and task levels): opaque #20252d backg
 Settings section headings: 14 px horizontal inset to align with cards. Logout: subdued red translucent fill, pale red readable text, no shadow. Bar navigator preview: opaque neutral material without clipped backdrop blur over moving panorama.
 
 Inactive segmented filters: transparent. Achievement heading aligns with page content; progress labels use white text with dark shadow. Inventory resource labels have opaque #20252d fill. Bonus allowance panel uses dense neutral glass. Profile metrics and experience get dark text shadow; registration date/prefix/label and streak record do not. Trophy icons use dark drop shadow.
+
+Interface Lucide icons: stroke width 1.5, matching navigation; sizes stay contextual and logos/artwork are excluded. Balance icons use dark drop shadow. Completed task/game/exercise marks have opaque #20252d fill and white checks. Page section headings never use negative horizontal margins; nested labels align to container content.
+
+Profile framing: avatar, balance/metric containers, internal separators and trophy/community horizontal rules use 1 px `var(--liquid-border)`, shared across private/public profiles.
+
+Material correction: bonus progress containers and segmented filter containers use the ordinary card background/blur/shadow (`--liquid-card-bg`, `--liquid-blur`, `--liquid-shadow`). No separate dense fill for these containers. Inactive filter values remain transparent.
+
+Received rewards: opaque #20252d pill, #d5d9e0 icons/values, no grayscale or opacity reduction. Shared card edge is 1 px `--liquid-border`, covering 38 named card/panel/surface selectors and their states.

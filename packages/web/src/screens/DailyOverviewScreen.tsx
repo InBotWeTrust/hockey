@@ -329,7 +329,7 @@ export function DailyOverviewScreen(): JSX.Element {
         </div>
 
         <section aria-label="Сегодняшняя игра" style={{ display: 'grid', gap: 8 }}>
-          <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+          <div className="section-label" style={{ margin: '0 0 0 0' }}>
             Сегодня
           </div>
           <div
@@ -445,7 +445,7 @@ export function DailyOverviewScreen(): JSX.Element {
         </section>
 
         <section aria-label="История дней" style={{ display: 'grid', gap: 8 }}>
-          <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+          <div className="section-label" style={{ margin: '0 0 0 0' }}>
             История
           </div>
           {history.isLoading ? (

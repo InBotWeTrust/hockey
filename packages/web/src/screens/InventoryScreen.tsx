@@ -470,7 +470,7 @@ export function InventoryScreen(): JSX.Element {
           <InventoryEmptyState />
         ) : activeTab === 'goods' ? (
           <section aria-label="Товары" style={{ display: 'grid', gap: 8 }}>
-            <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+            <div className="section-label" style={{ margin: '0 0 0 0' }}>
               Товары
             </div>
             <GoodsCategoryOverview inventory={inventory} onOpenCategory={openCategory} />
@@ -666,7 +666,7 @@ function BankTab({
 
   return (
     <section aria-label="Банк" style={{ display: 'grid', gap: 8 }}>
-      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+      <div className="section-label" style={{ margin: '0 0 0 0' }}>
         Банк
       </div>
       {packagesQuery.isLoading ? (
@@ -1351,7 +1351,7 @@ function TransactionHistorySection(): JSX.Element {
 
   return (
     <section aria-label="История транзакций" style={{ display: 'grid', gap: 8 }}>
-      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+      <div className="section-label" style={{ margin: '0 0 0 0' }}>
         История
       </div>
       <div className="inventory-history-filters">

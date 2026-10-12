@@ -32,7 +32,7 @@ describe('unified glass material', () => {
     document.body.append(shell);
     const styles = getComputedStyle(shell);
     expect(styles.getPropertyValue('--surface-card-bg').trim()).toBe('var(--liquid-card-bg)');
-    expect(styles.getPropertyValue('--surface-filter-bg').trim()).toBe('var(--liquid-chrome-bg)');
+    expect(styles.getPropertyValue('--surface-filter-bg').trim()).toBe('var(--liquid-card-bg)');
     expect(styles.getPropertyValue('--surface-elevated-bg').trim()).toBe('var(--liquid-modal-bg)');
     expect(styles.getPropertyValue('--chrome-surface-bg').trim()).toBe('var(--liquid-chrome-bg)');
     // Portal overlays must resolve the material without an app-shell ancestor.
