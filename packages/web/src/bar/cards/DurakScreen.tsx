@@ -117,7 +117,7 @@ export function DurakTable({
     setTargetReady(false);
     setHint(null);
   }, [game.revision]);
-  const back = () => navigate(online ? '/bar/cards/online' : '/bar');
+  const back = () => navigate('/bar', { replace: true });
   const commit = (card: Card) => {
     const play = actions.find((a) => a.type === 'play' && a.cardId === card.id);
     const beats = actions.filter((a) => a.type === 'beat' && a.cardId === card.id);

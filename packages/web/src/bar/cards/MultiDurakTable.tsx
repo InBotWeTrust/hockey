@@ -327,7 +327,7 @@ export function MultiDurakTable({
             </button>
           )}
           {view.status === 'ended' && (
-            <button className="btn btn--cta" onClick={() => navigate('/bar/cards/online')}>
+            <button className="btn btn--cta" onClick={() => navigate('/bar', { replace: true })}>
               Вернуться
             </button>
           )}
@@ -383,7 +383,7 @@ export function MultiDurakTable({
       {g.result !== null && (
         <AccessibleModal
           title={g.result === 'won' ? 'Победа' : 'Поражение'}
-          onRequestClose={() => navigate('/bar/cards/online')}
+          onRequestClose={() => navigate('/bar', { replace: true })}
         >
           <p className="modal-copy">
             {g.result === 'won'
@@ -397,7 +397,7 @@ export function MultiDurakTable({
                 : 'Ты остался с картами последним.'}
           </p>
           <div className="modal-actions">
-            <button className="btn btn--cta" onClick={() => navigate('/bar/cards/online')}>
+            <button className="btn btn--cta" onClick={() => navigate('/bar', { replace: true })}>
               Понятно
             </button>
           </div>

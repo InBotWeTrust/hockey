@@ -101,7 +101,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
       const next = await roomCommand(id!, current.current.revision, command);
       if (ticket !== generation.current) return;
       if (next.left) {
-        navigate('/bar/cards/online');
+        navigate('/bar', { replace: true });
         return;
       }
       receive(next);
@@ -119,7 +119,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
     return (
       <main className="screen bar-screen">
         <p role="status">{error ?? 'Загружаем стол…'}</p>
-        <button className="btn btn--ghost" onClick={() => navigate('/bar/cards/online')}>
+        <button className="btn btn--ghost" onClick={() => navigate('/bar', { replace: true })}>
           Вернуться
         </button>
       </main>
@@ -170,7 +170,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
           game: empty,
           dispatch: () => {},
           surrender: () => void send({ type: 'leave' }),
-          restart: () => navigate('/bar/cards/online'),
+          restart: () => navigate('/bar', { replace: true }),
           remainingSeconds: seconds,
           thinking: true,
         }}

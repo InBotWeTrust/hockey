@@ -98,3 +98,26 @@ it('waits for explicit readiness and hides the hand before starting', async () =
   expect(api.move).toHaveBeenCalledWith('match', 0, 'ready');
   expect(screen.getByRole('button', { name: 'Вы готовы' })).toBeDisabled();
 });
+
+it('returns to the current bar after closing the online game result',async()=>{
+ vi.mocked(api.snapshot).mockResolvedValue({...view,phase:'ended',result:0});
+ render(<MemoryRouter initialEntries={['/bar/cards/match/match']}><Routes>
+  <Route path="/bar/cards/match/:id" element={<OnlineDurakScreen/>}/>
+  <Route path="/bar" element={<div>Актуальный бар</div>}/>
+  <Route path="/bar/cards/online" element={<div>Старый экран Дурак</div>}/>
+ </Routes></MemoryRouter>);
+ fireEvent.click(await screen.findByRole('button',{name:'Понятно'}));
+ expect(await screen.findByText('Актуальный бар')).toBeInTheDocument();
+ expect(screen.queryByText('Старый экран Дурак')).not.toBeInTheDocument();
+});
+it('returns to the current bar when readiness is cancelled',async()=>{
+ vi.mocked(api.snapshot).mockResolvedValue({...view,hand:[],readiness:{selfReady:false,opponentReady:false,expiresAt:Date.now()+60000,startsAt:null,cancelled:true}});
+ render(<MemoryRouter initialEntries={['/bar/cards/match/match']}><Routes>
+  <Route path="/bar/cards/match/:id" element={<OnlineDurakScreen/>}/>
+  <Route path="/bar" element={<div>Актуальный бар</div>}/>
+  <Route path="/bar/cards/online" element={<div>Старый экран Дурак</div>}/>
+ </Routes></MemoryRouter>);
+ await screen.findAllByText('Встреча отменена: готовность не подтверждена.');
+ fireEvent.click(screen.getByRole('button',{name:'Вернуться'}));
+ expect(await screen.findByText('Актуальный бар')).toBeInTheDocument();
+});

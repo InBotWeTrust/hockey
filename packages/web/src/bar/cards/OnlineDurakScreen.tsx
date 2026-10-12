@@ -80,7 +80,7 @@ export function OnlineDurakScreen() {
     return (
       <main className="screen bar-screen">
         <p role="status">{error ?? 'Загружаем партию…'}</p>
-        <button className="btn btn--ghost" onClick={() => navigate('/bar/cards/online')}>
+        <button className="btn btn--ghost" onClick={() => navigate('/bar', { replace: true })}>
           Вернуться
         </button>
       </main>
@@ -113,8 +113,8 @@ export function OnlineDurakScreen() {
         controller={{
           game: tableState(view),
           dispatch: () => {},
-          surrender: () => navigate('/bar/cards/online'),
-          restart: () => navigate('/bar/cards/online'),
+          surrender: () => navigate('/bar', { replace: true }),
+          restart: () => navigate('/bar', { replace: true }),
           remainingSeconds: seconds,
           thinking: true,
         }}
@@ -131,7 +131,7 @@ export function OnlineDurakScreen() {
         game,
         dispatch: (action) => void send(action),
         surrender: () => void send('surrender'),
-        restart: () => navigate('/bar/cards/online'),
+        restart: () => navigate('/bar', { replace: true }),
         remainingSeconds:
           view.deadline === null
             ? null
