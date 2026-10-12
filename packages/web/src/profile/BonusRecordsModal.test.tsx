@@ -37,23 +37,27 @@ describe('bonus records modal', () => {
       text,
     );
   });
-  it('formats long durations as minutes and seconds', () => {
+  it('formats durations with two decimal seconds and keeps minutes', () => {
     expect(formatBonusRecord('speed', { elapsedMs: 130000, shots: 20, goals: 12 })).toBe(
-      '2 мин 10,0 сек',
+      '2 мин 10,00 сек',
     );
     expect(formatBonusRecord('speed', { elapsedMs: 60000, shots: 20, goals: 12 })).toBe(
-      '1 мин 0,0 сек',
+      '1 мин 0,00 сек',
     );
     expect(formatBonusRecord('accuracy', { elapsedMs: 61500, shots: 20, goals: 12 })).toBe(
-      '12 из 20 (60%) · 1 мин 1,5 сек',
+      '12 из 20 (60%) · 1 мин 1,50 сек',
     );
+  });
+  it('preserves hundredths and carries rounded seconds into minutes', () => {
+    expect(formatBonusRecord('speed', { elapsedMs: 2174, shots: 1, goals: 1 })).toBe('2,17 сек');
+    expect(formatBonusRecord('speed', { elapsedMs: 59999, shots: 1, goals: 1 })).toBe('1 мин 0,00 сек');
   });
   it('formats time per goal with a decimal and no zero division', () => {
     expect(formatBonusRecord('endurance', { elapsedMs: 180000, shots: 18, goals: 12 })).toBe(
-      '15,0 сек/гол',
+      '15,00 сек/гол · 12 шайб',
     );
     expect(formatBonusRecord('endurance', { elapsedMs: 65000, shots: 7, goals: 4 })).toBe(
-      '16,3 сек/гол',
+      '16,25 сек/гол · 4 шайбы',
     );
     expect(formatBonusRecord('endurance', { elapsedMs: 65000, shots: 7, goals: 0 })).toBe('—');
   });

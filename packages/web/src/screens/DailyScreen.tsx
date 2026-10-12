@@ -1,3 +1,4 @@
+import { formatRecordDuration } from '../lib/recordDuration.js';
 import { FittedHudLabel } from '../components/FittedHudLabel.js';
 import { MarksmanshipScoreNotice, marksmanshipV6TechniqueLabel } from '../components/MarksmanshipScoreNotice.js';
 import { duelDisplayScore, duelFormatLabel, duelScorePairText } from '../components/duel/scoredDuel.js';
@@ -7274,7 +7275,7 @@ function duelTiebreakerExplanation(
   if (match.rules.duelKind === 'marathon')
     return {
       label: 'Среднее время на гол',
-      value: `${match.me.average_goal_ms == null ? '—' : (match.me.average_goal_ms / 1000).toFixed(1) + ' сек'} / ${match.opponent.average_goal_ms == null ? '—' : (match.opponent.average_goal_ms / 1000).toFixed(1) + ' сек'}`,
+      value: `${match.me.average_goal_ms == null ? '—' : formatRecordDuration(match.me.average_goal_ms)} / ${match.opponent.average_goal_ms == null ? '—' : formatRecordDuration(match.opponent.average_goal_ms)}`,
       result:
         match.me.goals === match.opponent.goals
           ? 'Одинаковый результат'

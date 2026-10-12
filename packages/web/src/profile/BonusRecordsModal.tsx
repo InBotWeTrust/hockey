@@ -1,3 +1,4 @@
+import { formatRecordDuration as formatBonusDuration } from '../lib/recordDuration.js';
 import { formatRussianCount } from '../lib/russianPlural.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
@@ -10,15 +11,7 @@ import {
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { TournamentStandingsTable } from '../tournament/TournamentStandingsTable.js';
 
-export function formatBonusDuration(ms: number): string {
-  const tenths = Math.round(ms / 100);
-  const seconds = new Intl.NumberFormat('ru-RU', {
-    minimumFractionDigits: 1,
-    maximumFractionDigits: 1,
-  });
-  if (tenths < 600) return `${seconds.format(tenths / 10)} сек`;
-  return `${Math.floor(tenths / 600)} мин ${seconds.format((tenths % 600) / 10)} сек`;
-}
+export { formatRecordDuration as formatBonusDuration } from '../lib/recordDuration.js';
 export function formatBonusRecord(
   skill: string,
   result: { elapsedMs: number; shots: number; goals: number },
@@ -29,7 +22,7 @@ export function formatBonusRecord(
     return `${result.goals} из ${result.shots} (${accuracy}%) · ${formatBonusDuration(result.elapsedMs)}`;
   }
   if (skill === 'endurance')
-    return result.goals > 0 ? `${formatBonusDuration(result.elapsedMs / result.goals)}/гол` : '—';
+    return result.goals > 0 ? `${formatBonusDuration(result.elapsedMs / result.goals)}/гол · ${formatRussianCount(result.goals, 'шайба', 'шайбы', 'шайб')}` : '—';
   return `${formatBonusDuration(result.elapsedMs)}${skill === 'marksmanship' ? ` · ${shots}` : ''}`;
 }
 

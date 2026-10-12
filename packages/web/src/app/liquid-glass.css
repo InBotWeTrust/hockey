@@ -19,7 +19,7 @@
   --liquid-blur: blur(18px) saturate(145%);
   --liquid-modal-blur: blur(24px) saturate(135%);
   --liquid-scrim: rgba(0, 0, 0, 0.34);
-  --liquid-text-shadow: 0 1px 4px rgba(0, 0, 0, 0.65);
+  --liquid-text-shadow: none;
 
   --ink: var(--liquid-ink);
   --muted: var(--liquid-muted);
@@ -506,4 +506,15 @@ svg.lucide { stroke-width: 1.5; }
   color: #d5d9e0;
   opacity: 1;
   filter: none;
+}
+
+/* UI text stays flat across menus, portalled modals and game scoreboards.
+   Override legacy per-screen and inline text effects consistently. */
+.app-shell,
+.app-shell *,
+.modal-card,
+.modal-card *,
+[data-glass-select-menu='true'],
+[data-glass-select-menu='true'] * {
+  text-shadow: none !important;
 }

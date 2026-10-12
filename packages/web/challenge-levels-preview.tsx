@@ -13,7 +13,7 @@ if (location === 'ski' || location === 'cyberpunk') {
 }
 if (location === 'records') {
   fixture.games = [fixture.games[0]];
-  Object.assign(fixture.games[0], { skill_code: 'speed', slug: 'speed-minsk', title: 'Минск', levels: undefined, is_completed: true, state: 'completed', preview_artwork_url: '/bonus-games/hockey-cities/previews/minsk.webp', qualification_rules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 95000 }, preview_title: 'Минск', preview_story: 'Держите темп и завершите норматив до конца отсчёта.', challenge_environment: undefined });
+  Object.assign(fixture.games[0], { skill_code: 'speed', slug: 'speed-minsk', title: 'Минск', levels: undefined, is_completed: new URLSearchParams(window.location.search).get('completed') !== 'false', state: 'completed', preview_artwork_url: '/bonus-games/hockey-cities/previews/minsk.webp', qualification_rules: { type: 'goals_in_time', targetGoals: 18, activeTimeMs: 95000 }, preview_title: 'Минск', preview_story: 'Держите темп и завершите норматив до конца отсчёта.', challenge_environment: undefined });
 }
 const fetchNative = window.fetch.bind(window);
 window.fetch = (url, init) => String(url).startsWith('/api/') ? Promise.resolve(new Response(JSON.stringify(String(url).includes('/records?') ? {rows:[{elapsedMs:70800,shots:20,goals:18,points:0,place:1,userId:'leader',displayName:'Игрок 1',avatarUrl:null}],currentUser:{elapsedMs:84300,shots:24,goals:18,points:0,place:12,userId:'me',displayName:'Ты',avatarUrl:null},skillCode:'speed',nextOffset:null} : String(url).endsWith('/bonus-games') ? fixture : {}), {headers:{'Content-Type':'application/json'}})) : fetchNative(url,init);
