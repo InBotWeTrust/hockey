@@ -4,7 +4,7 @@ import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
-import { FittedMenuLabel } from './FittedMenuLabel.js';
+import { FittedMenuLabel, CardPlayerName } from './FittedMenuLabel.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { DurakResultModal, art } from './DurakModals.js';
 import { computerOpponent, opponentArt, type ComputerOpponentId } from './computerOpponents.js';
@@ -182,7 +182,7 @@ export function DurakTable({
                   size={28}
                   alt="Твой аватар"
                 />
-                <FittedMenuLabel>{`${user?.displayName ?? 'Игрок'}${pregame ? '' : ` (${game.hands[0].length})`}`}</FittedMenuLabel>
+                <CardPlayerName name={user?.displayName ?? 'Игрок'} count={pregame ? undefined : game.hands[0].length} />
               </div>
             </div>
             <div
@@ -204,7 +204,7 @@ export function DurakTable({
             </div>
             <div className="game-scoreboard__metric">
               <div className="durak-menu__identity durak-menu__identity--opponent">
-                <FittedMenuLabel>{`${pregame ? '' : `(${game.hands[1].length}) `}${opponent?.displayName ?? computer.name}`}</FittedMenuLabel>
+                <CardPlayerName name={opponent?.displayName ?? computer.name} count={pregame ? undefined : game.hands[1].length} countFirst />
                 <UserAvatar
                   avatarUrl={
                     online ? (opponent?.avatarUrl ?? undefined) : opponentArt(opponentId, 'avatar')
@@ -214,15 +214,6 @@ export function DurakTable({
                   alt={online ? 'Аватар соперника' : `Аватар: ${computer.name}`}
                 />
               </div>
-            </div>
-            <div
-              className="game-scoreboard__metric durak-menu__trump"
-              aria-label={pregame ? 'Козырь не определён' : `Козырь ${symbols[game.trump]}`}
-            >
-              <span className="game-scoreboard__label">Козырь</span>
-              <strong className="durak-menu__trump-symbol">
-                {pregame ? '—' : symbols[game.trump]}
-              </strong>
             </div>
           </div>
         </div>

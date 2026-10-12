@@ -4,7 +4,7 @@ import { LogOut, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
-import { FittedMenuLabel } from './FittedMenuLabel.js';
+import { FittedMenuLabel, CardPlayerName } from './FittedMenuLabel.js';
 import { DurakOpponentSeat } from './DurakOpponentSeat.js';
 import { cardImage } from './DurakScreen.js';
 import { art } from './DurakModals.js';
@@ -30,6 +30,7 @@ export function MultiDurakTable({
   onCommand: (command: RoomCommand) => void;
 }) {
   const pregame = !view.game;
+  const showTrump = view.seats.length === 6;
   const player = Math.max(
     0,
     view.seats.findIndex((s) => s.userId === userId),
@@ -114,11 +115,11 @@ export function MultiDurakTable({
       )}
       <section className="durak-menu game-scoreboard-stack" aria-label="Меню игры">
         <div className="game-scoreboard game-scoreboard--stable-surface">
-          <div className="game-scoreboard__row durak-menu__row">
+          <div className="game-scoreboard__row durak-menu__row" data-trump={showTrump}>
             <div className="game-scoreboard__metric">
               <div className="durak-menu__identity">
                 <UserAvatar name={self.displayName} avatarUrl={self.avatarUrl} size={28} />
-                <FittedMenuLabel>{`${self.displayName}${pregame ? '' : ` (${g.hand.length})`}`}</FittedMenuLabel>
+                <CardPlayerName name={self.displayName} count={pregame ? undefined : g.hand.length} />
               </div>
             </div>
             <div
@@ -140,7 +141,7 @@ export function MultiDurakTable({
             <div className="game-scoreboard__metric">
               {opponent ? (
                 <div className="durak-menu__identity durak-menu__identity--opponent">
-                  <FittedMenuLabel>{`(${opponent.count}) ${opponent.displayName}`}</FittedMenuLabel>
+                  <CardPlayerName name={opponent.displayName} count={opponent.count} countFirst />
                   <UserAvatar
                     name={opponent.displayName}
                     avatarUrl={opponent.avatarUrl}
@@ -151,6 +152,7 @@ export function MultiDurakTable({
                 <FittedMenuLabel>{`${pregame ? `${view.seats.filter((s) => view.ready.includes(s.userId)).length} из ${view.seats.length}` : view.seats.filter((s) => s.status === 'playing').length} за столом`}</FittedMenuLabel>
               )}
             </div>
+            {showTrump && (
             <div
               className="game-scoreboard__metric durak-menu__trump"
               aria-label={pregame ? 'Козырь не определён' : `Козырь ${suits[g.trump]}`}
@@ -158,6 +160,7 @@ export function MultiDurakTable({
               <span className="game-scoreboard__label">Козырь</span>
               <strong className="durak-menu__trump-symbol">{pregame ? '—' : suits[g.trump]}</strong>
             </div>
+            )}
           </div>
         </div>
         <FittedNotice

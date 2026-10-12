@@ -240,3 +240,10 @@ it('starts a fresh game when the computer opponent route changes', () => {
     6,
   );
 });
+
+it('keeps computer trump on the deck without duplicating it in the menu', () => {
+  vi.useFakeTimers();
+  render(<MemoryRouter><DurakScreen initialGame={{ ...createGame(() => 0.4), attacker: 0 }} /></MemoryRouter>);
+  expect(screen.getByRole('region', { name: 'Меню игры' })).not.toHaveTextContent('Козырь');
+  expect(screen.getByRole('img', { name: /^Козырь/ })).toBeInTheDocument();
+});
