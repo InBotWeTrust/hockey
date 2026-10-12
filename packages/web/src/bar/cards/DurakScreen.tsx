@@ -157,8 +157,8 @@ export function DurakTable({
             ? 'Отбей карту или возьми'
             : game.phase === 'taking'
               ? actions.some((a) => a.type === 'play')
-                ? 'Можно подкинуть или завершить'
-                : 'Нажми «Завершить»'
+                ? `${opponent?.displayName ?? computer.name} берёт. Подкинь или заверши ход.`
+                : `${opponent?.displayName ?? computer.name} берёт. Заверши ход.`
               : game.table.length
                 ? actions.some((a) => a.type === 'play')
                   ? 'Подкинь карту или нажми «Бито»'

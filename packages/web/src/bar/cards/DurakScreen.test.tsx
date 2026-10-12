@@ -247,3 +247,9 @@ it('keeps computer trump on the deck without duplicating it in the menu', () => 
   expect(screen.getByRole('region', { name: 'Меню игры' })).not.toHaveTextContent('Козырь');
   expect(screen.getByRole('img', { name: /^Козырь/ })).toBeInTheDocument();
 });
+
+it.each([true,false])('names the taking opponent and offers only available actions (throw=%s)',canThrow=>{
+ vi.useFakeTimers();const g=createGame(()=>0.4);
+ render(<MemoryRouter><DurakScreen initialGame={{...g,attacker:0,phase:'taking',limit:6,hands:[[{id:canThrow?'hearts-6':'hearts-7',suit:'hearts',rank:canThrow?6:7}],g.hands[1]],table:[{attack:{id:'clubs-6',suit:'clubs',rank:6}}]}}/></MemoryRouter>);
+ expect(screen.getByRole('status')).toHaveTextContent(canThrow?'Мария берёт. Подкинь или заверши ход.':'Мария берёт. Заверши ход.');
+});

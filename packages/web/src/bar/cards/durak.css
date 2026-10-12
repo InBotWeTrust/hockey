@@ -1368,24 +1368,24 @@
 }
 .durak-screen .durak-pairs {
   gap: 8px;
-  --pair-card-width: 70px;
+  --pair-card-width: 64px;
   --pair-scale: 0.84;
 }
 .durak-screen .durak-pairs[data-count='0'],
 .durak-screen .durak-pairs[data-count='1'] {
-  --pair-card-width: 108px;
+  --pair-card-width: 72px;
   --pair-scale: 1;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pairs[data-count='2'] {
-  --pair-card-width: 90px;
+  --pair-card-width: 68px;
   --pair-scale: 0.92;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pairs[data-count='3'] {
-  --pair-card-width: 80px;
+  --pair-card-width: 64px;
   --pair-scale: 0.84;
   grid-template-rows: minmax(0, 1fr);
 }
@@ -1402,15 +1402,24 @@
   left: 14px;
   top: 14px;
 }
+/* Fit six cards with five 18px overlaps; additional cards scroll. */
 .durak-screen .durak-card {
-  width: auto;
-  height: clamp(110px, 19dvh, 150px);
-  margin-right: -24px;
+  width: min(84px, calc((100cqw + 90px) / 6));
+  height: auto;
+  aspect-ratio: 2 / 3;
+  margin-right: -18px;
+}
+.durak-screen .durak-card img {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
 }
 .durak-screen .durak-card:last-child {
   margin-right: 0;
 }
 .durak-screen .durak-hand {
+  container-type: inline-size;
+  max-width: 426px;
   min-height: 0;
   padding-top: 14px;
 }
@@ -1442,7 +1451,6 @@
 @media (max-height: 650px) {
   .durak-screen--multi .durak-multi-seat .user-avatar { width: 24px !important; height: 24px !important; }
   .durak-screen--multi .durak-multi-seat { gap: 0; }
-  .durak-screen .durak-card { height: 110px; }
   .durak-screen .durak-turn-notice { padding-block: 8px; }
 }
 

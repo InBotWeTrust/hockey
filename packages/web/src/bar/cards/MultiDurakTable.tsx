@@ -101,6 +101,8 @@ export function MultiDurakTable({
       ? `${turn.displayName}: ${g.phase === 'defend' ? 'отбивается' : g.phase === 'throw' ? 'подкидывает' : 'ходит'}`
       : g.phase === 'defend'
         ? 'Отбей карту или возьми'
+        : g.phase === 'throw' && g.taking
+          ? `${view.seats[g.defender]!.displayName} берёт. ${actions.some(a=>a.type==='play') ? 'Подкинь или заверши ход.' : 'Заверши ход.'}`
         : g.phase === 'throw'
           ? actions.some((a) => a.type === 'play')
             ? `Подкинь карту или нажми «${finishLabel}»`
