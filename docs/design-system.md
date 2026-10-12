@@ -6346,3 +6346,5 @@ Bar character identity panel: horizontal inset 12 px on both sides, aligned with
 Artwork badges (public profile experience and task levels): opaque #20252d background, white numbers without text shadow, shared edge. BottomNav has no full-width backdrop outside its dock.
 
 Settings section headings: 14 px horizontal inset to align with cards. Logout: subdued red translucent fill, pale red readable text, no shadow. Bar navigator preview: opaque neutral material without clipped backdrop blur over moving panorama.
+
+Inactive segmented filters: transparent. Achievement heading aligns with page content; progress labels use white text with dark shadow. Inventory resource labels have opaque #20252d fill. Bonus allowance panel uses dense neutral glass. Profile metrics and experience get dark text shadow; registration date/prefix/label and streak record do not. Trophy icons use dark drop shadow.

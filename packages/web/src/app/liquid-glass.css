@@ -381,3 +381,31 @@
 .app-shell .play-controls .btn--cta:disabled {
   background: rgba(30, 35, 40, 0.64);
 }
+
+/* Reading contrast for progress and image labels. */
+.app-shell .segmented-tabs__item:not(.segmented-tabs__item--active) { background: transparent; }
+.app-shell .achievement-counts.section-label--page { margin-left: 0; }
+.app-shell .achievement-card__stage-progress strong {
+  color: #fff;
+  text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,.8);
+}
+.app-shell .profile-loadout-slot__image > strong {
+  background: #20252d; color: #fff; text-shadow: none;
+}
+.app-shell .bonus-games-attempt-progress {
+  background: rgba(24,28,34,.82);
+  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  border-color: var(--liquid-border);
+}
+.profile-sporting-metrics__item strong,
+.profile-balance__amount--experience .profile-balance__value,
+.public-profile-experience__value {
+  text-shadow: 0 2px 4px rgba(0,0,0,.65);
+}
+.profile-sporting-metrics__item:last-child > span,
+.profile-sporting-metrics__item .profile-registration-date__prefix,
+.profile-sporting-metrics__item .profile-streak-record { text-shadow: none; }
+.profile-trophy-showcase svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+
+.app-shell .chip:not(.chip--active),
+.app-shell .bar-game-filter:not(.bar-game-filter--active) { background: transparent; }
