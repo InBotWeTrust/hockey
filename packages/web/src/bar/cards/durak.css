@@ -1322,6 +1322,7 @@
 }
 .durak-screen .durak-deck > div {
   height: 76px;
+  overflow: hidden;
 }
 .durak-screen .durak-deck img {
   width: var(--deck-card-width);
