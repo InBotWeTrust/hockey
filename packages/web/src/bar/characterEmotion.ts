@@ -24,3 +24,16 @@ export function canGreet(data:ConversationSnapshot):boolean {
 export function preloadEmotions(character:BarCharacter){
  for(const emotion of emotions){const path=emotionAsset(character,emotion);if(path){const image=new Image();image.src=path;}}
 }
+
+export function prepareGreeting(character:BarCharacter):Promise<boolean>{
+ const path=emotionAsset(character,'joy');
+ if(!path)return Promise.resolve(false);
+ return new Promise(resolve=>{const image=new Image();image.onload=()=>resolve(true);image.onerror=()=>resolve(false);image.src=path;});
+}
+
+export function entryEmotion(data:ConversationSnapshot):CharacterEmotion{
+ if(data.interventionActive)return 'displeasure';
+ const last=data.turns.at(-1),emotion=emotionFromSnapshot(data);
+ const elapsed=last?Date.now()-Date.parse(last.createdAt):Infinity;
+ return ['empathy','displeasure'].includes(emotion)&&(!Number.isFinite(elapsed)||elapsed<6*60*60*1000)?emotion:'neutral';
+}

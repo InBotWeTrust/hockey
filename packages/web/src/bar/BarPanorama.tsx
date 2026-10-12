@@ -1,4 +1,4 @@
-import {emotionFromSnapshot,canGreet,preloadEmotions,type CharacterEmotion} from './characterEmotion.js';
+import {emotionFromSnapshot,canGreet,preloadEmotions,prepareGreeting,entryEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createDefaultBarLayout, type BarAction, type BarOccupantId } from '@hockey/game-core';
@@ -48,11 +48,12 @@ export function BarPanorama() {
     let timer:ReturnType<typeof setTimeout>|undefined;
     const character = selectedCharacter as BarCharacter;
     void fetchConversation(character)
-      .then((data) => {
+      .then(async (data) => {
+        const greetingReady=canGreet(data)&&await prepareGreeting(character);
         if (!cancelled) {
-          if(!activeConversation.current&&data.revision>(moodRevision.current[character]??-1)){
-            setEmotions(previous=>({...previous,[character]:'neutral'}));
-            if(canGreet(data)&&Math.random()<0.5){setGreeting(character);timer=setTimeout(()=>setGreeting(current=>current===character?null:current),2200);}
+          if(!activeConversation.current&&data.revision>=(moodRevision.current[character]??-1)){
+            setEmotions(previous=>({...previous,[character]:entryEmotion(data)}));
+            if(greetingReady){timer=setTimeout(()=>{if(activeConversation.current || (moodRevision.current[character]??-1)>data.revision)return;setGreeting(character);timer=setTimeout(()=>setGreeting(current=>current===character?null:current),2200);},650);}
           }
           if(data.revision>=(moodRevision.current[character]??-1))setStarted((previous) => ({ ...previous, [character]: data.turns.length > 0 }));
         }

@@ -127,7 +127,7 @@ it('expands character actions from the identity row without a modal', async () =
 it('shows a brief authored smile on entering a calm character and returns to neutral',async()=>{
  const image=globalThis.Image;
  vi.stubGlobal('Image',class{onload:(()=>void)|null=null;onerror:null=null;set src(_value:string){queueMicrotask(()=>this.onload?.());}});
- const random=vi.spyOn(Math,'random').mockReturnValue(0);
+ const random=vi.spyOn(Math,'random').mockReturnValue(0.99);
  try{
   const data=fixture();data.layout.defaultSlotId='bar-3';data.layout.profiles.maria.composition='/bar/cards/maria-selection-v1.webp';
   vi.mocked(fetchBarLayout).mockResolvedValue(data);
@@ -154,5 +154,26 @@ it('does not overwrite a newer conversation emotion with a delayed entry read',a
   await waitFor(()=>expect(view.container.querySelector('img[src="/bar/emotions/maria/empathy-v1.webp"]')).not.toBeNull());
   await act(async()=>old({revision:0,greeting:'Привет!',pending:false,turns:[]}));
   expect(view.container.querySelector('img[src="/bar/emotions/maria/empathy-v1.webp"]')).not.toBeNull();
+ }finally{vi.stubGlobal('Image',image);}
+});
+it('greets again after swiping back from an opened conversation at the same revision',async()=>{
+ const image=globalThis.Image;
+ vi.stubGlobal('Image',class{onload:(()=>void)|null=null;onerror:null=null;set src(_value:string){queueMicrotask(()=>this.onload?.());}});
+ try{
+  const data=fixture();data.layout.defaultSlotId='bar-3';data.layout.profiles.maria.composition='/bar/cards/maria-selection-v1.webp';
+  vi.mocked(fetchBarLayout).mockResolvedValue(data);
+  const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
+  await screen.findByRole('heading',{name:'Мария'});
+  fireEvent.click(screen.getByRole('button',{name:'О персонаже: Мария'}));
+  fireEvent.click(screen.getByRole('button',{name:'Поговорить'}));
+  await screen.findByText('Привет!');
+  fireEvent.click(screen.getByRole('button',{name:'Закрыть разговор'}));
+  const scene=view.container.querySelector('main')!;
+  fireEvent.touchStart(scene,{touches:[{clientX:300,clientY:300}]});
+  fireEvent.touchEnd(scene,{changedTouches:[{clientX:100,clientY:300}]});
+  await screen.findByRole('heading',{name:'Арсенич'});
+  fireEvent.touchStart(scene,{touches:[{clientX:100,clientY:300}]});
+  fireEvent.touchEnd(scene,{changedTouches:[{clientX:300,clientY:300}]});
+  await waitFor(()=>expect(view.container.querySelector('svg[data-current][data-frame="/bar/emotions/maria/greeting-v1.webp"]')).not.toBeNull());
  }finally{vi.stubGlobal('Image',image);}
 });
