@@ -51,7 +51,7 @@
  * must not reintroduce a cold or milky material on a warm location. */
 .app-shell {
   --surface-card-bg: var(--liquid-card-bg);
-  --surface-filter-bg: var(--liquid-chrome-bg);
+  --surface-filter-bg: var(--liquid-card-bg);
   --surface-calendar-day-bg: var(--liquid-inset-bg);
   --surface-calendar-day-muted-bg: rgba(18, 20, 23, 0.06);
   --surface-calendar-day-border: var(--liquid-border-soft);
@@ -393,9 +393,10 @@
   background: #20252d; color: #fff; text-shadow: none;
 }
 .app-shell .bonus-games-attempt-progress {
-  background: rgba(24,28,34,.82);
-  backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px);
+  background: var(--liquid-card-bg);
+  backdrop-filter: var(--liquid-blur); -webkit-backdrop-filter: var(--liquid-blur);
   border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
 }
 .profile-sporting-metrics__item strong,
 .profile-balance__amount--experience .profile-balance__value,
@@ -409,3 +410,100 @@
 
 .app-shell .chip:not(.chip--active),
 .app-shell .bar-game-filter:not(.bar-game-filter--active) { background: transparent; }
+
+/* Interface icons share the navigation's light outline weight. */
+svg.lucide { stroke-width: 1.5; }
+.profile-balance__amount svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+.achievement-card__status--claimed,
+.bonus-game-card__completion-badge,
+.initial-training-exercise-card__completion,
+.advanced-training-exercise-card__completion {
+  background: #20252d;
+  color: #fff;
+  border-color: var(--liquid-border);
+}
+
+/* Profile framing uses the same edge as shared glass containers. */
+.app-shell .profile-identity__avatar,
+.app-shell .public-profile-avatar .user-avatar,
+.app-shell .profile-sporting-metrics,
+.app-shell .profile-balances {
+  border: 1px solid var(--liquid-border);
+}
+.app-shell .profile-balance + .profile-balance,
+.app-shell .profile-sporting-metrics__item + .profile-sporting-metrics__item {
+  border-left: 1px solid var(--liquid-border);
+}
+.app-shell .profile-trophy-showcase,
+.app-shell .profile-community-icon-grid {
+  border-top: 1px solid var(--liquid-border);
+}
+
+/* Filter containers share the content card material. */
+.app-shell.app-shell--unified-glass .segmented-tabs {
+  background: var(--liquid-card-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+
+/* Shared card edge across screens and card states. */
+.app-shell.app-shell--unified-glass :is(
+  .achievement-card,
+  .achievement-card--claimable,
+  .amateur-hub-card,
+  .bar-card,
+  .bar-rink-panel,
+  .bar-space__actions,
+  .bonus-game-card,
+  .bonus-game-card--featured,
+  .bonus-game-mode-card,
+  .bonus-games-attempt-progress,
+  .chat-reading-surface,
+  .duel-card,
+  .duel-result-card,
+  .duel-state-card,
+  .glass,
+  .glass-dark,
+  .mode-info-card,
+  .mode-setup-card,
+  .profile-career-panel,
+  .profile-equipment-panel,
+  .profile-hub-card,
+  .profile-loadout-slot__image,
+  .profile-referral-panel,
+  .profile-story-card,
+  .profile-story-series-card,
+  .profile-utility-card,
+  .section-card-surface,
+  .section-card-surface--active,
+  .sections-quick-card,
+  .sections-quick-card--active,
+  .tournament-admin-card,
+  .tournament-catalog-card,
+  .tournament-fixture-card,
+  .tournament-fixture-card--mine,
+  .tournament-notification-card,
+  .tournament-review-card
+) {
+  border: 1px solid var(--liquid-border);
+}
+
+/* Received rewards retain contrast on any scenery. */
+.app-shell :is(.bonus-game-card__reward--muted, .bonus-game-level-reward--received, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) {
+  background: #20252d;
+  color: #d5d9e0;
+  border-radius: 10px;
+  padding: 4px 7px;
+  width: fit-content;
+  max-width: 100%;
+  opacity: 1;
+  filter: none;
+  text-shadow: none;
+}
+.app-shell :is(.bonus-game-card__reward--muted, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) :is(span, svg, strong, .bonus-game-card__reward-item, .bonus-game-card__reward-icon) {
+  color: #d5d9e0;
+  opacity: 1;
+  filter: none;
+}

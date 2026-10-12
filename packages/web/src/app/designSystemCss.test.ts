@@ -138,7 +138,7 @@ describe('profile story section heading alignment', () => {
   it('keeps story series headings on the shared page-label offset', () => {
     const heading = rule('.profile-story-series > h2');
 
-    expect(heading).toContain('margin: 0 0 -2px -14px');
+    expect(heading).toContain('margin: 0 0 -2px;');
   });
 });
 

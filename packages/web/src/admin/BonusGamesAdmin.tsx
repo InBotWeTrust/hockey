@@ -445,7 +445,7 @@ export function BonusGamesAdmin(): JSX.Element {
       <div
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Бонусные игры ({games.length})
         </div>
         <button

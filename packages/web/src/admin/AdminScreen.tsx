@@ -1259,7 +1259,7 @@ function DashboardPanel({
         margin: '2px 0 -4px 0',
       }}
     >
-      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+      <div className="section-label" style={{ margin: '0 0 0 0' }}>
         Обзор
       </div>
       <GlassSelect
@@ -1887,7 +1887,7 @@ function UsersPanel({
 }): JSX.Element {
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Игроки ({loading ? '-' : numberText(total)})
       </div>
       <label
@@ -3139,7 +3139,7 @@ function NotificationsPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Уведомления ({numberText(notifications.length)})
       </div>
       <section
@@ -3232,7 +3232,7 @@ function PushMonitoringPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '8px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '8px 0 -4px 0' }}>
         Мониторинг доставок
       </div>
       <section
@@ -4584,7 +4584,7 @@ function ChannelPanel({
           uploadAvatarMutation.mutate({ chatId, file });
         }}
       />
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Новостной канал
       </div>
       <section
@@ -4866,7 +4866,7 @@ function ChannelPanel({
             <ArrowDown size={14} style={{ transform: 'rotate(90deg)' }} />
             Назад
           </button>
-          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
             Посты ({numberText(data?.posts.length ?? 0)})
           </div>
           {loading && <AdminPlainState>Загрузка постов...</AdminPlainState>}
@@ -5059,7 +5059,7 @@ function AnticheatPanel({
           margin: '2px 0 -4px 0',
         }}
       >
-        <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+        <div className="section-label" style={{ margin: '0 0 0 0' }}>
           Античит
         </div>
         <GlassSelect
@@ -5087,7 +5087,7 @@ function AnticheatPanel({
         ))}
       </section>
       <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Логи ({loading ? '-' : numberText(data?.logs.length ?? 0)})
         </div>
         {loading && <AdminPlainState>Загрузка логов античита...</AdminPlainState>}
@@ -5299,7 +5299,7 @@ function PaymentsPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Платежи ({numberText(total)})
       </div>
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -5478,7 +5478,7 @@ function CoinPackagesPanel({
       <div
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Пакеты монет ({numberText(packages.length)})
         </div>
         <button type="button" className="btn btn--cta" onClick={() => openEditor(null)}>
@@ -5746,7 +5746,7 @@ function FeedbackPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Обратная связь ({numberText(total)})
       </div>
       <section
@@ -5995,7 +5995,7 @@ function InventoryPanel({
           gap: 10,
         }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Инвентарь ({numberText(items.length)})
         </div>
         <button
@@ -6949,7 +6949,7 @@ function AchievementsAdminPanel({
       {sectionTab === 'challenges' && <WeeklyChallengesAdmin />}
       {sectionTab === 'achievements' && (
         <>
-          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
             Задания
           </div>
           <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
@@ -7532,7 +7532,7 @@ function DuelTemplatesPanel({
           gap: 10,
         }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           {duelView === 'templates'
             ? `Шаблоны дуэлей (${numberText(templates.length)})`
             : 'История дуэлей'}
@@ -8514,7 +8514,7 @@ function SettingsPanel({
           <ChevronRight size={15} style={{ transform: 'rotate(180deg)' }} />
           Назад
         </button>
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           {activeSection.number}. {activeSection.title}
         </div>
         {activeSection.id === 'amateur' && (
@@ -8551,7 +8551,7 @@ function SettingsPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Параметры
       </div>
       <section
