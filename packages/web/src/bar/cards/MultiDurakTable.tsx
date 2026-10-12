@@ -251,7 +251,7 @@ export function MultiDurakTable({
             )}
           </div>
         </div>
-        <div className="durak-pairs" data-count={g.table.length} tabIndex={g.table.length > 3 ? 0 : undefined}>
+        <div className="durak-pairs" data-count={g.table.length}>
           {g.table.map((pair, index) => {
             const beat = targets
               ? actions.find(

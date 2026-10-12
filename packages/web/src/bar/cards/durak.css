@@ -1434,25 +1434,20 @@
 }
 
 .durak-screen .durak-deck--empty { display: none; }
-/* A full bout scrolls sideways on short screens instead of shrinking the suits. */
-@media (max-height: 800px) {
-  .durak-screen .durak-pairs[data-count='4'],
-  .durak-screen .durak-pairs[data-count='5'],
-  .durak-screen .durak-pairs[data-count='6'] {
-    display: flex;
-    overflow-x: auto;
-    overflow-y: hidden;
-    touch-action: pan-x;
-    scrollbar-width: thin;
-    align-items: center;
-  }
-  .durak-screen .durak-pairs[data-count='4'] .durak-pair,
-  .durak-screen .durak-pairs[data-count='5'] .durak-pair,
-  .durak-screen .durak-pairs[data-count='6'] .durak-pair {
-    flex: 0 0 104px;
-    min-width: 104px;
-    height: 100%;
-  }
+/* Keep every played pair visible in two rows, with no table scrolling. */
+.durak-screen .durak-pairs[data-count='4'],
+.durak-screen .durak-pairs[data-count='5'],
+.durak-screen .durak-pairs[data-count='6'] {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+}
+.durak-screen .durak-pairs[data-count='4'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.durak-screen .durak-pairs[data-count='5'],
+.durak-screen .durak-pairs[data-count='6'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .durak-menu .game-scoreboard__metric--timer > .durak-menu__label {
@@ -1465,4 +1460,20 @@
   width: auto;
   overflow: visible;
   text-overflow: clip;
+}
+
+/* Center the combined attack/defence footprint inside each grid cell. */
+.durak-screen .durak-pair img {
+  aspect-ratio: 2 / 3;
+  left: calc(50% - var(--card-offset) / 2);
+  top: calc(50% - var(--card-offset) / 2);
+  transform: translate(-50%, -50%);
+}
+.durak-screen .durak-pair .durak-defence {
+  left: calc(50% + var(--card-offset) / 2);
+  top: calc(50% + var(--card-offset) / 2);
+}
+.durak-screen .durak-pair img:only-child {
+  left: 50%;
+  top: 50%;
 }

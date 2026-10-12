@@ -276,7 +276,7 @@ export function DurakTable({
             )}
           </div>
         </div>
-        <div className="durak-pairs" data-count={game.table.length} tabIndex={game.table.length > 3 ? 0 : undefined}>
+        <div className="durak-pairs" data-count={game.table.length}>
           {game.table.map((pair, index) => {
             const beat = selectedBeats.find((a) => a.type === 'beat' && a.target === index);
             return (
