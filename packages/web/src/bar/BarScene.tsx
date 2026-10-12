@@ -1,5 +1,5 @@
-import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, ChevronRight, Monitor, Newspaper, Tv } from 'lucide-react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { ChevronLeft, ChevronRight, Gamepad2, Newspaper, Tv, X } from 'lucide-react';
 import {
   barActionsFor,
   isBarAssetPath,
@@ -61,52 +61,15 @@ export function BarScene({
   );
   const slot = layout.slots[index]!;
   const profile = slot.occupantId ? layout.profiles[slot.occupantId] : null;
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  useEffect(()=>setTerminalOpen(false),[activeSlotId]);
   const [failedImages, setFailedImages] = useState<string[]>([]);
-  const [previewSlot, setPreviewSlot] = useState<string | null>(null);
-  const places = useRef<HTMLElement>(null);
-  const scrubPointer = useRef<number | null>(null);
-  const previewAt = (clientY: number) => {
-    const bounds = places.current?.getBoundingClientRect();
-    if (!bounds?.height) return;
-    const row = Math.max(0, Math.min(layout.slots.length - 1,
-      Math.floor((clientY - bounds.top) / bounds.height * layout.slots.length)));
-    setPreviewSlot(layout.slots[row]!.id);
-  };
-  const previewCard = useRef<HTMLButtonElement>(null);
-  const previewIndex = layout.slots.findIndex((s) => s.id === previewSlot);
-  const previewPlace = layout.slots[previewIndex];
-  useLayoutEffect(() => {
-    const nav = places.current;
-    const card = previewCard.current;
-    if (!nav || !card || slot.occupantId !== 'online') return;
-    const position = () => {
-      const width = nav.clientWidth;
-      const center = (previewIndex + 0.5) * width / layout.slots.length;
-      card.style.left = `${Math.max(0, Math.min(center - card.offsetWidth / 2, width - card.offsetWidth))}px`;
-    };
-    position();
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(position);
-    observer.observe(nav);
-    observer.observe(card);
-    return () => observer.disconnect();
-  }, [previewIndex, slot.occupantId, layout.slots.length]);
-
-  const previewProfile = previewPlace?.occupantId && !isUnfinished(previewPlace.occupantId)
-    ? layout.profiles[previewPlace.occupantId] : null;
+  const [dockFocus, setDockFocus] = useState<string | null>(null);
+  const dockStart = useRef<{x:number;y:number;dragged:boolean}|null>(null);
+  const dock = useRef<HTMLElement>(null);
   useEffect(() => {
-    setPreviewSlot(null);
+    dock.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'smooth'});
   }, [activeSlotId]);
-  useEffect(() => {
-    if (!previewSlot) return;
-    const dismiss = (event: PointerEvent) => {
-      if (event.target instanceof Node && !places.current?.contains(event.target))
-        setPreviewSlot(null);
-    };
-    document.addEventListener('pointerdown', dismiss);
-    return () => document.removeEventListener('pointerdown', dismiss);
-  }, [previewSlot]);
-
   const start = useRef<{ x: number; y: number } | null>(null);
   const panel = useRef<HTMLElement>(null);
   const [panelHeight, setPanelHeight] = useState(190);
@@ -134,7 +97,7 @@ export function BarScene({
       className={`bar-space${preview ? ' bar-space--preview' : ''}`}
       style={{ '--bar-page': index, '--bar-panel-height': `${panelHeight}px` } as CSSProperties}
       onTouchStart={(e) => {
-        if ((e.target as HTMLElement).closest('button')) return;
+        if ((e.target as HTMLElement).closest('button, .bar-avatar-dock')) return;
         const t = e.touches[0];
         if (t) start.current = { x: t.clientX, y: t.clientY };
       }}
@@ -211,6 +174,7 @@ export function BarScene({
                   }}
                 />
               )}
+
               {onPhysicalIncident && !hideIdentity && s.id===activeSlotId && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
                 <CharacterHitArea character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${s.scale*100}%`,height:`${s.scale*100}%`,left:`${s.x}%`,top:`${s.y}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
@@ -218,6 +182,7 @@ export function BarScene({
           );
         })}
       </div>
+      {!hideIdentity && (slot.occupantId==='online'||slot.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={slot.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={()=>{if(slot.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
       <header className="bar-space__header">
         {onBack && (
           <button className="icon-btn" aria-label="Назад" onClick={onBack}>
@@ -226,99 +191,6 @@ export function BarScene({
         )}
         <h1>Бар «4-й период»</h1>
       </header>
-      <nav
-        ref={places}
-        className="bar-space__places"
-        aria-label="Места в баре"
-        onTouchStart={(e) => e.stopPropagation()}
-        onTouchEnd={(e) => e.stopPropagation()}
-        onPointerDown={(e) => {
-          if (e.pointerType === 'mouse' ||
-            (e.target as HTMLElement).closest('.bar-place-preview')) return;
-          e.stopPropagation();
-          e.preventDefault();
-          scrubPointer.current = e.pointerId;
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-          previewAt(e.clientY);
-        }}
-        onPointerMove={(e) => {
-          if (scrubPointer.current === e.pointerId) previewAt(e.clientY);
-        }}
-        onPointerUp={(e) => {
-          if (scrubPointer.current !== e.pointerId) return;
-          e.stopPropagation();
-          previewAt(e.clientY);
-          scrubPointer.current = null;
-          e.currentTarget.releasePointerCapture?.(e.pointerId);
-        }}
-        onPointerCancel={() => { scrubPointer.current = null; }}
-        onLostPointerCapture={() => { scrubPointer.current = null; }}
-        onPointerLeave={(e) => {
-          if (e.pointerType === 'mouse') setPreviewSlot(null);
-        }}
-        onBlur={(e) => {
-          if (!e.currentTarget.contains(e.relatedTarget)) setPreviewSlot(null);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            e.stopPropagation();
-            setPreviewSlot(null);
-          }
-        }}
-      >
-        {layout.slots.map((s, i) => (
-          <button
-            key={s.id}
-            aria-label={
-              isUnfinished(s.occupantId) ? `Персонаж в разработке, страница ${i + 1}`
-                : layout.profiles[s.occupantId!].name
-            }
-            aria-current={index === i ? 'page' : undefined}
-            aria-expanded={previewSlot === s.id}
-            aria-controls={previewSlot === s.id ? 'bar-place-preview' : undefined}
-            onPointerEnter={(e) => {
-              if (e.pointerType === 'mouse') setPreviewSlot(s.id);
-            }}
-            onFocus={() => setPreviewSlot(s.id)}
-            onClick={() => {
-              onSelectSlot(s.id);
-              setPreviewSlot(null);
-            }}
-          />
-        ))}
-        {previewPlace && (
-          <button
-            ref={previewCard}
-            id="bar-place-preview"
-            className="bar-place-preview"
-            style={{ top: `${previewIndex * 10}%` }}
-            aria-label={`Перейти: ${previewProfile?.name ?? `Персонаж в разработке, страница ${previewIndex + 1}`}`}
-            onClick={() => {
-              onSelectSlot(previewPlace.id);
-              setPreviewSlot(null);
-            }}
-          >
-            <span className="bar-place-preview__avatar">
-              {isBarAssetPath(previewProfile?.avatar ?? null) ? (
-                <img src={previewProfile!.avatar!} alt="" />
-              ) : previewPlace.occupantId === 'online' ? (
-                <Monitor size={20} />
-              ) : previewPlace.occupantId === 'news' ? (
-                <Newspaper size={20} />
-              ) : previewPlace.occupantId === 'broadcasts' ? (
-                <Tv size={20} />
-              ) : (
-                (previewProfile?.name.slice(0, 1) ?? <CharacterSilhouette />)
-              )}
-            </span>
-            <span className="bar-place-preview__text">
-              <strong>{previewProfile?.name ?? 'Персонаж в разработке'}</strong>
-              {previewProfile?.role && <span>{previewProfile.role}</span>}
-
-            </span>
-          </button>
-        )}
-      </nav>
       {notice && <div className="bar-space__notice">{notice}</div>}
       {preview && profile?.composition && failedImages.includes(profile.composition) && (
         <div className="bar-space__notice" role="alert">
@@ -341,26 +213,61 @@ export function BarScene({
       >
         <ChevronRight />
       </button>
-      <section ref={panel} className={`bar-space__actions${slot.occupantId === 'online' ? ' bar-space__actions--terminal' : ''}`} aria-live="polite" hidden={hideIdentity}>
-        {slot.occupantId === 'online' ? <OnlineDurakLobby embedded /> : isUnfinished(slot.occupantId) ? (
+      <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
+      <section ref={panel} className={`bar-space__actions${slot.occupantId === 'online' && terminalOpen ? ' bar-space__actions--terminal' : ''}`} aria-live="polite" hidden={hideIdentity}>
+        {slot.occupantId === 'online' && terminalOpen ? <><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div><OnlineDurakLobby embedded /></> : isUnfinished(slot.occupantId) ? (
           <p className="bar-space__development">Персонаж в разработке</p>
         ) : profile ? (
           <BarIdentityPanel
             key={slot.occupantId}
             profile={profile}
+            {...(slot.occupantId ? {characterId:slot.occupantId}: {})}
             actions={barActionsFor(slot.occupantId)}
             conversationStarted={conversationStarted}
             {...(onTalk && barCharacters.includes(slot.occupantId as BarCharacter)
               ? { onTalk: () => onTalk(slot.occupantId as BarCharacter) }
               : {})}
             onAction={(action) => {
-              if (slot.occupantId) onAction(action, slot.occupantId);
+              if (slot.occupantId==='online') setTerminalOpen(true);
+              else if (slot.occupantId) onAction(action, slot.occupantId);
             }}
           />
         ) : (
           <h2>Свободное место</h2>
         )}
       </section>
+      {!hideIdentity && <nav ref={dock} className="bar-avatar-dock" aria-label="Места в баре"
+        onTouchStart={e=>e.stopPropagation()} onTouchEnd={e=>e.stopPropagation()}
+        onPointerDown={e=>{e.stopPropagation();dockStart.current={x:e.clientX,y:e.clientY,dragged:false};}}
+        onPointerMove={e=>{
+          e.stopPropagation();
+          const start=dockStart.current;
+          if(start && Math.hypot(e.clientX-start.x,e.clientY-start.y)>10) start.dragged=true;
+          const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-slot]'));
+          const closest=buttons.reduce<HTMLButtonElement|null>((best,button)=>{
+            const box=button.getBoundingClientRect(), old=best?.getBoundingClientRect();
+            return !old || Math.abs(e.clientX-(box.left+box.width/2))<Math.abs(e.clientX-(old.left+old.width/2))?button:best;
+          },null);
+          if(e.pointerType==='mouse'||start)setDockFocus(closest?.dataset.slot??null);
+        }}
+        onPointerUp={e=>{e.stopPropagation();setDockFocus(null);}}
+        onPointerCancel={()=>{dockStart.current=null;setDockFocus(null);}}
+        onPointerLeave={()=>setDockFocus(null)}>
+        {layout.slots.map((s,i)=>{
+          const p=s.occupantId?layout.profiles[s.occupantId]:null;
+          const focused=dockFocus===s.id;
+          return <button key={s.id} data-slot={s.id} className={`bar-avatar-dock__item${focused?' is-focused':''}`}
+            aria-label={p?.name??`Персонаж в разработке, страница ${i+1}`} aria-current={index===i?'page':undefined}
+            onFocus={()=>setDockFocus(s.id)} onBlur={()=>setDockFocus(null)}
+            onClick={()=>{const dragged=dockStart.current?.dragged;dockStart.current=null;if(!dragged)onSelectSlot(s.id);}}>
+            <span className="bar-avatar-dock__portrait" data-character={s.occupantId??undefined}>
+              {isBarAssetPath(p?.avatar??null)?<img src={p!.avatar!} alt="" draggable={false}/>:s.occupantId==='online'?<Gamepad2 size={20} strokeWidth={1.5}/>:s.occupantId==='broadcasts'?<Tv size={20} strokeWidth={1.5}/>:s.occupantId==='news'?<Newspaper/>:<span>{p?.name.slice(0,1)??'?'}</span>}
+            </span>
+            <span className="bar-avatar-dock__label">{p?.name??'В разработке'}</span>
+          </button>;
+        })}
+      </nav>}
+      </div>
     </main>
   );
 }

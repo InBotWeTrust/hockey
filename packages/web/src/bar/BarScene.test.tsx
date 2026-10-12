@@ -1,46 +1,25 @@
 import { expect, it, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { createDefaultBarLayout, moveBarOccupant } from '@hockey/game-core';
+import { MemoryRouter } from 'react-router-dom';
 import { BarScene } from './BarScene.js';
-it('scrubs touch previews in both directions without navigating on release', () => {
-  const select = vi.fn();
-  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3"
-    onSelectSlot={select} onAction={vi.fn()} />);
-  const nav = screen.getByRole('navigation', { name: 'Места в баре' });
-  vi.spyOn(nav, 'getBoundingClientRect').mockReturnValue({ top: 100, height: 200 } as DOMRect);
-  const pointer = (type: string, y: number) => {
-    const event = new MouseEvent(type, { bubbles: true, clientY: y });
-    Object.defineProperties(event, {
-      pointerId: { value: 1 }, pointerType: { value: 'touch' },
-    });
-    fireEvent(nav, event);
-  };
-  pointer('pointerdown', 110);
-  expect(screen.getByRole('button', { name: 'Перейти: Дарья' })).toBeInTheDocument();
-  pointer('pointermove', 190);
-  expect(screen.getByRole('button', { name: 'Перейти: Играть онлайн' })).toBeInTheDocument();
-  pointer('pointermove', 130);
-  expect(screen.getByRole('button', { name: 'Перейти: Григорий' })).toBeInTheDocument();
-  pointer('pointerup', 130);
-  expect(select).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Перейти: Григорий' }));
-  expect(select).toHaveBeenCalledWith('bar-2');
+it('navigates by avatar click and suppresses clicks after dragging the dock', () => {
+ const select=vi.fn();render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()}/>);
+ const avatar=screen.getByRole('button',{name:'Арсенич'}),nav=screen.getByRole('navigation',{name:'Места в баре'});
+ fireEvent.click(avatar);expect(select).toHaveBeenCalledWith('bar-4');select.mockClear();
+ fireEvent.pointerDown(nav,{clientX:10,clientY:0});fireEvent.pointerMove(nav,{clientX:80,clientY:0});fireEvent.pointerUp(nav);fireEvent.click(avatar);expect(select).not.toHaveBeenCalled();
 });
-it('previews a place first and navigates only when its preview is clicked', () => {
-  const select = vi.fn();
-  render(
-    <BarScene
-      layout={createDefaultBarLayout()}
-      activeSlotId="bar-3"
-      onSelectSlot={select}
-      onAction={vi.fn()}
-    />,
-  );
-  fireEvent.focus(screen.getByRole('button', { name: 'Арсенич' }));
-  expect(select).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Перейти: Арсенич' }));
-  expect(select).toHaveBeenCalledWith('bar-4');
-  expect(screen.queryByRole('button', { name: 'Перейти: Арсенич' })).not.toBeInTheDocument();
+it('hides the dock during conversation',()=>{
+ render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" hideIdentity onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
+ expect(screen.queryByRole('navigation',{name:'Места в баре'})).not.toBeInTheDocument();
+});
+it('opens terminal controls only on request and can close them',()=>{
+ render(<MemoryRouter><BarScene layout={createDefaultBarLayout()} activeSlotId="bar-5" onSelectSlot={vi.fn()} onAction={vi.fn()}/></MemoryRouter>);
+ expect(screen.queryByText('Начать поиск')).not.toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Открыть терминал'}));
+ expect(screen.getByRole('button',{name:'Закрыть терминал'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть терминал'}));
+ expect(screen.queryByText('Начать поиск')).not.toBeInTheDocument();
 });
 it('renders identity, safe actions and stable navigation', () => {
   const layout = createDefaultBarLayout();
@@ -50,12 +29,11 @@ it('renders identity, safe actions and stable navigation', () => {
     <BarScene layout={layout} activeSlotId="bar-3" onSelectSlot={select} onAction={action} />,
   );
   expect(screen.getByRole('heading', { name: 'Мария' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Сыграть в карты' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Игры' }));
   expect(action).toHaveBeenCalledWith('cards', 'maria');
   fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
   expect(select).toHaveBeenCalledWith('bar-4');
-  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Разговор' })).not.toBeInTheDocument();
   const moved = moveBarOccupant(layout, 'bar-6', 'maria');
   view.rerender(
     <BarScene layout={moved} activeSlotId="bar-6" onSelectSlot={select} onAction={action} />,
@@ -73,9 +51,8 @@ it('shows Veronika and enables conversation without unsupported card games', () 
     />,
   );
   expect(screen.getByRole('heading', { name: 'Вероника' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
-  expect(screen.getByRole('button', { name: 'Поговорить' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Сыграть в карты' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Разговор' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Игры' })).not.toBeInTheDocument();
 });
 
 it('shows a silhouette and no interactions for an empty place', () => {
@@ -85,8 +62,8 @@ it('shows a silhouette and no interactions for an empty place', () => {
     onSelectSlot={vi.fn()} onAction={vi.fn()} onTalk={vi.fn()} />);
   expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
   expect(container.querySelectorAll('.bar-space__silhouette')).toHaveLength(1);
-  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Сыграть в карты' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Разговор' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Игры' })).not.toBeInTheDocument();
 });
 
 it('never loads remote or invalid paths from an unsaved admin draft', () => {
