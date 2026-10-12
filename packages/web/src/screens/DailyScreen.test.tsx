@@ -37,6 +37,7 @@ import {
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelRinkPrimaryLabel,
+  duelExpiredPeriodPresentation,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
   duelScoreboardOpponent,
@@ -9475,5 +9476,31 @@ describe('duel ready rink presence', () => {
       playerReady: true,
       goalieReady: false,
     });
+  });
+});
+
+
+describe('duel pending period expiry presentation', () => {
+  it.each(['classic','express_plus'] as const)('keeps %s intermediate expiry on a break', (duelKind) => {
+    const now=Date.parse('2026-05-16T10:10:00.000Z');
+    const match:AmateurDuelMatchState={...settledDuelMatch,status:'active',server_now:new Date(now).toISOString(),
+      rules:{...settledDuelMatch.rules,duelKind,totalPeriods:duelKind==='classic'?3:2,breakDurationMs:300000},
+      me:{...settledDuelMatch.me,state:'period_active',current_period:1},
+      opponent:{...settledDuelMatch.opponent,state:'period_active',current_period:1}};
+    const pending=duelExpiredPeriodPresentation(match,now);
+    expect(duelRinkPrimaryLabel(pending,now)).toBe('Перерыв');
+    expect(duelEventTiming(pending,now)).toMatchObject({label:'Перерыв',value:'05:00'});
+    expect(pending.me.goals).toBe(match.me.goals);
+    expect(pending.opponent).toBe(match.opponent);
+    expect(match.me.state).toBe('period_active');
+  });
+  it.each(['express','express_plus','classic'] as const)('keeps %s final expiry waiting for its opponent', (duelKind) => {
+    const now=Date.parse('2026-05-16T10:10:00.000Z');
+    const totalPeriods=duelKind==='classic'?3:duelKind==='express_plus'?2:1;
+    const match:AmateurDuelMatchState={...settledDuelMatch,status:'active',server_now:new Date(now).toISOString(),
+      rules:{...settledDuelMatch.rules,duelKind,totalPeriods},
+      me:{...settledDuelMatch.me,state:'period_active',current_period:totalPeriods},
+      opponent:{...settledDuelMatch.opponent,state:'period_active',current_period:totalPeriods}};
+    expect(duelRinkPrimaryLabel(duelExpiredPeriodPresentation(match,now),now)).toBe('Ждём соперника');
   });
 });

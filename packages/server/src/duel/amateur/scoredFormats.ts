@@ -14,6 +14,7 @@ export interface MarathonProjection {
 /** Replay accepted shots against fixed deadlines. Penalties at zero never become debt. */
 export function projectMarathon(input: {
   durationMs: number;
+  resetAfterShotPauseMs?: number;
   windowMs: MarathonWindowMs;
   elapsedMs: number;
   shots: readonly MarathonShot[];
@@ -22,6 +23,7 @@ export function projectMarathon(input: {
     goals = 0,
     penalties = 0,
     windowEndsMs = input.windowMs as number;
+  let lastContactMs: number | null = null;
   const expire = (until: number, inclusive: boolean) => {
     const bound = Math.min(until, input.durationMs);
     while (inclusive ? windowEndsMs <= bound : windowEndsMs < bound) {
@@ -33,13 +35,22 @@ export function projectMarathon(input: {
   for (const shot of input.shots) {
     if (shot.startedMs > input.durationMs) continue;
     expire(shot.startedMs, false);
+    if (input.resetAfterShotPauseMs !== undefined && !shot.goal) {
+      expire(shot.startedMs + shot.flightMs, true);
+    }
     if (shot.goal) {
       score++;
       goals++;
       windowEndsMs = shot.startedMs + shot.flightMs + input.windowMs;
     }
+    if (input.resetAfterShotPauseMs !== undefined) {
+      lastContactMs = shot.startedMs + shot.flightMs;
+      windowEndsMs = lastContactMs + input.resetAfterShotPauseMs + input.windowMs;
+    }
   }
-  expire(input.elapsedMs, true);
+  const showingResult = input.resetAfterShotPauseMs !== undefined && lastContactMs !== null &&
+    input.elapsedMs >= lastContactMs && input.elapsedMs < lastContactMs + input.resetAfterShotPauseMs;
+  if (!showingResult) expire(input.elapsedMs, true);
   return { score, goals, penalties, windowEndsMs };
 }
 export function compareScoredDuel(input: {

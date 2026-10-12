@@ -183,6 +183,27 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
       expect(stored.rows[0].n).toBe(1);
     },
   );
+  it.each(['sniper','marathon'])('finishes %s immediately only at its effective deadline', async (kind) => {
+    const id=(await challenge(kind)).json().match.id;
+    const post=(path:string,player:number,payload?:object)=>app.inject({method:'POST',url:`/duel/amateur/matches/${id}/${path}`,headers:players[player]!.headers,...(payload?{payload}:{})});
+    await post('accept',1);
+    for(const player of [0,1]) { await post('ready',player,{loadout:{}}); await post('period/start',player); }
+    expect((await post('period/finish',0)).statusCode).toBe(409);
+    const duration=kind==='sniper'?180000:240000;
+    await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond'),period_paused_ms=10000 where match_id=$1 and user_id=$3",[id,duration+100,players[0]!.id]);
+    expect((await post('period/finish',0)).statusCode).toBe(409);
+    await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond') where match_id=$1 and user_id=$3",[id,duration+10100,players[0]!.id]);
+    const finished=await post('period/finish',0);
+    expect(finished.statusCode).toBe(200);
+    expect(finished.json().match.me).toMatchObject({state:'completed',active_duration_ms:duration});
+    expect(finished.json().match.status).toBe('active');
+    expect((await post('period/finish',0)).statusCode).toBe(200);
+    await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond') where match_id=$1 and user_id=$3",[id,duration+100,players[1]!.id]);
+    expect((await post('period/finish',1)).json().match.status).toBe('settled');
+    const logs=await app.pg.query('select count(*)::int as count from amateur_duel_period_log where match_id=$1',[id]);
+    expect(logs.rows[0].count).toBe(2);
+  });
+
   it('keeps the invited 4-second Marathon variant immutable on acceptance', async () => {
     const invited = await challenge('marathon', 4000);
     expect(invited.statusCode).toBe(200);

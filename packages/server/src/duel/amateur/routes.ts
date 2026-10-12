@@ -585,6 +585,7 @@ interface DuelPeriodRule {
 }
 
 interface DuelParticipantRow {
+  result_pause_stops_period: boolean;
   result_paused_ms: number;
   result_pause_starts_at: Date | null;
   result_pause_ends_at: Date | null;
@@ -732,6 +733,7 @@ interface DuelRulesSnapshot {
   description: string;
   difficulty: DuelDifficulty;
   duelKind: DuelKind;
+  scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: MarathonWindowMs;
   sniperScoring?: MarksmanshipScoringRules;
@@ -1342,7 +1344,7 @@ export function makeRulesSnapshot(
     description: template.description,
     difficulty: template.difficulty,
     duelKind: template.duel_kind,
-    ...(['sniper', 'marathon'].includes(template.duel_kind) ? { shotResultPauseMs: 1000 as const } : {}),
+    ...(['sniper', 'marathon'].includes(template.duel_kind) ? { shotResultPauseMs: 1000 as const, scoredClockVersion: 2 as const } : {}),
     ...(template.duel_kind === 'marathon'
       ? { marathonWindowMs: template.marathon_window_ms ?? 7000 }
       : {}),
@@ -1464,6 +1466,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       duelKind: z
         .enum(['express', 'express_plus', 'classic', 'sniper', 'marathon'])
         .default('classic'),
+      scoredClockVersion: z.literal(2).optional(),
       shotResultPauseMs: z.literal(1000).optional(),
       marathonWindowMs: z.union([z.literal(4000), z.literal(7000)]).optional(),
       sniperScoring: z.unknown().optional(),
@@ -1502,12 +1505,13 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
-  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, shotResultPauseMs, ...rules } =
+  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, shotResultPauseMs, scoredClockVersion, ...rules } =
     parsed.data;
   return {
     ...rules,
     ...(marathonWindowMs === undefined ? {} : { marathonWindowMs }),
     ...(shotResultPauseMs === undefined ? {} : { shotResultPauseMs }),
+    ...(scoredClockVersion === undefined ? {} : { scoredClockVersion }),
     ...(sniperScoring === undefined
       ? {}
       : { sniperScoring: parseMarksmanshipScoringRules(sniperScoring) }),
@@ -2694,7 +2698,9 @@ async function fetchParticipants(
             inventory_effects_snapshot, inventory_report, result_points, experience_snapshot,
             tournament_loadout_period, tournament_loadout_version,
             tournament_loadout_confirmed_at, period_paused_ms, period_paused_at, recovery_until, fight_aid_until,
-            result_paused_ms, result_pause_starts_at, result_pause_ends_at
+            result_paused_ms, result_pause_starts_at, result_pause_ends_at,
+            coalesce((select (m.rules_snapshot->>'scoredClockVersion')::int <> 2
+              from amateur_duel_match m where m.id=match_id),true) as result_pause_stops_period
        from amateur_duel_participant
       where match_id = $1
       order by side`,
@@ -3576,7 +3582,7 @@ async function reconcileParticipantTimers(
   for (let participant of participants) {
     if (participant.state === 'period_active' && participant.period_started_at !== null && participant.period_paused_at === null) {
       const periodRule = getDuelPeriodRule(rules, participant.current_period);
-      const timeoutAt = new Date(participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) + Number(participant.result_paused_ms ?? 0) + periodRule.durationMs);
+      const timeoutAt = new Date(participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) + (rules.scoredClockVersion === 2 ? 0 : Number(participant.result_paused_ms ?? 0)) + periodRule.durationMs);
       let closed = false;
       const lateShotGraceMs =
         rules.duelKind === 'sniper' || rules.duelKind === 'marathon'
@@ -3868,7 +3874,7 @@ async function scoredParticipantFields(
       : Math.max(0, now.getTime() - participant.period_started_at.getTime());
   const lastFlightMs = lastInput ? (PUCK_START.y - GOAL_OPENING.y) / lastInput.puckSpeedPerMs : 0;
   const clockFields = {
-    ...restoreScoredSceneClocks(elapsedMs, rules.shotResultPauseMs && lastInput ? { ...lastInput, resultPauseMs: 0 } : lastInput, lastFlightMs),
+    ...restoreScoredSceneClocks(elapsedMs, rules.shotResultPauseMs && rules.scoredClockVersion !== 2 && lastInput ? { ...lastInput, resultPauseMs: 0 } : lastInput, lastFlightMs),
     ...(rules.shotResultPauseMs ? {
       clock: getParticipantClock(participant, rules.periodRules[0]!.durationMs, now.getTime()),
       result_pause_starts_at: participant.result_pause_starts_at?.toISOString() ?? null,
@@ -3884,6 +3890,7 @@ async function scoredParticipantFields(
   const projection = projectMarathon({
     durationMs,
     windowMs: rules.marathonWindowMs ?? 7000,
+    ...(rules.scoredClockVersion === 2 ? { resetAfterShotPauseMs: 1000 } : {}),
     elapsedMs,
     shots: shots.rows.map((shot) => ({
       startedMs: Number(shot.input_payload.periodTapTime ?? shot.input_payload.tapTime),
@@ -7048,7 +7055,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (rules.shotResultPauseMs) {
           // Reserve the fixed pause atomically with the unique accepted shot.
           const pauseStartsAt = new Date(participant.period_started_at!.getTime() +
-            Number(participant.period_paused_ms ?? 0) + Number(participant.result_paused_ms ?? 0) +
+            Number(participant.period_paused_ms ?? 0) + (rules.scoredClockVersion === 2 ? 0 : Number(participant.result_paused_ms ?? 0)) +
             periodTapTime + (PUCK_START.y - GOAL_OPENING.y) / shotInput.puckSpeedPerMs);
           await client.query(
             `update amateur_duel_participant set result_paused_ms=result_paused_ms+$3,
@@ -7202,6 +7209,36 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       return response.response;
     },
   );
+
+  // The client calls this only after its final in-flight request and result are complete.
+  // Background reconciliation keeps its grace for requests still travelling over the network.
+  app.post('/duel/amateur/matches/:matchId/period/finish', { preHandler: [app.authenticate] }, async (req) => {
+    const { matchId } = z.object({ matchId: uuid }).parse(req.params);
+    const result = await withTransaction(app, async (client) => {
+      await lockMatchGameplay(client, matchId);
+      let match = await fetchPlayableMatchForUpdate(client, matchId);
+      if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id)
+        throw new AppError('forbidden', 'duel match access denied', 403);
+      await assertFullAmateurAccess(client, req.user.id);
+      const rules = parseRulesSnapshot(match.rules_snapshot);
+      const now = new Date();
+      const participant = (await fetchParticipants(client, matchId)).find(p => p.user_id === req.user.id)!;
+      if (rules.scoredClockVersion !== 2)
+        throw new AppError('conflict', 'explicit finish is unavailable for this duel', 409);
+      if (participant.state === 'period_active' && participant.period_started_at) {
+        if (participant.period_paused_at) throw new AppError('conflict', 'duel period is paused', 409);
+        const deadline = new Date(getEffectivePeriodStart(participant, now.getTime())!.getTime() + rules.periodRules[0]!.durationMs);
+        if (now < deadline) throw new AppError('conflict', 'duel period has not ended', 409);
+        await closeParticipantPeriod(client, participant, rules, deadline, 'timeout');
+      }
+      const reconciled = await reconcileMatch(client, match, now);
+      match = reconciled.match;
+      return { match: await buildMatchStateDto(client, match, req.user.id, now), settled: match.status === 'settled' };
+    });
+    await publishDuelFixtureProgress(app, matchId);
+    if (result.settled) void notifySettlement(app, matchId);
+    return { match: result.match };
+  });
 
   app.post(
     '/duel/amateur/matches/:matchId/settle',

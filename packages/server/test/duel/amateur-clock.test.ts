@@ -71,3 +71,10 @@ describe('scored duel shot-result clock', () => {
     expect(getParticipantClock({...paused,result_paused_ms:4000},180000,16500).periodElapsedMs).toBe(12500);
   });
 });
+
+
+it('keeps v2 period time running throughout the shot result', () => {
+  const active={...player,result_pause_stops_period:false,result_paused_ms:1000,
+    result_pause_starts_at:new Date(5200),result_pause_ends_at:new Date(6200)};
+  expect(getParticipantClock(active,180000,5700)).toMatchObject({periodElapsedMs:5700,running:true});
+});

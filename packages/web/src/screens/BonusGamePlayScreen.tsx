@@ -1,3 +1,4 @@
+import { EnduranceTimer } from '../components/EnduranceTimer.js';
 import { MarksmanshipScoreNotice, formatMarksmanshipPoints, marksmanshipResultPresentation } from '../components/MarksmanshipScoreNotice.js';
 import { ChallengeFinale } from '../game/ChallengeFinale.js';
 import { formatBonusDuration, formatBonusRecord } from '../profile/BonusRecordsModal.js';
@@ -88,9 +89,6 @@ function formatCountdown(ms: number): string {
   return `${minutes}:${seconds}`;
 }
 
-function formatTenths(ms: number): string {
-  return (Math.ceil(Math.max(0, ms) / 100) / 10).toFixed(1).replace('.', ',');
-}
 
 function authoritativeRemainingMs(
   endsAt: string | null,
@@ -1196,25 +1194,9 @@ export function BonusGamePlayScreen(): JSX.Element {
         scoreboardModel={enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
           showEnduranceTimer ? (
-            <div
-              className={`game-scoreboard game-scoreboard--stable-surface bonus-game-endurance-timer bonus-game-endurance-timer--${
-                (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
-                  ? 'danger'
-                  : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <=
-                      10_000
-                    ? 'warning'
-                    : 'success'
-              }`}
-              role="timer"
-              aria-label="До обязательного гола"
-            >
-              <span className="game-scoreboard__label">ТАЙМЕР</span>
-              <span className="bonus-game-endurance-timer__value">
-                {formatTenths(
-                  visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
-                )}
-              </span>
-            </div>
+            <EnduranceTimer remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
+              tone={(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4000 ? 'danger'
+                : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 10000 ? 'warning' : 'success'} />
           ) : marksmanshipScoreParts?.length ? (
             <MarksmanshipScoreNotice parts={marksmanshipScoreParts} scoring={marksmanshipRules!.scoring} />
           ) : undefined

@@ -104,6 +104,7 @@ export interface AmateurDuelRules {
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duelKind: AmateurDuelKind;
+  scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: 4000 | 7000;
   sniperScoring?: MarksmanshipScoringRules;
@@ -668,6 +669,10 @@ export function submitAmateurDuelShot(
       ...(options?.signal === undefined ? {} : { signal: options.signal }),
     }),
   );
+}
+
+export function finishAmateurDuelPeriod(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
+  return amateurMutation(apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/period/finish`, { method: 'POST' }));
 }
 
 export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {

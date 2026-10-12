@@ -7,6 +7,7 @@ export interface GameScoreboardMetric {
   value: string;
   tone?: GameScoreboardMetricTone;
   emphasis?: GameScoreboardMetricEmphasis;
+  columnWeight?: number;
   labelEmphasis?: 'default' | 'small';
 }
 
@@ -50,6 +51,7 @@ export interface ScoreBoardProps {
 
 export interface ScoreBoardOpponent {
   scoreSeparator?: string;
+  scoreColumnWeight?: number;
   name: string;
   avatarUrl: string | null;
   goals: number;
@@ -103,6 +105,7 @@ export function buildGameScoreboardModel({
   };
   const scoreMetric: GameScoreboardMetric = {
     id: opponent ? 'score' : 'goals',
+    ...(opponent?.scoreColumnWeight === undefined ? {} : {columnWeight: opponent.scoreColumnWeight}),
     label: opponent ? 'СЧЁТ' : scoreLabel,
     value: opponent
       ? `${goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}${opponent.scoreSeparator ?? ':'}${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}`
@@ -149,7 +152,7 @@ export function GameScoreboard({
             }${row.metrics.length >= 4 ? ' game-scoreboard__row--dense' : ''}`}
             data-testid={`scoreboard-row-${row.id}`}
             style={{ gridTemplateColumns: row.metrics.map((metric) =>
-              metric.id === 'score' && metric.value.length > 7 ? 'minmax(0, 2fr)' : 'minmax(0, 1fr)',
+              `minmax(0, ${metric.columnWeight ?? (metric.id === 'score' && metric.value.length > 7 ? 2 : 1)}fr)`,
             ).join(' ') }}
           >
             {row.metrics.map((metric) => {
