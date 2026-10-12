@@ -1619,3 +1619,5 @@
 .durak-screen :is(.durak-ready-panel, .durak-ready-actions) {
   bottom: max(20px, var(--app-play-safe-bottom, 0px));
 }
+.durak-room-player__identity { flex: 1; min-width: 0; }
+.durak-room-invite-cancel { flex: none; margin-left: auto; align-self: center; }
