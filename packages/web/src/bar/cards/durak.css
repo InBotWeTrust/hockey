@@ -1281,50 +1281,37 @@
   box-shadow: var(--liquid-shadow);
 }
 
-/* Readable identities above a shared clock and trump, including narrow phones. */
+/* Keep identities, clock and trump in one row at every viewport width. */
 .durak-menu .durak-menu__row {
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  grid-template-areas: 'self opponent' 'timer trump';
-  row-gap: 5px;
-  padding: 8px;
+  grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr) 46px;
+  grid-template-areas: 'self timer opponent trump';
+  gap: 0;
+  padding: 8px 4px;
 }
-.durak-menu .game-scoreboard__metric:nth-child(1) {
-  grid-area: self;
-}
-.durak-menu .game-scoreboard__metric:nth-child(2) {
-  grid-area: timer;
-}
-.durak-menu .game-scoreboard__metric:nth-child(3) {
-  grid-area: opponent;
-}
-.durak-menu .game-scoreboard__metric:nth-child(4) {
-  grid-area: trump;
-}
-.durak-menu .game-scoreboard__metric {
-  border: 0;
-  padding-inline: 4px;
-}
+.durak-menu .game-scoreboard__metric:nth-child(1) { grid-area: self; }
+.durak-menu .game-scoreboard__metric:nth-child(2) { grid-area: timer; }
+.durak-menu .game-scoreboard__metric:nth-child(3) { grid-area: opponent; }
+.durak-menu .game-scoreboard__metric:nth-child(4) { grid-area: trump; }
+.durak-menu .game-scoreboard__metric { border: 0; padding-inline: 4px; }
 .durak-menu .game-scoreboard__metric--timer,
 .durak-menu .durak-menu__trump {
   display: flex;
-  flex-direction: row;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  padding-top: 5px;
-  border-top: 1px solid rgba(205, 232, 255, 0.18);
+  gap: 3px;
+  padding-block: 0;
+  border-top: 0;
+}
+.durak-menu .durak-menu__identity .user-avatar {
+  width: 24px !important;
+  height: 24px !important;
+  flex: none;
 }
 .durak-menu .game-scoreboard__label,
-.durak-menu .durak-menu__trump .game-scoreboard__label {
-  font-size: 10px;
-}
-.durak-menu [role='timer'] .game-scoreboard__value {
-  font-size: 24px;
-  line-height: 1;
-}
-.durak-menu .durak-menu__trump-symbol {
-  font-size: 24px;
-}
+.durak-menu .durak-menu__trump .game-scoreboard__label { font-size: 9px; }
+.durak-menu [role='timer'] .game-scoreboard__value { font-size: 24px; line-height: 1; }
+.durak-menu .durak-menu__trump-symbol { font-size: 24px; }
 
 /* Keep the reserve smaller than played cards, with half the sideways trump exposed. */
 .durak-screen .durak-deck {
@@ -1476,4 +1463,9 @@
 .durak-screen .durak-pair img:only-child {
   left: 50%;
   top: 50%;
+}
+
+.durak-menu .durak-menu__trump .game-scoreboard__label {
+  font-size: 8px;
+  letter-spacing: 0;
 }

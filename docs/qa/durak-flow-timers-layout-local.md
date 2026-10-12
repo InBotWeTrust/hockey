@@ -8,7 +8,7 @@ Branch: `fix/durak-flow-timers-layout`.
 - Online throw-in action uses «Бито» for a defended bout and «Завершить» when taking. Other players retain their throw-in turns.
 - Empty hands with an exhausted deck automatically pass/finish after three seconds. An unbeatable final attack receives an automatic take after three seconds; a beatable attack keeps its normal response window. A last trump ace against each of the four computer opponents resolves in about six seconds without another click.
 - Readiness countdown is five seconds for legacy matches and rooms. Each new bout starts with 40 seconds; subsequent accepted actions renew the clock to 30 seconds. Invalid moves, stale retries and reads do not extend the deadline.
-- Names occupy the first menu row; time and trump remain visible in the second. Deck cards are 44 px wide; the trump is sideways with half exposed. Sparse tables use their available space. Four to six pairs stay visible in two rows, shrinking to the available space without table scrolling.
+- The menu uses one row: player, time, opponent/player count, trump. Deck cards are 44 px wide; the trump is sideways with half exposed. Sparse tables use their available space. Four to six pairs stay visible in two rows, shrinking to the available space without table scrolling.
 - Game-core version increases from 86 to 87. Persisted card-state shapes are unchanged. Existing stored deadlines remain unchanged until the next accepted action/timeout. Release still needs its normal active-session/version checks: initial/advanced/open-window training routes reject stored runs from an older core version with 409. There is no release authorization or runtime change in this task.
 
 ## Verification
