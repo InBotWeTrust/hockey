@@ -6,7 +6,7 @@
   flex-direction: column;
   gap: 8px;
   height: var(--app-viewport-height, 100dvh);
-  padding: calc(10px + var(--app-safe-top, 0px)) 12px calc(10px + var(--app-safe-bottom, 0px));
+  padding: max(10px, var(--app-safe-top, 0px)) 12px max(10px, var(--app-play-safe-bottom, 0px));
   overflow: hidden;
   background: #164c3c url('/bar/cards/table-v1.webp') center/cover;
   color: white;
@@ -1613,4 +1613,9 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Pregame actions use the same compact bottom inset as the playing table. */
+.durak-screen :is(.durak-ready-panel, .durak-ready-actions) {
+  bottom: max(20px, var(--app-play-safe-bottom, 0px));
 }
