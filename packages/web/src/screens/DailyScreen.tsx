@@ -1,3 +1,4 @@
+import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
 import { formatRecordDuration } from '../lib/recordDuration.js';
 import { FittedHudLabel } from '../components/FittedHudLabel.js';
 import { MarksmanshipScoreNotice, marksmanshipV6TechniqueLabel } from '../components/MarksmanshipScoreNotice.js';
@@ -5775,6 +5776,9 @@ function AmateurDuelPlayView({
   const updateLoadout = useAmateurDuelStore((s) => s.updateLoadout);
   const optimisticAddShot = useAmateurDuelStore((s) => s.optimisticAddShot);
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
+  const [localShotClock, setLocalShotClock] = useState<{
+    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean;
+  } | null>(null);
   const [sniperScoreParts, setSniperScoreParts] = useState<readonly { points: number; label: string }[] | null>(null);
   const sniperPendingPartsRef = useRef<readonly { points: number; label: string }[] | null>(null);
   const sniperResultVisibleRef = useRef(false);
@@ -5785,6 +5789,7 @@ function AmateurDuelPlayView({
     sniperNoticeTimeoutRef.current = parts ? setTimeout(() => setSniperScoreParts(null), 2000) : null;
   }, []);
   useEffect(() => {
+    setLocalShotClock(null);
     setSniperScoreParts(null);
     sniperPendingPartsRef.current = null;
     sniperResultVisibleRef.current = false;
@@ -6103,10 +6108,23 @@ function AmateurDuelPlayView({
       !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
   const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
-  const marathonRemainingMs = Math.max(
-    0,
-    Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - fightNow,
-  );
+  const localPausePending = localShotClock !== null &&
+    (match.me.result_pause_ends_at ?? null) === localShotClock.previousEndsAt;
+  const pauseStartsAt = localPausePending ? localShotClock.startsAt : match.me.result_pause_starts_at;
+  const pauseEndsAt = localPausePending ? localShotClock.endsAt : match.me.result_pause_ends_at;
+  const scoredClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now),
+    Date.parse(match.server_now) + Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now())),
+    pauseStartsAt, pauseEndsAt);
+  const pausedScoredClock = match.rules.shotResultPauseMs !== undefined;
+  const scoredRemainingMs = Math.max(0, (match.me.clock?.remainingMs ?? 0) - scoredClockDelta());
+  const authoritativeMarathonRemainingMs = Math.max(0,
+    Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - Date.parse(match.server_now) -
+    (pausedScoredClock ? scoredClockDelta() : fightNow - Date.parse(match.server_now)));
+
+  const marathonRemainingMs = localPausePending && localShotClock.goal && fightNow >= Date.parse(localShotClock.startsAt)
+    ? Math.max(0, localShotClock.goalAtMs + (match.rules.marathonWindowMs ?? 7000) -
+        ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta()))
+    : authoritativeMarathonRemainingMs;
   const fight = match.fight;
   const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
   const medicalAid = medicalAidUntilMs !== undefined;
@@ -6381,12 +6399,12 @@ function AmateurDuelPlayView({
               ? () =>
                   periodEndsAt === undefined ||
                   periodEndsAt === null ||
-                  Date.parse(match.server_now) +
+                  (pausedScoredClock ? (match.me.clock?.remainingMs ?? 0) - scoredClockDelta() > 0 : Date.parse(match.server_now) +
                     Math.max(
                       0,
                       performance.now() - (match.received_at_performance_ms ?? performance.now()),
                     ) <=
-                    periodEndsAt
+                    periodEndsAt)
               : undefined
           }
           shotResolver={
@@ -6410,9 +6428,34 @@ function AmateurDuelPlayView({
               : undefined
           }
           optimisticAddShot={optimisticAddShot}
+          stopAtPeriodEnd={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          {...(pausedScoredClock ? {
+            periodRemainingMs: scoredRemainingMs,
+            resultPauseStartsAt: pauseStartsAt ?? undefined,
+            resultPauseEndsAt: pauseEndsAt ?? undefined,
+            timer: formatMs(scoredRemainingMs),
+            getPeriodElapsedMs: () => (match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta(),
+            applyShotStateAtContact: true,
+            shotResultPauseMs: match.rules.shotResultPauseMs,
+          } : {})}
           separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          onShotResolved={pausedScoredClock ? (context) => {
+            const flightMs = context.flightMs ?? 0;
+            const startsAt = Date.parse(match.server_now) +
+              Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now())) + flightMs;
+            setLocalShotClock({startsAt: new Date(startsAt).toISOString(),
+              endsAt: new Date(startsAt + 1000).toISOString(),
+              previousEndsAt: match.me.result_pause_ends_at ?? null,
+              goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta() + flightMs,
+              goal: context.result.type === 'goal'});
+            return null;
+          } : undefined}
           submitShot={async (args) => {
             const result = await submitShot(args);
+            if (pausedScoredClock) {
+              if (result === null) setLocalShotClock(null);
+              else setLocalShotClock((previous) => previous ? {...previous, goal: result.serverResult === 'goal'} : null);
+            }
             if (match.rules.duelKind === 'sniper' && result?.isCurrent()) {
               const points = result.awardedPoints;
               sniperPendingPartsRef.current = result.serverResult === 'goal' && (points ?? 0) > 0

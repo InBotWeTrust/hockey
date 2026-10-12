@@ -585,6 +585,9 @@ interface DuelPeriodRule {
 }
 
 interface DuelParticipantRow {
+  result_paused_ms: number;
+  result_pause_starts_at: Date | null;
+  result_pause_ends_at: Date | null;
   period_paused_ms: number;
   period_paused_at: Date | null;
   recovery_until: Date | null;
@@ -729,6 +732,7 @@ interface DuelRulesSnapshot {
   description: string;
   difficulty: DuelDifficulty;
   duelKind: DuelKind;
+  shotResultPauseMs?: 1000;
   marathonWindowMs?: MarathonWindowMs;
   sniperScoring?: MarksmanshipScoringRules;
   duelVariant: DuelVariant;
@@ -773,6 +777,8 @@ interface DuelParticipantDTO {
   format_score?: number;
   sniper_points?: number;
   marathon_penalties?: number;
+  result_pause_starts_at?: string | null;
+  result_pause_ends_at?: string | null;
   marathon_window_ends_at?: string | null;
   average_goal_ms?: number | null;
   clock?: ReturnType<typeof getParticipantClock>;
@@ -897,6 +903,9 @@ interface DuelMatchStateDTO extends DuelMatchDTO {
 }
 
 interface SubmitAmateurDuelShotResponse {
+  server_now?: string;
+  period_started_at?: string | null;
+  period_ends_at?: string | null;
   awarded_points?: number;
   state_revision?:number;
   match_id: string;
@@ -1313,14 +1322,15 @@ export function makeRulesSnapshot(
   if (!(startsAt < endsAt)) {
     throw new AppError('bad_request', 'duel template window is invalid', 400);
   }
-  const totalPeriods = Number(template.total_periods);
+  const scored = template.duel_kind === 'sniper' || template.duel_kind === 'marathon';
+  const totalPeriods = scored ? 1 : Number(template.total_periods);
   const presets = parsePeriodSpeedPresets(template.period_speed_presets);
   for (let period = 1; period <= totalPeriods; period += 1) {
     if (!presets.some((preset) => preset.periodNumber === period)) {
       throw new AppError('bad_request', `missing speed preset for period ${period}`, 400);
     }
   }
-  const periodRules = parseTemplatePeriodRules(template.period_rules, {
+  const periodRules = parseTemplatePeriodRules(scored ? null : template.period_rules, {
     duelKind: template.duel_kind,
     totalPeriods,
     shotsPerPeriod: Number(template.shots_per_period),
@@ -1332,6 +1342,7 @@ export function makeRulesSnapshot(
     description: template.description,
     difficulty: template.difficulty,
     duelKind: template.duel_kind,
+    ...(['sniper', 'marathon'].includes(template.duel_kind) ? { shotResultPauseMs: 1000 as const } : {}),
     ...(template.duel_kind === 'marathon'
       ? { marathonWindowMs: template.marathon_window_ms ?? 7000 }
       : {}),
@@ -1453,6 +1464,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       duelKind: z
         .enum(['express', 'express_plus', 'classic', 'sniper', 'marathon'])
         .default('classic'),
+      shotResultPauseMs: z.literal(1000).optional(),
       marathonWindowMs: z.union([z.literal(4000), z.literal(7000)]).optional(),
       sniperScoring: z.unknown().optional(),
       duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
@@ -2680,7 +2692,8 @@ async function fetchParticipants(
             reserved_inventory_charges, consumed_inventory_charges,
             inventory_effects_snapshot, inventory_report, result_points, experience_snapshot,
             tournament_loadout_period, tournament_loadout_version,
-            tournament_loadout_confirmed_at, period_paused_ms, period_paused_at, recovery_until, fight_aid_until
+            tournament_loadout_confirmed_at, period_paused_ms, period_paused_at, recovery_until, fight_aid_until,
+            result_paused_ms, result_pause_starts_at, result_pause_ends_at
        from amateur_duel_participant
       where match_id = $1
       order by side`,
@@ -3562,7 +3575,7 @@ async function reconcileParticipantTimers(
   for (let participant of participants) {
     if (participant.state === 'period_active' && participant.period_started_at !== null && participant.period_paused_at === null) {
       const periodRule = getDuelPeriodRule(rules, participant.current_period);
-      const timeoutAt = new Date(participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) + periodRule.durationMs);
+      const timeoutAt = new Date(participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) + Number(participant.result_paused_ms ?? 0) + periodRule.durationMs);
       let closed = false;
       const lateShotGraceMs =
         rules.duelKind === 'sniper' || rules.duelKind === 'marathon'
@@ -3847,9 +3860,20 @@ async function scoredParticipantFields(
   const lastShotEndsMs=lastInput ? lastInput.tapTime+(PUCK_START.y-GOAL_OPENING.y)/lastInput.puckSpeedPerMs : 0;
   const elapsedMs = participant.period_started_at === null
     ? Number(participant.active_duration_ms)
-    : Math.max(0, now.getTime() - participant.period_started_at.getTime());
+    : rules.shotResultPauseMs && participant.state !== 'period_active'
+      ? Number(participant.active_duration_ms)
+      : rules.shotResultPauseMs
+      ? getParticipantClock(participant, rules.periodRules[0]!.durationMs, now.getTime()).periodElapsedMs
+      : Math.max(0, now.getTime() - participant.period_started_at.getTime());
   const lastFlightMs = lastInput ? (PUCK_START.y - GOAL_OPENING.y) / lastInput.puckSpeedPerMs : 0;
-  const clockFields = restoreScoredSceneClocks(elapsedMs, lastInput, lastFlightMs);
+  const clockFields = {
+    ...restoreScoredSceneClocks(elapsedMs, rules.shotResultPauseMs && lastInput ? { ...lastInput, resultPauseMs: 0 } : lastInput, lastFlightMs),
+    ...(rules.shotResultPauseMs ? {
+      clock: getParticipantClock(participant, rules.periodRules[0]!.durationMs, now.getTime()),
+      result_pause_starts_at: participant.result_pause_starts_at?.toISOString() ?? null,
+      result_pause_ends_at: participant.result_pause_ends_at?.toISOString() ?? null,
+    } : {}),
+  };
   if (rules.duelKind === 'sniper') {
     const points = shots.rows.reduce((sum, shot) => sum + Number(shot.awarded_points), 0);
     return { ...clockFields, format_score: points / 10, sniper_points: points, last_shot_ends_ms:lastShotEndsMs };
@@ -3874,7 +3898,7 @@ async function scoredParticipantFields(
     marathon_window_ends_at:
       participant.period_started_at === null
         ? null
-        : new Date(participant.period_started_at.getTime() + projection.windowEndsMs).toISOString(),
+        : new Date((rules.shotResultPauseMs ? getEffectivePeriodStart(participant, now.getTime())! : participant.period_started_at).getTime() + projection.windowEndsMs).toISOString(),
   };
 }
 
@@ -6745,6 +6769,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                   current_period = current_period + 1,
                   period_started_at = $3,
                   period_paused_ms = 0,
+                  result_paused_ms = 0,
+                  result_pause_starts_at = null,
+                  result_pause_ends_at = null,
                   period_paused_at = null,
                   recovery_until = null,
                   fight_aid_until = null,
@@ -6797,6 +6824,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               server_result: prior.rows[0].server_result,
               awarded_points: Number(prior.rows[0].awarded_points),
               confirmed_shot_index: confirmedStats.shots,
+              server_now: dto.server_now,
+              period_started_at: dto.period_started_at,
+              period_ends_at: dto.period_ends_at,
               participant: {
                 ...await scoredParticipantFields(client,lockedMatch,(await fetchParticipants(client,lockedMatch.id)).find(player=>player.user_id===req.user.id)!,parseRulesSnapshot(lockedMatch.rules_snapshot),now),
                 state:dto.me.state,current_period:dto.me.current_period,
@@ -6872,6 +6902,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
         const isScoredDuel = rules.duelKind === 'sniper' || rules.duelKind === 'marathon';
         const periodTapTime = body.input.periodTapTime ?? body.input.tapTime;
+        if (rules.shotResultPauseMs && participant.result_pause_ends_at && now < participant.result_pause_ends_at) {
+          throw new AppError('conflict', 'previous duel shot result is still showing', 409);
+        }
         if (isScoredDuel) {
           assertDuelTapTimeFresh(participant, 0, periodTapTime, now);
           if (body.input.tapTime > periodTapTime + TAP_TIME_FUTURE_TOLERANCE_MS)
@@ -6951,7 +6984,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
         const shotInput = {
           tapTime: body.input.tapTime,
-          ...(isScoredDuel && body.input.periodTapTime !== undefined ? { periodTapTime, resultPauseMs: body.input.resultPauseMs ?? 1000 } : {}),
+          ...(isScoredDuel && body.input.periodTapTime !== undefined ? { periodTapTime, resultPauseMs: rules.shotResultPauseMs ?? body.input.resultPauseMs ?? 1000 } : {}),
           ...(body.input.shooterTapTime !== undefined
             ? { shooterTapTime: body.input.shooterTapTime }
             : {}),
@@ -7011,6 +7044,18 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             awardedPoints,
           ],
         );
+        if (rules.shotResultPauseMs) {
+          // Reserve the fixed pause atomically with the unique accepted shot.
+          const pauseStartsAt = new Date(participant.period_started_at!.getTime() +
+            Number(participant.period_paused_ms ?? 0) + Number(participant.result_paused_ms ?? 0) +
+            periodTapTime + (PUCK_START.y - GOAL_OPENING.y) / shotInput.puckSpeedPerMs);
+          await client.query(
+            `update amateur_duel_participant set result_paused_ms=result_paused_ms+$3,
+               result_pause_starts_at=$4, result_pause_ends_at=$5 where match_id=$1 and user_id=$2`,
+            [match.id, req.user.id, rules.shotResultPauseMs, pauseStartsAt,
+             new Date(pauseStartsAt.getTime() + rules.shotResultPauseMs)],
+          );
+        }
         if (match.source === 'challenge') {
           const firstShot = await client.query<{ total: number }>(
             `select count(*)::int as total from shot_session
@@ -7114,6 +7159,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           server_result: serverResult,
           awarded_points: awardedPoints,
           confirmed_shot_index: confirmedStats.shots,
+          ...(rules.shotResultPauseMs ? {
+            server_now: now.toISOString(),
+            period_started_at: getEffectivePeriodStart(refreshedParticipant, now.getTime())?.toISOString() ?? null,
+            period_ends_at: refreshedParticipant.period_started_at
+              ? new Date(getEffectivePeriodStart(refreshedParticipant, now.getTime())!.getTime() + periodRule.durationMs).toISOString()
+              : null,
+          } : {}),
           participant: {
             ...(await scoredParticipantFields(client, match, refreshedParticipant, rules, now)),
             state: refreshedParticipant.state,

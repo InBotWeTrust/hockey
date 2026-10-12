@@ -55,3 +55,19 @@ describe('ordinary duel active clock', () => {
     });
   });
 });
+
+
+describe('scored duel shot-result clock', () => {
+  const paused = { ...player, result_paused_ms: 1000,
+    result_pause_starts_at: new Date(5200), result_pause_ends_at: new Date(6200) };
+  it('does not subtract a future reserved pause before puck contact', () => {
+    expect(getParticipantClock(paused, 180000, 5100).periodElapsedMs).toBe(5100);
+  });
+  it('freezes during the modal and resumes after exactly one second', () => {
+    expect(getParticipantClock(paused, 180000, 5700)).toMatchObject({periodElapsedMs:5200,running:false});
+    expect(getParticipantClock(paused, 180000, 6500)).toMatchObject({periodElapsedMs:5500,running:true});
+  });
+  it('retains completed pauses across background time and multiple shots', () => {
+    expect(getParticipantClock({...paused,result_paused_ms:4000},180000,16500).periodElapsedMs).toBe(12500);
+  });
+});

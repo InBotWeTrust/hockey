@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
+  scoredElapsedFromShots,
   projectMarathon as project,
   compareScoredDuel as compare,
 } from '../../../src/duel/amateur/scoredFormats.js';
@@ -101,5 +102,16 @@ describe('Marathon chronological scoring', () => {
         b: { score: 100, goals: 8, shots: 10 },
       }),
     ).toBe(1);
+  });
+});
+
+
+describe('delayed scored duel clocks', () => {
+  const shots = [{startedMs:5000,flightMs:200,goal:true},{startedMs:8000,flightMs:200,goal:false}];
+  it('freezes during the current result without subtracting a future result', () => {
+    expect(scoredElapsedFromShots(5700,shots,1000)).toBe(5200);
+  });
+  it('excludes each completed result once after background time', () => {
+    expect(scoredElapsedFromShots(10500,shots,1000)).toBe(8500);
   });
 });
