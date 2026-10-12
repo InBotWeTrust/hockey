@@ -29,7 +29,7 @@ describe('bar layout', () => {
 it('provides finished assets for the four new characters', () => {
   const layout = createDefaultBarLayout();
   for (const id of ['oleg', 'timofey', 'veronika', 'igor'] as const) {
-    expect(layout.profiles[id]?.composition).toMatch(/composition-v1.webp$/);
+    expect(layout.profiles[id]?.composition).toMatch(/composition-v[12].webp$/);
     expect(layout.profiles[id]?.avatar).toMatch(/avatar-v[12].webp$/);
   }
 });
@@ -64,9 +64,26 @@ it('updates distorted legacy portraits while keeping custom avatar paths', () =>
 
 it('restores the broadcast television for default and saved layouts without replacing custom images', () => {
   const layout = createDefaultBarLayout();
-  expect(layout.profiles.broadcasts.composition).toBe('/bar/broadcasts-entry-v1.webp');
+  expect(layout.profiles.broadcasts.composition).toBe('/bar/cards/broadcast-tv-v1.webp');
   layout.profiles.broadcasts.composition = null;
-  expect(upgradeBarLayout(layout).profiles.broadcasts.composition).toBe('/bar/broadcasts-entry-v1.webp');
+  expect(upgradeBarLayout(layout).profiles.broadcasts.composition).toBe('/bar/cards/broadcast-tv-v1.webp');
   layout.profiles.broadcasts.composition = '/bar/custom-tv.webp';
   expect(upgradeBarLayout(layout).profiles.broadcasts.composition).toBe('/bar/custom-tv.webp');
+});
+
+it('upgrades shipped Timofey and TV while preserving custom edits and placement', () => {
+ const layout=createDefaultBarLayout();
+ layout.profiles.timofey={name:'Тимофей',role:'Работник стадиона',description:'Вечно что-то забывает и ищет повод передохнуть. Курит, флиртует и выпутывается из неловких ситуаций с хитрой улыбкой.',avatar:'/bar/cards/timofey-avatar-v1.webp',composition:'/bar/cards/timofey-composition-v1.webp'};
+ layout.profiles.broadcasts.composition='/bar/broadcasts-entry-v1.webp';
+ layout.slots[6]!.x=37;
+ const next=upgradeBarLayout(layout);
+ expect(next.profiles.timofey.role).toBe('Руководитель службы стадиона');
+ expect(next.profiles.timofey.composition).toBe('/bar/cards/timofey-composition-v2.webp');
+ expect(next.profiles.timofey.avatar).toBe('/bar/cards/timofey-avatar-v2.webp');
+ expect(next.profiles.broadcasts.composition).toBe('/bar/cards/broadcast-tv-v1.webp');
+ expect(next.slots[6]!.x).toBe(37);
+ expect(upgradeBarLayout(next)).toEqual(next);
+ layout.profiles.timofey.role='Custom role'; layout.profiles.timofey.description='Custom copy';layout.profiles.timofey.composition='/bar/custom.png';
+ const custom=upgradeBarLayout(layout);
+ expect(custom.profiles.timofey.role).toBe('Custom role');expect(custom.profiles.timofey.description).toBe('Custom copy');expect(custom.profiles.timofey.composition).toBe('/bar/custom.png');
 });
