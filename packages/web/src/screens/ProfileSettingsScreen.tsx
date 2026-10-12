@@ -1,3 +1,4 @@
+import { ThemeSettings } from '../components/ThemeSettings.js';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, Info, LogOut, RotateCcw, X } from 'lucide-react';
@@ -338,6 +339,7 @@ export function ProfileSettingsScreen(): JSX.Element {
             />
           </div>
 
+          <ThemeSettings />
           <ProfileSupportSections profileReady={data !== undefined} />
 
           <div className="profile-logout-wrap">

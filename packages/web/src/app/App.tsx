@@ -1,3 +1,4 @@
+import { useApplicationTheme } from './theme.js';
 import { BarAccessGate } from '../bar/BarAccessGate.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { CardInviteToast } from '../bar/cards/CardInviteToast.js';
@@ -7,6 +8,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import './global.css';
 import './design-system.css';
 import './liquid-glass.css';
+import './light-theme.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -695,6 +697,7 @@ function AppFrame(): JSX.Element {
 }
 
 export function App(): JSX.Element {
+  useApplicationTheme();
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
