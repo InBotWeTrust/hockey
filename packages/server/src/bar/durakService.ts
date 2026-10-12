@@ -2,7 +2,7 @@ import { randomUUID, randomInt } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { durak } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
-import { advanceDeadline, projectGame, TURN_MS } from './durakState.js';
+import { advanceDeadline, projectGame } from './durakState.js';
 import { currentRoom, acceptRoomInvite, tickCardRooms } from './durakRooms.js';
 type Match = {
   id: string;
@@ -73,7 +73,7 @@ async function reconcile(client: PoolClient, match: Match, now: number): Promise
         client,
         match,
         { ...game, revision: game.revision + 1 },
-        readiness.startsAt + TURN_MS,
+        readiness.startsAt + durak.turnDuration(match.state),
         now,
       );
     } else if (readiness.startsAt === null && now >= readiness.expiresAt) {
@@ -290,7 +290,7 @@ export async function getCardMatch(
       const readiness = match.state.readiness;
       if (!readiness.ready.includes(user) && readiness.startsAt === null) {
         readiness.ready.push(user);
-        if (readiness.ready.length === 2) readiness.startsAt = now + 3000;
+        if (readiness.ready.length === 2) readiness.startsAt = now + 5000;
         match.state.revision++;
         match.deadline_at = new Date(readiness.startsAt ?? readiness.expiresAt);
         await client.query('update bar_card_matches set state=$2,deadline_at=$3 where id=$1', [
@@ -318,7 +318,7 @@ export async function getCardMatch(
           : durak.applyAction(match.state, player, command.action);
       if (game === match.state)
         throw new AppError('card_invalid_move', 'Этой картой сейчас нельзя ходить.', 400);
-      match = await save(client, match, game, now + TURN_MS, now);
+      match = await save(client, match, game, now + durak.turnDuration(game), now);
     }
     const opponent = await client.query<{ display_name: string; avatar_url: string | null }>(
       'select display_name,avatar_url from users where id=$1',

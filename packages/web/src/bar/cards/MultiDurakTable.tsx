@@ -4,7 +4,7 @@ import { LogOut, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
-import { FittedMenuLabel } from './FittedMenuLabel.js';
+import { FittedMenuLabel, CardPlayerName } from './FittedMenuLabel.js';
 import { DurakOpponentSeat } from './DurakOpponentSeat.js';
 import { cardImage } from './DurakScreen.js';
 import { art } from './DurakModals.js';
@@ -30,6 +30,7 @@ export function MultiDurakTable({
   onCommand: (command: RoomCommand) => void;
 }) {
   const pregame = !view.game;
+  const showTrump = view.seats.length === 6;
   const player = Math.max(
     0,
     view.seats.findIndex((s) => s.userId === userId),
@@ -78,6 +79,8 @@ export function MultiDurakTable({
   const deadline = pregame ? (view.countdownAt ?? view.readyUntil ?? null) : g.deadline;
   const remaining = deadline === null ? null : Math.max(0, Math.ceil((deadline! - now) / 1000));
   const actions = g.actions;
+  const automatic = !pregame && !g.deckCount && !g.hand.length && myTurn && g.phase === 'throw';
+  const finishLabel = g.taking ? 'Завершить' : 'Бито';
   const play = (card: Card) => {
     const attack = actions.find((a) => a.type === 'play' && a.cardId === card.id);
     const beats = actions.filter((a) => a.type === 'beat' && a.cardId === card.id);
@@ -92,6 +95,7 @@ export function MultiDurakTable({
   };
   const status =
     (pregame ? pregameText : null) ??
+    (automatic ? 'Завершаем заход…' : null) ??
     hint ??
     (!myTurn
       ? `${turn.displayName}: ${g.phase === 'defend' ? 'отбивается' : g.phase === 'throw' ? 'подкидывает' : 'ходит'}`
@@ -99,8 +103,8 @@ export function MultiDurakTable({
         ? 'Отбей карту или возьми'
         : g.phase === 'throw'
           ? actions.some((a) => a.type === 'play')
-            ? 'Подкинь карту или пропусти'
-            : 'Нажми «Пропустить»'
+            ? `Подкинь карту или нажми «${finishLabel}»`
+            : `Нажми «${finishLabel}»`
           : 'Твой ход');
   return (
     <main className="screen durak-screen durak-screen--online durak-screen--multi">
@@ -111,11 +115,11 @@ export function MultiDurakTable({
       )}
       <section className="durak-menu game-scoreboard-stack" aria-label="Меню игры">
         <div className="game-scoreboard game-scoreboard--stable-surface">
-          <div className="game-scoreboard__row durak-menu__row">
+          <div className="game-scoreboard__row durak-menu__row" data-trump={showTrump}>
             <div className="game-scoreboard__metric">
               <div className="durak-menu__identity">
                 <UserAvatar name={self.displayName} avatarUrl={self.avatarUrl} size={28} />
-                <FittedMenuLabel>{`${self.displayName}${pregame ? '' : ` (${g.hand.length})`}`}</FittedMenuLabel>
+                <CardPlayerName name={self.displayName} count={pregame ? undefined : g.hand.length} />
               </div>
             </div>
             <div
@@ -137,7 +141,7 @@ export function MultiDurakTable({
             <div className="game-scoreboard__metric">
               {opponent ? (
                 <div className="durak-menu__identity durak-menu__identity--opponent">
-                  <FittedMenuLabel>{`(${opponent.count}) ${opponent.displayName}`}</FittedMenuLabel>
+                  <CardPlayerName name={opponent.displayName} count={opponent.count} countFirst />
                   <UserAvatar
                     name={opponent.displayName}
                     avatarUrl={opponent.avatarUrl}
@@ -145,16 +149,22 @@ export function MultiDurakTable({
                   />
                 </div>
               ) : (
-                <FittedMenuLabel>{`${pregame ? `${view.seats.filter(s => view.ready.includes(s.userId)).length} из ${view.seats.length}` : view.seats.filter((s) => s.status === 'playing').length} за столом`}</FittedMenuLabel>
+                <FittedMenuLabel>{`${pregame ? `${view.seats.filter((s) => view.ready.includes(s.userId)).length} из ${view.seats.length}` : view.seats.filter((s) => s.status === 'playing').length} за столом`}</FittedMenuLabel>
               )}
             </div>
-            <div className="game-scoreboard__metric durak-menu__trump" aria-label={pregame ? 'Козырь не определён' : `Козырь ${suits[g.trump]}`}>
+            {showTrump && (
+            <div
+              className="game-scoreboard__metric durak-menu__trump"
+              aria-label={pregame ? 'Козырь не определён' : `Козырь ${suits[g.trump]}`}
+            >
               <span className="game-scoreboard__label">Козырь</span>
               <strong className="durak-menu__trump-symbol">{pregame ? '—' : suits[g.trump]}</strong>
             </div>
+            )}
           </div>
         </div>
-        <FittedNotice fit
+        <FittedNotice
+          fit
           role="status"
           className="duel-fatigue-notice initial-training-feedback-notice--scoreboard durak-turn-notice"
           data-tone={
@@ -178,7 +188,20 @@ export function MultiDurakTable({
           data-count={view.seats.length}
           aria-label="Игроки в порядке мест за столом"
         >
-          {(view.seats.length > 4 ? [0, 1, 2, ...Array.from({ length: view.seats.length - 3 }, (_, i) => view.seats.length - 1 - i)] : view.seats.length === 4 ? [0, 1, 3, 2] : [0, 1, 2]).map((p) => {
+          {(view.seats.length > 4
+            ? [
+                0,
+                1,
+                2,
+                ...Array.from(
+                  { length: view.seats.length - 3 },
+                  (_, i) => view.seats.length - 1 - i,
+                ),
+              ]
+            : view.seats.length === 4
+              ? [0, 1, 3, 2]
+              : [0, 1, 2]
+          ).map((p) => {
             const seat = view.seats[p]!;
             return (
               <DurakOpponentSeat
@@ -209,10 +232,10 @@ export function MultiDurakTable({
                           : g.taking && p === g.defender
                             ? 'Берёт карты'
                             : p === g.defender
-                            ? 'Отбивается'
-                            : p === g.attacker
-                              ? 'Атакует'
-                              : 'За столом'
+                              ? 'Отбивается'
+                              : p === g.attacker
+                                ? 'Атакует'
+                                : 'За столом'
                 }
               />
             );
@@ -231,7 +254,7 @@ export function MultiDurakTable({
             )}
           </div>
         </div>
-        <div className="durak-pairs">
+        <div className="durak-pairs" data-count={g.table.length}>
           {g.table.map((pair, index) => {
             const beat = targets
               ? actions.find(
@@ -277,13 +300,13 @@ export function MultiDurakTable({
               Беру
             </button>
           )}
-          {actions.some((a) => a.type === 'pass') && (
+          {!automatic && actions.some((a) => a.type === 'pass') && (
             <button
               className="btn btn--cta"
               disabled={busy}
               onClick={() => onCommand({ type: 'move', action: { type: 'pass' } })}
             >
-              Пропустить
+              {finishLabel}
             </button>
           )}
         </div>
@@ -397,10 +420,11 @@ export function MultiDurakTable({
           <p className="modal-copy durak-rules-copy">
             Подкидывают по очереди карты того же достоинства, что уже есть на столе. В первом заходе
             максимум пять карт, затем шесть, но не больше числа карт у отбивающегося в начале
-            захода. «Пропустить» передаёт право подкинуть следующему участнику.
+            захода. «Бито» передаёт право подкинуть следующему участнику. Когда все закончили, карты
+            уходят в отбой. Если защитник берёт карты, нажми «Завершить».
           </p>
           <p className="modal-copy durak-rules-copy">
-            На атаку и защиту – 20 секунд, на подкидывание – 5 секунд. Время вышло: в атаке уйдёт
+            На первый ход каждого захода 40 секунд. После каждого действия игрока на ответ или подкидывание даётся 30 секунд. Время вышло: в атаке уйдёт
             младшая карта, на защите заберёшь карты, на подкидывании пропустишь. Таймер идёт и пока
             открыты правила.
           </p>

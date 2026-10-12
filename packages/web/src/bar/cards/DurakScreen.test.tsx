@@ -109,7 +109,7 @@ it('uses endurance timer colours at ten and four seconds', () => {
   );
   const timer = screen.getByLabelText('Осталось времени');
   expect(timer).toHaveAttribute('data-tone', 'success');
-  act(() => vi.advanceTimersByTime(10000));
+  act(() => vi.advanceTimersByTime(30000));
   expect(timer).toHaveAttribute('data-tone', 'warning');
   act(() => vi.advanceTimersByTime(6000));
   expect(timer).toHaveAttribute('data-tone', 'danger');
@@ -151,7 +151,7 @@ it('selects on first click and commits on second click without resetting the dea
   expect(screen.getByRole('status')).toHaveTextContent('Подтвердить выбор');
   expect(card).toHaveAttribute('aria-pressed', 'true');
   expect(hand.querySelectorAll('button')).toHaveLength(6);
-  expect(screen.getByLabelText('Осталось времени')).toHaveTextContent('17');
+  expect(screen.getByLabelText('Осталось времени')).toHaveTextContent('37');
   fireEvent.click(card);
   expect(hand.querySelectorAll('button')).toHaveLength(5);
 });
@@ -239,4 +239,11 @@ it('starts a fresh game when the computer opponent route changes', () => {
   expect(screen.getByRole('group', { name: 'Твои карты' }).querySelectorAll('button')).toHaveLength(
     6,
   );
+});
+
+it('keeps computer trump on the deck without duplicating it in the menu', () => {
+  vi.useFakeTimers();
+  render(<MemoryRouter><DurakScreen initialGame={{ ...createGame(() => 0.4), attacker: 0 }} /></MemoryRouter>);
+  expect(screen.getByRole('region', { name: 'Меню игры' })).not.toHaveTextContent('Козырь');
+  expect(screen.getByRole('img', { name: /^Козырь/ })).toBeInTheDocument();
 });

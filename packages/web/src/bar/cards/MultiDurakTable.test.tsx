@@ -12,7 +12,8 @@ it('uses a silhouette for two seats and keeps opponent details in the menu', () 
     </MemoryRouter>,
   );
   expect(screen.getByRole('img', { name: 'Соперник с картами' })).toBeInTheDocument();
-  expect(screen.getByText('(6) Борис')).toBeInTheDocument();
+  expect(screen.getByRole('region', { name: 'Меню игры' })).toHaveTextContent('(6)Борис');
+  expect(screen.getByText('Борис')).toBeInTheDocument();
   expect(screen.queryByText('Борис (6)')).not.toBeInTheDocument();
 });
 const card = { id: 'clubs-6', rank: 6, suit: 'clubs' as const };
@@ -76,8 +77,8 @@ it('shows a pass instruction instead of suggesting an impossible throw-in', () =
       <MultiDurakTable view={view} busy={false} error={null} now={18000} onCommand={send} />
     </MemoryRouter>,
   );
-  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Пропустить»');
-  fireEvent.click(screen.getByRole('button', { name: 'Пропустить' }));
+  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Бито»');
+  fireEvent.click(screen.getByRole('button', { name: 'Бито' }));
   expect(send).toHaveBeenCalledWith({ type: 'move', action: { type: 'pass' } });
 });
 it('requires confirmation before surrendering', () => {
@@ -115,6 +116,57 @@ it('places six seats around the table and marks self separately from taking', ()
 });
 
 it('keeps trump visible in the menu after the deck is empty', () => {
-  render(<MemoryRouter><MultiDurakTable view={{ ...base, game: { ...base.game!, deckCount: 0 } }} busy={false} error={null} now={1000} onCommand={vi.fn()} /></MemoryRouter>);
+  render(<MemoryRouter><MultiDurakTable view={{ ...base, capacity: 6, seats: Array.from({ length: 6 }, (_, i) => ({ ...base.seats[0]!, userId: String(i) })), game: { ...base.game!, deckCount: 0 } }} busy={false} error={null} now={1000} onCommand={vi.fn()} /></MemoryRouter>);
   expect(screen.getByLabelText('Козырь ♣')).toBeInTheDocument();
+});
+
+it('uses finish when the defender is taking instead of calling the cards beaten', () => {
+  render(
+    <MemoryRouter>
+      <MultiDurakTable
+        view={{
+          ...base,
+          game: { ...base.game!, taking: true, phase: 'throw', actions: [{ type: 'pass' }] },
+        }}
+        busy={false}
+        error={null}
+        now={1000}
+        onCommand={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole('button', { name: 'Завершить' })).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Завершить»');
+});
+it('does not ask an empty hand to throw in at the end of the game', () => {
+  render(
+    <MemoryRouter>
+      <MultiDurakTable
+        view={{
+          ...base,
+          game: {
+            ...base.game!,
+            hand: [],
+            deckCount: 0,
+            phase: 'throw',
+            actions: [{ type: 'pass' }],
+          },
+        }}
+        busy={false}
+        error={null}
+        now={1000}
+        onCommand={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole('button', { name: 'Бито' })).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Завершаем заход');
+});
+
+it.each([2, 3, 4, 5, 6])('shows menu trump only at a six-player table (%i seats)', capacity => {
+  const seats = Array.from({ length: capacity }, (_, i) => ({ ...base.seats[0]!, userId: String(i), displayName: `Player ${i}` }));
+  render(<MemoryRouter><MultiDurakTable view={{ ...base, capacity, seats }} busy={false} error={null} now={1000} onCommand={vi.fn()} /></MemoryRouter>);
+  const menu = screen.getByRole('region', { name: 'Меню игры' });
+  if (capacity === 6) expect(within(menu).getByText('Козырь')).toBeInTheDocument();
+  else expect(within(menu).queryByText('Козырь')).not.toBeInTheDocument();
 });

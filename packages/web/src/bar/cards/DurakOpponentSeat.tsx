@@ -1,5 +1,5 @@
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
-import { FittedMenuLabel } from './FittedMenuLabel.js';
+import { CardPlayerName } from './FittedMenuLabel.js';
 
 export function DurakOpponentSeat({
   name,
@@ -36,7 +36,7 @@ export function DurakOpponentSeat({
     >
       {seatLabel && <span className="durak-seat-position">{seatLabel}</span>}
       <UserAvatar name={name} avatarUrl={avatarUrl} size={avatarSize} />
-      <FittedMenuLabel>{`${name}${showCount ? ` (${count})` : ''}`}</FittedMenuLabel>
+      <CardPlayerName name={name} count={showCount ? count : undefined} />
       <span>{description}</span>
     </div>
   );

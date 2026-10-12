@@ -108,7 +108,7 @@ export async function reconcileRoom(
   }
   if (data.status === 'countdown' && data.countdownAt !== null && data.countdownAt <= now) {
     data.game = durakTable.createTable(data.seats.length, random);
-    data.deadline = data.countdownAt + 20000;
+    data.deadline = data.countdownAt + durakTable.turnDuration(data.game);
     data.status = 'playing';
     data.searchUntil = null;
     data.revision++;
@@ -277,7 +277,7 @@ export function startCountdown(data: Room, now: number) {
   data.capacity = data.seats.length;
   data.formats = [data.capacity];
   data.status = 'countdown';
-  data.countdownAt = now + 3000;
+  data.countdownAt = now + 5000;
   data.searchUntil = null;
 }
 export async function joinCardRoom(

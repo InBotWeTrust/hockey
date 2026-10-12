@@ -34,23 +34,34 @@ export function installRoomPreview() {
     };
     if (scene === 'ready') { room.status = 'confirming'; room.readyUntil = Date.now() + 60000; room.searchUntil = null; }
     game = scene === 'game' ? durakTable.createTable(capacity, createRng('preview').next) : null;
+    if (game && params.get('layout') === 'busy') {
+      const cards = [...game.hands.flat(), ...game.deck];
+      const pairs = Math.min(6, Math.max(1, Number(params.get('pairs')) || 6));
+      const remaining = cards.slice(pairs * 2);
+      game.hands = Array.from({ length: capacity }, (_, i) => remaining.slice(0, capacity * 6).filter((_, j) => j % capacity === i));
+      game.deck = remaining.slice(capacity * 6);
+      game.table = Array.from({ length: pairs }, (_, i) => ({ attack: cards[i * 2]!, defence: cards[i * 2 + 1]! }));
+      game.attacker = 0; game.defender = 1; game.turn = 0; game.phase = 'throw';
+      game.throwers = Array.from({ length: capacity }, (_, i) => i).filter(i => i !== 1);
+      game.limit = 6;
+    }
     if (game) {
       room.status = 'playing';
       room.searchUntil = null;
     }
   };
   make(Number(params.get('seats')) || 5, true);
-  let deadline = Date.now() + 20000;
+  let deadline = Date.now() + 40000;
   const get = () => {
     const r = room!;
     if (r.status === 'confirming' && r.readyUntil != null && r.readyUntil <= Date.now()) r.status = 'ended';
     if (r.status === 'countdown' && r.countdownAt !== null && r.countdownAt <= Date.now()) {
       game = durakTable.createTable(r.seats.length, createRng('preview').next);
       r.status = 'playing';
-      deadline = Date.now() + 20000;
+      deadline = Date.now() + 40000;
       r.revision++;
     }
-    for (let i = 0; game && game.phase !== 'ended' && deadline <= Date.now() && i < 100; i++) {
+    for (let i = 0; !params.has('freeze') && game && game.phase !== 'ended' && deadline <= Date.now() && i < 100; i++) {
       const action = durakTable.timeout(game);
       if (!action) break;
       game = durakTable.apply(game, game.turn, action);
@@ -77,7 +88,7 @@ export function installRoomPreview() {
         table: game.table,
         phase: game.phase,
         taking: game.taking,
-        deadline: game.phase === 'ended' ? null : deadline,
+        deadline: params.has('freeze') || game.phase === 'ended' ? null : deadline,
         actions: durakTable.legal(game, 0),
         result: game.status[0] === 'playing' ? null : game.status[0]!,
       };
@@ -140,7 +151,7 @@ export function installRoomPreview() {
             room!.ready = room!.seats.map((s) => s.userId);
             room!.capacity = room!.seats.length;
             room!.status = 'countdown';
-            room!.countdownAt = Date.now() + 3000;
+            room!.countdownAt = Date.now() + 5000;
           }
           room!.revision++;
         }
