@@ -157,8 +157,9 @@ function OnlineTablePreview() {
     />
   );
 }
-document.documentElement.style.setProperty('--app-safe-top', '0px');
-document.documentElement.style.setProperty('--app-safe-bottom', '0px');
+const safeAreaPreview = new URLSearchParams(location.search).get('safe') === 'iphone';
+document.documentElement.style.setProperty('--app-safe-top', safeAreaPreview ? '47px' : '0px');
+document.documentElement.style.setProperty('--app-safe-bottom', safeAreaPreview ? '34px' : '0px');
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={new QueryClient()}>

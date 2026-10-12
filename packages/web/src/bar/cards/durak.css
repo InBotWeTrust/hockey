@@ -1538,8 +1538,10 @@
 /* Reserve the same area above the wooden edge for every player count. */
 .durak-screen .durak-opponent,
 .durak-screen .durak-multi-seats {
-  flex: 0 0 clamp(90px, calc(32dvh - 85px), 250px);
-  height: clamp(90px, calc(32dvh - 85px), 250px);
+  /* The header already consumes the top inset; do not move the table edge again. */
+  --durak-opponent-height: clamp(90px, calc(32dvh - 85px - var(--app-safe-top, 0px)), 250px);
+  flex: 0 0 var(--durak-opponent-height);
+  height: var(--durak-opponent-height);
   min-height: 0;
   max-height: none;
   margin: 0;

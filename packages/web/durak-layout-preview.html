@@ -32,6 +32,7 @@
       <label>Ширина, px <input id="width" type="number" min="280" max="1200" value="360" /></label>
       <label>Потяни для изменения ширины <input id="slider" aria-label="Ширина экрана" type="range" min="280" max="900" value="360" /></label>
       <label>Высота, px <input id="height" type="number" min="480" max="1400" value="740" /></label>
+      <label>Отступы экрана <select id="safe"><option value="iphone" selected>iPhone: 47 / 34 px</option><option value="none">Без выреза</option></select></label>
       <label>Режим <select id="mode"><option value="online">Онлайн-стол</option><option value="computer">С персонажем</option></select></label>
       <label id="seat-label">Игроков <select id="seats"><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
       <label id="opponent-label" hidden>Персонаж <select id="opponent"><option value="maria">Мария</option><option value="grigory">Григорий</option><option value="arsenich">Арсенич</option><option value="daria">Дарья</option></select></label>
@@ -65,6 +66,7 @@
       control('opponent-label').hidden = online;
       control('pairs-label').hidden = scene !== 'busy';
       const params = new URLSearchParams();
+      if (control('safe').value === 'iphone') params.set('safe', 'iphone');
       if (scene === 'busy') params.set('pairs', control('pairs').value);
       let route;
       if (online) {
@@ -83,7 +85,7 @@
     control('width').addEventListener('input', resize);
     control('height').addEventListener('input', resize);
     control('slider').addEventListener('input', () => { control('width').value = control('slider').value; resize(); });
-    for (const id of ['mode','seats','opponent','scene','pairs']) control(id).addEventListener('change', () => {
+    for (const id of ['mode','seats','opponent','scene','pairs','safe']) control(id).addEventListener('change', () => {
       if (id === 'scene' && control('scene').value === 'final') control('mode').value = 'computer';
       if (id === 'mode' && control('mode').value === 'online' && control('scene').value === 'final') control('scene').value = 'normal';
       load();

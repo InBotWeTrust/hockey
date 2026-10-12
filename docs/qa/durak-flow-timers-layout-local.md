@@ -63,3 +63,13 @@ Size/corner follow-up: played-card width caps are 108/90/80 px for one/two/three
 Overlap follow-up: defence cards shift down/right by 16–22 px according to available cell width, exposing the attack corner more clearly while preserving the centered combined footprint. The deck back shifts 16 px left and 18 px down relative to the upright trump.
 
 Player-zone follow-up: the upper region uses the same height as the two-player opponent scene for all 2–6-player tables. Seat tiles have content-based rows, non-growing name labels and avatars sized to the available region. Browser comparison across 390×844, 360×640, 320×568 and 430×932 confirms identical table start/height for all five player counts, all tiles inside the upper region and hands fully visible. At 390×844 the four-player game area increased from 198 px to 279.9 px, matching the two-player area.
+
+
+## iPhone inset follow-up
+
+- The previous synthetic preview forced safe-area insets to zero. It now defaults to an explicitly labelled iPhone simulation (47 px top / 34 px bottom), with a no-cutout option. This is browser layout verification, not physical-device acceptance.
+- RED: on a 390x844 four-player table, adding the top inset moved the game area from y=318.078 to y=365.078.
+- GREEN: the opponent region absorbs the top inset, keeping the table at y=318.078. The bottom inset still protects the hand from the home indicator. A 90 px minimum preserves player identities on short screens.
+- Browser checks at 390x844, 430x932 and 360x640 with 2-6 seats: table start/height identical at each seat count; player tiles and played cards fit, hand remains above the simulated home indicator. Web typecheck and diff whitespace check pass.
+- Current dev publicly reports gameCoreVersion 86 and serves index-7pPaURm_.js / index-zHv-I5Vk.css. The available browser session reaches login. No authenticated dev card/chat acceptance or deployment performed.
+- The large dark bottom strip and keyboard/composer gap in the physical iPhone screenshots remain unconfirmed locally. No speculative changes to global viewport or chat height were made.
