@@ -95,7 +95,7 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
         shooterFrequency: 0.75,
         puckSpeedPerMs: 0.85,
       });
-      expect(row.period_rules[0]).toMatchObject({ mode: 'time_attack', shotsLimit: null });
+      expect(row.period_rules[0]).toMatchObject({ mode: 'time_attack', shotsLimit: null, durationMs: kind === 'sniper' ? 150000 : 240000 });
     }
   });
   it('returns the same confirmed shot on retry without duplicating statistics', async () => {
@@ -164,7 +164,8 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
       }
       for (const player of [0, 1])
         expect((await post('period/start', player)).statusCode).toBe(200);
-      const duration = kind === 'sniper' ? 180000 : 240000;
+      const duration = kind === 'sniper' ? 150000 : 240000;
+      expect(invited.json().match.rules.periodRules[0].durationMs).toBe(duration);
       await app.pg.query(
         "update amateur_duel_participant set period_started_at=now()-($2::int * interval '1 millisecond') where match_id=$1",
         [id, duration],
@@ -189,7 +190,7 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     await post('accept',1);
     for(const player of [0,1]) { await post('ready',player,{loadout:{}}); await post('period/start',player); }
     expect((await post('period/finish',0)).statusCode).toBe(409);
-    const duration=kind==='sniper'?180000:240000;
+    const duration=kind==='sniper'?150000:240000;
     await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond'),period_paused_ms=10000 where match_id=$1 and user_id=$3",[id,duration+100,players[0]!.id]);
     expect((await post('period/finish',0)).statusCode).toBe(409);
     await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond') where match_id=$1 and user_id=$3",[id,duration+10100,players[0]!.id]);

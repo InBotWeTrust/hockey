@@ -1413,7 +1413,7 @@ function defaultPeriodRules({
       {
         periodNumber: 1,
         mode: 'time_attack',
-        durationMs: duelKind === 'sniper' ? 180_000 : 240_000,
+        durationMs: duelKind === 'sniper' ? periodDurationMs : 240_000,
         shotsLimit: null,
       },
     ];
