@@ -211,4 +211,16 @@ export function surrender(g: TableGame, p: number): TableGame {
   }
   return n;
 }
-export const turnDuration = (g: TableGame) => (g.phase === 'throw' ? 5000 : 20000);
+export function automaticAction(g: TableGame): TableAction | undefined {
+  if (g.phase === 'ended' || g.deck.length) return undefined;
+  const actions = legal(g, g.turn);
+  if (actions.length !== 1) return undefined;
+  const action = actions[0]!;
+  if (action.type === 'pass' && !g.hands[g.turn]!.length) return action;
+  if (action.type === 'take' && !g.hands[g.attacker]!.length) return action;
+  return undefined;
+}
+export function turnDuration(g: TableGame): number {
+  if (automaticAction(g)) return 3000;
+  return g.phase === 'attack' && !g.table.length ? 40000 : 30000;
+}

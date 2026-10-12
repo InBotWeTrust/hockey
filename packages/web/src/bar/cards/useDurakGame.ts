@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   activePlayer,
+  automaticAction,
+  turnDuration,
   applyAction,
   createGame,
   timeoutAction,
@@ -62,21 +64,24 @@ export function useDurakGame(
           : opponentId === 'daria'
             ? 0.9
             : 1;
-    const delay = bot
-      ? followup
-        ? (800 + Math.random() * 400) * pace
-        : (2000 + Math.random() * 1000) * pace
-      : 20000;
+    const automatic = automaticAction(game);
+    const delay = automatic
+      ? 3000
+      : bot
+        ? followup
+          ? (800 + Math.random() * 400) * pace
+          : (2000 + Math.random() * 1000) * pace
+        : turnDuration(game);
     const deadline = previous?.game === game ? previous.deadline : Date.now() + delay;
     schedule.current = { game, actor, deadline };
     let fired = false;
-    setRemaining(bot ? null : 20);
+    setRemaining(bot ? null : Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
     const tick = () => {
       if (fired || stateRef.current !== game) return;
       if (!bot) setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
       if (Date.now() >= deadline) {
         fired = true;
-        if (bot && opponentId === 'grigory') {
+        if (!automatic && bot && opponentId === 'grigory') {
           const blocked = skipCheat.current;
           skipCheat.current = false;
           const staged =
@@ -89,7 +94,9 @@ export function useDurakGame(
             return;
           }
         }
-        const action = bot ? chooseBotAction(botView(game, 1), opponentId) : timeoutAction(game, 0);
+        const action =
+          automatic ??
+          (bot ? chooseBotAction(botView(game, 1), opponentId) : timeoutAction(game, 0));
         if (action)
           setGame((current) => {
             if (current !== game) return current;
@@ -136,7 +143,13 @@ export function useDurakGame(
     setGame(next);
   };
   const restart = (next?: Game) => {
-    session.current = { id: crypto.randomUUID(), startedAt: new Date().toISOString(), surrendered: false, caughtCheats: 0, reported: next?.result !== null && next?.result !== undefined };
+    session.current = {
+      id: crypto.randomUUID(),
+      startedAt: new Date().toISOString(),
+      surrendered: false,
+      caughtCheats: 0,
+      reported: next?.result !== null && next?.result !== undefined,
+    };
     schedule.current = null;
     pendingCheat.current = null;
     cheats.current = 0;

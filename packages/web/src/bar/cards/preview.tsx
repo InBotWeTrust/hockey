@@ -71,7 +71,7 @@ if (invitationDemo || computerDemo || readinessDemo) {
       }
       if (readySentAt && !readyState.opponentReady && now - readySentAt >= 2500) {
         readyState.opponentReady = true;
-        readyState.startsAt = now + 3000;
+        readyState.startsAt = now + 5000;
         readyRevision++;
       }
       if (!readyState.startsAt && now >= readyState.expiresAt) readyState.cancelled = true;
@@ -89,7 +89,7 @@ if (invitationDemo || computerDemo || readinessDemo) {
         phase: 'attack',
         revision: readyRevision + (started ? 1 : 0),
         result: null,
-        deadline: started ? readyState.startsAt! + 3000 + 20000 : null,
+        deadline: started ? readyState.startsAt! + 40000 : null,
         serverNow: now,
         opponent: { displayName: 'Александр', avatarUrl: '/bar/cards/avatar-v2.webp' },
         ...(started ? {} : { readiness: readyState }),
@@ -132,8 +132,13 @@ const busy: Game = {
   attacker: 0,
 };
 const fixture = new URLSearchParams(location.search).get('layout');
+const finalAce = { id: 'clubs-14', rank: 14, suit: 'clubs' as const };
+const finalResponse = { id: 'hearts-6', rank: 6, suit: 'hearts' as const };
+const finalGame: Game = { ...base, attacker: 0, trump: 'clubs', deck: [],
+  hands: [[finalAce], [finalResponse]], table: [],
+  discard: all.filter(c => c.id !== finalAce.id && c.id !== finalResponse.id) };
 const initial =
-  fixture === 'busy'
+  fixture === 'final' ? finalGame : fixture === 'busy'
     ? busy
     : fixture === 'win'
       ? { ...base, result: 0 as const, phase: 'ended' as const }

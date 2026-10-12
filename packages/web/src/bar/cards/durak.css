@@ -1280,3 +1280,189 @@
   border: 1px solid var(--liquid-border-soft);
   box-shadow: var(--liquid-shadow);
 }
+
+/* Readable identities above a shared clock and trump, including narrow phones. */
+.durak-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: 'self opponent' 'timer trump';
+  row-gap: 5px;
+  padding: 8px;
+}
+.durak-menu .game-scoreboard__metric:nth-child(1) {
+  grid-area: self;
+}
+.durak-menu .game-scoreboard__metric:nth-child(2) {
+  grid-area: timer;
+}
+.durak-menu .game-scoreboard__metric:nth-child(3) {
+  grid-area: opponent;
+}
+.durak-menu .game-scoreboard__metric:nth-child(4) {
+  grid-area: trump;
+}
+.durak-menu .game-scoreboard__metric {
+  border: 0;
+  padding-inline: 4px;
+}
+.durak-menu .game-scoreboard__metric--timer,
+.durak-menu .durak-menu__trump {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 5px;
+  border-top: 1px solid rgba(205, 232, 255, 0.18);
+}
+.durak-menu .game-scoreboard__label,
+.durak-menu .durak-menu__trump .game-scoreboard__label {
+  font-size: 10px;
+}
+.durak-menu [role='timer'] .game-scoreboard__value {
+  font-size: 24px;
+  line-height: 1;
+}
+.durak-menu .durak-menu__trump-symbol {
+  font-size: 24px;
+}
+
+/* Keep the reserve smaller than played cards, with half the sideways trump exposed. */
+.durak-screen .durak-deck {
+  --deck-card-width: 44px;
+  width: 72px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.durak-screen .durak-deck > div {
+  height: 76px;
+}
+.durak-screen .durak-deck img {
+  width: var(--deck-card-width);
+  left: 0;
+  top: 4px;
+}
+.durak-screen .durak-deck img:first-child:not(:last-child) {
+  left: 0;
+  top: 4px;
+}
+.durak-screen .durak-deck img:last-child:not(:first-child) {
+  left: 23px;
+  top: 14px;
+  transform: rotate(90deg);
+  transform-origin: center;
+  z-index: 0;
+}
+.durak-screen .durak-deck__count {
+  top: 37px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+}
+.durak-screen .durak-table {
+  gap: 10px;
+}
+.durak-screen .durak-pairs {
+  gap: 8px;
+}
+.durak-pairs[data-count='0'],
+.durak-pairs[data-count='1'] {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.durak-pairs[data-count='2'] {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+.durak-pairs[data-count='3'] {
+  grid-template-rows: minmax(0, 1fr);
+}
+.durak-screen .durak-pair {
+  --card-offset: 14px;
+  max-height: 160px;
+}
+.durak-screen .durak-pair img {
+  width: min(90px, calc(100cqw - var(--card-offset)), calc((100cqh - var(--card-offset)) * 0.65));
+  height: auto;
+  max-height: none;
+}
+.durak-screen .durak-pair .durak-defence {
+  left: 14px;
+  top: 14px;
+}
+.durak-screen .durak-card {
+  width: auto;
+  height: clamp(110px, 19dvh, 150px);
+  margin-right: -24px;
+}
+.durak-screen .durak-card:last-child {
+  margin-right: 0;
+}
+.durak-screen .durak-hand {
+  min-height: 0;
+  padding-top: 14px;
+}
+.durak-screen .durak-opponent {
+  flex-basis: clamp(90px, calc(32dvh - 85px), 250px);
+}
+@media (max-height: 800px) {
+  .durak-screen .durak-multi-seats {
+    min-height: 0;
+    margin-block: 0;
+    gap: 4px;
+  }
+  .durak-screen .durak-multi-seat {
+    padding: 4px;
+    gap: 2px;
+  }
+  .durak-screen .durak-multi-seat .user-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    margin-bottom: 2px;
+  }
+  .durak-screen .durak-multi-seat .durak-seat-position {
+    font-size: 12px;
+    top: 4px;
+    right: 5px;
+  }
+}
+
+@media (max-height: 650px) {
+  .durak-screen--multi .durak-multi-seat .user-avatar { width: 24px !important; height: 24px !important; }
+  .durak-screen--multi .durak-multi-seat { gap: 0; }
+  .durak-screen .durak-card { height: 110px; }
+  .durak-screen .durak-turn-notice { padding-block: 8px; }
+}
+
+.durak-screen .durak-deck--empty { display: none; }
+/* A full bout scrolls sideways on short screens instead of shrinking the suits. */
+@media (max-height: 800px) {
+  .durak-screen .durak-pairs[data-count='4'],
+  .durak-screen .durak-pairs[data-count='5'],
+  .durak-screen .durak-pairs[data-count='6'] {
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+    touch-action: pan-x;
+    scrollbar-width: thin;
+    align-items: center;
+  }
+  .durak-screen .durak-pairs[data-count='4'] .durak-pair,
+  .durak-screen .durak-pairs[data-count='5'] .durak-pair,
+  .durak-screen .durak-pairs[data-count='6'] .durak-pair {
+    flex: 0 0 104px;
+    min-width: 104px;
+    height: 100%;
+  }
+}
+
+.durak-menu .game-scoreboard__metric--timer > .durak-menu__label {
+  width: auto;
+  flex: none;
+}
+.durak-menu .game-scoreboard__metric--timer .game-scoreboard__value {
+  flex: none;
+  min-width: 2.4ch;
+  width: auto;
+  overflow: visible;
+  text-overflow: clip;
+}

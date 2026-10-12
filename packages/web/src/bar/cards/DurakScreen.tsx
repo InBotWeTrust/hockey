@@ -11,7 +11,7 @@ import { computerOpponent, opponentArt, type ComputerOpponentId } from './comput
 import { useDurakGame } from './useDurakGame.js';
 import { recordCardGame } from './cardHistoryDelivery.js';
 import type { CompletedCardGame } from './cardHistory.js';
-import { cardOrder, legalActions, type Card, type Game } from './rules.js';
+import { automaticAction, cardOrder, legalActions, type Card, type Game } from './rules.js';
 import '../bar.css';
 import './durak.css';
 const symbols = { clubs: '♣', spades: '♠', hearts: '♥', diamonds: '♦' };
@@ -106,6 +106,9 @@ export function DurakTable({
   const gesture = useRef<{ id: number; x: number; y: number } | null>(null);
   const suppressClick = useRef(false);
   const actions = legalActions(game, 0);
+  const automatic = !pregame && (online
+    ? !game.deck.length && !game.hands[0].length && actions.some((a) => a.type === 'finish')
+    : automaticAction(game));
   const selectedBeats = targetReady
     ? actions.filter((a) => a.type === 'beat' && a.cardId === selected)
     : [];
@@ -143,18 +146,24 @@ export function DurakTable({
   };
   const status =
     pregame?.text ??
-    (thinking
-      ? online
-        ? 'Ход соперника'
-        : `${computer.name} думает…`
-      : (hint ??
-        (game.phase === 'defend'
-          ? 'Отбей карту или возьми'
-          : game.phase === 'taking'
-            ? 'Можно подкинуть или завершить'
-            : game.table.length
-              ? 'Подкинь карту или нажми «Бито»'
-              : 'Твой ход')));
+    (automatic
+      ? 'Завершаем заход…'
+      : thinking
+        ? online
+          ? 'Ход соперника'
+          : `${computer.name} думает…`
+        : (hint ??
+          (game.phase === 'defend'
+            ? 'Отбей карту или возьми'
+            : game.phase === 'taking'
+              ? actions.some((a) => a.type === 'play')
+                ? 'Можно подкинуть или завершить'
+                : 'Нажми «Завершить»'
+              : game.table.length
+                ? actions.some((a) => a.type === 'play')
+                  ? 'Подкинь карту или нажми «Бито»'
+                  : 'Нажми «Бито»'
+                : 'Твой ход')));
   return (
     <main className={`screen durak-screen${online ? ' durak-screen--online' : ''}`}>
       {error && (
@@ -206,13 +215,19 @@ export function DurakTable({
                 />
               </div>
             </div>
-            <div className="game-scoreboard__metric durak-menu__trump" aria-label={pregame ? 'Козырь не определён' : `Козырь ${symbols[game.trump]}`}>
+            <div
+              className="game-scoreboard__metric durak-menu__trump"
+              aria-label={pregame ? 'Козырь не определён' : `Козырь ${symbols[game.trump]}`}
+            >
               <span className="game-scoreboard__label">Козырь</span>
-              <strong className="durak-menu__trump-symbol">{pregame ? '—' : symbols[game.trump]}</strong>
+              <strong className="durak-menu__trump-symbol">
+                {pregame ? '—' : symbols[game.trump]}
+              </strong>
             </div>
           </div>
         </div>
-        <FittedNotice fit
+        <FittedNotice
+          fit
           role="status"
           data-tone={
             thinking ||
@@ -261,7 +276,7 @@ export function DurakTable({
             )}
           </div>
         </div>
-        <div className="durak-pairs">
+        <div className="durak-pairs" data-count={game.table.length} tabIndex={game.table.length > 3 ? 0 : undefined}>
           {game.table.map((pair, index) => {
             const beat = selectedBeats.find((a) => a.type === 'beat' && a.target === index);
             return (
@@ -312,7 +327,7 @@ export function DurakTable({
               Беру
             </button>
           )}
-          {actions.some((a) => a.type === 'finish') && (
+          {!automatic && actions.some((a) => a.type === 'finish') && (
             <button className="btn btn--cta" onClick={() => dispatch({ type: 'finish' })}>
               {game.phase === 'taking' ? 'Завершить' : 'Бито'}
             </button>
@@ -434,7 +449,7 @@ export function DurakTable({
             нужную на столе.
           </p>
           <p className="modal-copy durak-rules-copy">
-            На ход у тебя 20 секунд, даже пока читаешь правила. Время вышло – в атаке уйдёт младшая
+            На первый ход каждого захода 40 секунд, после каждого действия 30 секунд, даже пока читаешь правила. Время вышло – в атаке уйдёт младшая
             подходящая карта, на отбое заберёшь карты со стола. Когда колода закончится, первым
             избавься от всех карт.
           </p>

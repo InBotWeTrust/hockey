@@ -109,7 +109,7 @@ it('uses endurance timer colours at ten and four seconds', () => {
   );
   const timer = screen.getByLabelText('Осталось времени');
   expect(timer).toHaveAttribute('data-tone', 'success');
-  act(() => vi.advanceTimersByTime(10000));
+  act(() => vi.advanceTimersByTime(30000));
   expect(timer).toHaveAttribute('data-tone', 'warning');
   act(() => vi.advanceTimersByTime(6000));
   expect(timer).toHaveAttribute('data-tone', 'danger');
@@ -151,7 +151,7 @@ it('selects on first click and commits on second click without resetting the dea
   expect(screen.getByRole('status')).toHaveTextContent('Подтвердить выбор');
   expect(card).toHaveAttribute('aria-pressed', 'true');
   expect(hand.querySelectorAll('button')).toHaveLength(6);
-  expect(screen.getByLabelText('Осталось времени')).toHaveTextContent('17');
+  expect(screen.getByLabelText('Осталось времени')).toHaveTextContent('37');
   fireEvent.click(card);
   expect(hand.querySelectorAll('button')).toHaveLength(5);
 });

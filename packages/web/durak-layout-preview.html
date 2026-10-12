@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Карты — локальный просмотр</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #111820; color: #e8edf3; font: 14px system-ui, sans-serif; }
+    header { padding: 18px 22px; background: #1a2430; border-bottom: 1px solid #344353; }
+    h1 { margin: 0 0 5px; font-size: 20px; }
+    p { margin: 0; color: #b5c2d0; }
+    .controls { display: flex; flex-wrap: wrap; gap: 16px; align-items: end; margin-top: 18px; }
+    label { display: grid; gap: 6px; }
+    input[type=number], select, button { font: inherit; background: #293847; color: #fff; border: 1px solid #506176; border-radius: 7px; padding: 8px; }
+    input[type=number] { width: 85px; }
+    input[type=range] { width: 210px; accent-color: #9cccec; }
+    .sizes { display: flex; flex-wrap: wrap; gap: 6px; }
+    button { cursor: pointer; }
+    button:hover { background: #3b4d5f; }
+    main { padding: 24px; overflow: auto; }
+    iframe { display: block; border: 0; background: #164c3c; box-shadow: 0 0 0 2px #617286, 0 14px 42px #0008; border-radius: 12px; margin-inline: auto; }
+    .caption { text-align: center; margin-bottom: 14px; font-variant-numeric: tabular-nums; }
+    [hidden] { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Карты — локальный просмотр</h1>
+    <p>Тестовые партии. Онлайн-стол не меняется по таймеру. Ширина и высота меняются без перезапуска игры. Полный стол можно прокрутить вбок на невысоком экране.</p>
+    <div class="controls">
+      <label>Ширина, px <input id="width" type="number" min="280" max="1200" value="360" /></label>
+      <label>Потяни для изменения ширины <input id="slider" aria-label="Ширина экрана" type="range" min="280" max="900" value="360" /></label>
+      <label>Высота, px <input id="height" type="number" min="480" max="1400" value="740" /></label>
+      <label>Режим <select id="mode"><option value="online">Онлайн-стол</option><option value="computer">С персонажем</option></select></label>
+      <label id="seat-label">Игроков <select id="seats"><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
+      <label id="opponent-label" hidden>Персонаж <select id="opponent"><option value="maria">Мария</option><option value="grigory">Григорий</option><option value="arsenich">Арсенич</option><option value="daria">Дарья</option></select></label>
+      <label>Ситуация <select id="scene"><option value="busy">Шесть пар на столе</option><option value="normal">Начало партии</option><option value="final">Последний козырной туз (с персонажем)</option></select></label>
+      <button id="restart" type="button">Начать заново</button>
+    </div>
+    <div class="sizes" style="margin-top:14px">
+      <button data-size="320,568">320 × 568</button><button data-size="360,640">360 × 640</button><button data-size="360,740">360 × 740</button><button data-size="390,844">390 × 844</button><button data-size="430,932">430 × 932</button><button data-size="768,1024">768 × 1024</button>
+    </div>
+  </header>
+  <main>
+    <p class="caption" id="caption"></p>
+    <iframe id="game" title="Предпросмотр карточного стола"></iframe>
+  </main>
+  <script>
+    const control = id => document.getElementById(id);
+    const frame = control('game');
+    function resize() {
+      const width = Math.min(1200, Math.max(280, Number(control('width').value) || 360));
+      const height = Math.min(1400, Math.max(480, Number(control('height').value) || 740));
+      frame.style.width = `${width}px`;
+      frame.style.height = `${height}px`;
+      control('slider').value = width;
+      control('caption').textContent = `${width} × ${height} px`;
+    }
+    function load() {
+      const online = control('mode').value === 'online';
+      const scene = control('scene').value;
+      control('seat-label').hidden = !online;
+      control('opponent-label').hidden = online;
+      const params = new URLSearchParams();
+      let route;
+      if (online) {
+        params.set('table', 'game');
+        params.set('freeze', '1');
+        params.set('seats', control('seats').value);
+        if (scene === 'busy') params.set('layout', 'busy');
+        route = '/bar/cards/room/demo-room';
+      } else {
+        if (scene !== 'normal') params.set('layout', scene);
+        route = `/bar/cards/computer/${control('opponent').value}`;
+      }
+      frame.src = `/durak-preview.html?${params}#${route}`;
+      resize();
+    }
+    control('width').addEventListener('input', resize);
+    control('height').addEventListener('input', resize);
+    control('slider').addEventListener('input', () => { control('width').value = control('slider').value; resize(); });
+    for (const id of ['mode','seats','opponent','scene']) control(id).addEventListener('change', () => {
+      if (id === 'scene' && control('scene').value === 'final') control('mode').value = 'computer';
+      if (id === 'mode' && control('mode').value === 'online' && control('scene').value === 'final') control('scene').value = 'normal';
+      load();
+    });
+    control('restart').addEventListener('click', load);
+    document.querySelectorAll('[data-size]').forEach(button => button.addEventListener('click', () => {
+      [control('width').value, control('height').value] = button.dataset.size.split(',');
+      resize();
+    }));
+    load();
+  </script>
+</body>
+</html>

@@ -76,8 +76,8 @@ it('shows a pass instruction instead of suggesting an impossible throw-in', () =
       <MultiDurakTable view={view} busy={false} error={null} now={18000} onCommand={send} />
     </MemoryRouter>,
   );
-  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Пропустить»');
-  fireEvent.click(screen.getByRole('button', { name: 'Пропустить' }));
+  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Бито»');
+  fireEvent.click(screen.getByRole('button', { name: 'Бито' }));
   expect(send).toHaveBeenCalledWith({ type: 'move', action: { type: 'pass' } });
 });
 it('requires confirmation before surrendering', () => {
@@ -117,4 +117,47 @@ it('places six seats around the table and marks self separately from taking', ()
 it('keeps trump visible in the menu after the deck is empty', () => {
   render(<MemoryRouter><MultiDurakTable view={{ ...base, game: { ...base.game!, deckCount: 0 } }} busy={false} error={null} now={1000} onCommand={vi.fn()} /></MemoryRouter>);
   expect(screen.getByLabelText('Козырь ♣')).toBeInTheDocument();
+});
+
+it('uses finish when the defender is taking instead of calling the cards beaten', () => {
+  render(
+    <MemoryRouter>
+      <MultiDurakTable
+        view={{
+          ...base,
+          game: { ...base.game!, taking: true, phase: 'throw', actions: [{ type: 'pass' }] },
+        }}
+        busy={false}
+        error={null}
+        now={1000}
+        onCommand={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole('button', { name: 'Завершить' })).toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Нажми «Завершить»');
+});
+it('does not ask an empty hand to throw in at the end of the game', () => {
+  render(
+    <MemoryRouter>
+      <MultiDurakTable
+        view={{
+          ...base,
+          game: {
+            ...base.game!,
+            hand: [],
+            deckCount: 0,
+            phase: 'throw',
+            actions: [{ type: 'pass' }],
+          },
+        }}
+        busy={false}
+        error={null}
+        now={1000}
+        onCommand={vi.fn()}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole('button', { name: 'Бито' })).not.toBeInTheDocument();
+  expect(screen.getByRole('status')).toHaveTextContent('Завершаем заход');
 });
