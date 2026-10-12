@@ -1502,11 +1502,12 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
-  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, ...rules } =
+  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, shotResultPauseMs, ...rules } =
     parsed.data;
   return {
     ...rules,
     ...(marathonWindowMs === undefined ? {} : { marathonWindowMs }),
+    ...(shotResultPauseMs === undefined ? {} : { shotResultPauseMs }),
     ...(sniperScoring === undefined
       ? {}
       : { sniperScoring: parseMarksmanshipScoringRules(sniperScoring) }),
