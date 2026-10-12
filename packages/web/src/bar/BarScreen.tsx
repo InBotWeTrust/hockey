@@ -3,7 +3,7 @@ import './cards/durak.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { ChevronLeft } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../auth/authStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { BarSocket, type BarSocketStatus } from './BarSocket.js';
@@ -224,11 +224,11 @@ function PlayerBadge({
 }
 function BarHeader({ title, onBack }: { title: string; onBack: () => void }): JSX.Element {
   return (
-    <header className="bar-header">
-      <button type="button" className="icon-btn" aria-label="Назад" onClick={onBack}>
-        <ChevronLeft size={22} />
+    <header className="bar-header bonus-games-catalog__header">
+      <button type="button" className="icon-btn catalog-header-back" aria-label="Назад" onClick={onBack}>
+        <ArrowLeft size={16} />
       </button>
-      <h1>{title}</h1>
+      <h1 className="bonus-games-catalog__title screen-title-on-arena">{title}</h1>
     </header>
   );
 }

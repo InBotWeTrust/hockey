@@ -614,3 +614,14 @@
 .bar-screen .bar-filters .segmented-tabs__item--active { background:var(--liquid-selected-bg); border-color:var(--liquid-border); box-shadow:var(--liquid-selected-shadow); color:var(--liquid-ink); }
 .bar-screen .bar-header { margin-bottom:8px; }
 .bar-screen > .bar-content > .bar-section-label:first-child { margin-top:0; }
+
+/* Match DailyOverview's 18/14 page padding, 14 header gap and 8 section gap. */
+.bar-screen { padding:calc(18px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom)); gap:14px; }
+.bar-screen .bar-header { display:grid; grid-template-columns:34px minmax(0,1fr); gap:10px; margin:0 auto; }
+.bar-screen .bar-header h1 { margin:2px 0 0; font-size:25px; font-weight:950; line-height:1.04; }
+.bar-screen .bar-header .catalog-header-back { width:38px; height:38px; min-width:38px; min-height:38px; }
+.bar-screen .bar-header .catalog-header-back svg { width:16px; height:16px; }
+.bar-screen > .bar-content { display:grid; gap:8px; }
+.bar-screen > .bar-content > .bar-section-label:first-child { margin:0; }
+.bar-screen .bar-filters { width:100%; min-width:0; }
+.bar-screen .bar-filters .segmented-tabs { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
