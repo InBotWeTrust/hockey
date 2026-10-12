@@ -1534,3 +1534,57 @@
   font: 800 11px var(--font-sans);
   white-space: nowrap;
 }
+
+/* Reserve the same area above the wooden edge for every player count. */
+.durak-screen .durak-opponent,
+.durak-screen .durak-multi-seats {
+  flex: 0 0 clamp(90px, calc(32dvh - 85px), 250px);
+  height: clamp(90px, calc(32dvh - 85px), 250px);
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+}
+.durak-screen .durak-multi-seats {
+  container-type: size;
+  --seat-rows: 1;
+  --seat-avatar-max: 64px;
+  --seat-avatar-size: clamp(12px, calc((100cqh - (var(--seat-rows) - 1) * 4px) / var(--seat-rows) - 32px), var(--seat-avatar-max));
+  grid-auto-rows: max-content;
+  align-content: center;
+  align-items: start;
+  gap: 4px;
+  overflow: hidden;
+}
+.durak-screen .durak-multi-seats[data-count='4'],
+.durak-screen .durak-multi-seats[data-count='5'],
+.durak-screen .durak-multi-seats[data-count='6'] {
+  --seat-rows: 2;
+  --seat-avatar-max: 56px;
+}
+.durak-screen .durak-multi-seat {
+  gap: 0;
+  padding: 2px 6px;
+  justify-content: flex-start;
+}
+.durak-screen .durak-multi-seats .user-avatar {
+  width: var(--seat-avatar-size) !important;
+  height: var(--seat-avatar-size) !important;
+  font-size: calc(var(--seat-avatar-size) * 0.4) !important;
+  margin-bottom: 0;
+}
+.durak-screen .durak-multi-seat .durak-player-label {
+  flex: none;
+  height: 14px;
+}
+.durak-screen .durak-multi-seat .durak-player-name,
+.durak-screen .durak-multi-seat .durak-player-count {
+  line-height: 14px;
+}
+.durak-screen .durak-multi-seat > span:last-child {
+  height: 12px;
+  line-height: 12px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

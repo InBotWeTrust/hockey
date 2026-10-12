@@ -61,3 +61,5 @@ Menu follow-up: player names use one 11 px font and ellipsis; the hand count rem
 Size/corner follow-up: played-card width caps are 108/90/80 px for one/two/three pairs and 70 px for four to six pairs. The complete artwork fills its common 2:3 box, so the bottom edge meets the same 8 px corner mask as the top (contain previously left unused space below the artwork).
 
 Overlap follow-up: defence cards shift down/right by 16–22 px according to available cell width, exposing the attack corner more clearly while preserving the centered combined footprint. The deck back shifts 16 px left and 18 px down relative to the upright trump.
+
+Player-zone follow-up: the upper region uses the same height as the two-player opponent scene for all 2–6-player tables. Seat tiles have content-based rows, non-growing name labels and avatars sized to the available region. Browser comparison across 390×844, 360×640, 320×568 and 430×932 confirms identical table start/height for all five player counts, all tiles inside the upper region and hands fully visible. At 390×844 the four-player game area increased from 198 px to 279.9 px, matching the two-player area.
