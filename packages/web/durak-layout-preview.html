@@ -35,7 +35,8 @@
       <label>Режим <select id="mode"><option value="online">Онлайн-стол</option><option value="computer">С персонажем</option></select></label>
       <label id="seat-label">Игроков <select id="seats"><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
       <label id="opponent-label" hidden>Персонаж <select id="opponent"><option value="maria">Мария</option><option value="grigory">Григорий</option><option value="arsenich">Арсенич</option><option value="daria">Дарья</option></select></label>
-      <label>Ситуация <select id="scene"><option value="busy">Шесть пар на столе</option><option value="normal">Начало партии</option><option value="final">Последний козырной туз (с персонажем)</option></select></label>
+      <label>Ситуация <select id="scene"><option value="busy">Карты на столе</option><option value="normal">Начало партии</option><option value="final">Последний козырной туз (с персонажем)</option></select></label>
+      <label id="pairs-label">Ходов на столе <select id="pairs"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option selected>6</option></select></label>
       <button id="restart" type="button">Начать заново</button>
     </div>
     <div class="sizes" style="margin-top:14px">
@@ -62,7 +63,9 @@
       const scene = control('scene').value;
       control('seat-label').hidden = !online;
       control('opponent-label').hidden = online;
+      control('pairs-label').hidden = scene !== 'busy';
       const params = new URLSearchParams();
+      if (scene === 'busy') params.set('pairs', control('pairs').value);
       let route;
       if (online) {
         params.set('table', 'game');
@@ -80,7 +83,7 @@
     control('width').addEventListener('input', resize);
     control('height').addEventListener('input', resize);
     control('slider').addEventListener('input', () => { control('width').value = control('slider').value; resize(); });
-    for (const id of ['mode','seats','opponent','scene']) control(id).addEventListener('change', () => {
+    for (const id of ['mode','seats','opponent','scene','pairs']) control(id).addEventListener('change', () => {
       if (id === 'scene' && control('scene').value === 'final') control('mode').value = 'computer';
       if (id === 'mode' && control('mode').value === 'online' && control('scene').value === 'final') control('scene').value = 'normal';
       load();

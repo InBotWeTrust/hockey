@@ -36,10 +36,11 @@ export function installRoomPreview() {
     game = scene === 'game' ? durakTable.createTable(capacity, createRng('preview').next) : null;
     if (game && params.get('layout') === 'busy') {
       const cards = [...game.hands.flat(), ...game.deck];
-      const remaining = cards.slice(12);
-      game.hands = Array.from({ length: capacity }, (_, i) => remaining.filter((_, j) => j % capacity === i));
-      game.deck = [];
-      game.table = Array.from({ length: 6 }, (_, i) => ({ attack: cards[i * 2]!, defence: cards[i * 2 + 1]! }));
+      const pairs = Math.min(6, Math.max(1, Number(params.get('pairs')) || 6));
+      const remaining = cards.slice(pairs * 2);
+      game.hands = Array.from({ length: capacity }, (_, i) => remaining.slice(0, capacity * 6).filter((_, j) => j % capacity === i));
+      game.deck = remaining.slice(capacity * 6);
+      game.table = Array.from({ length: pairs }, (_, i) => ({ attack: cards[i * 2]!, defence: cards[i * 2 + 1]! }));
       game.attacker = 0; game.defender = 1; game.turn = 0; game.phase = 'throw';
       game.throwers = Array.from({ length: capacity }, (_, i) => i).filter(i => i !== 1);
       game.limit = 6;

@@ -124,11 +124,12 @@ function PreviewChrome() {
 }
 const base = createGame(() => 0.4);
 const all = [...base.hands.flat(), ...base.deck];
+const pairCount = Math.min(6, Math.max(1, Number(new URLSearchParams(location.search).get('pairs')) || 6));
 const busy: Game = {
   ...base,
-  hands: [all.slice(12, 30), all.slice(30)],
+  hands: [all.slice(pairCount * 2, pairCount * 2 + 18), all.slice(pairCount * 2 + 18)],
   deck: [],
-  table: Array.from({ length: 6 }, (_, i) => ({ attack: all[i * 2]!, defence: all[i * 2 + 1]! })),
+  table: Array.from({ length: pairCount }, (_, i) => ({ attack: all[i * 2]!, defence: all[i * 2 + 1]! })),
   attacker: 0,
 };
 const fixture = new URLSearchParams(location.search).get('layout');

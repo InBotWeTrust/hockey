@@ -1325,6 +1325,8 @@
 }
 .durak-screen .durak-deck img {
   width: var(--deck-card-width);
+  height: calc(var(--deck-card-width) * 1.5);
+  object-fit: contain;
   left: 0;
   top: 4px;
 }
@@ -1334,7 +1336,7 @@
 }
 .durak-screen .durak-deck img:last-child:not(:first-child) {
   left: 23px;
-  top: 14px;
+  top: 4px;
   transform: rotate(90deg);
   transform-origin: center;
   z-index: 0;
@@ -1350,25 +1352,33 @@
 }
 .durak-screen .durak-pairs {
   gap: 8px;
+  --pair-card-width: 90px;
+  --pair-scale: 0.84;
 }
-.durak-pairs[data-count='0'],
-.durak-pairs[data-count='1'] {
+.durak-screen .durak-pairs[data-count='0'],
+.durak-screen .durak-pairs[data-count='1'] {
+  --pair-card-width: 140px;
+  --pair-scale: 1;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
-.durak-pairs[data-count='2'] {
+.durak-screen .durak-pairs[data-count='2'] {
+  --pair-card-width: 120px;
+  --pair-scale: 0.92;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);
 }
-.durak-pairs[data-count='3'] {
+.durak-screen .durak-pairs[data-count='3'] {
+  --pair-card-width: 104px;
+  --pair-scale: 0.84;
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pair {
   --card-offset: 14px;
-  max-height: 160px;
+  max-height: none;
 }
 .durak-screen .durak-pair img {
-  width: min(90px, calc(100cqw - var(--card-offset)), calc((100cqh - var(--card-offset)) * 0.65));
+  width: min(var(--pair-card-width), calc((100cqw - var(--card-offset)) * var(--pair-scale)), calc((100cqh - var(--card-offset)) * 0.65 * var(--pair-scale)));
   height: auto;
   max-height: none;
 }
@@ -1430,7 +1440,7 @@
   overflow: hidden;
 }
 .durak-screen .durak-pairs[data-count='4'] {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 .durak-screen .durak-pairs[data-count='5'],
 .durak-screen .durak-pairs[data-count='6'] {
@@ -1468,4 +1478,20 @@
 .durak-menu .durak-menu__trump .game-scoreboard__label {
   font-size: 8px;
   letter-spacing: 0;
+}
+
+.durak-screen .durak-pairs[data-count='4'] .durak-pair:nth-child(4) {
+  grid-column: 2;
+}
+.durak-screen .durak-pairs[data-count='5'] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.durak-screen .durak-pairs[data-count='5'] .durak-pair {
+  grid-column: span 2;
+}
+.durak-screen .durak-pairs[data-count='5'] .durak-pair:nth-child(4) {
+  grid-column: 2 / span 2;
+}
+.durak-screen .durak-pairs[data-count='5'] .durak-pair:nth-child(5) {
+  grid-column: 4 / span 2;
 }
