@@ -1353,24 +1353,24 @@
 }
 .durak-screen .durak-pairs {
   gap: 8px;
-  --pair-card-width: 90px;
+  --pair-card-width: 70px;
   --pair-scale: 0.84;
 }
 .durak-screen .durak-pairs[data-count='0'],
 .durak-screen .durak-pairs[data-count='1'] {
-  --pair-card-width: 140px;
+  --pair-card-width: 108px;
   --pair-scale: 1;
   grid-template-columns: minmax(0, 1fr);
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pairs[data-count='2'] {
-  --pair-card-width: 120px;
+  --pair-card-width: 90px;
   --pair-scale: 0.92;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-template-rows: minmax(0, 1fr);
 }
 .durak-screen .durak-pairs[data-count='3'] {
-  --pair-card-width: 104px;
+  --pair-card-width: 80px;
   --pair-scale: 0.84;
   grid-template-rows: minmax(0, 1fr);
 }
@@ -1463,6 +1463,8 @@
 /* Center the combined attack/defence footprint inside each grid cell. */
 .durak-screen .durak-pair img {
   aspect-ratio: 2 / 3;
+  object-fit: fill;
+  border-radius: 8px;
   left: calc(50% - var(--card-offset) / 2);
   top: calc(50% - var(--card-offset) / 2);
   transform: translate(-50%, -50%);

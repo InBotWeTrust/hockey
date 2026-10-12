@@ -57,3 +57,5 @@ CI, authenticated multi-browser online acceptance, database integration and depl
 Follow-up visual QA: trump and deck vertical centers match; 1–6-pair scenarios are selectable in the local preview. At 360×640 and 390×844, 1–3 pairs progressively shrink, and 4–6 pairs fit in two rows without horizontal overflow.
 
 Menu follow-up: player names use one 11 px font and ellipsis; the hand count remains visible separately. Menu and seat avatars have an explicit 1 px rim. Hint side padding is 13 px, matching the shared ice-game notice style (previously 24 px). Browser verification covers 2–6 seats, including a computer opponent and long names on 320 px screens.
+
+Size/corner follow-up: played-card width caps are 108/90/80 px for one/two/three pairs and 70 px for four to six pairs. The complete artwork fills its common 2:3 box, so the bottom edge meets the same 8 px corner mask as the top (contain previously left unused space below the artwork).
