@@ -1,5 +1,5 @@
 import { durak } from '@hockey/game-core';
-export const { other, cardOrder, canBeat, activePlayer, legalActions, applyAction, timeoutAction } =
+export const { other, cardOrder, canBeat, activePlayer, automaticAction, turnDuration, legalActions, applyAction, timeoutAction } =
   durak;
 export const createGame = (random = Math.random) => durak.createGame(random);
 export type Suit = durak.Suit;

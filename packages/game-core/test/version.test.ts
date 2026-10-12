@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for asymmetric character fights after dev integration', () => {
-    expect(GAME_CORE_VERSION).toBe(86);
+  it('is bumped for card turn timing and automatic final-card responses', () => {
+    expect(GAME_CORE_VERSION).toBe(87);
   });
 });

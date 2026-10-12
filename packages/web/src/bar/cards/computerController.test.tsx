@@ -50,7 +50,7 @@ it('timeout accepts the card; restart closes the old cheating window and clears 
   vi.spyOn(Math, 'random').mockReturnValue(0);
   const { result, unmount } = renderHook(() => useDurakGame(fixture(), 'grigory'));
   act(() => vi.advanceTimersByTime(4000));
-  act(() => vi.advanceTimersByTime(20000));
+  act(() => vi.advanceTimersByTime(30000));
   expect(result.current.game.phase).toBe('taking');
   act(() => {
     expect(result.current.challengeCheat?.()).toBe(false);

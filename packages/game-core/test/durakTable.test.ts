@@ -81,3 +81,31 @@ describe('multi-seat durak', () => {
     }
   });
 });
+
+it.each([2, 3, 4, 5, 6])('gives %i players 40 seconds on an opening attack and 30 on each response', seats => {
+  let g = table.createTable(seats, createRng('clock').next);
+  expect(table.turnDuration(g)).toBe(40000);
+  g = table.apply(g, g.turn, table.timeout(g)!);
+  expect(table.turnDuration(g)).toBe(30000);
+  g = table.apply(g, g.turn, { type: 'take' });
+  expect(table.turnDuration(g)).toBe(30000);
+});
+it('closes an empty thrower automatically in three seconds but retains other players', () => {
+  const g = table.createTable(3, createRng('final').next);
+  const ace = { id: 'clubs-14', suit: 'clubs' as const, rank: 14 };
+  const next = { ...g, deck: [], hands: [[], [{ id: 'hearts-6', rank: 6, suit: 'hearts' as const }], [{ id: 'hearts-7', rank: 7, suit: 'hearts' as const }]], table: [{ attack: ace }], attacker: 0, defender: 1, turn: 0, throwers: [0, 2], taking: true, phase: 'throw' as const };
+  expect(table.turnDuration(next)).toBe(3000);
+  const passed = table.apply(next, 0, table.timeout(next)!);
+  expect(passed.turn).toBe(2);
+  expect(passed.phase).toBe('throw');
+  expect(table.turnDuration(passed)).toBe(30000);
+});
+
+it('keeps the defender decision when a final attack can still be beaten', () => {
+  const g = table.createTable(2, createRng('beatable').next);
+  const next = { ...g, attacker: 0, defender: 1, turn: 1, phase: 'defend' as const, deck: [],
+    hands: [[], [{ id: 'clubs-14', rank: 14, suit: 'clubs' as const }]], trump: 'clubs' as const,
+    table: [{ attack: { id: 'clubs-13', rank: 13, suit: 'clubs' as const } }] };
+  expect(table.turnDuration(next)).toBe(30000);
+  expect(table.legal(next, 1).map(a => a.type)).toEqual(['beat', 'take']);
+});

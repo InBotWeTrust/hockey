@@ -1,9 +1,13 @@
 import { useLayoutEffect, useRef } from 'react';
-export function FittedMenuLabel({ children }: { children: string }) {
+export function FittedMenuLabel({ children, truncate = false }: { children: string; truncate?: boolean }) {
   const ref = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
     const text = ref.current;
     if (!text) return;
+    if (truncate) {
+      text.style.fontSize = '';
+      return;
+    }
     const resize = () => {
       text.style.fontSize = '';
       const size = parseFloat(getComputedStyle(text).fontSize);
@@ -23,10 +27,25 @@ export function FittedMenuLabel({ children }: { children: string }) {
       observer?.disconnect();
       window.removeEventListener('resize', resize);
     };
-  }, [children]);
+  }, [children, truncate]);
   return (
-    <span ref={ref} className="game-scoreboard__label durak-menu__label">
+    <span ref={ref} className={`game-scoreboard__label durak-menu__label${truncate ? ' durak-player-name' : ''}`} title={truncate ? children : undefined}>
       {children}
+    </span>
+  );
+}
+
+export function CardPlayerName({ name, count, countFirst = false }: {
+  name: string;
+  count: number | undefined;
+  countFirst?: boolean;
+}) {
+  const badge = count === undefined ? null : <span className="durak-player-count">({count})</span>;
+  return (
+    <span className="durak-player-label">
+      {countFirst && badge}
+      <FittedMenuLabel truncate>{name}</FittedMenuLabel>
+      {!countFirst && badge}
     </span>
   );
 }

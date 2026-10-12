@@ -1,5 +1,5 @@
 import { durak } from '@hockey/game-core';
-export const TURN_MS = 20_000;
+
 export function advanceDeadline(game: durak.Game, deadline: number, now: number) {
   let next = game;
   let until = deadline;
@@ -9,7 +9,7 @@ export function advanceDeadline(game: durak.Game, deadline: number, now: number)
     const action = durak.timeoutAction(next, player);
     if (!action) break;
     next = durak.applyAction(next, player, action);
-    until += TURN_MS;
+    until += durak.turnDuration(next);
   }
   return { game: next, deadline: until };
 }

@@ -103,7 +103,7 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     expect(room.status).toBe('confirming');
     room = await commandCardRoom(pool, users[4]!, roomId, room.revision, { type: 'ready' });
     expect(room.status).toBe('countdown');
-    expect(room.countdownAt! - room.serverNow).toBeLessThanOrEqual(3000);
+    expect(room.countdownAt! - room.serverNow).toBeLessThanOrEqual(5000);
     await commandCardRoom(pool, users[4]!, roomId, room.revision, { type: 'leave' });
     room = await readCardRoom(pool, users[3]!, roomId);
     expect(room.status).toBe('waiting');

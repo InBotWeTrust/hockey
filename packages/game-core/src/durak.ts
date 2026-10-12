@@ -155,3 +155,16 @@ export function timeoutAction(g: Game, p: Player): Action | undefined {
   }
   return actions.find((a) => a.type === 'finish');
 }
+
+// Only accelerate a forced response to a final card; a beatable card still needs a decision.
+export function automaticAction(g: Game): Action | undefined {
+  if (g.result !== null || g.deck.length || g.hands[g.attacker].length) return undefined;
+  const actions = legalActions(g, activePlayer(g));
+  return actions.length === 1 && (actions[0]!.type === 'finish' || actions[0]!.type === 'take')
+    ? actions[0]
+    : undefined;
+}
+export function turnDuration(g: Game): number {
+  if (automaticAction(g)) return 3000;
+  return g.phase === 'attack' && !g.table.length ? 40000 : 30000;
+}

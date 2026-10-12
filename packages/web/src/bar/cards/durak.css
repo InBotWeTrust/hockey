@@ -501,8 +501,8 @@
   width: max-content;
   max-width: 100%;
   box-sizing: border-box;
-  padding: 12px 24px;
-  gap: 12px;
+  padding: 12px 13px;
+  gap: 9px;
   line-height: 1.3;
   white-space: normal;
   overflow-wrap: anywhere;
@@ -1279,4 +1279,314 @@
   color: var(--liquid-ink);
   border: 1px solid var(--liquid-border-soft);
   box-shadow: var(--liquid-shadow);
+}
+
+/* Keep identities, clock and trump in one row at every viewport width. */
+.durak-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr);
+  grid-template-areas: 'self timer opponent';
+  gap: 0;
+  padding: 8px 4px;
+}
+.durak-menu .game-scoreboard__metric:nth-child(1) { grid-area: self; }
+.durak-menu .game-scoreboard__metric:nth-child(2) { grid-area: timer; }
+.durak-menu .game-scoreboard__metric:nth-child(3) { grid-area: opponent; }
+.durak-menu .game-scoreboard__metric:nth-child(4) { grid-area: trump; }
+.durak-menu .game-scoreboard__metric { border: 0; padding-inline: 4px; }
+.durak-menu .game-scoreboard__metric--timer,
+.durak-menu .durak-menu__trump {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding-block: 0;
+  border-top: 0;
+}
+.durak-menu .durak-menu__identity .user-avatar {
+  width: 24px !important;
+  height: 24px !important;
+  flex: none;
+}
+.durak-menu .game-scoreboard__label,
+.durak-menu .durak-menu__trump .game-scoreboard__label { font-size: 9px; }
+.durak-menu [role='timer'] .game-scoreboard__value { font-size: 24px; line-height: 1; }
+.durak-menu .durak-menu__trump-symbol { font-size: 24px; }
+
+/* Keep the upright trump beside the deck, with the covering back staggered down/left. */
+.durak-screen .durak-deck {
+  --deck-card-width: 44px;
+  width: 76px;
+  padding: 6px;
+  box-sizing: border-box;
+}
+.durak-screen .durak-deck > div {
+  height: 86px;
+  overflow: hidden;
+}
+.durak-screen .durak-deck img {
+  width: var(--deck-card-width);
+  height: calc(var(--deck-card-width) * 1.5);
+  object-fit: contain;
+  left: 16px;
+  top: 0;
+}
+.durak-screen .durak-deck img:first-child:not(:last-child) {
+  left: 0;
+  top: 18px;
+}
+.durak-screen .durak-deck img:last-child:not(:first-child) {
+  left: 16px;
+  top: 0;
+  transform: none;
+  z-index: 0;
+}
+.durak-screen .durak-deck__count {
+  top: 51px;
+  width: 26px;
+  height: 26px;
+  font-size: 14px;
+}
+.durak-screen .durak-table {
+  gap: 10px;
+}
+.durak-screen .durak-pairs {
+  gap: 8px;
+  --pair-card-width: 70px;
+  --pair-scale: 0.84;
+}
+.durak-screen .durak-pairs[data-count='0'],
+.durak-screen .durak-pairs[data-count='1'] {
+  --pair-card-width: 108px;
+  --pair-scale: 1;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
+}
+.durak-screen .durak-pairs[data-count='2'] {
+  --pair-card-width: 90px;
+  --pair-scale: 0.92;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr);
+}
+.durak-screen .durak-pairs[data-count='3'] {
+  --pair-card-width: 80px;
+  --pair-scale: 0.84;
+  grid-template-rows: minmax(0, 1fr);
+}
+.durak-screen .durak-pair {
+  --card-offset: clamp(16px, 16cqw, 22px);
+  max-height: none;
+}
+.durak-screen .durak-pair img {
+  width: min(var(--pair-card-width), calc((100cqw - var(--card-offset)) * var(--pair-scale)), calc((100cqh - var(--card-offset)) * 0.65 * var(--pair-scale)));
+  height: auto;
+  max-height: none;
+}
+.durak-screen .durak-pair .durak-defence {
+  left: 14px;
+  top: 14px;
+}
+.durak-screen .durak-card {
+  width: auto;
+  height: clamp(110px, 19dvh, 150px);
+  margin-right: -24px;
+}
+.durak-screen .durak-card:last-child {
+  margin-right: 0;
+}
+.durak-screen .durak-hand {
+  min-height: 0;
+  padding-top: 14px;
+}
+.durak-screen .durak-opponent {
+  flex-basis: clamp(90px, calc(32dvh - 85px), 250px);
+}
+@media (max-height: 800px) {
+  .durak-screen .durak-multi-seats {
+    min-height: 0;
+    margin-block: 0;
+    gap: 4px;
+  }
+  .durak-screen .durak-multi-seat {
+    padding: 4px;
+    gap: 2px;
+  }
+  .durak-screen .durak-multi-seat .user-avatar {
+    width: 36px !important;
+    height: 36px !important;
+    margin-bottom: 2px;
+  }
+  .durak-screen .durak-multi-seat .durak-seat-position {
+    font-size: 12px;
+    top: 4px;
+    right: 5px;
+  }
+}
+
+@media (max-height: 650px) {
+  .durak-screen--multi .durak-multi-seat .user-avatar { width: 24px !important; height: 24px !important; }
+  .durak-screen--multi .durak-multi-seat { gap: 0; }
+  .durak-screen .durak-card { height: 110px; }
+  .durak-screen .durak-turn-notice { padding-block: 8px; }
+}
+
+.durak-screen .durak-deck--empty { display: none; }
+/* Keep every played pair visible in two rows, with no table scrolling. */
+.durak-screen .durak-pairs[data-count='4'],
+.durak-screen .durak-pairs[data-count='5'],
+.durak-screen .durak-pairs[data-count='6'] {
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  overflow: hidden;
+}
+.durak-screen .durak-pairs[data-count='4'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.durak-screen .durak-pairs[data-count='5'],
+.durak-screen .durak-pairs[data-count='6'] {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.durak-menu .game-scoreboard__metric--timer > .durak-menu__label {
+  width: auto;
+  flex: none;
+}
+.durak-menu .game-scoreboard__metric--timer .game-scoreboard__value {
+  flex: none;
+  min-width: 2.4ch;
+  width: auto;
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* Center the combined attack/defence footprint inside each grid cell. */
+.durak-screen .durak-pair img {
+  aspect-ratio: 2 / 3;
+  object-fit: fill;
+  border-radius: 8px;
+  left: calc(50% - var(--card-offset) / 2);
+  top: calc(50% - var(--card-offset) / 2);
+  transform: translate(-50%, -50%);
+}
+.durak-screen .durak-pair .durak-defence {
+  left: calc(50% + var(--card-offset) / 2);
+  top: calc(50% + var(--card-offset) / 2);
+}
+.durak-screen .durak-pair img:only-child {
+  left: 50%;
+  top: 50%;
+}
+
+.durak-menu .durak-menu__trump .game-scoreboard__label {
+  font-size: 8px;
+  letter-spacing: 0;
+}
+
+.durak-screen .durak-pairs[data-count='4'] .durak-pair:nth-child(4) {
+  grid-column: 2;
+}
+.durak-screen .durak-pairs[data-count='5'] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+}
+.durak-screen .durak-pairs[data-count='5'] .durak-pair {
+  grid-column: span 2;
+}
+.durak-screen .durak-pairs[data-count='5'] .durak-pair:nth-child(4) {
+  grid-column: 2 / span 2;
+}
+.durak-screen .durak-pairs[data-count='5'] .durak-pair:nth-child(5) {
+  grid-column: 4 / span 2;
+}
+
+.durak-menu .durak-menu__row[data-trump='true'] {
+  grid-template-columns: minmax(0, 1fr) 54px minmax(0, 1fr) 46px;
+  grid-template-areas: 'self timer opponent trump';
+}
+.durak-screen .durak-player-name {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.durak-screen .user-avatar {
+  border: 1px solid rgba(205, 232, 255, 0.46) !important;
+}
+
+.durak-screen .durak-player-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+.durak-screen .durak-player-label .durak-player-name {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+}
+.durak-screen .durak-player-count {
+  flex: none;
+  font: 800 11px var(--font-sans);
+  white-space: nowrap;
+}
+
+/* Reserve the same area above the wooden edge for every player count. */
+.durak-screen .durak-opponent,
+.durak-screen .durak-multi-seats {
+  /* The header already consumes the top inset; do not move the table edge again. */
+  --durak-opponent-height: clamp(90px, calc(32dvh - 85px - var(--app-safe-top, 0px)), 250px);
+  flex: 0 0 var(--durak-opponent-height);
+  height: var(--durak-opponent-height);
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+}
+.durak-screen .durak-multi-seats {
+  container-type: size;
+  --seat-rows: 1;
+  --seat-avatar-max: 64px;
+  --seat-avatar-size: clamp(12px, calc((100cqh - (var(--seat-rows) - 1) * 4px) / var(--seat-rows) - 32px), var(--seat-avatar-max));
+  grid-auto-rows: max-content;
+  align-content: center;
+  align-items: start;
+  gap: 4px;
+  overflow: hidden;
+}
+.durak-screen .durak-multi-seats[data-count='4'],
+.durak-screen .durak-multi-seats[data-count='5'],
+.durak-screen .durak-multi-seats[data-count='6'] {
+  --seat-rows: 2;
+  --seat-avatar-max: 56px;
+}
+.durak-screen .durak-multi-seat {
+  gap: 0;
+  padding: 2px 6px;
+  justify-content: flex-start;
+}
+.durak-screen .durak-multi-seats .user-avatar {
+  width: var(--seat-avatar-size) !important;
+  height: var(--seat-avatar-size) !important;
+  font-size: calc(var(--seat-avatar-size) * 0.4) !important;
+  margin-bottom: 0;
+}
+.durak-screen .durak-multi-seat .durak-player-label {
+  flex: none;
+  height: 14px;
+}
+.durak-screen .durak-multi-seat .durak-player-name,
+.durak-screen .durak-multi-seat .durak-player-count {
+  line-height: 14px;
+}
+.durak-screen .durak-multi-seat > span:last-child {
+  height: 12px;
+  line-height: 12px;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }

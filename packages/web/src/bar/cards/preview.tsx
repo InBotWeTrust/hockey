@@ -71,7 +71,7 @@ if (invitationDemo || computerDemo || readinessDemo) {
       }
       if (readySentAt && !readyState.opponentReady && now - readySentAt >= 2500) {
         readyState.opponentReady = true;
-        readyState.startsAt = now + 3000;
+        readyState.startsAt = now + 5000;
         readyRevision++;
       }
       if (!readyState.startsAt && now >= readyState.expiresAt) readyState.cancelled = true;
@@ -89,7 +89,7 @@ if (invitationDemo || computerDemo || readinessDemo) {
         phase: 'attack',
         revision: readyRevision + (started ? 1 : 0),
         result: null,
-        deadline: started ? readyState.startsAt! + 3000 + 20000 : null,
+        deadline: started ? readyState.startsAt! + 40000 : null,
         serverNow: now,
         opponent: { displayName: 'Александр', avatarUrl: '/bar/cards/avatar-v2.webp' },
         ...(started ? {} : { readiness: readyState }),
@@ -124,16 +124,22 @@ function PreviewChrome() {
 }
 const base = createGame(() => 0.4);
 const all = [...base.hands.flat(), ...base.deck];
+const pairCount = Math.min(6, Math.max(1, Number(new URLSearchParams(location.search).get('pairs')) || 6));
 const busy: Game = {
   ...base,
-  hands: [all.slice(12, 30), all.slice(30)],
+  hands: [all.slice(pairCount * 2, pairCount * 2 + 18), all.slice(pairCount * 2 + 18)],
   deck: [],
-  table: Array.from({ length: 6 }, (_, i) => ({ attack: all[i * 2]!, defence: all[i * 2 + 1]! })),
+  table: Array.from({ length: pairCount }, (_, i) => ({ attack: all[i * 2]!, defence: all[i * 2 + 1]! })),
   attacker: 0,
 };
 const fixture = new URLSearchParams(location.search).get('layout');
+const finalAce = { id: 'clubs-14', rank: 14, suit: 'clubs' as const };
+const finalResponse = { id: 'hearts-6', rank: 6, suit: 'hearts' as const };
+const finalGame: Game = { ...base, attacker: 0, trump: 'clubs', deck: [],
+  hands: [[finalAce], [finalResponse]], table: [],
+  discard: all.filter(c => c.id !== finalAce.id && c.id !== finalResponse.id) };
 const initial =
-  fixture === 'busy'
+  fixture === 'final' ? finalGame : fixture === 'busy'
     ? busy
     : fixture === 'win'
       ? { ...base, result: 0 as const, phase: 'ended' as const }
@@ -151,8 +157,9 @@ function OnlineTablePreview() {
     />
   );
 }
-document.documentElement.style.setProperty('--app-safe-top', '0px');
-document.documentElement.style.setProperty('--app-safe-bottom', '0px');
+const safeAreaPreview = new URLSearchParams(location.search).get('safe') === 'iphone';
+document.documentElement.style.setProperty('--app-safe-top', safeAreaPreview ? '47px' : '0px');
+document.documentElement.style.setProperty('--app-safe-bottom', safeAreaPreview ? '34px' : '0px');
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <QueryClientProvider client={new QueryClient()}>
