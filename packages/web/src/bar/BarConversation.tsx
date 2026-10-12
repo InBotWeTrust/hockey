@@ -1,7 +1,6 @@
 import { apiFetch } from '../api/apiFetch.js';
 import { BarMemoryControls } from './BarMemoryControls.js';
 import { useEffect, useRef, useState } from 'react';
-import { useDragControls } from 'motion/react';
 import { Expand, Minimize2, X, NotebookText, MessageCircle, HandFist } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { ApiError } from '../api/apiFetch.js';
@@ -41,7 +40,6 @@ export function BarConversation({
   const [retry, setRetry] = useState(0);
   const [showMemory,setShowMemory]=useState(false);
   const [confirmFight,setConfirmFight]=useState(false);
-  const dragControls = useDragControls();
   const [closing, setClosing] = useState(false);
   const close = () => setClosing(true);
   const [expanded, setExpanded] = useState(false);
@@ -154,7 +152,7 @@ export function BarConversation({
   return (
     <AccessibleModal
       title={
-        <span className="bar-conversation__identity">
+        <button type="button" className="bar-conversation__identity" aria-label={expanded ? 'Свернуть карточку разговора' : 'Развернуть карточку разговора'} onClick={()=>setExpanded(value=>!value)}>
           <span className="bar-conversation__avatar">
             {avatar && !avatarFailed ? (
               <img src={avatar} alt="" onError={() => setAvatarFailed(true)} />
@@ -166,7 +164,7 @@ export function BarConversation({
             {name}
             {role && <small>{role}</small>}
           </span>
-        </span>
+        </button>
       }
       ariaLabel={`Разговор: ${name}`}
       presentation="sheet"
@@ -176,15 +174,6 @@ export function BarConversation({
       backdropStyle={{ background: 'var(--liquid-inset-bg)', backdropFilter: 'none', height: 'var(--app-viewport-height, 100dvh)', bottom: 'auto' }}
       smoothSheet
       dragListener={false}
-      dragControls={dragControls}
-      onDragEnd={(offset,velocity)=>{
-        if(offset < -60 || (offset < -12 && velocity < -450))setExpanded(true);
-        else if(offset > 60 || (offset > 12 && velocity > 450)) {
-          if (expanded) setExpanded(false);
-          else close();
-        }
-      }}
-      beforeHeader={<div className="sheet-drag-handle" aria-hidden="true" onPointerDown={event=>dragControls.start(event)}><div className="sheet-grabber"/></div>}
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface bar-conversation${!data?.turns.length ? ' bar-conversation--empty' : ''}${expanded ? ' bar-conversation--expanded' : ''}`}
       headerAction={
         <div className="bar-conversation__controls">

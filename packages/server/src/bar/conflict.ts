@@ -81,7 +81,7 @@ export class SqlConflictStore {
   }
   async phrase(kind: string, category: ConflictVerdict): Promise<string> {
     const result = await this.pool.query<{ content: string }>(
-      `select content from bar_oleg_phrases where kind=$1 and category in ($2,'any') order by random() limit 1`,
+      `select content from bar_oleg_phrases where kind=$1 and category in ($2,'any') and not starts_with(id,'touch-') order by random() limit 1`,
       [kind, category],
     );
     if (!result.rows[0]) throw new Error('oleg_phrase_unavailable');
