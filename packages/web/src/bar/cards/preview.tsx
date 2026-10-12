@@ -20,6 +20,7 @@ import { DurakScreen } from './DurakScreen.js';
 import { BarScreen, BarBroadcastsScreen } from '../BarScreen.js';
 import '../../app/global.css';
 import '../../app/design-system.css';
+import '../../app/liquid-glass.css';
 const invitationDemo = new URLSearchParams(location.search).get('invitations') === 'demo';
 const readinessDemo = new URLSearchParams(location.search).has('ready');
 const computerDemo = new URLSearchParams(location.search).get('computer') === 'demo';

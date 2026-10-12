@@ -138,14 +138,15 @@ it('opens the bar at the manager and pages to the online terminal', () => {
       </Routes>
     </MemoryRouter>,
   );
-  expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
+  expect(screen.getByRole('heading', {name:'Вероника'})).toBeInTheDocument();
   expect(
     screen.getByRole('navigation', { name: 'Места в баре' }).querySelectorAll('button'),
   ).toHaveLength(10);
   fireEvent.click(screen.getByRole('button', { name: 'Предыдущая страница' }));
-  expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
-  fireEvent.focus(screen.getByRole('button', { name: 'Играть онлайн' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Перейти: Играть онлайн' }));
+  expect(screen.getByRole('heading', {name:'Тимофей'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Играть онлайн' }));
+  expect(screen.queryByRole('tab', {name:'Дурак'})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name:'Найти соперников'}));
   expect(screen.getByRole('tab', { name: 'Дурак' })).toBeInTheDocument();
   expect(screen.getByRole('tab', { name: 'Бильярд' })).toBeEnabled();
   expect(screen.getByRole('tab', { name: 'Дартс' })).toBeEnabled();
