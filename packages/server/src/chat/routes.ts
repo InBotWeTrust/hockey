@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { getFanSummary } from '../social/service.js';
 import { z } from 'zod';
 import {
   DEFAULT_NEWS_CHANNEL_SLUG,
@@ -628,7 +629,7 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
       reply.code(404);
       return { error: { code: 'user_not_found', message: 'user not found' } };
     }
-    return profile;
+    return {...profile,social:await getFanSummary(app.pg,req.user.id,userId)};
   });
 
   app.post('/chat/:chatId/pin', { preHandler: [app.authenticate] }, async (req, reply) => {

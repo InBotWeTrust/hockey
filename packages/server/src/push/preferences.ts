@@ -7,11 +7,13 @@ export interface PushPreferences {
   duelEvents: boolean;
   tournamentEvents: boolean;
   gameNews: boolean;
+  newFans?: boolean;
 }
 
 export type PushPreferencePatch = Partial<PushPreferences>;
 
 export type PushEventType =
+  | 'social.new_fan'
   | 'chat.new_dialog_message'
   | 'daily.available'
   | 'daily.unlocked_after_training'
@@ -45,6 +47,7 @@ export interface PushPreferencesRow {
   duel_events: boolean | null;
   tournament_events: boolean | null;
   game_news: boolean | null;
+  new_fans?: boolean | null;
 }
 
 export const DEFAULT_PUSH_PREFERENCES: PushPreferences = {
@@ -54,6 +57,7 @@ export const DEFAULT_PUSH_PREFERENCES: PushPreferences = {
   duelEvents: true,
   tournamentEvents: true,
   gameNews: true,
+  newFans: true,
 };
 
 export function mapPushPreferencesRow(row: PushPreferencesRow | undefined): PushPreferences {
@@ -66,13 +70,14 @@ export function mapPushPreferencesRow(row: PushPreferencesRow | undefined): Push
     duelEvents: row.duel_events ?? DEFAULT_PUSH_PREFERENCES.duelEvents,
     tournamentEvents: row.tournament_events ?? DEFAULT_PUSH_PREFERENCES.tournamentEvents,
     gameNews: row.game_news ?? DEFAULT_PUSH_PREFERENCES.gameNews,
+    newFans: row.new_fans ?? true,
   };
 }
 
 export async function getPushPreferences(pool: Pool, userId: string): Promise<PushPreferences> {
   const { rows } = await pool.query<PushPreferencesRow>(
     `select chat_new_dialog_message, daily_game, training_available, duel_events,
-            tournament_events, game_news
+            tournament_events, game_news, new_fans
        from user_push_preferences
       where user_id = $1`,
     [userId],
@@ -88,7 +93,7 @@ export async function savePushPreferences(
   const { rows } = await pool.query<PushPreferencesRow>(
     `insert into user_push_preferences (
        user_id, chat_new_dialog_message, daily_game, training_available, duel_events,
-       tournament_events, game_news
+       tournament_events, game_news, new_fans
      )
      values (
        $1,
@@ -97,7 +102,8 @@ export async function savePushPreferences(
        coalesce($4, true),
        coalesce($5, true),
        coalesce($6, true),
-       coalesce($7, true)
+       coalesce($7, true),
+       coalesce($8, true)
      )
      on conflict (user_id) do update
        set chat_new_dialog_message =
@@ -107,9 +113,10 @@ export async function savePushPreferences(
            duel_events = coalesce($5, user_push_preferences.duel_events),
            tournament_events = coalesce($6, user_push_preferences.tournament_events),
            game_news = coalesce($7, user_push_preferences.game_news),
+           new_fans = coalesce($8, user_push_preferences.new_fans),
            updated_at = now()
      returning chat_new_dialog_message, daily_game, training_available, duel_events,
-               tournament_events, game_news`,
+               tournament_events, game_news, new_fans`,
     [
       userId,
       patch.chatNewDialogMessage ?? null,
@@ -118,6 +125,7 @@ export async function savePushPreferences(
       patch.duelEvents ?? null,
       patch.tournamentEvents ?? null,
       patch.gameNews ?? null,
+      patch.newFans ?? null,
     ],
   );
   return mapPushPreferencesRow(rows[0]);
@@ -128,6 +136,8 @@ export function isPushEventAllowed(
   eventType: PushEventType,
 ): boolean {
   switch (eventType) {
+    case 'social.new_fan':
+      return preferences.newFans ?? true;
     case 'chat.new_dialog_message':
       return preferences.chatNewDialogMessage;
     case 'daily.available':

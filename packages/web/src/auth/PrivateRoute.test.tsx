@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Routes, Route } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation } from 'react-router-dom';
 import { PrivateRoute } from './PrivateRoute.js';
 import { useAuthStore } from './authStore.js';
 
@@ -39,6 +39,12 @@ function renderAt(path: string): void {
 }
 
 describe('PrivateRoute', () => {
+  it('preserves the fan push query for continuation after login',()=>{
+    function Destination(){const location=useLocation();return <div>{location.state?.from}</div>;}
+    useAuthStore.getState().clearSession();
+    render(<MemoryRouter initialEntries={['/profile?social=fans&fanId=fan']}><Routes><Route path="/profile" element={<PrivateRoute><div>Private</div></PrivateRoute>}/><Route path="/login" element={<Destination/>}/></Routes></MemoryRouter>);
+    expect(screen.getByText('/profile?social=fans&fanId=fan')).toBeTruthy();
+  });
   beforeEach(() => {
     localStorage.clear();
     useAuthStore.getState().clearSession();

@@ -1,0 +1,20 @@
+import { act, fireEvent, render, screen, cleanup } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { afterEach, expect, it, vi } from 'vitest';
+import { ActivityReactions } from './ActivityReactions.js';
+import { SocialProvider } from './SocialContext.js';
+import type { ActivityEvent } from './api.js';
+afterEach(()=>{cleanup();vi.useRealTimers();});
+it('opens on hold, suppresses result click and cancels on scrolling',()=>{
+ vi.useFakeTimers();const onOpen=vi.fn();
+ render(<QueryClientProvider client={new QueryClient()}><SocialProvider value={{viewerId:'viewer',api:{} as never}}><ActivityReactions event={{id:'event',reactions:[]} as unknown as ActivityEvent} label="Событие" onOpen={onOpen}>Результат</ActivityReactions></SocialProvider></QueryClientProvider>);
+ const button=screen.getByRole('button',{name:'Событие'});
+ fireEvent.pointerDown(button,{button:0,clientX:10,clientY:10});
+ act(()=>vi.advanceTimersByTime(550));
+ expect(screen.getByRole('dialog',{name:'Выбор реакции'})).toBeTruthy();
+ fireEvent.pointerUp(button);fireEvent.click(button);expect(onOpen).not.toHaveBeenCalled();
+ fireEvent.keyDown(window,{key:'Escape'});
+ fireEvent.pointerDown(button,{button:0});fireEvent.pointerCancel(button);
+ act(()=>vi.advanceTimersByTime(550));expect(screen.queryByRole('dialog')).toBeNull();
+ fireEvent.click(button);expect(onOpen).toHaveBeenCalledOnce();
+});

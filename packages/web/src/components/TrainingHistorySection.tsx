@@ -152,9 +152,9 @@ export function TrainingHistorySection({ currentDayDate }: { currentDayDate: str
   );
 }
 
-function TrainingResultModal({ session, onClose }: { session: TrainingHistorySession; onClose: () => void }): JSX.Element {
+export function TrainingResultModal({ session, onClose, title }: { session: TrainingHistorySession; onClose: () => void; title?: string }): JSX.Element {
   const date = formattedDate(session.day_date);
-  return <AccessibleModal title={date} ariaLabel={`Результат тренировки за ${date}`} onClose={onClose} headerAction={<button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={16} /></button>}>
+  return <AccessibleModal title={title ?? date} ariaLabel={title ?? `Результат тренировки за ${date}`} onClose={onClose} headerAction={<button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}><X size={16} /></button>}>
     <div className="daily-result-modal__summary training-result-modal__summary">
       <div><span>Голы</span><strong>{session.total_goals} из {session.total_shots}</strong></div>
       <div><span>Броски</span><strong>{session.total_shots} из {session.shots_limit}</strong></div>
