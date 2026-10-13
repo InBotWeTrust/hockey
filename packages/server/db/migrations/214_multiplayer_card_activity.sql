@@ -10,4 +10,8 @@ begin
  perform social_record_activity('cards:room:'||new.id,'bar_cards',new.ended_at,actors,jsonb_build_object('game','Дурак','participants',participants,'provenance','server'));
  return null;
 end $$;
-create constraint trigger social_multiplayer_cards after insert or update on bar_card_rooms deferrable initially deferred for each row execute function social_capture_card_room();
+do $$ begin
+ if to_regclass('bar_card_rooms') is not null then
+  execute 'create constraint trigger social_multiplayer_cards after insert or update on bar_card_rooms deferrable initially deferred for each row execute function social_capture_card_room()';
+ end if;
+end $$;

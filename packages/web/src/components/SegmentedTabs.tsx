@@ -3,6 +3,7 @@ import { HorizontalFilterRow } from './HorizontalFilterRow.js';
 export interface SegmentedTabItem<T extends string> {
   id: T;
   label: string;
+  disabled?: boolean;
   attention?: boolean;
   attentionSize?: 'default' | 'small';
 }
@@ -43,7 +44,7 @@ export function SegmentedTabs<T extends string>({
             type="button"
             role="tab"
             aria-selected={active}
-            disabled={disabled}
+            disabled={disabled || tab.disabled}
             onClick={() => {
               if (active) return;
               onChange(tab.id);

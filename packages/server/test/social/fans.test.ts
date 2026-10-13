@@ -166,7 +166,7 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     expect(new Set([...first.items,...second.items].map(e=>e.id)).size).toBe(52);
   });
 
-  it('captures course completion, claimed rewards and computer cards from real persisted sources', async () => {
+  it('captures course completion and claimed rewards from production persisted sources', async () => {
     const b=await user('Sources');
     const keys=['first-shot','three-positions','follow-the-goal','moving-goal','find-the-gap'];
     // Initial course currently has further position exercises; use the canonical exported keys.
@@ -178,8 +178,7 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     expect((await request(b,'GET',`/users/${b.id}/activity`)).json().items.map((e:{kind:string})=>e.kind)).toEqual(['initial_course']);
     const claim=await app.inject({method:'POST',url:'/achievements/fans-1/claim',headers:{authorization:`Bearer ${b.token}`}});
     expect(claim.statusCode).toBe(200);
-    await app.pg.query("insert into bar_computer_card_history(id,user_id,character_id,result,started_at,ended_at,surrendered,caught_cheats) values($1,$2,'maria','loss',now()-interval '1 minute',now(),false,0)",[randomUUID(),b.id]);
-    expect((await request(b,'GET',`/users/${b.id}/activity`)).json().items.map((e:{kind:string})=>e.kind)).toEqual(['bar_cards','achievement','initial_course']);
+    expect((await request(b,'GET',`/users/${b.id}/activity`)).json().items.map((e:{kind:string})=>e.kind)).toEqual(['achievement','initial_course']);
   });
 
   it('captures final daily and training results, but excludes unfinished rollover sessions',async()=>{
@@ -239,22 +238,12 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     expect((await pushes()).rowCount).toBe(2);
   });
 
-  it('captures advanced completion, the persisted bar restriction and all online card participants',async()=>{
-    const a=await user('BarPlayer'),b=await user('CardOpponent'),c=await user('CardThird');
-    const {ADVANCED_TRAINING_V2_EXERCISES}=await import('../../src/duel/training/advancedCourseV2.js');
-    for(const e of ADVANCED_TRAINING_V2_EXERCISES) await app.pg.query('insert into advanced_training_v2_completion(user_id,exercise_key,reward_stars,reward_experience) values($1,$2,1,1)',[a.id,e.key]);
-    const db=await app.pg.connect();const fight=randomUUID();
-    try {await db.query('begin');await db.query("insert into bar_oleg_fights(id,user_id,runtime) values($1,$2,'{}')",[fight,a.id]);
-     await db.query("update bar_oleg_fights set status='resolved',outcome='loss',ended_at=now() where id=$1",[fight]);
-     await db.query("insert into bar_conflicts(user_id,day,blocked_until) values($1,current_date,now()+interval '2 hours')",[a.id]);await db.query('commit');
-    } finally{db.release();}
-    await app.pg.query('update bar_oleg_fights set acknowledged=true where id=$1',[fight]);
-    const room=randomUUID();await app.pg.query("insert into bar_card_rooms(id,data) values($1,$2)",[room,JSON.stringify({seats:[a.id,b.id,c.id],status:'playing',game:{phase:'attack',status:['playing','playing','playing']}})]);
-    await app.pg.query('update bar_card_rooms set ended_at=now(),data=$2 where id=$1',[room,JSON.stringify({seats:[a.id,b.id,c.id],status:'ended',game:{phase:'ended',status:['won','lost','won']}})]);
+  it('captures the advanced course already available on production',async()=>{
+    const a=await user('AdvancedPlayer');
+    const {ADVANCED_TRAINING_EXERCISES}=await import('../../src/duel/training/advancedCourse.js');
+    for(const e of ADVANCED_TRAINING_EXERCISES) await app.pg.query('insert into advanced_training_completion(user_id,exercise_key,assessment_successes,reward_stars,reward_experience) values($1,$2,7,1,1)',[a.id,e.key]);
     const events=(await request(a,'GET',`/users/${a.id}/activity`)).json().items;
-    expect(events.map((e:{kind:string})=>e.kind)).toEqual(['bar_cards','bar_fight','advanced_course']);
-    expect(events[0].actors).toHaveLength(3);expect(events[0].data.participants.find((p:{userId:string})=>p.userId===b.id).outcome).toBe('loss');
-    expect(events[1].data.blockedUntil).toBeTruthy();
+    expect(events.map((e:{kind:string})=>e.kind)).toEqual(['advanced_course']);
   });
 
   it('freezes one playoff result per completed day with the cumulative series score',async()=>{

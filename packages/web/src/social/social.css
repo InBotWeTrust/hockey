@@ -43,11 +43,11 @@
 .public-profile-social-identity .profile-social-count strong { color: #fff; font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .public-profile-name-status { display: flex; align-items: baseline; gap: .25em; width: 100%; margin-top: 12px; line-height: 1.2; }
 .public-profile-name-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.profile-identity__name .public-profile-status { flex: 0 0 auto; color: rgba(230, 242, 250, 0.74); font-size: 8px; line-height: 1.12; font-weight: 850; letter-spacing: 0.025em; text-transform: uppercase; }
+.profile-identity__name .public-profile-status { flex: 0 0 auto; color: var(--muted); font-size: 8px; line-height: 1.12; font-weight: 850; letter-spacing: 0.025em; text-transform: uppercase; }
 .profile-passport__top > section[aria-label='Болельщики'] { margin: 0 !important; }
 .profile-passport__top { gap: 8px; }
 .profile-bio-field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
-.profile-bio-field textarea { font: inherit; font-size: 14px; font-weight: 400; line-height: 1.45; color: var(--muted); padding: 11px 12px; border: 1px solid rgba(100,116,139,.24); border-radius: 13px; background: var(--liquid-card-bg); resize: vertical; }
+.profile-bio-field textarea { font: inherit; font-size: 14px; font-weight: 400; line-height: 1.45; color: var(--muted); padding: 11px 12px; border: 1px solid rgba(100,116,139,.24); border-radius: 13px; background: var(--glass-bg); resize: vertical; }
 .profile-bio-field small { color: var(--muted); }
 .chat-list-switcher { padding: calc(10px + var(--app-safe-top)) 14px 0; }
 .chat-feed-content { padding: 0 14px; }
