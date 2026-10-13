@@ -25,8 +25,8 @@
   cursor: pointer;
 }
 .profile-social-count strong { color: var(--ink); }
-:root:not([data-theme='light']) :is(.profile-social-count strong, .profile-balance__value, .profile-sporting-metrics__item strong, .profile-trophy-showcase__item strong, .public-profile-experience) {
-  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
+:root:not([data-theme='light']) :is(.profile-social-count strong, .profile-balance__value, .profile-balance__value *, .profile-sporting-metrics__item strong, .profile-sporting-metrics__item strong *, .profile-trophy-showcase__item strong, .profile-trophy-showcase__item strong *, .public-profile-experience, .public-profile-experience__value) {
+  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78) !important;
 }
 :root:not([data-theme='light']) :is(.profile-balance__amount svg, .profile-trophy-showcase__item svg, .public-profile-experience svg) {
   filter: drop-shadow(0 2px 5px rgba(3, 12, 24, 0.78));
