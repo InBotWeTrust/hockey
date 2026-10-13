@@ -17,9 +17,11 @@ describe('social profile controls',()=>{
     expect(await screen.findByText('Сеть недоступна')).toBeTruthy();
     expect(screen.getByRole('button',{name:'Стать болельщиком'})).toBeTruthy();
     fireEvent.click(button);
-    await waitFor(()=>expect(screen.getByRole('button',{name:'Вы болельщик'})).toBeTruthy());
-    fireEvent.click(screen.getByRole('button',{name:'Вы болельщик'}));
-    expect(screen.getByRole('button',{name:'Перестать болеть'})).toBeTruthy();
+    const unfollow=await screen.findByRole('button',{name:'Перестать болеть'});
+    follow.mockResolvedValueOnce({followersCount:0,followingCount:0,following:false,canFollow:true});
+    fireEvent.click(unfollow);
+    await waitFor(()=>expect(follow).toHaveBeenLastCalledWith('player',false));
+    expect(await screen.findByRole('button',{name:'Стать болельщиком'})).toBeTruthy();
     expect(screen.queryByRole('button',{name:'Рейтинг болельщиков'})).toBeNull();
   });
   it('requires confirmation before removing a fan and keeps the list on cancel',async()=>{

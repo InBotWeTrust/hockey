@@ -10,6 +10,7 @@ export interface FanHistoryItem extends SocialUser { userId: string; action: 'fo
 export interface ActivityParticipant { userId: string; goals?: number; shots?: number; score?: number; durationMs?: number; points?: number; side?: string; outcome?:'win'|'loss'|'draw' }
 export type ActivityKind = 'daily'|'training'|'initial_course'|'advanced_course'|'achievement'|'regular'|'playoff'|'duel'|'bar_fight'|'bar_cards'|'membership';
 export interface ActivityEvent {
+ unread?:boolean;
  reactions?:Array<{emoji:string;count:number;reactedByMe:boolean}>;
  id: string; kind: ActivityKind; occurredAt: string; actors: SocialUser[];
  data: {
@@ -25,6 +26,8 @@ export interface ActivityEvent {
  };
 }
 export interface SocialApi {
+ feedUnread():Promise<FeedReadStatus>;
+ readFeed(input:{ids:string[]}|{through:string}):Promise<FeedReadStatus>;
  reactions(ids:string[]):Promise<Array<{id:string;reactions:NonNullable<ActivityEvent['reactions']>}>>;
  fanRating(cursor?:string):Promise<SocialPage<SocialUser&{count:number;place:number}>&{currentUser?:SocialUser&{count:number;place:number}|null}>;
  react(eventId:string,emoji:string,remove:boolean):Promise<ActivityEvent>;
@@ -41,7 +44,10 @@ export interface SocialApi {
  event(eventId:string):Promise<ActivityEvent>;
 }
 const query=(cursor?:string)=>cursor?`?cursor=${encodeURIComponent(cursor)}`:'';
+export interface FeedReadStatus { hasUnread:boolean; unreadCount:number; asOf:string }
 export const socialApi:SocialApi={
+ feedUnread:()=>apiFetch('/social/feed/unread'),
+ readFeed:input=>apiFetch('/social/feed/read',{method:'POST',body:JSON.stringify(input)}),
  reactions:ids=>apiFetch('/social/reactions',{method:'POST',body:JSON.stringify({ids})}),
  fanRating:cursor=>apiFetch(`/social/fans/rating${query(cursor)}`),
  react:(id,emoji,remove)=>apiFetch(`/social/events/${id}/reaction`,{method:remove?'DELETE':'PUT',body:JSON.stringify({emoji})}),

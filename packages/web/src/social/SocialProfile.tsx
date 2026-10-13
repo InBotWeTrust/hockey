@@ -29,14 +29,13 @@ export function SocialProfile({userId,profileContent,renderIdentity}:{userId:str
  }});
  const [params,setParams]=useSearchParams();
  const [open,setOpen]=useState<'fans'|'following'|'rating'|null>(null);
- const [unsubscribe,setUnsubscribe]=useState(false);
  const [pushTarget,setPushTarget]=useState<string|null>(null);
  const pushProfile=useQuery({queryKey:['social',viewerId,'push-profile',pushTarget],queryFn:()=>api.profile(pushTarget!),enabled:Boolean(pushTarget),retry:false});
  const summaryKey=['social',viewerId,'summary',userId];
  const summary=useQuery({queryKey:summaryKey,queryFn:()=>api.summary(userId),enabled:Boolean(viewerId&&userId)});
  const own=viewerId===userId;
  const mutation=useMutation({mutationFn:(following:boolean)=>api.follow(userId,following),onSuccess:(data:FanSummary)=>{
-  client.setQueryData(summaryKey,data);setUnsubscribe(false);
+  client.setQueryData(summaryKey,data);
   client.removeQueries({queryKey:['social',viewerId,'event']});
   void client.invalidateQueries({predicate:q=>q.queryKey[0]==='social'&&!(q.queryKey[2]==='summary'&&q.queryKey[3]===userId)});
  }});
@@ -55,10 +54,9 @@ export function SocialProfile({userId,profileContent,renderIdentity}:{userId:str
  return <section aria-label="Болельщики" style={{margin:'12px 0'}}>
   {renderIdentity?renderIdentity(counts):counts}
   {data?.canFollow&&<div className="profile-social-actions">
-   <button className={data.following?'btn btn--ghost':'btn btn--cta'} disabled={mutation.isPending} onClick={()=>data.following?setUnsubscribe(v=>!v):mutation.mutate(true)}>{mutation.isPending?'Подождите…':data.following?'Вы болельщик':'Стать болельщиком'}</button>
+   <button className={data.following?'btn btn--ghost':'btn btn--cta'} disabled={mutation.isPending} onClick={()=>mutation.mutate(!data.following)}>{mutation.isPending?'Подождите…':data.following?'Перестать болеть':'Стать болельщиком'}</button>
    <button className="btn btn--ghost" disabled={message.isPending} onClick={()=>message.mutate()}>{message.isPending?'Открываем…':'Написать'}</button>
   </div>}
-  {unsubscribe&&<button className="btn btn--ghost" disabled={mutation.isPending} onClick={()=>mutation.mutate(false)}>Перестать болеть</button>}
   {message.isError&&<p role="alert" className="modal-copy">Не удалось открыть личный чат. Попробуйте ещё раз.</p>}
   {profileContent!==undefined&&<div style={{marginTop:12}}>{profileContent}</div>}
   {mutation.isError&&<p role="alert" className="modal-copy">{mutation.error instanceof Error?mutation.error.message:'Не удалось изменить подписку'}</p>}
