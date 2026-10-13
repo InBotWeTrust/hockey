@@ -10,7 +10,7 @@ const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
 const resizeCallbacks = vi.hoisted(() => [] as Array<(scale: { factor: number; offsetX: number; offsetY: number }) => void>);
 const goalOffsets = vi.hoisted(() => [] as number[]);
 const playerPositions = vi.hoisted(() => [] as Array<number | undefined>);
-const resizePuck = vi.hoisted(() => ({ flying: false, resets: 0 }));
+const resizePuck = vi.hoisted(() => ({ flying: false, held: false, resets: 0 }));
 const tickerEvents = vi.hoisted(() => [] as Array<'add' | 'remove'>);
 const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
@@ -98,9 +98,9 @@ vi.mock('./renderer/Puck.js', () => ({
       return resizePuck.flying;
     }
     isHeld(): boolean {
-      return false;
+      return resizePuck.held;
     }
-    resetAtStart(): void { resizePuck.resets += 1; resizePuck.flying = false; }
+    resetAtStart(): void { resizePuck.resets += 1; resizePuck.flying = false; resizePuck.held = false; }
     bladePoint(shooterX: number): { x: number; y: number } {
       return { x: shooterX + 41, y: 580 };
     }
@@ -122,8 +122,8 @@ vi.mock('./renderer/Puck.js', () => ({
     ): void {
       puckOutcomePaths.push({ start, end, durationMs, ...(waypoint ? { waypoint } : {}) });
     }
-    holdAt(): void {}
-    release(): void {}
+    holdAt(): void { resizePuck.held = true; }
+    release(): void { resizePuck.held = false; }
     update(): void {}
     destroy(): void {}
   },
@@ -189,6 +189,7 @@ describe('PlayView', () => {
     goalOffsets.length = 0;
     playerPositions.length = 0;
     resizePuck.flying = false;
+    resizePuck.held = false;
     resizePuck.resets = 0;
     tickerEvents.length = 0;
     playerContainers.length = 0;
@@ -270,6 +271,33 @@ describe('PlayView', () => {
     expect(playerPositions.at(-1)).toBeCloseTo(playerX);
     expect(resizePuck.resets).toBe(resets);
     expect(resizePuck.flying).toBe(true);
+  });
+
+  it('preserves entity positions when the shot result notice resizes the rink', async () => {
+    vi.useFakeTimers();
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    render(<PlayView active suppressedByModal={false} showIceCar={false} onBack={vi.fn()}
+      seed="result-notice-resize" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+      goals={0} shots={0} speedOverrides={{ goalFreq: .45, goalieFreq: .5, shooterFreq: .65, puckSpeed: 1.2 }}
+      shotResolver={() => ({ type: 'goal', hitPoint: { x: 400, y: 190 } })}
+      optimisticAddShot={vi.fn()} submitShot={() => new Promise(() => undefined)} applyState={vi.fn()} />);
+    await act(async () => Promise.resolve());
+    now = 1456;
+    act(() => tickerCallbacks.at(-1)?.());
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    now = 1956;
+    await act(async () => vi.advanceTimersByTimeAsync(500));
+    expect(screen.getByRole('status')).toBeInTheDocument();
+    act(() => tickerCallbacks.at(-1)?.());
+    const goalOffset = goalOffsets.at(-1)!;
+    const playerX = playerPositions.at(-1)!;
+    expect(Math.abs(goalOffset)).toBeGreaterThan(1);
+    const resets = resizePuck.resets;
+    act(() => resizeCallbacks.at(-1)?.({ factor: .88, offsetX: 0, offsetY: 4 }));
+    expect(goalOffsets.at(-1)).toBeCloseTo(goalOffset);
+    expect(playerPositions.at(-1)).toBeCloseTo(playerX);
+    expect(resizePuck.resets).toBe(resets);
   });
 
   it('keeps the upright transparent goal asset scoped to the initial training course', () => {

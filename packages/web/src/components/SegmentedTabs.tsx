@@ -1,3 +1,5 @@
+import { HorizontalFilterRow } from './HorizontalFilterRow.js';
+
 export interface SegmentedTabItem<T extends string> {
   id: T;
   label: string;
@@ -26,8 +28,9 @@ export function SegmentedTabs<T extends string>({
     ? items.map((item) => `${Math.min(1.35, Math.max(0.78, item.label.length / 7))}fr`).join(' ')
     : `repeat(${items.length}, minmax(0, 1fr))`;
 
+  const Row = scrollable ? HorizontalFilterRow : 'div';
   return (
-    <div
+    <Row
       role="tablist"
       aria-label={ariaLabel}
       className={`segmented-tabs${isCompact ? ' segmented-tabs--compact' : ''}${scrollable ? ' segmented-tabs--scrollable' : ''}`}
@@ -63,6 +66,6 @@ export function SegmentedTabs<T extends string>({
           </button>
         );
       })}
-    </div>
+    </Row>
   );
 }
