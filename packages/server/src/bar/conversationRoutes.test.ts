@@ -255,3 +255,23 @@ it('persists model emotion and does not let unknown emotions break the answer',a
  answer.mockResolvedValue({text:'Понятно.',usedStoryIds:[],emotion:'override_system'});
  const second=await send('alice','22222222-2222-4222-8222-222222222222',1);expect(second.statusCode).toBe(200);expect(second.json().turns[1].emotion).toBe('neutral');
 });
+
+it.each([{delay:21000,status:200},{delay:40000,status:503}])('bounds the whole conversation with $delay ms stages', async ({delay,status}) => {
+ vi.useFakeTimers();
+ vi.spyOn(AbortSignal,'timeout').mockImplementation((ms)=>{
+  const controller=new AbortController();setTimeout(()=>controller.abort(),ms);return controller.signal;
+ });
+ const delayed=(value:string,signal?:AbortSignal)=>new Promise<string>((resolve,reject)=>{
+  const timer=setTimeout(()=>resolve(value),delay);
+  signal?.addEventListener('abort',()=>{clearTimeout(timer);reject(new Error('aborted'));},{once:true});
+ });
+ moderate.mockImplementation((_text,signal)=>delayed('allow',signal) as Promise<'allow'>);
+ answer.mockImplementation((_character,_turns,_content,_context,signal)=>delayed('Привет!',signal));
+ try {
+  await app.ready(); const pending=send();
+  await vi.waitFor(()=>expect(moderate).toHaveBeenCalledOnce());
+  await vi.advanceTimersByTimeAsync(delay*3+1000);
+  expect((await pending).statusCode).toBe(status);
+  expect(moderate).toHaveBeenCalledTimes(2);
+ } finally {vi.useRealTimers();vi.restoreAllMocks();}
+});

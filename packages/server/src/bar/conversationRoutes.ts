@@ -260,7 +260,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       let context: ConversationContext | undefined;
       try { context = await memory?.context(user,character,content,reserved.record.turns); }
       catch { app.log.warn({ code: 'bar_memory_context_failed' }, 'Conversation continues without memory'); }
-      const signal=AbortSignal.timeout(25000);
+      const signal=AbortSignal.timeout(105000);
       const assessmentPromise=conflicts&&!immediateDanger(content)?conflictDeadline(checkSignal=>conflicts.state(user).then(async current=>({current,verdict:await classify(character,reserved.record.turns,content,current.intervening,checkSignal)})),signal).catch(()=>{app.log.warn({code:'bar_conflict_check_failed'},'Conversation continues without conflict escalation');return null;}):Promise.resolve(null);
       const [incoming,assessment]=await Promise.all([immediateDanger(content)?Promise.resolve('crisis' as const):moderate(content,signal),assessmentPromise]);
       if(incoming==='unavailable' && requireModeration) throw new Error('moderation_unavailable');
