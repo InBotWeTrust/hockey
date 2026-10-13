@@ -118,13 +118,14 @@ describe('delayed scored duel clocks', () => {
 
 
 describe('Marathon continuous-period windows', () => {
-  it.each([4000,7000] as const)('resets %i ms after every shot result', (windowMs) => {
+  it.each([4000,7000] as const)('resets %i ms after goals and preserves remaining time after misses', (windowMs) => {
     for (const goal of [false,true]) {
       const input={durationMs:240000,windowMs,resetAfterShotPauseMs:1000,shots:[{startedMs:2000,flightMs:500,goal}]};
       const paused=project({...input,elapsedMs:2800});
-      expect(paused.windowEndsMs).toBe(3500+windowMs);
+      expect(paused.windowStartsMs).toBe(3500);
+      expect(paused.windowEndsMs).toBe(goal ? 3500+windowMs : windowMs+1000);
       expect(project({...input,elapsedMs:3400}).penalties).toBe(paused.penalties);
-      expect(project({...input,elapsedMs:3500}).windowEndsMs-3500).toBe(windowMs);
+      expect(project({...input,elapsedMs:3500}).windowEndsMs-3500).toBe(goal ? windowMs : windowMs-2500);
     }
   });
   it('keeps legacy goal-only reset unchanged', () => {

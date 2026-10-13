@@ -160,6 +160,7 @@ export interface AmateurDuelParticipant {
   average_goal_ms?: number | null;
   result_pause_starts_at?: string | null;
   result_pause_ends_at?: string | null;
+  marathon_window_started_at?: string | null;
   marathon_window_ends_at?: string | null;
   goals: number;
   accuracy: number;
