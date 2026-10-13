@@ -39,8 +39,8 @@ describe('bonus records', () => {
   });
   it('rewards improvements only and adds both awards', () => {
     expect(recordReward(false, false)).toEqual({ stars: 0, experience: 0 });
-    expect(recordReward(true, false)).toEqual({ stars: 2, experience: 10 });
-    expect(recordReward(false, true)).toEqual({ stars: 10, experience: 30 });
-    expect(recordReward(true, true)).toEqual({ stars: 12, experience: 40 });
+    expect(recordReward(true, false)).toEqual({ stars: 10, experience: 10 });
+    expect(recordReward(false, true)).toEqual({ stars: 30, experience: 30 });
+    expect(recordReward(true, true)).toEqual({ stars: 40, experience: 40 });
   });
 });

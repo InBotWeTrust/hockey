@@ -460,6 +460,8 @@ export function BonusResult({
   retrying: boolean;
   survivedTimeMs?: number;
 }): JSX.Element {
+  // Persisted results retain their original awards after the reward change.
+  const equalRecordRewards = attempt.record?.stars === attempt.record?.experience;
   const title = kind === 'completed' ? 'Игра пройдена' : 'Попытка завершена';
   const enduranceRules =
     attempt.rules.qualification_rules.type === 'survive_goal_windows'
@@ -625,8 +627,8 @@ export function BonusResult({
             <div className="bonus-game-result-reward-sources bonus-game-result-reward-breakdown">
               {[
                 ...(attempt.reward_granted ? [{ label: 'За прохождение', ...attempt.reward }] : []),
-                ...(attempt.record.personalImproved ? [{ label: 'Ты побил свой личный рекорд', coins: 0, stars: 2, experience: 10 }] : []),
-                ...(attempt.record.globalImproved ? [{ label: 'Ты показал лучший результат среди всех игроков', coins: 0, stars: 10, experience: 30 }] : []),
+                ...(attempt.record.personalImproved ? [{ label: 'Ты побил свой личный рекорд', coins: 0, stars: equalRecordRewards ? 10 : 2, experience: 10 }] : []),
+                ...(attempt.record.globalImproved ? [{ label: 'Ты показал лучший результат среди всех игроков', coins: 0, stars: equalRecordRewards ? 30 : 10, experience: 30 }] : []),
               ].map((source) => (
                 <div key={source.label}>
                   <span>{source.label === 'Ты показал лучший результат среди всех игроков' ? <>Ты показал лучший результат<br />среди всех игроков</> : source.label}</span>
