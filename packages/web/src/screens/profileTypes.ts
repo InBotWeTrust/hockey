@@ -72,6 +72,7 @@ export interface ProfileData {
   displaySource?: 'telegram' | 'vk' | 'custom';
   linkedProviders?: Array<'telegram' | 'vk'>;
   customDisplayName?: string | null;
+  bio?: string;
   customFirstName?: string | null;
   customLastName?: string | null;
   customAvatarUrl?: string | null;

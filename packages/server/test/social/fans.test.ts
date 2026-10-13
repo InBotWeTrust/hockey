@@ -28,6 +28,15 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     app = await buildApp({ config: { NODE_ENV:'test', HOST:'127.0.0.1', PORT:3000, LOG_LEVEL:'warn', DATABASE_URL:urls.databaseUrl, REDIS_URL:urls.redisUrl, JWT_SECRET:secret, REFRESH_SECRET:secret, TELEGRAM_BOT_TOKEN:'111:test', DAILY_SEED_SECRET:secret }, pushSchedulerEnabled:false, pushWorkerEnabled:false, tournamentLifecycleEnabled:false, monthlyRatingLifecycleEnabled:false, duelFightWorkerEnabled:false });
   });
   afterAll(async () => { await app?.close(); });
+  it('saves biography with the existing profile endpoint and keeps names on bio-only updates',async()=>{
+    const owner=await user('Settings owner');
+    const patch=(payload:unknown)=>app.inject({method:'PATCH',url:'/me',headers:{authorization:`Bearer ${owner.token}`},payload});
+    expect((await patch({customFirstName:'Иван',customLastName:'Петров',bio:' Хоккей '})).statusCode).toBe(200);
+    const result=await patch({bio:'🏒'.repeat(160)});
+    expect(result.statusCode).toBe(200);expect(result.json().bio).toBe('🏒'.repeat(160));expect(result.json().displayName).toBe('Иван Петров');
+    expect((await patch({bio:'🏒'.repeat(161)})).statusCode).toBe(400);
+    await patch({bio:''});expect((await request(owner,'GET',`/users/${owner.id}/bio`)).json().bio).toBe('');
+  });
 
   it('orders equal follower counts by registration and returns the viewer rank',async()=>{
     const older=await user('Older'),newer=await user('Newer');

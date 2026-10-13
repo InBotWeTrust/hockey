@@ -58,7 +58,8 @@ const EXPECTED_REWARDS: Record<string, ExpectedReward> = {
 
 describe('achievement economy catalog', () => {
   it('includes all seven fan milestones with equal rewards totaling 500 and versioned artwork',()=>{
-    const fans=ACHIEVEMENT_SEEDS.filter(a=>a.category==='fans');
+    const fans=ACHIEVEMENT_SEEDS.filter(a=>a.id.startsWith('fans-'));
+    expect(fans.every(a=>a.category==='career')).toBe(true);
     expect(fans.map(a=>a.id)).toEqual(['fans-1','fans-10','fans-20','fans-50','fans-100','fans-500','fans-1000']);
     expect(fans.reduce((total,a)=>total+a.rewardStars,0)).toBe(500);
     expect(fans.every(a=>a.rewardStars===a.rewardExperience&&a.rewardCurrency===0&&a.rewardTokens===0&&a.photoUrl.endsWith('?v=20261013'))).toBe(true);

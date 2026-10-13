@@ -857,9 +857,6 @@ export function ProfileScreen(): JSX.Element {
               )}
             </div>
             <div className="profile-identity__copy">
-              <span className="profile-identity__level">
-                {getLevelLabel(profile.competitionLevel)}
-              </span>
               {counts}
             </div>
             <button
@@ -876,7 +873,7 @@ export function ProfileScreen(): JSX.Element {
               />
             </button>
           </div>
-          <span className="profile-identity__name public-profile-centered-name" title={profile.displayName}>{profile.displayName}</span>
+          <span className="profile-identity__name public-profile-name-status"><span className="public-profile-name-text" title={profile.displayName}>{profile.displayName}</span><span className="profile-identity__level public-profile-status">{getLevelLabel(profile.competitionLevel)}</span></span>
           <ProfileBio userId={profile.id}/>
           </div>}/>
           <div className="profile-balances" aria-label="Баланс игрока">
@@ -963,7 +960,6 @@ export function ProfileScreen(): JSX.Element {
         </AccessibleModal>
       ) : null}
 
-      <ProfileBio userId={profile.id} editor/>
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
         <EquipmentPanel
           inventory={inventoryQuery.data}

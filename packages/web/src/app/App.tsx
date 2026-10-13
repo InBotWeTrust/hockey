@@ -278,8 +278,15 @@ export function appSurfaceClassName(pathname: string): string {
   return 'app-shell--unified-glass';
 }
 
+export function appThemeColor(pathname:string,search=''):string {
+  return appBackdropClassName(pathname,search)===''?'#9cbfdf':'#08182b';
+}
+
 function AppExperience(): JSX.Element {
   const location = useLocation();
+  useEffect(()=>{
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',appThemeColor(location.pathname,location.search));
+  },[location.pathname,location.search]);
   const user = useAuthStore((s) => s.user);
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   useEffect(() => {

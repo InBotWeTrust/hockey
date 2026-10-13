@@ -20,6 +20,7 @@ interface MeRow {
   registration_provider: 'telegram' | 'vk' | null;
   registration_provider_id: string | null;
   display_name: string;
+  bio: string;
   avatar_url: string | null;
   role: 'player' | 'admin';
   grip: string;
@@ -60,7 +61,7 @@ export function buildStoryProfileFields(
 
 async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   const { rows } = await app.pg.query<MeRow>(
-    `select u.id, u.created_at, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
+    `select u.id, u.bio, u.created_at, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
             u.lifetime_shots_total, u.lifetime_goals_total, u.display_source,
             u.beginner_onboarding_completed,
             u.custom_display_name, u.custom_first_name, u.custom_last_name, u.custom_avatar_url,
@@ -119,6 +120,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     registeredAt: row.created_at.toISOString(),
     social:await getFanSummary(app.pg,userId,userId),
     displayName: row.display_name,
+    bio: row.bio,
     ...(row.avatar_url !== null ? { avatarUrl: row.avatar_url } : {}),
     role: row.role,
     experimentalTrainingCourt,
@@ -208,6 +210,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
   app.patch('/me', { preHandler: [app.authenticate] }, async (req) => {
     const body = z
       .object({
+        bio: z.string().refine(value=>Array.from(value).length<=160).optional(),
         grip: z.enum(['right', 'left']).optional(),
         displaySource: z.enum(['telegram', 'vk', 'custom']).optional(),
         customFirstName: z.string().trim().min(1).max(60).optional(),
@@ -215,6 +218,7 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
       })
       .refine(
         (value) =>
+          value.bio !== undefined ||
           value.grip !== undefined ||
           value.displaySource !== undefined ||
           value.customFirstName !== undefined ||
@@ -224,6 +228,9 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     if (!body.success) {
       throw new AppError('bad_request', 'invalid body', 400);
     }
+
+    if ((body.data.customFirstName===undefined)!==(body.data.customLastName===undefined)) throw new AppError('bad_request','custom_profile_incomplete',400);
+    if (body.data.bio !== undefined && body.data.customFirstName===undefined) await app.pg.query('update users set bio=$1 where id=$2',[body.data.bio.trim(),req.user.id]);
 
     if (body.data.grip !== undefined) {
       await app.pg.query('update users set grip = $1 where id = $2', [body.data.grip, req.user.id]);
@@ -239,9 +246,10 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
             set display_source = 'custom',
                 custom_first_name = $1,
                 custom_last_name = $2,
-                custom_display_name = $3
+                custom_display_name = $3,
+                bio = coalesce($5,bio)
           where id = $4`,
-        [body.data.customFirstName, body.data.customLastName, customDisplayName, req.user.id],
+        [body.data.customFirstName, body.data.customLastName, customDisplayName, req.user.id,body.data.bio?.trim()??null],
       );
       await recomputeEffectiveProfile(app.pg, req.user.id);
       return getMe(app, req.user.id);

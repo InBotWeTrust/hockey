@@ -25,15 +25,38 @@
   cursor: pointer;
 }
 .profile-social-count strong { color: var(--ink); }
+:root:not([data-theme='light']) :is(.profile-social-count strong, .profile-balance__value, .profile-sporting-metrics__item strong, .profile-trophy-showcase__item strong, .public-profile-experience) {
+  text-shadow: 0 2px 9px rgba(3, 12, 24, 0.78);
+}
+:root:not([data-theme='light']) :is(.profile-balance__amount svg, .profile-trophy-showcase__item svg, .public-profile-experience svg) {
+  filter: drop-shadow(0 2px 5px rgba(3, 12, 24, 0.78));
+}
+:root[data-theme='light'] :is(.profile-passport, .public-profile-passport) * {
+  text-shadow: none !important;
+}
+:root[data-theme='light'] :is(.profile-passport, .public-profile-passport) svg {
+  filter: none !important;
+}
 .profile-social-separator { color: var(--muted); }
 .public-profile-centered-name { display: block; width: 100%; text-align: left; margin: 12px 0 0; max-width: 100%; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .sheet-card:has(.sheet-title-hidden) .public-profile-passport > section[aria-label='Болельщики'] { margin-top: 0 !important; }
-.sheet-card:has(.public-profile-centered-name) .modal-header:has(.sheet-title-hidden) .icon-btn { top: -14px; }
+.sheet-card:has(.public-profile-name-status) .modal-header:has(.sheet-title-hidden) .icon-btn { top: -14px; }
 .sheet-card:has(.sheet-title-hidden) .public-profile-social-identity { padding-top: 6px; }
 .public-profile-social-identity { display: block; }
-.public-profile-social-identity .profile-social-counts { flex-direction: column; align-items: flex-start; gap: 4px; margin: 6px 0 0; }
+.public-profile-social-identity .profile-social-counts { flex-direction: column; align-items: flex-start; gap: 4px; margin: 0; }
 .public-profile-social-identity .profile-social-separator { display: none; }
-.public-profile-social-identity .profile-social-count { font-size: 12px; }
+.public-profile-social-identity .profile-social-count { font-size: 14px; }
+.public-profile-social-identity .profile-social-count strong { color: #fff; font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.public-profile-name-status { display: flex; align-items: baseline; gap: .25em; width: 100%; margin-top: 12px; line-height: 1.2; }
+.public-profile-name-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.profile-identity__name .public-profile-status { flex: 0 0 auto; color: rgba(230, 242, 250, 0.74); font-size: 8px; line-height: 1.12; font-weight: 850; letter-spacing: 0.025em; text-transform: uppercase; }
+.profile-passport__top > section[aria-label='Болельщики'] { margin: 0 !important; }
+.profile-passport__top { gap: 8px; }
+.profile-bio-field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.profile-bio-field textarea { font: inherit; font-size: 14px; font-weight: 400; line-height: 1.45; color: var(--muted); padding: 11px 12px; border: 1px solid rgba(100,116,139,.24); border-radius: 13px; background: var(--liquid-card-bg); resize: vertical; }
+.profile-bio-field small { color: var(--muted); }
+.chat-list-switcher { padding: calc(10px + var(--app-safe-top)) 14px 0; }
+.chat-feed-content { padding: 0 14px; }
 .profile-social-count:focus-visible { outline: auto; outline-offset: 4px; }
 .profile-social-actions { display: flex; align-items: stretch; gap: 8px; margin-top: 12px; }
 .public-profile-passport .profile-social-actions { margin-top: 8px; }
