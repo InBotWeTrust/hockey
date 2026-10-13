@@ -1,5 +1,5 @@
 import { finishAmateurDuelPeriod } from '../api/amateurDuel.js';
-import { EnduranceTimer } from '../components/EnduranceTimer.js';
+import { EnduranceTimer, enduranceTimerTone } from '../components/EnduranceTimer.js';
 import { marathonWindowEndAtShot, marathonWindowRemainingMs } from '../components/duel/marathonClock.js';
 import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
 import { formatRecordDuration } from '../lib/recordDuration.js';
@@ -6167,6 +6167,7 @@ export function AmateurDuelPlayView({
         resumeAtMs: Date.parse(localShotClock.endsAt),
         previousEndsAtMs: localShotClock.previousWindowEndsAt,
         pending: localPausePending,
+        goal: localShotClock.goal,
       } : null,
     })
     : Math.min(windowMs, Math.max(0, localPausePending && localShotClock.goal && fightNow >= resultPauseStart
@@ -6502,14 +6503,17 @@ export function AmateurDuelPlayView({
             const previousWindowEndsAt = continuousScoredPeriod
               ? marathonWindowEndAtShot(Date.parse(match.me.marathon_window_ends_at ?? match.server_now), shotStartedAt, windowMs)
               : Date.parse(match.me.marathon_window_ends_at ?? match.server_now);
-            marathonFrozenMsRef.current = Math.min(windowMs, Math.max(0, previousWindowEndsAt - startsAt));
+            const frozenWindowEndsAt = continuousScoredPeriod && context.result.type !== 'goal' && startsAt >= previousWindowEndsAt
+              ? previousWindowEndsAt + (Math.floor((startsAt - previousWindowEndsAt) / windowMs) + 1) * windowMs
+              : previousWindowEndsAt;
+            marathonFrozenMsRef.current = Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt));
             setLocalShotClock({startsAt: new Date(startsAt).toISOString(),
               endsAt: new Date(startsAt + 1000).toISOString(),
               previousEndsAt: match.me.result_pause_ends_at ?? null,
               goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + periodClockDelta() + flightMs,
               goal: context.result.type === 'goal',
               previousWindowEndsAt,
-              frozenWindowMs: Math.min(windowMs, Math.max(0, previousWindowEndsAt - startsAt))});
+              frozenWindowMs: Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt))});
             return null;
           }}
           submitShot={async (args) => {
@@ -6542,7 +6546,7 @@ export function AmateurDuelPlayView({
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
           scoreboardAccessory={match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
-            <EnduranceTimer windowMs={windowMs} remainingMs={marathonRemainingMs} tone={marathonRemainingMs <= 1000 ? 'danger' : 'warning'} />
+            <EnduranceTimer windowMs={windowMs} remainingMs={marathonRemainingMs} tone={enduranceTimerTone(marathonRemainingMs)} />
           ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
             <MarksmanshipScoreNotice parts={sniperScoreParts} scoring={match.rules.sniperScoring} />
           ) : undefined}

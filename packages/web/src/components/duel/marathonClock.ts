@@ -6,7 +6,7 @@ export interface MarathonWindowClockInput {
   startsAtMs: number;
   endsAtMs: number;
   frozenRemainingMs: number | null;
-  shot: { contactAtMs: number; resumeAtMs: number; previousEndsAtMs: number; pending: boolean } | null;
+  shot: { contactAtMs: number; resumeAtMs: number; previousEndsAtMs: number; pending: boolean; goal: boolean } | null;
 }
 
 /** Catch up timeout windows before freezing a shot based on an older poll. */
@@ -27,7 +27,14 @@ export function marathonWindowRemainingMs(input: MarathonWindowClockInput): numb
   let endsAtMs = input.endsAtMs;
   if (shot?.pending) {
     startsAtMs = shot.resumeAtMs;
-    endsAtMs = startsAtMs + windowMs;
+    if (shot.goal) endsAtMs = startsAtMs + windowMs;
+    else {
+      endsAtMs = shot.previousEndsAtMs;
+      if (shot.contactAtMs >= endsAtMs) {
+        endsAtMs += (Math.floor((shot.contactAtMs - endsAtMs) / windowMs) + 1) * windowMs;
+      }
+      endsAtMs += shot.resumeAtMs - shot.contactAtMs;
+    }
   }
   // Polling latency must not leave a live rolling window visibly stuck at zero.
   // The server alone records penalties; this only projects the next window.

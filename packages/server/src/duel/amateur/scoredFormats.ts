@@ -23,6 +23,7 @@ export function projectMarathon(input: {
   let score = 0,
     goals = 0,
     penalties = 0,
+    windowStartsMs = 0,
     windowEndsMs = input.windowMs as number;
   let lastContactMs: number | null = null;
   const expire = (until: number, inclusive: boolean) => {
@@ -30,6 +31,7 @@ export function projectMarathon(input: {
     while (inclusive ? windowEndsMs <= bound : windowEndsMs < bound) {
       score = Math.max(0, score - 1);
       penalties++;
+      windowStartsMs = windowEndsMs;
       windowEndsMs += input.windowMs;
     }
   };
@@ -42,17 +44,19 @@ export function projectMarathon(input: {
     if (shot.goal) {
       score++;
       goals++;
-      windowEndsMs = shot.startedMs + shot.flightMs + input.windowMs;
+      windowStartsMs = shot.startedMs + shot.flightMs;
+      windowEndsMs = windowStartsMs + input.windowMs;
     }
     if (input.resetAfterShotPauseMs !== undefined) {
       lastContactMs = shot.startedMs + shot.flightMs;
-      windowEndsMs = lastContactMs + input.resetAfterShotPauseMs + input.windowMs;
+      windowStartsMs = lastContactMs + input.resetAfterShotPauseMs;
+      windowEndsMs += input.resetAfterShotPauseMs;
     }
   }
   const showingResult = input.resetAfterShotPauseMs !== undefined && lastContactMs !== null &&
     input.elapsedMs >= lastContactMs && input.elapsedMs < lastContactMs + input.resetAfterShotPauseMs;
   if (!showingResult) expire(input.elapsedMs, true);
-  return { score, goals, penalties, windowStartsMs: windowEndsMs - input.windowMs, windowEndsMs };
+  return { score, goals, penalties, windowStartsMs, windowEndsMs };
 }
 export function compareScoredDuel(input: {
   kind: 'sniper' | 'marathon';

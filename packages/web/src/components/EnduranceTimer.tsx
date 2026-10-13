@@ -1,3 +1,7 @@
+export function enduranceTimerTone(remainingMs: number): 'danger' | 'warning' | 'success' {
+  return remainingMs <= 4000 ? 'danger' : remainingMs <= 10000 ? 'warning' : 'success';
+}
+
 export function EnduranceTimer({ remainingMs, tone, windowMs }: {
   remainingMs: number;
   windowMs?: number;
