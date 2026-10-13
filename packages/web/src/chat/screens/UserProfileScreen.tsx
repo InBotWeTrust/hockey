@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { SocialProfile } from '../../social/SocialProfile.js';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
@@ -170,6 +171,7 @@ export function UserProfileScreen(): JSX.Element {
 
       {data && (
         <>
+          <SocialProfile userId={userId}/>
           <div
             className="glass"
             style={{

@@ -27,6 +27,7 @@ export interface PushPreferences {
   duelEvents: boolean;
   tournamentEvents: boolean;
   gameNews: boolean;
+  newFans?: boolean;
 }
 
 export type PushPreferencesPatch = Partial<PushPreferences>;

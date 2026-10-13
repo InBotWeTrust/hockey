@@ -1,4 +1,5 @@
 import Fastify from 'fastify';
+import { socialRoutes } from './social/routes.js';
 import { healthRoutes } from './routes/health.js';
 import { loadConfig, resolveBonusDailyAttemptLimit, type AppConfig } from './config.js';
 import { dbPlugin } from './plugins/db.js';
@@ -195,6 +196,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     mediaAccessSecret: config.JWT_SECRET,
   });
   await app.register(achievementRoutes);
+  await app.register(socialRoutes);
   await app.register(feedbackRoutes, {
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });

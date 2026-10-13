@@ -13,6 +13,7 @@ export function shouldDismissSheet(offsetY: number, velocityY: number): boolean 
 export interface SheetProps {
   open: boolean;
   title: string;
+  hideTitle?: boolean;
   children: ReactNode;
   onRequestClose: (reason: DismissReason) => void;
   dismissible?: boolean;
@@ -27,6 +28,7 @@ export interface SheetProps {
 export function Sheet({
   open,
   title,
+  hideTitle = false,
   children,
   onRequestClose,
   dismissible = true,
@@ -57,7 +59,7 @@ export function Sheet({
   return (
     <AccessibleModal
       open={open}
-      title={title}
+      title={hideTitle ? <span className="sheet-title-hidden">{title}</span> : title}
       presentation="sheet"
       {...(backdropTestId === undefined ? {} : { backdropTestId })}
       {...(headerAction === undefined ? {} : { headerAction })}

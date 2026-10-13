@@ -70,6 +70,7 @@ const preferencesPatchSchema = z
     trainingAvailable: z.boolean().optional(),
     duelEvents: z.boolean().optional(),
     gameNews: z.boolean().optional(),
+    newFans: z.boolean().optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'no changes');
@@ -157,6 +158,7 @@ export const pushRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, opts
     if (body.data.gameNews !== undefined) {
       patch.gameNews = body.data.gameNews;
     }
+    if (body.data.newFans !== undefined) patch.newFans = body.data.newFans;
     return savePushPreferences(app.pg, req.user.id, patch);
   });
 

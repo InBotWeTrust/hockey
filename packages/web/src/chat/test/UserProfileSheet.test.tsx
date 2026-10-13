@@ -270,7 +270,7 @@ describe('UserProfileSheet', () => {
       onClose: () => {},
     });
     expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
     expect(screen.getByText('Шайбы')).toBeInTheDocument();
     expect(screen.getByText('64')).toBeInTheDocument();
@@ -286,16 +286,16 @@ describe('UserProfileSheet', () => {
     expect(
       screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number'),
     ).toHaveLength(4);
-    expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
+    expect(screen.getByText('Любитель')).toHaveClass('public-profile-status');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
-    const identity = screen.getByText('Иван Петров').closest('.profile-identity__main');
+    const identity = screen.getByText('Иван Петров').closest('.public-profile-social-identity')?.querySelector('.profile-identity__main');
     expect(identity).toHaveClass('public-profile-identity');
     expect(identity?.querySelector('[aria-hidden="true"]')).toHaveStyle({
       width: '80px',
       height: '80px',
     });
     expect(identity?.querySelector('.public-profile-experience')).toBeInTheDocument();
-    expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-identity__name');
+    expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-name-text');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
       'sheet-drag-handle',
@@ -519,16 +519,9 @@ describe('UserProfileSheet', () => {
     expect(screen.queryByText(/Задания/)).not.toBeInTheDocument();
   });
 
-  it('clicking "Написать в личку" calls findOrCreateDM and closes the sheet', async () => {
-    const onClose = vi.fn();
-    const { qc } = await renderSheet({
-      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null },
-      onClose,
-    });
-    fireEvent.click(screen.getByRole('button', { name: /написать в личку/i }));
-    await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith('u1'));
-    await waitFor(() => expect(onClose).toHaveBeenCalled());
-    await waitFor(() => expect(qc.isMutating()).toBe(0));
+  it('does not duplicate the message action below the profile',async()=>{
+    await renderSheet({sender:{userId:'u1',displayName:'Иван',avatarUrl:null},onClose:()=>{}});
+    expect(screen.queryByRole('button',{name:/написать в личку/i})).not.toBeInTheDocument();
   });
 
   it('does not show duel action when current user is a beginner', async () => {
@@ -562,7 +555,7 @@ describe('UserProfileSheet', () => {
     await waitFor(() => expect(qc.isFetching()).toBe(0));
     await waitFor(() => expect(qc.isMutating()).toBe(0));
     expect(screen.queryByRole('button', { name: /вызвать на дуэль/i })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
   });
 
   it('does not show a DM action when the sheet is opened for myself', async () => {

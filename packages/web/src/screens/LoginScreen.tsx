@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
+import { loginDestination } from '../auth/loginDestination.js';
 import { TelegramLoginButton, type TelegramAuthPayload } from '../auth/TelegramLoginButton.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import { useAuthStore, type AuthSession } from '../auth/authStore.js';
@@ -24,6 +25,7 @@ function isKeyboardSizedViewport(): boolean {
 }
 
 export function LoginScreen(): JSX.Element {
+  const destination=loginDestination(useLocation().state?.from);
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
   const accessToken = useAuthStore((s) => s.accessToken);
@@ -61,15 +63,15 @@ export function LoginScreen(): JSX.Element {
     onSuccess: (session) => {
       setSession(session);
       clearPendingReferralCode();
-      navigate('/', { replace: true });
+      navigate(destination, { replace: true });
     },
   });
 
   useEffect(() => {
     if (miniAppAuth.isTelegramMiniApp && accessToken) {
-      navigate('/', { replace: true });
+      navigate(destination, { replace: true });
     }
-  }, [accessToken, miniAppAuth.isTelegramMiniApp, navigate]);
+  }, [accessToken, miniAppAuth.isTelegramMiniApp, navigate, destination]);
 
   useEffect(() => {
     if (!devCodeLoginEnabled) return;
@@ -133,7 +135,7 @@ export function LoginScreen(): JSX.Element {
         body: JSON.stringify({ code: normalized, timezone: detectTimezone() }),
       });
       setSession(session);
-      navigate('/', { replace: true });
+      navigate(destination, { replace: true });
     } catch (err) {
       setDevCodeError(
         err instanceof ApiError && err.status === 401
@@ -393,7 +395,7 @@ export function LoginScreen(): JSX.Element {
                     body: JSON.stringify({ timezone: detectTimezone() }),
                   });
                   setSession(session);
-                  navigate('/', { replace: true });
+                  navigate(destination, { replace: true });
                 } catch (err) {
                   // eslint-disable-next-line no-console
                   console.error('dev login failed', err);

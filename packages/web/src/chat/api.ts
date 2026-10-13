@@ -464,6 +464,7 @@ export interface ChatInfoDTO {
 }
 
 export interface UserPublicProfileDTO {
+  social?: {followersCount:number;followingCount:number;following:boolean;canFollow:boolean};
   id: string;
   displayName: string;
   avatarUrl: string | null;

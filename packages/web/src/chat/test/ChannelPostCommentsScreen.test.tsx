@@ -6,6 +6,7 @@ import { ChannelPostCommentsScreen } from '../screens/ChannelPostCommentsScreen.
 import type { ChannelPostCommentDTO, ChatMessageDTO } from '../api.js';
 import * as api from '../api.js';
 import { useAuthStore } from '../../auth/authStore.js';
+import { socialApi } from '../../social/api.js';
 
 const post: ChatMessageDTO = {
   id: 'post-1',
@@ -166,6 +167,7 @@ describe('ChannelPostCommentsScreen', () => {
   });
 
   it('opens author profile from a channel comment avatar', async () => {
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
     vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
@@ -190,6 +192,7 @@ describe('ChannelPostCommentsScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Аватар: Bob' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /написать в личку/i })).toBeNull();
   });
 });

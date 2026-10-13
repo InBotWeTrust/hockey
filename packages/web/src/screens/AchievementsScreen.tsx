@@ -43,6 +43,7 @@ type AchievementFilter =
   | 'duel'
   | 'tournament'
   | 'shop'
+  | 'fans'
   | 'future';
 type AchievementPageTab = 'achievements' | 'challenges';
 
@@ -480,7 +481,7 @@ function RewardChip({
   );
 }
 
-function AchievementCard({
+export function AchievementCard({
   achievement,
   onOpen,
   onClaim,

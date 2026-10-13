@@ -26,6 +26,7 @@ export function ProfileSettingsScreen(): JSX.Element {
   const [gripInfoOpen, setGripInfoOpen] = useState(false);
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [bio,setBio]=useState('');
   const [profileError, setProfileError] = useState<string | null>(null);
   const [pendingAvatar, setPendingAvatar] = useState<File | null>(null);
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
@@ -44,6 +45,7 @@ export function ProfileSettingsScreen(): JSX.Element {
   useEffect(() => {
     if (!data) return;
     setGrip(data.grip);
+    setBio(data.bio??'');
     setFirstName(data.customFirstName ?? data.tgFirstName ?? data.vkFirstName ?? '');
     setLastName(data.customLastName ?? data.tgLastName ?? data.vkLastName ?? '');
     updateUser({
@@ -54,6 +56,8 @@ export function ProfileSettingsScreen(): JSX.Element {
   }, [data, updateUser]);
 
   const applyProfile = (profile: ProfileData): void => {
+    setBio(profile.bio??'');
+    void queryClient.invalidateQueries({queryKey:['social']});
     queryClient.setQueryData<ProfileData>(['profile'], profile);
     void queryClient.invalidateQueries({ queryKey: chatKeys.all });
     setFirstName(profile.customFirstName ?? profile.tgFirstName ?? profile.vkFirstName ?? '');
@@ -75,12 +79,12 @@ export function ProfileSettingsScreen(): JSX.Element {
   const saveProfile = useMutation({
     mutationFn: async () => {
       let profile = data!;
-      if (profileNameChanged) {
+      if (profileNameChanged || bioChanged) {
         profile = await apiFetch<ProfileData>('/me', {
           method: 'PATCH',
           body: JSON.stringify({
-            customFirstName: firstName.trim(),
-            customLastName: lastName.trim(),
+            ...(profileNameChanged?{customFirstName:firstName.trim(),customLastName:lastName.trim()}:{}),
+            ...(bioChanged?{bio}:{}),
           }),
         });
       }
@@ -166,6 +170,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       : (data?.tgAvatarUrl ?? data?.avatarUrl ?? null);
   const accountId = data?.registrationProviderId ?? data?.id ?? '—';
   const accountIdLabel = registrationProvider === 'vk' ? 'VK ID' : 'TG ID';
+  const bioChanged=bio.trim()!==(data?.bio??'');
   const savedFirstName = data?.customFirstName ?? data?.tgFirstName ?? data?.vkFirstName ?? '';
   const savedLastName = data?.customLastName ?? data?.tgLastName ?? data?.vkLastName ?? '';
   const profileNameChanged =
@@ -287,6 +292,8 @@ export function ProfileSettingsScreen(): JSX.Element {
               </label>
             </div>
 
+            <label className="profile-bio-field"><span>О себе</span><textarea aria-label="О себе" value={bio} rows={3} onChange={e=>{if(Array.from(e.target.value).length<=160)setBio(e.target.value);}} aria-describedby="settings-bio-count"/><small id="settings-bio-count">{Array.from(bio).length} / 160</small></label>
+
             {profileError && (
               <div className="profile-customization-card__error">{profileError}</div>
             )}
@@ -298,7 +305,7 @@ export function ProfileSettingsScreen(): JSX.Element {
                 saveProfile.isPending ||
                 firstName.trim().length === 0 ||
                 lastName.trim().length === 0 ||
-                (!profileNameChanged && pendingAvatar === null)
+                (!profileNameChanged && !bioChanged && pendingAvatar === null)
               }
               onClick={() => saveProfile.mutate()}
             >

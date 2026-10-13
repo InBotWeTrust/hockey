@@ -29,6 +29,9 @@ import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import { NAV_HEIGHT } from '../../components/BottomNav.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { SegmentedTabs } from '../../components/SegmentedTabs.js';
+import { SocialFeed } from '../../social/SocialFeed.js';
+import { useFeedReadState } from '../../social/useFeedReadState.js';
 
 const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
 
@@ -43,6 +46,7 @@ function chatHaystack(chat: ChatDTO): string {
 export function ChatListScreen(): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const feedRead=useFeedReadState();
   const [searchParams, setSearchParams] = useSearchParams();
   const setActive = useChatStore((s) => s.setActive);
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
@@ -211,14 +215,15 @@ export function ChatListScreen(): JSX.Element {
 
   return (
     <main
-      className="screen"
+      className="screen chat-list-screen"
       style={{
         paddingBottom: 16,
       }}
     >
-      <div
-        className="chat-edge-top glass-edge-fade glass-edge-fade--top"
-        style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
+      <div className="chat-list-switcher"><SegmentedTabs ariaLabel="Раздел чата" activeTab={searchParams.get('view')==='feed'?'feed':'messenger'} items={[{id:'messenger',label:'Мессенджер'},{id:'feed',label:'Лента',attention:feedRead.status.data?.hasUnread??false}]} onChange={tab=>{const next=new URLSearchParams(searchParams);if(tab==='feed')next.set('view','feed');else next.delete('view');setSearchParams(next);}}/></div>
+      {searchParams.get('view')==='feed'?<div className="chat-feed-content"><SocialFeed/></div>:<><div
+        className="chat-edge-top"
+        style={{ paddingTop: 10 }}
       >
         <div
           className="chat-dock-header chat-dock-header--bare"
@@ -376,6 +381,7 @@ export function ChatListScreen(): JSX.Element {
           navigate(`/chat/${chatId}`);
         }}
       />
+      </>}
     </main>
   );
 }

@@ -35,6 +35,7 @@ const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: mo
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const FansDemoScreen=import.meta.env.DEV?lazy(()=>import('../social/FansDemoScreen.js').then(module=>({default:module.FansDemoScreen}))):null;
 const TournamentResultPreviewScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({
     default: module.TournamentResultPreviewScreen,
@@ -277,8 +278,16 @@ export function appSurfaceClassName(pathname: string): string {
   return 'app-shell--unified-glass';
 }
 
+export function appThemeColor(pathname:string,search=''):string {
+  const informationPage = ['/prices', '/terms', '/offer', '/privacy', '/personal-data-consent'].includes(pathname);
+  return !informationPage && appBackdropClassName(pathname,search)===''?'#9cbfdf':'#08182b';
+}
+
 function AppExperience(): JSX.Element {
   const location = useLocation();
+  useEffect(()=>{
+    document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',appThemeColor(location.pathname,location.search));
+  },[location.pathname,location.search]);
   const user = useAuthStore((s) => s.user);
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   useEffect(() => {
@@ -323,7 +332,7 @@ function AppExperience(): JSX.Element {
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
-        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
+        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
@@ -622,6 +631,7 @@ function AppFrame(): JSX.Element {
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
 
+  if (FansDemoScreen && location.pathname === '/dev/fans') return <Suspense fallback={<RouteLoading/>}><FansDemoScreen/></Suspense>;
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 
   return (

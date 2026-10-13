@@ -363,14 +363,16 @@ export function ProfileAchievementsSection({
 export function AchievementDetailsSheet({
   achievement,
   onClose,
+  title,
 }: {
   achievement: ProfileAchievement;
   onClose: () => void;
+  title?: string;
 }): JSX.Element {
   return (
     <AccessibleModal
       open
-      title={achievement.title}
+      title={title ?? achievement.title}
       onRequestClose={() => onClose()}
       cardClassName="achievement-details-modal achievement-details-modal--crisp"
       headerAction={

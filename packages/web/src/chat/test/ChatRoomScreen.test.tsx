@@ -4,6 +4,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
+import { socialApi } from '../../social/api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
@@ -486,6 +487,7 @@ describe('ChatRoomScreen', () => {
   });
 
   it('opens the direct counterpart profile from the header avatar or name', async () => {
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.mocked(api.fetchChatList).mockResolvedValue([
       {
         id: 'c1',
@@ -514,7 +516,8 @@ describe('ChatRoomScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть профиль игрока' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /написать в личку/i })).toBeNull();
   });
 
   it('opens the official card from its dialog header without a duplicate message action', async () => {
@@ -1262,10 +1265,12 @@ describe('ChatRoomScreen — profile preview', () => {
   });
 
   it('opens UserProfileSheet on author tap and navigates to DM after "Написать"', async () => {
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
+    vi.spyOn(api,'fetchUserProfile').mockResolvedValue({id:OTHER_ID,displayName:'Иван',avatarUrl:null,competitionLevel:'beginner',stats:{shots:0,goals:0,accuracy:0,playStreakDays:0,bestPlayStreakDays:0},achievements:[],createdAt:'2026-05-04T09:00:00Z',lastSeenAt:null});
     renderRoom('c1');
     const nameBtn = await screen.findByRole('button', { name: 'Профиль: Иван' });
     fireEvent.click(nameBtn);
-    const writeBtn = await screen.findByRole('button', { name: /написать в личку/i });
+    const writeBtn = await screen.findByRole('button', { name: 'Написать' });
     fireEvent.click(writeBtn);
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith(OTHER_ID));
   });
