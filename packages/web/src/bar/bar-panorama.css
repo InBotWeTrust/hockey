@@ -564,3 +564,14 @@
 .modal-card.bar-detail-card { box-shadow:inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter:none; -webkit-backdrop-filter:none; }
 /* Keep panorama viewport sizing when rendered inside the shared app shell. */
 .app-shell main.bar-space { position:fixed; inset:0; height:auto; }
+/* Identity content belongs to the dock surface in every theme and import order. */
+:root[data-theme] .app-shell main.bar-space .bar-bottom-chrome > section.bar-space__actions:not(.bar-space__actions--terminal),
+.app-shell main.bar-space .bar-bottom-chrome > section.bar-space__actions:not(.bar-space__actions--terminal) {
+ position:static; width:auto; margin:0; transform:none; border:0; border-radius:0; background:transparent; box-shadow:none; backdrop-filter:none; -webkit-backdrop-filter:none; overflow:visible;
+}
+.app-shell main.bar-space .bar-bottom-chrome { border-radius:26px; }
+.app-shell main.bar-space .bar-bottom-chrome .bar-avatar-dock { border-radius:0 0 26px 26px; }
+:root[data-theme='light'] .bar-bottom-chrome .bar-identity__name,
+:root[data-theme='light'] .bar-bottom-chrome .bar-identity__role { color:var(--liquid-ink); }
+/* Exposed safe-area pixels use the bar floor rather than the app's blue wallpaper. */
+html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-space) { background:#21160e; }
