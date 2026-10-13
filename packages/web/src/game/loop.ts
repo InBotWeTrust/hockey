@@ -35,7 +35,10 @@ export interface GameLoopClocks {
   shooterElapsedMs: number;
 }
 
+export interface SkidVisual { target: 'goal' | 'goalie' | 'player'; ageMs: number }
+
 export interface GameLoopOpts {
+  getMaxSceneTimeMs?: () => number | undefined;
   goalRenderer: Goal;
   goalieRenderer: Goalie;
   playerRenderer: Player;
@@ -55,7 +58,11 @@ export interface GameLoopOpts {
     reusable?: DuelPlayerCondition,
   ) => DuelPlayerCondition | null;
   onDuelConditionChange?: (condition: DuelPlayerCondition | null) => void;
-  getShooterMotionTime?: (sceneMs: number, pauses: readonly BonusChallengeShotPause[]) => number;
+  getSkidVisual?: (sceneMs: number) => SkidVisual | null;
+  onEntitiesRendered?: (sceneMs: number) => void;
+  onClockTick?: (sceneElapsedMs: number, shooterElapsedMs: number) => void;
+  getCourtMotionTime?: (target: 'goal' | 'goalie', sceneMs: number) => number;
+  getShooterMotionTime?: (sceneElapsedMs: number, pauses: readonly BonusChallengeShotPause[]) => number;
 }
 
 export interface GameLoop {
@@ -118,6 +125,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     return { sceneElapsedMs: elapsedMs, shooterElapsedMs: elapsedMs };
   };
   let renderNowMs = performance.now();
+  let lastRealNowMs = renderNowMs;
   const initial = initialClocks();
   let sceneStartMs = renderNowMs - initial.sceneElapsedMs;
   let shooterStartMs = renderNowMs - initial.shooterElapsedMs;
@@ -187,7 +195,11 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
 
   function advanceRenderClock(): number {
     const now = performance.now();
-    renderNowMs = now;
+    const realDelta = Math.max(0, now - lastRealNowMs);
+    lastRealNowMs = now;
+    const maxSceneTime = opts.getMaxSceneTimeMs?.();
+    const remaining = maxSceneTime === undefined ? Infinity : Math.max(0, maxSceneTime - sceneT(renderNowMs));
+    renderNowMs += Math.min(realDelta, remaining);
     return renderNowMs;
   }
 
@@ -276,7 +288,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       }
       frozenConditionShooterX = null;
     }
-    const goalState: GoalState = simulateGoal(activeCfg, tScene, o.goal);
+    opts.onClockTick?.(tScene, tShooter);
+    const goalState: GoalState = simulateGoal(activeCfg, opts.getCourtMotionTime?.('goal', tScene) ?? tScene, o.goal);
     const goalieSeed = opts.getSeed();
     const goalieShotIndex = opts.getShotIndex();
     if (
@@ -288,7 +301,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
       goalieSimulatorShotIndex = goalieShotIndex;
       goalieSimulator = createGoalieSimulator(activeCfg, goalieSeed, goalieShotIndex);
     }
-    const goalieState: GoalieState = goalieSimulator(tScene, o.goalie);
+    const goalieState: GoalieState = goalieSimulator(opts.getCourtMotionTime?.('goalie', tScene) ?? tScene, o.goalie);
     const shiftedShooterTWithOffset = rawShooterTWithOffset + shooterTimeShift;
     const motionTime = opts.getShooterMotionTime?.(tScene, shotPauses);
     const sx = motionTime !== undefined
@@ -306,13 +319,21 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     }
     const scale = opts.getScale();
 
-    opts.goalRenderer.update(scale, goalState.offsetX);
-    opts.goalieRenderer.update(goalieState, scale);
+    const goalOffsetX = goalState.offsetX;
+    const renderedGoalieState = goalieState;
+    const skid = opts.getSkidVisual?.(tScene) ?? null;
+    if (opts.getSkidVisual) {
+      opts.goalRenderer.setSlipRotation?.(skid?.target === 'goal' ? Math.sin(skid.ageMs / 38) * .14 : 0);
+      opts.goalieRenderer.setSlipPose?.(skid?.target === 'goalie');
+    }
+    opts.goalRenderer.update(scale, goalOffsetX);
+    opts.goalieRenderer.update(renderedGoalieState, scale);
     opts.playerRenderer.update(scale, sx, undefined, {
-      stumbling: condition?.stumbleActive === true,
+      stumbling: condition?.stumbleActive === true || skid?.target === 'player',
       resting: condition?.status === 'exhausted_stop',
     });
-    opts.hitboxRenderer?.update(scale, goalState.offsetX, goalieState);
+    opts.onEntitiesRendered?.(tScene);
+    opts.hitboxRenderer?.update(scale, goalOffsetX, renderedGoalieState);
 
     if (opts.puckRenderer.isHeld()) {
       opts.puckRenderer.update(now, scale);
@@ -343,6 +364,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
 
   const rebaseTime = (clocks: GameLoopClocks): void => {
     renderNowMs = performance.now();
+    lastRealNowMs = renderNowMs;
     sceneStartMs = renderNowMs - Math.max(0, clocks.sceneElapsedMs);
     shooterStartMs = renderNowMs - Math.max(0, clocks.shooterElapsedMs);
     shooterPausedTotal = 0;

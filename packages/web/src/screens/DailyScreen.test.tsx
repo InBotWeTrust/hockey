@@ -32,6 +32,7 @@ import {
   duelEquipmentEffectLabel,
   duelEventTiming,
   duelRinkPrimaryLabel,
+  duelExpiredPeriodPresentation,
   duelInventoryBadgeLabel,
   duelInventoryItemRemaining,
   duelScoreboardOpponent,
@@ -2812,6 +2813,60 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('article', { name: 'Тренировка: Тренировка' }),
     ).toBeInTheDocument();
+  });
+
+  it('shows the Marathon window on the active arena card', async () => {
+    localStorage.setItem('hockey.arenaSelectedEntryId', 'training');
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      rules: { ...settledDuelMatch.rules, duelKind: 'marathon', marathonWindowMs: 4000 },
+      status: 'active',
+      outcome: null,
+      winner_user_id: null,
+      settled_at: null,
+      settled_reason: null,
+      starts_at: new Date(Date.now() - 60_000).toISOString(),
+      ends_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
+      server_now: new Date().toISOString(),
+      me: {
+        ...settledDuelMatch.me,
+        state: 'accepted',
+        current_period: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+      opponent: {
+        ...settledDuelMatch.opponent,
+        state: 'accepted',
+        current_period: 0,
+        shots_taken: 0,
+        goals: 0,
+      },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/duel/training/state')) {
+        return new Response(JSON.stringify(trainingIdleState), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      if (url.includes('/duel/amateur/events')) {
+        return new Response(JSON.stringify({ events: [activeMatch] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    });
+
+    renderWith(['/?view=arena']);
+
+    await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
+    expect(screen.getByText('Марафон · 4 сек')).toBeInTheDocument();
   });
 
   it('explains a safe-start lock on the arena card before T-60', async () => {
@@ -6701,6 +6756,42 @@ describe('DailyScreen', () => {
     });
   });
 
+  it('shows both Marathon variants inside the challenge dropdown', async () => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/templates') ? { templates: [...challengeTemplates, { ...challengeTemplates[0], id: 'marathon', title: 'Марафон', duel_kind: 'marathon', period_duration_ms: 240000, period_rules: [{ periodNumber: 1, mode: 'time_attack', durationMs: 240000, shotsLimit: null }] }] }
+        : url.includes('/matches') ? { matches: [] } : url.includes('/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    fireEvent.click(await screen.findByRole('tab', { name: 'Вызвать' }));
+    const select = await screen.findByRole('combobox', { name: 'Шаблон дуэли' });
+    fireEvent.click(select);
+    expect(await screen.findByRole('option', { name: /Марафон · 7 сек/ })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('option', { name: /Марафон · 4 сек/ }));
+    expect(select).toHaveTextContent('Марафон · 4 сек');
+    expect(screen.queryByRole('group', { name: 'Время на следующий гол' })).not.toBeInTheDocument();
+  });
+
+  it.each([{ windows: [4000] }, { windows: [7000] }, { windows: [7000, 4000] }])('searches the Marathon chip variants $windows independently', async ({ windows }) => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/templates') ? { templates: [] } : url.includes('/matches') ? { matches: [] }
+        : url.includes('/matchmaking/join') ? { ticket: { user_id: 'u1', duel_kinds: ['marathon'], expires_at: '2100-01-01T00:00:00Z' } }
+        : url.includes('/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=amateur&section=duels']);
+    for (const label of ['Экспресс', 'Микс', 'Классика']) fireEvent.click(await screen.findByRole('button', { name: label }));
+    for (const window of windows) fireEvent.click(await screen.findByRole('button', { name: `Марафон · ${window / 1000} сек` }));
+    expect(screen.getByText('Форматы поиска').style.transform).toBe('');
+    fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
+    await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['marathon'], marathon_windows_ms: windows });
+    });
+  });
+
   it('selects the first available duel format when opening the challenge flow', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
@@ -9163,5 +9254,31 @@ describe('duel ready rink presence', () => {
       playerReady: true,
       goalieReady: false,
     });
+  });
+});
+
+
+describe('duel pending period expiry presentation', () => {
+  it.each(['classic','express_plus'] as const)('keeps %s intermediate expiry on a break', (duelKind) => {
+    const now=Date.parse('2026-05-16T10:10:00.000Z');
+    const match:AmateurDuelMatchState={...settledDuelMatch,status:'active',server_now:new Date(now).toISOString(),
+      rules:{...settledDuelMatch.rules,duelKind,totalPeriods:duelKind==='classic'?3:2,breakDurationMs:300000},
+      me:{...settledDuelMatch.me,state:'period_active',current_period:1},
+      opponent:{...settledDuelMatch.opponent,state:'period_active',current_period:1}};
+    const pending=duelExpiredPeriodPresentation(match,now);
+    expect(duelRinkPrimaryLabel(pending,now)).toBe('Перерыв');
+    expect(duelEventTiming(pending,now)).toMatchObject({label:'Перерыв',value:'05:00'});
+    expect(pending.me.goals).toBe(match.me.goals);
+    expect(pending.opponent).toBe(match.opponent);
+    expect(match.me.state).toBe('period_active');
+  });
+  it.each(['express','express_plus','classic'] as const)('keeps %s final expiry waiting for its opponent', (duelKind) => {
+    const now=Date.parse('2026-05-16T10:10:00.000Z');
+    const totalPeriods=duelKind==='classic'?3:duelKind==='express_plus'?2:1;
+    const match:AmateurDuelMatchState={...settledDuelMatch,status:'active',server_now:new Date(now).toISOString(),
+      rules:{...settledDuelMatch.rules,duelKind,totalPeriods},
+      me:{...settledDuelMatch.me,state:'period_active',current_period:totalPeriods},
+      opponent:{...settledDuelMatch.opponent,state:'period_active',current_period:totalPeriods}};
+    expect(duelRinkPrimaryLabel(duelExpiredPeriodPresentation(match,now),now)).toBe('Ждём соперника');
   });
 });

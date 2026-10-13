@@ -1,3 +1,5 @@
+import { projectMarathon, restoreScoredSceneClocks, compareScoredDuel, type MarathonWindowMs } from './scoredFormats.js';
+import { getParticipantClock, getEffectivePeriodStart } from './clock.js';
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
@@ -20,10 +22,17 @@ import {
 import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   GAME_CORE_VERSION,
+  DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+  classifyMarksmanshipShot,
+  parseMarksmanshipScoringRules,
+  GOAL_OPENING,
+  PUCK_START,
+  type MarksmanshipScoringRules,
   SHOOTER_AMPLITUDE,
   STICK_NEUTRAL,
   getGoalie,
-  getDuelPlayerCondition,
+  getTimedDuelPlayerCondition,
+  type DuelTimedSpeedStage,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
@@ -138,7 +147,7 @@ async function duelFormatLocks(
 ): Promise<Partial<Record<DuelKind, GameplayLockDTO | null>>> {
   const templates = await fetchMatchmakingTemplates(
     client,
-    ['express', 'express_plus', 'classic'],
+    ['express', 'express_plus', 'classic', 'sniper', 'marathon'],
     now,
     false,
   );
@@ -203,7 +212,7 @@ type ParticipantState =
 type ParticipantSide = 'challenger' | 'opponent';
 type DuelDifficulty = 'easy' | 'medium' | 'hard';
 type DuelVariant = 'classic' | 'time_attack';
-type DuelKind = 'express' | 'express_plus' | 'classic';
+type DuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
 type DuelPeriodMode = 'quota' | 'time_attack';
 type DuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
 type DuelShotResult = 'goal' | 'save' | 'miss';
@@ -218,7 +227,7 @@ const DUEL_INTERMISSION_CONTINUE_GRACE_MS = 5 * 60_000;
 
 const uuid = z.string().uuid();
 const isoDate = z.string().datetime({ offset: true });
-const duelKindSchema = z.enum(['express', 'express_plus', 'classic']);
+const duelKindSchema = z.enum(['express', 'express_plus', 'classic', 'sniper', 'marathon']);
 const matchmakingVenuePolicySchema = z.enum([
   'neutral_default',
   'random_participant_home',
@@ -291,6 +300,8 @@ const shotBodySchema = z.object({
   shot_index: z.number().int().min(1),
   input: z.object({
     tapTime: z.number(),
+    periodTapTime: z.number().nonnegative().optional(),
+    resultPauseMs: z.union([z.literal(1), z.literal(1000)]).optional(),
     shooterTapTime: z.number().optional(),
     puckSpeedPerMs: z.number().optional(),
     shooterFrequency: z.number().optional(),
@@ -305,7 +316,9 @@ const createTemplateSchema = z.object({
   description: z.string().trim().max(1000).default(''),
   isActive: z.boolean().default(true),
   difficulty: z.enum(['easy', 'medium', 'hard']).default('hard'),
-  duelKind: z.enum(['express', 'express_plus', 'classic']).default('classic'),
+  duelKind: z.enum(['express', 'express_plus', 'classic', 'sniper', 'marathon']).default('classic'),
+  marathonWindowMs: z.union([z.literal(4000), z.literal(7000)]).optional(),
+  sniperScoring: z.unknown().optional(),
   duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
   rankedEnabled: z.boolean().default(true),
   matchmakingEnabled: z.boolean().default(true),
@@ -368,7 +381,9 @@ const duelHistoryQuerySchema = z.object({
 
 const duelRatingQuerySchema = z.object({
   season_key: seasonKeySchema.optional(),
-  scope: z.enum(['overall', 'express', 'express_plus', 'classic']).default('overall'),
+  scope: z
+    .enum(['overall', 'express', 'express_plus', 'classic', 'sniper', 'marathon'])
+    .default('overall'),
 });
 
 const duelHistoryCalendarQuerySchema = z.object({
@@ -378,7 +393,12 @@ const duelHistoryCalendarQuerySchema = z.object({
 const matchmakingJoinSchema = z
   .object({
     template_id: uuid.optional(),
-    duel_kinds: z.array(duelKindSchema).min(1).max(3).optional(),
+    duel_kinds: z.array(duelKindSchema).min(1).max(5).optional(),
+    marathon_windows_ms: z
+      .array(z.union([z.literal(4000), z.literal(7000)]))
+      .min(1)
+      .max(2)
+      .optional(),
   })
   .refine((value) => value.template_id !== undefined || value.duel_kinds !== undefined, {
     message: 'template_id or duel_kinds is required',
@@ -459,6 +479,11 @@ const activeLoadoutBodySchema = z.object({
   }),
 });
 
+const timedPlayerSpeedStagesSchema = z.array(z.object({
+  startsAtMs: z.number().int().nonnegative(),
+  shooterSpeedDelta: z.number().min(-3).max(0),
+})).max(2);
+
 interface DuelTemplateRow {
   id: string;
   title: string;
@@ -466,6 +491,9 @@ interface DuelTemplateRow {
   is_active: boolean;
   difficulty: DuelDifficulty;
   duel_kind: DuelKind;
+  marathon_window_ms?: MarathonWindowMs;
+  sniper_scoring_rules?: unknown;
+  marathon_speed_stages?: unknown;
   duel_variant: DuelVariant;
   ranked_enabled: boolean;
   matchmaking_enabled: boolean;
@@ -556,6 +584,13 @@ interface DuelPeriodRule {
 }
 
 interface DuelParticipantRow {
+  result_pause_stops_period: boolean;
+  result_paused_ms: number;
+  result_pause_starts_at: Date | null;
+  result_pause_ends_at: Date | null;
+  period_paused_ms: number;
+  period_paused_at: Date | null;
+  recovery_until: Date | null;
   match_id: string;
   user_id: string;
   side: ParticipantSide;
@@ -696,6 +731,11 @@ interface DuelRulesSnapshot {
   description: string;
   difficulty: DuelDifficulty;
   duelKind: DuelKind;
+  scoredClockVersion?: 2;
+  shotResultPauseMs?: 1000;
+  marathonWindowMs?: MarathonWindowMs;
+  marathonSpeedStages?: DuelTimedSpeedStage[];
+  sniperScoring?: MarksmanshipScoringRules;
   duelVariant: DuelVariant;
   rankedEnabled: boolean;
   matchmakingEnabled: boolean;
@@ -732,6 +772,18 @@ interface DuelRulesSnapshot {
 }
 
 interface DuelParticipantDTO {
+  last_shot_ends_ms?: number;
+  scene_elapsed_ms?: number;
+  shooter_elapsed_ms?: number;
+  format_score?: number;
+  sniper_points?: number;
+  marathon_penalties?: number;
+  result_pause_starts_at?: string | null;
+  result_pause_ends_at?: string | null;
+  marathon_window_started_at?: string | null;
+  marathon_window_ends_at?: string | null;
+  average_goal_ms?: number | null;
+  clock?: ReturnType<typeof getParticipantClock>;
   user_id: string;
   display_name: string;
   avatar_url: string | null;
@@ -759,6 +811,7 @@ interface DuelParticipantDTO {
 }
 
 interface DuelMatchDTO {
+  state_revision?: number;
   duel_lock: GameplayLockDTO | null;
   gameplay_lock: GameplayLockDTO | null;
   id: string;
@@ -845,10 +898,15 @@ interface DuelMatchStateDTO extends DuelMatchDTO {
 }
 
 interface SubmitAmateurDuelShotResponse {
+  state_revision?: number;
+  awarded_points?: number;
+  server_now?: string;
+  period_started_at?: string | null;
+  period_ends_at?: string | null;
   match_id: string;
   server_result: DuelShotResult;
   confirmed_shot_index: number;
-  participant: {
+  participant: Partial<DuelParticipantDTO> & {
     state: ParticipantState;
     current_period: number;
     current_period_shots: number;
@@ -1259,14 +1317,15 @@ export function makeRulesSnapshot(
   if (!(startsAt < endsAt)) {
     throw new AppError('bad_request', 'duel template window is invalid', 400);
   }
-  const totalPeriods = Number(template.total_periods);
+  const scored = template.duel_kind === 'sniper' || template.duel_kind === 'marathon';
+  const totalPeriods = scored ? 1 : Number(template.total_periods);
   const presets = parsePeriodSpeedPresets(template.period_speed_presets);
   for (let period = 1; period <= totalPeriods; period += 1) {
     if (!presets.some((preset) => preset.periodNumber === period)) {
       throw new AppError('bad_request', `missing speed preset for period ${period}`, 400);
     }
   }
-  const periodRules = parseTemplatePeriodRules(template.period_rules, {
+  const periodRules = parseTemplatePeriodRules(scored ? null : template.period_rules, {
     duelKind: template.duel_kind,
     totalPeriods,
     shotsPerPeriod: Number(template.shots_per_period),
@@ -1278,6 +1337,20 @@ export function makeRulesSnapshot(
     description: template.description,
     difficulty: template.difficulty,
     duelKind: template.duel_kind,
+    ...(['sniper', 'marathon'].includes(template.duel_kind) ? { shotResultPauseMs: 1000 as const, scoredClockVersion: 2 as const } : {}),
+    ...(template.duel_kind === 'marathon'
+      ? { marathonWindowMs: template.marathon_window_ms ?? 7000,
+          ...(template.marathon_speed_stages == null ? {} : {
+            marathonSpeedStages: timedPlayerSpeedStagesSchema.parse(template.marathon_speed_stages),
+          }) }
+      : {}),
+    ...(template.duel_kind === 'sniper'
+      ? {
+          sniperScoring: parseMarksmanshipScoringRules(
+            template.sniper_scoring_rules ?? DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+          ),
+        }
+      : {}),
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,
     matchmakingEnabled: template.matchmaking_enabled,
@@ -1331,6 +1404,16 @@ function defaultPeriodRules({
   shotsPerPeriod: number;
   periodDurationMs: number;
 }): DuelPeriodRule[] {
+  if (duelKind === 'sniper' || duelKind === 'marathon') {
+    return [
+      {
+        periodNumber: 1,
+        mode: 'time_attack',
+        durationMs: duelKind === 'sniper' ? periodDurationMs : 240_000,
+        shotsLimit: null,
+      },
+    ];
+  }
   if (duelKind === 'express') {
     return [{ periodNumber: 1, mode: 'time_attack', durationMs: 180_000, shotsLimit: null }];
   }
@@ -1376,7 +1459,14 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       title: z.string(),
       description: z.string(),
       difficulty: z.enum(['easy', 'medium', 'hard']).default('hard'),
-      duelKind: z.enum(['express', 'express_plus', 'classic']).default('classic'),
+      duelKind: z
+        .enum(['express', 'express_plus', 'classic', 'sniper', 'marathon'])
+        .default('classic'),
+      scoredClockVersion: z.literal(2).optional(),
+      shotResultPauseMs: z.literal(1000).optional(),
+      marathonWindowMs: z.union([z.literal(4000), z.literal(7000)]).optional(),
+      sniperScoring: z.unknown().optional(),
+      marathonSpeedStages: timedPlayerSpeedStagesSchema.optional(),
       duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
       rankedEnabled: z.boolean().default(true),
       matchmakingEnabled: z.boolean().default(true),
@@ -1412,9 +1502,17 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
-  const { tournamentLoadoutLifecycleVersion, ...rules } = parsed.data;
+  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, marathonSpeedStages, shotResultPauseMs, scoredClockVersion, ...rules } =
+    parsed.data;
   return {
     ...rules,
+    ...(marathonWindowMs === undefined ? {} : { marathonWindowMs }),
+    ...(marathonSpeedStages === undefined ? {} : { marathonSpeedStages }),
+    ...(shotResultPauseMs === undefined ? {} : { shotResultPauseMs }),
+    ...(scoredClockVersion === undefined ? {} : { scoredClockVersion }),
+    ...(sniperScoring === undefined
+      ? {}
+      : { sniperScoring: parseMarksmanshipScoringRules(sniperScoring) }),
     ...(tournamentLoadoutLifecycleVersion === undefined
       ? {}
       : { tournamentLoadoutLifecycleVersion }),
@@ -1590,7 +1688,7 @@ async function fetchTemplate(client: PoolClient, templateId: string): Promise<Du
             matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
             period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
             ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
             stake_amount, entry_fee_amount, required_inventory_item_id,
             inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
             win_star_reward, reward_rules, created_at, updated_at
@@ -2597,7 +2695,10 @@ async function fetchParticipants(
             reserved_inventory_charges, consumed_inventory_charges,
             inventory_effects_snapshot, inventory_report, result_points, experience_snapshot,
             tournament_loadout_period, tournament_loadout_version,
-            tournament_loadout_confirmed_at
+            tournament_loadout_confirmed_at, period_paused_ms, period_paused_at, recovery_until,
+            result_paused_ms, result_pause_starts_at, result_pause_ends_at,
+            coalesce((select (m.rules_snapshot->>'scoredClockVersion')::int <> 2
+              from amateur_duel_match m where m.id=match_id),true) as result_pause_stops_period
        from amateur_duel_participant
       where match_id = $1
       order by side`,
@@ -2662,7 +2763,7 @@ async function closeParticipantPeriod(
   reason: 'quota' | 'timeout' | 'window_end',
 ): Promise<boolean> {
   if (participant.period_started_at === null) return false;
-  const durationMs = Math.max(0, now.getTime() - participant.period_started_at.getTime());
+  const durationMs = getParticipantClock(participant, getDuelPeriodRule(rules, participant.current_period).durationMs, now.getTime()).periodElapsedMs;
   const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
   const inventoryReport = inventoryReportFromUnknown(participant.inventory_report);
   if (loadout.items.some((item) => item.resourceUnit !== 'period')) {
@@ -2677,7 +2778,7 @@ async function closeParticipantPeriod(
     if (!basePeriodSpeeds || !periodSpeeds) {
       throw new AppError('server_error', 'missing duel period speeds', 500);
     }
-    const condition = getDuelPlayerCondition({
+    const condition = getTimedDuelPlayerCondition({
       seed: (await fetchMatchForUpdate(client, participant.match_id)).match_seed,
       userId: participant.user_id,
       periodNumber: participant.current_period,
@@ -2692,7 +2793,7 @@ async function closeParticipantPeriod(
         participant.current_period,
         rules,
       ),
-    });
+    }, rules.marathonSpeedStages, durationMs);
     await consumeInventoryForShot(client, participant, loadout, inventoryReport, {
       skatesConsumed: condition.skatesConsumed,
       nutritionConsumed: condition.nutritionConsumed,
@@ -2725,6 +2826,24 @@ async function closeParticipantPeriod(
     ],
   );
 
+  const scored = await scoredParticipantFields(
+    client,
+    await fetchMatchForUpdate(client, participant.match_id),
+    participant,
+    rules,
+    now,
+  );
+  if (scored.format_score !== undefined)
+    await client.query(
+      'update amateur_duel_participant set format_score=$3,sniper_points=$4,marathon_penalties=$5 where match_id=$1 and user_id=$2',
+      [
+        participant.match_id,
+        participant.user_id,
+        Math.round(scored.format_score * (rules.duelKind === 'sniper' ? 10 : 1)),
+        scored.sniper_points ?? 0,
+        scored.marathon_penalties ?? 0,
+      ],
+    );
   const periodCompleted = reason === 'quota' || reason === 'timeout';
   const completedAllPeriods = periodCompleted && participant.current_period >= rules.totalPeriods;
   const nextState: ParticipantState = completedAllPeriods
@@ -2939,6 +3058,16 @@ async function settleMatchIfReady(
   if (tournamentAttemptOutcome !== null) {
     outcome = tournamentAttemptOutcome.outcome;
     winnerUserId = tournamentAttemptOutcome.winnerUserId;
+  } else if (aDone && bDone && (rules.duelKind === 'sniper' || rules.duelKind === 'marathon')) {
+    const aScore = await scoredParticipantFields(client, match, a, rules, now);
+    const bScore = await scoredParticipantFields(client, match, b, rules, now);
+    const comparison = compareScoredDuel({
+      kind: rules.duelKind,
+      a: { score: aScore.format_score ?? 0, goals: Number(a.goals), shots: Number(a.shots_taken) },
+      b: { score: bScore.format_score ?? 0, goals: Number(b.goals), shots: Number(b.shots_taken) },
+    });
+    outcome = comparison > 0 ? 'challenger_win' : comparison < 0 ? 'opponent_win' : 'draw';
+    winnerUserId = comparison > 0 ? a.user_id : comparison < 0 ? b.user_id : null;
   } else if (aDone && bDone) {
     if (a.goals > b.goals) {
       outcome = 'challenger_win';
@@ -3325,7 +3454,7 @@ async function fetchMatchmakingTemplates(
               matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
               win_star_reward, reward_rules, created_at, updated_at,
@@ -3341,7 +3470,7 @@ async function fetchMatchmakingTemplates(
              matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
              period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
              ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
              stake_amount, entry_fee_amount, required_inventory_item_id,
              inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
              win_star_reward, reward_rules, created_at, updated_at
@@ -3446,11 +3575,15 @@ async function reconcileParticipantTimers(
   const participants = await fetchParticipants(client, match.id);
   let changed = false;
   for (let participant of participants) {
-    if (participant.state === 'period_active' && participant.period_started_at !== null) {
+    if (participant.state === 'period_active' && participant.period_started_at !== null && participant.period_paused_at === null) {
       const periodRule = getDuelPeriodRule(rules, participant.current_period);
-      const timeoutAt = new Date(participant.period_started_at.getTime() + periodRule.durationMs);
+      const timeoutAt = new Date(participant.period_started_at.getTime() + Number(participant.period_paused_ms ?? 0) + (rules.scoredClockVersion === 2 ? 0 : Number(participant.result_paused_ms ?? 0)) + periodRule.durationMs);
       let closed = false;
-      if (now >= timeoutAt && timeoutAt <= match.ends_at) {
+      const lateShotGraceMs =
+        rules.duelKind === 'sniper' || rules.duelKind === 'marathon'
+          ? TAP_TIME_STALE_TOLERANCE_MS
+          : 0;
+      if (now.getTime() >= timeoutAt.getTime() + lateShotGraceMs && timeoutAt <= match.ends_at) {
         closed = await closeParticipantPeriod(client, participant, rules, timeoutAt, 'timeout');
       } else if (now >= match.ends_at) {
         closed = await closeParticipantPeriod(
@@ -3704,6 +3837,75 @@ async function participantWithTournamentLoadoutPreview(
   return { ...participant, loadout_snapshot: loadout };
 }
 
+async function scoredParticipantFields(
+  client: PoolClient,
+  match: DuelMatchRow,
+  participant: DuelParticipantRow,
+  rules: DuelRulesSnapshot,
+  now: Date,
+): Promise<Partial<DuelParticipantDTO>> {
+  if (rules.duelKind !== 'sniper' && rules.duelKind !== 'marathon') return {};
+  const shots = await client.query<{
+    input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number };
+    server_result: DuelShotResult;
+    awarded_points: number;
+  }>(
+    `select input_payload,server_result,awarded_points from shot_session
+       where mode='amateur_duel' and amateur_duel_match_id=$1 and user_id=$2
+       order by period_number,shot_index`,
+    [match.id, participant.user_id],
+  );
+  const lastInput=shots.rows.at(-1)?.input_payload;
+  const lastShotEndsMs=lastInput ? lastInput.tapTime+(PUCK_START.y-GOAL_OPENING.y)/lastInput.puckSpeedPerMs : 0;
+  const elapsedMs = participant.period_started_at === null
+    ? Number(participant.active_duration_ms)
+    : rules.shotResultPauseMs && participant.state !== 'period_active'
+      ? Number(participant.active_duration_ms)
+      : rules.shotResultPauseMs
+      ? getParticipantClock(participant, rules.periodRules[0]!.durationMs, now.getTime()).periodElapsedMs
+      : Math.max(0, now.getTime() - participant.period_started_at.getTime());
+  const lastFlightMs = lastInput ? (PUCK_START.y - GOAL_OPENING.y) / lastInput.puckSpeedPerMs : 0;
+  const clockFields = {
+    ...restoreScoredSceneClocks(elapsedMs, rules.shotResultPauseMs && rules.scoredClockVersion !== 2 && lastInput ? { ...lastInput, resultPauseMs: 0 } : lastInput, lastFlightMs),
+    ...(rules.shotResultPauseMs ? {
+      clock: getParticipantClock(participant, rules.periodRules[0]!.durationMs, now.getTime()),
+      result_pause_starts_at: participant.result_pause_starts_at?.toISOString() ?? null,
+      result_pause_ends_at: participant.result_pause_ends_at?.toISOString() ?? null,
+    } : {}),
+  };
+  if (rules.duelKind === 'sniper') {
+    const points = shots.rows.reduce((sum, shot) => sum + Number(shot.awarded_points), 0);
+    return { ...clockFields, format_score: points / 10, sniper_points: points, last_shot_ends_ms:lastShotEndsMs };
+  }
+  const durationMs = rules.periodRules[0]!.durationMs;
+
+  const projection = projectMarathon({
+    durationMs,
+    windowMs: rules.marathonWindowMs ?? 7000,
+    ...(rules.scoredClockVersion === 2 ? { resetAfterShotPauseMs: 1000 } : {}),
+    elapsedMs,
+    shots: shots.rows.map((shot) => ({
+      startedMs: Number(shot.input_payload.periodTapTime ?? shot.input_payload.tapTime),
+      flightMs: (PUCK_START.y - GOAL_OPENING.y) / Number(shot.input_payload.puckSpeedPerMs),
+      goal: shot.server_result === 'goal',
+    })),
+  });
+  return {
+    ...clockFields,
+    format_score: projection.score,
+    marathon_penalties: projection.penalties,
+    average_goal_ms: projection.goals > 0 ? durationMs / projection.goals : null,
+    marathon_window_started_at:
+      participant.period_started_at === null
+        ? null
+        : new Date((rules.shotResultPauseMs ? getEffectivePeriodStart(participant, now.getTime())! : participant.period_started_at).getTime() + projection.windowStartsMs).toISOString(),
+    marathon_window_ends_at:
+      participant.period_started_at === null
+        ? null
+        : new Date((rules.shotResultPauseMs ? getEffectivePeriodStart(participant, now.getTime())! : participant.period_started_at).getTime() + projection.windowEndsMs).toISOString(),
+  };
+}
+
 async function buildMatchDto(
   client: PoolClient,
   match: DuelMatchRow,
@@ -3731,7 +3933,7 @@ async function buildMatchDto(
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
       ? new Date(
-          me.period_started_at.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
+          getEffectivePeriodStart(me, now.getTime())!.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
         ).toISOString()
       : null;
   const breakEndsAt =
@@ -3835,18 +4037,24 @@ async function buildMatchDto(
     earned_reward: earnedReward,
     created_at: match.created_at.toISOString(),
     server_now: now.toISOString(),
-    period_started_at: me.period_started_at?.toISOString() ?? null,
+    period_started_at: getEffectivePeriodStart(me, now.getTime())?.toISOString() ?? null,
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
     rules,
-    me: participantDto(
-      meForDto,
-      match,
-      rules,
-      await fetchAvailableInventory(client, currentUserId),
-      meCurrentStats,
-    ),
-    opponent: participantDto(opponent, match, rules, [], opponentCurrentStats),
+    me: {
+      ...(await scoredParticipantFields(client, match, me, rules, now)),
+      ...participantDto(
+        meForDto,
+        match,
+        rules,
+        await fetchAvailableInventory(client, currentUserId),
+        meCurrentStats,
+      ),
+    },
+    opponent: {
+      ...participantDto(opponent, match, rules, [], opponentCurrentStats),
+      ...(await scoredParticipantFields(client, match, opponent, rules, now)),
+    },
   };
 }
 
@@ -3886,7 +4094,7 @@ async function buildMatchStateDto(
   const periodEndsAt =
     me.state === 'period_active' && me.period_started_at !== null
       ? new Date(
-          me.period_started_at.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
+          getEffectivePeriodStart(me, now.getTime())!.getTime() + getDuelPeriodRule(rules, me.current_period).durationMs,
         ).toISOString()
       : null;
   const breakEndsAt =
@@ -3897,14 +4105,15 @@ async function buildMatchStateDto(
   const opponentRecentPeriods = await fetchRecentPeriods(client, match.id, dto.opponent.user_id);
   return {
     ...dto,
-    me: participantDto(
-      meForDto,
-      match,
-      rules,
-      await fetchAvailableInventory(client, currentUserId),
-      me.state === 'period_active' ? currentStats : null,
-    ),
-    opponent: participantDto(opponent, match, rules, [], opponentCurrentStats),
+    state_revision: Number((await client.query<{state_revision: string}>('select state_revision from amateur_duel_match where id=$1', [match.id])).rows[0]!.state_revision),
+    me: {
+      ...participantDto(meForDto, match, rules, await fetchAvailableInventory(client, currentUserId), me.state === 'period_active' ? currentStats : null),
+      ...(await scoredParticipantFields(client, match, me, rules, now)),
+    },
+    opponent: {
+      ...participantDto(opponent, match, rules, [], opponentCurrentStats),
+      ...(await scoredParticipantFields(client, match, opponent, rules, now)),
+    },
     server_now: now.toISOString(),
     match_seed:
       match.status === 'invited' || match.status === 'ready_check' || match.status === 'expired'
@@ -3912,7 +4121,7 @@ async function buildMatchStateDto(
         : match.match_seed,
     current_period_shots: currentStats.shots,
     current_period_goals: currentStats.goals,
-    period_started_at: me.period_started_at?.toISOString() ?? null,
+    period_started_at: getEffectivePeriodStart(me, now.getTime())?.toISOString() ?? null,
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
     period_speed_presets: effectivePeriodSpeedPresets(
@@ -4036,19 +4245,21 @@ function formatDuelInviteTtl(ms: number): string {
 }
 
 function duelKindLabel(kind: DuelKind): string {
+  if (kind === 'sniper') return 'Снайпер';
+  if (kind === 'marathon') return 'Марафон';
   if (kind === 'express') return 'Экспресс';
   if (kind === 'express_plus') return 'Микс';
   return 'Классика';
 }
 
 function normalizeDuelKinds(kinds: DuelKind[]): DuelKind[] {
-  const allowedOrder: DuelKind[] = ['express', 'express_plus', 'classic'];
+  const allowedOrder: DuelKind[] = ['express', 'express_plus', 'classic', 'sniper', 'marathon'];
   const selected = new Set(kinds);
   return allowedOrder.filter((kind) => selected.has(kind));
 }
 
 function duelKindsFromUnknown(value: unknown, fallback: DuelKind[]): DuelKind[] {
-  const parsed = z.array(duelKindSchema).min(1).max(3).safeParse(value);
+  const parsed = z.array(duelKindSchema).min(1).max(5).safeParse(value);
   return parsed.success ? normalizeDuelKinds(parsed.data) : fallback;
 }
 
@@ -4063,7 +4274,7 @@ function buildDuelInviteMessage(
   return {
     content: [
       `${challengerName} вызывает вас на дуэль.`,
-      `Формат: ${duelKindLabel(rules.duelKind)}, ${rules.totalPeriods} период(а)`,
+      `Формат: ${duelKindLabel(rules.duelKind)}${rules.duelKind === 'marathon' ? ` · ${(rules.marathonWindowMs ?? 7000) / 1000} сек` : ''}, ${rules.totalPeriods} период(а)`,
       `Ответить: в течение ${formatDuelInviteTtl(rules.challengeTtlMs)}`,
     ].join('\n'),
     metadata: {
@@ -4183,6 +4394,7 @@ async function createOpenMatch(
     startsAt?: Date;
     endsAt?: Date;
     readyExpiresAt?: Date;
+    marathonWindowMs?: MarathonWindowMs;
     venue?: {
       policy: 'home_selected' | 'neutral_default';
       homeUserId: string | null;
@@ -4193,6 +4405,8 @@ async function createOpenMatch(
 ): Promise<{ match: DuelMatchRow; rules: DuelRulesSnapshot }> {
   const settings = await getGameSettings(client);
   const baseRules = makeRulesSnapshot(opts.template, settings);
+  if (baseRules.duelKind === 'marathon')
+    baseRules.marathonWindowMs = opts.marathonWindowMs ?? baseRules.marathonWindowMs ?? 7000;
   const rules: DuelRulesSnapshot =
     opts.source === 'tournament'
       ? {
@@ -4607,7 +4821,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                 matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                 period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                 ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+                ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
                 stake_amount, entry_fee_amount, required_inventory_item_id,
                 inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
                 win_star_reward, reward_rules, created_at, updated_at,
@@ -4619,7 +4833,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
               win_star_reward, reward_rules, created_at, updated_at
@@ -4683,7 +4897,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const now = new Date();
         const templates = await fetchMatchmakingTemplates(
           client,
-          ['express', 'express_plus', 'classic'],
+          ['express', 'express_plus', 'classic', 'sniper', 'marathon'],
           now,
           false,
         );
@@ -4714,7 +4928,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             player: 'self' | 'opponent' | null;
           }
         >;
-        for (const kind of ['express', 'express_plus', 'classic'] as const) {
+        for (const kind of ['express', 'express_plus', 'classic', 'sniper', 'marathon'] as const) {
           const duration = durations.get(kind) ?? 0;
           const selfLock = getSafeSegmentStartLockFromState(locks.get(req.user.id)!, now, duration);
           const opponentLock = getSafeSegmentStartLockFromState(
@@ -4768,10 +4982,18 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         kinds: z.string().optional(),
       })
       .parse(req.query);
-    const requestedKinds = query.kinds?.split(',') ?? ['express', 'express_plus', 'classic'];
+    const requestedKinds = query.kinds?.split(',') ?? [
+      'express',
+      'express_plus',
+      'classic',
+      'sniper',
+      'marathon',
+    ];
     if (
       requestedKinds.length === 0 ||
-      requestedKinds.some((kind) => !['express', 'express_plus', 'classic'].includes(kind))
+      requestedKinds.some(
+        (kind) => !['express', 'express_plus', 'classic', 'sniper', 'marathon'].includes(kind),
+      )
     ) {
       throw new AppError('validation_error', 'invalid duel kinds', 400);
     }
@@ -4799,7 +5021,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       };
       const templates = await fetchMatchmakingTemplates(
         client,
-        ['express', 'express_plus', 'classic'],
+        ['express', 'express_plus', 'classic', 'sniper', 'marathon'],
         now,
         false,
       );
@@ -4848,7 +5070,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         for (const row of available) {
           if (open.pairs.has([req.user.id, row.id].sort().join(':'))) continue;
           const formatLimits = Object.fromEntries(
-            (['express', 'express_plus', 'classic'] as const).map((kind) => {
+            (['express', 'express_plus', 'classic', 'sniper', 'marathon'] as const).map((kind) => {
               const self = selfCapacity[kind];
               const opponent = capacities.get(row.id)![kind];
               const result = pairAvailability(
@@ -4983,7 +5205,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         duelLock: await duelLockDto(client, req.user.id, new Date()),
         formatLocks: await duelFormatLocks(client, req.user.id, new Date()),
         formatLimits: Object.fromEntries(
-          (['express', 'express_plus', 'classic'] as const).map((kind) => {
+          (['express', 'express_plus', 'classic', 'sniper', 'marathon'] as const).map((kind) => {
             const capacity = formatCapacities[kind];
             return [
               kind,
@@ -5146,6 +5368,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       duel_kind: DuelKind;
       my_goals: number;
       opponent_goals: number;
+      my_score: number;
+      opponent_score: number;
+      marathon_window_ms: 4000 | 7000 | null;
       winner_user_id: string | null;
       outcome: DuelOutcome;
       source: AmateurDuelSource;
@@ -5162,6 +5387,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               m.duel_kind,
               me.goals as my_goals,
               opponent.goals as opponent_goals,
+              case when m.duel_kind='sniper' then me.sniper_points / 10.0 when m.duel_kind='marathon' then me.format_score else me.goals end as my_score,
+              case when m.duel_kind='sniper' then opponent.sniper_points / 10.0 when m.duel_kind='marathon' then opponent.format_score else opponent.goals end as opponent_score,
+              (m.rules_snapshot->>'marathonWindowMs')::int as marathon_window_ms,
               m.winner_user_id,
               m.outcome,
               m.source,
@@ -5214,6 +5442,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         duel_kind: row.duel_kind,
         my_goals: Number(row.my_goals),
         opponent_goals: Number(row.opponent_goals),
+        my_score: Number(row.my_score),
+        opponent_score: Number(row.opponent_score),
+        ...(row.duel_kind === 'marathon' ? { marathon_window_ms: row.marathon_window_ms ?? 7000 } : {}),
         venue_role: duelVenueRole(
           {
             source: row.source,
@@ -5323,7 +5554,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
   });
 
   app.post('/duel/amateur/challenge', { preHandler: [app.authenticate] }, async (req) => {
-    const body = z.object({ template_id: uuid, opponent_user_id: uuid }).safeParse(req.body);
+    const body = z
+      .object({
+        template_id: uuid,
+        opponent_user_id: uuid,
+        marathon_window_ms: z.union([z.literal(4000), z.literal(7000)]).optional(),
+      })
+      .safeParse(req.body);
     if (!body.success) throw new AppError('bad_request', 'invalid duel challenge payload', 400);
     const { template_id: templateId, opponent_user_id: opponentUserId } = body.data;
     if (opponentUserId === req.user.id) {
@@ -5367,6 +5604,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         opponentUserId,
         now,
         source: 'challenge',
+        ...(template.duel_kind === 'marathon'
+          ? { marathonWindowMs: body.data.marathon_window_ms ?? 7000 }
+          : {}),
       });
       await appendEvent(client, req.user.id, 'amateur_duel_challenge_created', {
         match_id: match.id,
@@ -5445,7 +5685,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         if (now >= template.ends_at) throw new AppError('conflict', 'duel window is closed', 409);
         const settings = await getGameSettings(client);
-        const rules = makeRulesSnapshot(template, settings, match.reward_rules);
+        const rules =
+          match.duel_kind === 'sniper' || match.duel_kind === 'marathon'
+            ? parseRulesSnapshot(match.rules_snapshot)
+            : makeRulesSnapshot(template, settings, match.reward_rules);
         await reserveDuelCapacity(
           client,
           match.id,
@@ -5934,6 +6177,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const templateFromLegacyPayload = body.data.template_id
         ? await fetchTemplate(client, body.data.template_id)
         : null;
+      const requestedWindows = body.data.marathon_windows_ms ?? [7000];
       const requestedKinds = normalizeDuelKinds(
         body.data.duel_kinds ??
           (templateFromLegacyPayload ? [templateFromLegacyPayload.duel_kind] : []),
@@ -5985,8 +6229,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           where status = 'queued' and expires_at <= $1`,
         [now],
       );
-      const existing = await client.query<{ id: string; expires_at: Date; duel_kinds: unknown }>(
-        `select id, expires_at, duel_kinds
+      const existing = await client.query<{
+        id: string;
+        expires_at: Date;
+        duel_kinds: unknown;
+        marathon_windows_ms: number[];
+      }>(
+        `select id, expires_at, duel_kinds, marathon_windows_ms
            from amateur_duel_matchmaking_ticket
           where user_id = $1 and status = 'queued'
           limit 1`,
@@ -5997,19 +6246,28 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           existing.rows[0].duel_kinds,
           eligibleKinds,
         ).filter((kind) => eligibleKinds.includes(kind));
-        if (existingKinds.length > 0)
+        if (
+          existingKinds.length > 0 &&
+          JSON.stringify(existing.rows[0].marathon_windows_ms) === JSON.stringify(requestedWindows)
+        )
           return {
             ticket: {
               id: existing.rows[0].id,
               status: 'queued',
               expires_at: existing.rows[0].expires_at.toISOString(),
               duel_kinds: existingKinds,
+              marathon_windows_ms: requestedWindows,
             },
           };
         await cancelLockedMatchmakingTicket(client, req.user.id);
       }
-      const opponent = await client.query<{ id: string; user_id: string; duel_kinds: unknown }>(
-        `select id, user_id, duel_kinds
+      const opponent = await client.query<{
+        id: string;
+        user_id: string;
+        duel_kinds: unknown;
+        marathon_windows_ms: number[];
+      }>(
+        `select id, user_id, duel_kinds, marathon_windows_ms
            from amateur_duel_matchmaking_ticket
           where user_id <> $1
             and status = 'queued'
@@ -6026,9 +6284,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       );
       let opponentTicket: (typeof opponent.rows)[number] | undefined;
       let matchedKind: DuelKind | undefined;
+      let matchedWindow: MarathonWindowMs = 7000;
       for (const ticket of opponent.rows) {
         if (playoffOpponents.has(ticket.user_id)) continue;
-        const opponentKinds = duelKindsFromUnknown(ticket.duel_kinds, requestedKinds);
+        const opponentKinds = duelKindsFromUnknown(ticket.duel_kinds, []);
         if (
           !eligibleKinds.some((kind) => opponentKinds.includes(kind) && templatesByKind.has(kind))
         )
@@ -6046,6 +6305,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         for (const kind of eligibleKinds) {
           if (!opponentKinds.includes(kind)) continue;
+          if (kind === 'marathon') {
+            const common = requestedWindows.find((window) =>
+              (ticket.marathon_windows_ms ?? [7000]).includes(window),
+            );
+            if (common === undefined) continue;
+            matchedWindow = common;
+          }
           if (
             (await duelCapacity(client, ticket.user_id, kind, settings.amateur.limits, now)).reason
           )
@@ -6087,10 +6353,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           expires_at: Date;
           duel_kinds: unknown;
         }>(
-          `insert into amateur_duel_matchmaking_ticket (template_id, user_id, expires_at, duel_kinds)
-           values ($1, $2, $3, $4)
+          `insert into amateur_duel_matchmaking_ticket (template_id, user_id, expires_at, duel_kinds, marathon_windows_ms)
+           values ($1, $2, $3, $4, $5)
            returning id, status, expires_at, duel_kinds`,
-          [primaryTemplate.id, req.user.id, expiresAt, JSON.stringify(stillSafeKinds)],
+          [
+            primaryTemplate.id,
+            req.user.id,
+            expiresAt,
+            JSON.stringify(stillSafeKinds),
+            JSON.stringify(requestedWindows),
+          ],
         );
         return {
           ticket: {
@@ -6098,6 +6370,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             status: rows[0]!.status,
             expires_at: rows[0]!.expires_at.toISOString(),
             duel_kinds: duelKindsFromUnknown(rows[0]!.duel_kinds, stillSafeKinds),
+            marathon_windows_ms: requestedWindows,
           },
         };
       }
@@ -6110,6 +6383,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         opponentUserId: req.user.id,
         now,
         source: 'matchmaking',
+        ...(matchedKind === 'marathon' ? { marathonWindowMs: matchedWindow } : {}),
       });
       await client.query(
         `update amateur_duel_matchmaking_ticket
@@ -6380,6 +6654,9 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               set state = 'period_active',
                   current_period = current_period + 1,
                   period_started_at = $3,
+                  result_paused_ms = 0,
+                  result_pause_starts_at = null,
+                  result_pause_ends_at = null,
                   break_started_at = null,
                   ready_at = null,
                   updated_at = now()
@@ -6414,6 +6691,38 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           throw new AppError('forbidden', 'duel match access denied', 403);
         }
         await assertFullAmateurAccess(client, req.user.id);
+        if (lockedMatch.duel_kind === 'sniper' || lockedMatch.duel_kind === 'marathon') {
+          const prior = await client.query<{ server_result: DuelShotResult; awarded_points: number }>(
+            `select server_result, awarded_points from shot_session where amateur_duel_match_id=$1 and user_id=$2
+               and mode='amateur_duel' and period_number=1 and shot_index=$3`,
+            [lockedMatch.id, req.user.id, body.shot_index],
+          );
+          if (prior.rows[0]) {
+            const dto = await buildMatchStateDto(client, lockedMatch, req.user.id, now);
+            const confirmedStats=await fetchCurrentPeriodStats(client,lockedMatch.id,req.user.id,1);
+            const response: SubmitAmateurDuelShotResponse = {
+              state_revision: dto.state_revision ?? 0,
+              match_id: lockedMatch.id,
+              server_result: prior.rows[0].server_result,
+              awarded_points: Number(prior.rows[0].awarded_points),
+              confirmed_shot_index: confirmedStats.shots,
+              server_now: dto.server_now,
+              period_started_at: dto.period_started_at,
+              period_ends_at: dto.period_ends_at,
+              participant: {
+                ...await scoredParticipantFields(client,lockedMatch,(await fetchParticipants(client,lockedMatch.id)).find(player=>player.user_id===req.user.id)!,parseRulesSnapshot(lockedMatch.rules_snapshot),now),
+                state:dto.me.state,current_period:dto.me.current_period,
+                current_period_shots:confirmedStats.shots,current_period_goals:confirmedStats.goals,
+                shots_taken:dto.me.shots_taken,goals:dto.me.goals,
+              },
+              current_period_inventory: dto.me.inventory_report.find(
+                (entry) => entry.periodNumber === 1,
+              ) ?? { periodNumber: 1, consumed: [] },
+              settled: lockedMatch.status === 'settled',
+            };
+            return { matchId: lockedMatch.id, settled: false, response };
+          }
+        }
         let match = (await reconcileMatch(client, lockedMatch, now)).match;
         if (match.status !== 'active') {
           throw new AppError(
@@ -6463,8 +6772,48 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         ) {
           throw new AppError('conflict', 'shot quota for this duel period exhausted', 409);
         }
-        assertDuelTapTimeFresh(participant, cur.shots, body.input.tapTime, now);
+        assertDuelTapTimeFresh(
+          participant,
+          cur.shots,
+          body.input.tapTime,
+          now,
+        );
+        const isScoredDuel = rules.duelKind === 'sniper' || rules.duelKind === 'marathon';
+        const periodTapTime = body.input.periodTapTime ?? body.input.tapTime;
+        if (rules.shotResultPauseMs && participant.result_pause_ends_at && now < participant.result_pause_ends_at) {
+          throw new AppError('conflict', 'previous duel shot result is still showing', 409);
+        }
+        if (isScoredDuel) {
+          assertDuelTapTimeFresh(participant, 0, periodTapTime, now);
+          if (body.input.tapTime > periodTapTime + TAP_TIME_FUTURE_TOLERANCE_MS)
+            throw new AppError('conflict', 'scene clock is ahead of period clock', 409);
+        }
+        if (
+          isScoredDuel &&
+          periodTapTime > periodRule.durationMs
+        )
+          throw new AppError('conflict', 'duel shot started after the final siren', 409);
 
+        let earliestTapTime=0;
+        if ((rules.duelKind === 'sniper' || rules.duelKind === 'marathon') && cur.shots > 0) {
+          const previous = await client.query<{
+            input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number };
+          }>(
+            `select input_payload from shot_session where amateur_duel_match_id=$1 and user_id=$2
+               and period_number=$3 order by shot_index desc limit 1`,
+            [match.id, req.user.id, participant.current_period],
+          );
+          const input = previous.rows[0]!.input_payload;
+          earliestTapTime=input.tapTime+(PUCK_START.y-GOAL_OPENING.y)/input.puckSpeedPerMs;
+          if (body.input.periodTapTime !== undefined && input.periodTapTime !== undefined &&
+              periodTapTime < input.periodTapTime + (PUCK_START.y - GOAL_OPENING.y) / input.puckSpeedPerMs)
+            throw new AppError('conflict', 'duel shots overlap on the period clock', 409);
+          if (
+            body.input.tapTime <
+            input.tapTime + (PUCK_START.y - GOAL_OPENING.y) / input.puckSpeedPerMs
+          )
+            throw new AppError('conflict', 'duel shots overlap or rewind the clock', 409);
+        }
         const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
         const inventoryReport = inventoryReportFromUnknown(participant.inventory_report);
         const effects = effectsFromUnknown(participant.inventory_effects_snapshot);
@@ -6480,7 +6829,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (!periodSpeeds)
           throw new AppError('server_error', 'missing effective period speeds', 500);
         const elapsedMs = Math.max(0, body.input.tapTime);
-        const condition = getDuelPlayerCondition({
+        const condition = getTimedDuelPlayerCondition({
           seed: match.match_seed,
           userId: participant.user_id,
           periodNumber: participant.current_period,
@@ -6498,7 +6847,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             participant.current_period,
             rules,
           ),
-        });
+        }, rules.marathonSpeedStages, periodTapTime);
         if (!condition.canShoot) {
           throw new AppError(
             'conflict',
@@ -6513,6 +6862,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
         const shotInput = {
           tapTime: body.input.tapTime,
+          ...(isScoredDuel && body.input.periodTapTime !== undefined ? { periodTapTime, resultPauseMs: rules.shotResultPauseMs ?? body.input.resultPauseMs ?? 1000 } : {}),
           ...(body.input.shooterTapTime !== undefined
             ? { shooterTapTime: body.input.shooterTapTime }
             : {}),
@@ -6538,13 +6888,27 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           stickEffectsFromInventory(effects),
           getSessionPhaseOffsets(match.match_seed),
         );
-        const serverResult: DuelShotResult = result.type;
+        const classification =
+          rules.duelKind === 'sniper'
+            ? classifyMarksmanshipShot({
+                shotInput,
+                goalie: getGoalie(rules.goalieId),
+                seed: shotSeed,
+                shotIndex: body.shot_index,
+                phaseOffsets: getSessionPhaseOffsets(match.match_seed),
+                earliestTapTime,
+                scoring: rules.sniperScoring ?? DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+                stickEffects: stickEffectsFromInventory(effects),
+              })
+            : null;
+        const awardedPoints = classification?.awardedPoints ?? 0;
+        const serverResult: DuelShotResult = classification?.result.type ?? result.type;
 
         await client.query(
           `insert into shot_session
            (user_id, mode, amateur_duel_match_id, period_number, shot_index, seed,
-            input_payload, server_result, game_core_version, created_at)
-         values ($1, 'amateur_duel', $2, $3, $4, $5, $6, $7, $8, $9)`,
+            input_payload, server_result, game_core_version, created_at, awarded_points)
+         values ($1, 'amateur_duel', $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
           [
             req.user.id,
             match.id,
@@ -6555,8 +6919,21 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             serverResult,
             match.game_core_version,
             now,
+            awardedPoints,
           ],
         );
+        if (rules.shotResultPauseMs) {
+          // Reserve the fixed pause atomically with the unique accepted shot.
+          const pauseStartsAt = new Date(participant.period_started_at!.getTime() +
+            Number(participant.period_paused_ms ?? 0) + (rules.scoredClockVersion === 2 ? 0 : Number(participant.result_paused_ms ?? 0)) +
+            periodTapTime + (PUCK_START.y - GOAL_OPENING.y) / shotInput.puckSpeedPerMs);
+          await client.query(
+            `update amateur_duel_participant set result_paused_ms=result_paused_ms+$3,
+               result_pause_starts_at=$4, result_pause_ends_at=$5 where match_id=$1 and user_id=$2`,
+            [match.id, req.user.id, rules.shotResultPauseMs, pauseStartsAt,
+             new Date(pauseStartsAt.getTime() + rules.shotResultPauseMs)],
+          );
+        }
         if (match.source === 'challenge') {
           const firstShot = await client.query<{ total: number }>(
             `select count(*)::int as total from shot_session
@@ -6657,8 +7034,16 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const response: SubmitAmateurDuelShotResponse = {
           match_id: match.id,
           server_result: serverResult,
+          ...(isScoredDuel ? {awarded_points: awardedPoints} : {}),
+          ...(rules.shotResultPauseMs ? {
+            server_now: now.toISOString(),
+            period_started_at: getEffectivePeriodStart(refreshedParticipant, now.getTime())?.toISOString() ?? null,
+            period_ends_at: refreshedParticipant.period_started_at
+              ? new Date(getEffectivePeriodStart(refreshedParticipant, now.getTime())!.getTime() + periodRule.durationMs).toISOString() : null,
+          } : {}),
           confirmed_shot_index: confirmedStats.shots,
           participant: {
+            ...(await scoredParticipantFields(client, match, refreshedParticipant, rules, now)),
             state: refreshedParticipant.state,
             current_period: refreshedParticipant.current_period,
             current_period_shots: confirmedStats.shots,
@@ -6692,6 +7077,36 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       return response.response;
     },
   );
+
+  // The client calls this only after its final in-flight request and result are complete.
+  // Background reconciliation keeps its grace for requests still travelling over the network.
+  app.post('/duel/amateur/matches/:matchId/period/finish', { preHandler: [app.authenticate] }, async (req) => {
+    const { matchId } = z.object({ matchId: uuid }).parse(req.params);
+    const result = await withTransaction(app, async (client) => {
+      await lockMatchGameplay(client, matchId);
+      let match = await fetchPlayableMatchForUpdate(client, matchId);
+      if (match.challenger_user_id !== req.user.id && match.opponent_user_id !== req.user.id)
+        throw new AppError('forbidden', 'duel match access denied', 403);
+      await assertFullAmateurAccess(client, req.user.id);
+      const rules = parseRulesSnapshot(match.rules_snapshot);
+      const now = new Date();
+      const participant = (await fetchParticipants(client, matchId)).find(p => p.user_id === req.user.id)!;
+      if (rules.scoredClockVersion !== 2)
+        throw new AppError('conflict', 'explicit finish is unavailable for this duel', 409);
+      if (participant.state === 'period_active' && participant.period_started_at) {
+        if (participant.period_paused_at) throw new AppError('conflict', 'duel period is paused', 409);
+        const deadline = new Date(getEffectivePeriodStart(participant, now.getTime())!.getTime() + rules.periodRules[0]!.durationMs);
+        if (now < deadline) throw new AppError('conflict', 'duel period has not ended', 409);
+        await closeParticipantPeriod(client, participant, rules, deadline, 'timeout');
+      }
+      const reconciled = await reconcileMatch(client, match, now);
+      match = reconciled.match;
+      return { match: await buildMatchStateDto(client, match, req.user.id, now), settled: match.status === 'settled' };
+    });
+    await publishDuelFixtureProgress(app, matchId);
+    if (result.settled) void notifySettlement(app, matchId);
+    return { match: result.match };
+  });
 
   app.post(
     '/duel/amateur/matches/:matchId/settle',
@@ -6964,7 +7379,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
               win_star_reward, reward_rules, created_at, updated_at
@@ -6994,15 +7409,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
             stake_amount, entry_fee_amount, required_inventory_item_id, inventory_charges_per_period,
             win_points, draw_points, win_currency_reward, draw_currency_reward, win_star_reward,
-            matchmaking_venue_policy, reward_rules)
+            matchmaking_venue_policy, reward_rules, marathon_window_ms, sniper_scoring_rules)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                  $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                 $28, $29, $30, $31, $32, $33, $34)
+                 $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
          returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
                    matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                    period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                    ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                   ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+                   ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
                    stake_amount, entry_fee_amount, required_inventory_item_id,
                    inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
                    win_star_reward, reward_rules, created_at, updated_at`,
@@ -7042,6 +7457,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             data.winStarReward,
             data.matchmakingVenuePolicy,
             JSON.stringify(data.rewardRules),
+            data.marathonWindowMs ?? 7000,
+            data.sniperScoring === undefined
+              ? null
+              : JSON.stringify(parseMarksmanshipScoringRules(data.sniperScoring)),
           ],
         ));
       } catch (err) {
@@ -7147,6 +7566,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         'reward_rules',
         body.data.rewardRules === undefined ? undefined : JSON.stringify(body.data.rewardRules),
       );
+      addPatch(assignments, values, 'marathon_window_ms', body.data.marathonWindowMs);
+      addPatch(
+        assignments,
+        values,
+        'sniper_scoring_rules',
+        body.data.sniperScoring === undefined
+          ? undefined
+          : JSON.stringify(parseMarksmanshipScoringRules(body.data.sniperScoring)),
+      );
       values.push(params.templateId);
       let rows: DuelTemplateRow[];
       try {
@@ -7159,7 +7587,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                       matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                       period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                       ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                      ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules,
+                      ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
                       stake_amount, entry_fee_amount, required_inventory_item_id,
                       inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
                       win_star_reward, reward_rules, created_at, updated_at`,
@@ -7460,6 +7888,11 @@ function mapAdminTemplate(template: DuelTemplateRow) {
     isActive: template.is_active,
     difficulty: template.difficulty,
     duelKind: template.duel_kind,
+    marathonWindowMs: template.marathon_window_ms ?? 7000,
+    ...(template.marathon_speed_stages == null ? {} : {
+      marathonSpeedStages: timedPlayerSpeedStagesSchema.parse(template.marathon_speed_stages),
+    }),
+    sniperScoring: template.sniper_scoring_rules,
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,
     matchmakingEnabled: template.matchmaking_enabled,

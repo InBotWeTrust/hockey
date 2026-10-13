@@ -292,7 +292,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     });
   });
 
-  it('keeps the first two endurance games beginner-visible and locks games three through seven', async () => {
+  it('locks all endurance games for beginners', async () => {
     const userId = await createUser({ level: 1 });
     const games = await Promise.all(
       Array.from({ length: 7 }, (_, index) =>
@@ -305,8 +305,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus game catalog and paid unlocks', () =>
     );
 
     expect(cards.map((card) => [card.id, card.state])).toEqual([
-      [games[0]!.id, 'available'],
-      [games[1]!.id, 'sequence_locked'],
+      [games[0]!.id, 'level_locked'],
+      [games[1]!.id, 'level_locked'],
       [games[2]!.id, 'level_locked'],
       [games[3]!.id, 'level_locked'],
       [games[4]!.id, 'level_locked'],

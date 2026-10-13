@@ -4,6 +4,7 @@ import {
   DEFAULT_DUEL_INVENTORY_TIMING,
   duelInventorySpeedPointsToPuckSpeedDelta,
   getDuelPlayerCondition,
+  getTimedDuelPlayerCondition,
   normalizeDuelInventoryResource,
   type DuelInventoryLoadoutSnapshot,
 } from '../src/duelInventory.js';
@@ -873,5 +874,37 @@ describe('duel inventory condition', () => {
         speedPressureMultiplier: 1.25,
       }),
     ).toBe(75_000);
+  });
+});
+
+
+describe('timed duel player speed', () => {
+  const stages = [{ startsAtMs: 80000, shooterSpeedDelta: -0.05 }, { startsAtMs: 160000, shooterSpeedDelta: -0.1 }];
+  const input = {
+    seed: 'timed-speed', userId: 'player', periodNumber: 1, elapsedMs: 45000,
+    movementDistancePx: 1000, baseLaneWidthPx: 400,
+    baselineShooterSpeed: 0.75, currentShooterSpeed: 0.75,
+    loadout: loadout({ skates: activeSkates(), nutrition: activeNutrition() }),
+  };
+  it.each([[79999,0.75],[80000,0.7],[159999,0.7],[160000,0.65],[239999,0.65]])(
+    'changes the base at period time %i', (time, speed) => {
+      expect(0.75 * getTimedDuelPlayerCondition(input, stages, time).shooterSpeedMultiplier).toBeCloseTo(speed!);
+    },
+  );
+  it.each([0,80000,160000])('applies ordinary fatigue to the reduced base without energy at %i', (time) => {
+    const bare = { ...input, loadout: loadout({ skates: activeSkates() }) };
+    const speed = time < 80000 ? 0.75 : time < 160000 ? 0.7 : 0.65;
+    const classic = getDuelPlayerCondition({ ...bare, currentShooterSpeed: speed });
+    const timed = getTimedDuelPlayerCondition(bare, stages, time);
+    expect(0.75 * timed.shooterSpeedMultiplier).toBeCloseTo(speed * classic.shooterSpeedMultiplier);
+    expect(timed.canShoot).toBe(classic.canShoot);
+    expect(timed.status).toBe(classic.status);
+  });
+  it('preserves ordinary and historical snapshots without a timed schedule', () => {
+    expect(getTimedDuelPlayerCondition(input, undefined, 160000)).toEqual(getDuelPlayerCondition(input));
+  });
+  it('retains skate speed above the reduced base', () => {
+    const boosted = { ...input, currentShooterSpeed: 0.85 };
+    expect(0.85 * getTimedDuelPlayerCondition(boosted, stages, 80000).shooterSpeedMultiplier).toBeCloseTo(0.8);
   });
 });

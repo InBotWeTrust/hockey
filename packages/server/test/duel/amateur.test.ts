@@ -2758,7 +2758,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(before.json().duel_limits).toMatchObject({
       daily: { used: 0, limit: 8, by_format: { express: 0, express_plus: 0, classic: 0 } },
       weekly: { used: 0, limit: 40 },
-      monthly: { used: 0, limit: 129, format_limit: 43 },
+      monthly: { used: 0, limit: 130, format_limit: 26 },
     });
     const accepted = await app.inject({
       method: 'POST',

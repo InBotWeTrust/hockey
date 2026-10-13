@@ -11,6 +11,11 @@ import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/tes
 
 const migrations = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../db/migrations');
 const selected = new Set([
+  '174_beach_interactions.sql', '175_beach_preview_copy.sql', '176_ski_resort_slope.sql',
+  '178_cyberpunk_yard_effects.sql', '183_ordinary_duel_fight_clocks.sql',
+  '187_challenge_levels.sql', '188_bonus_records.sql', '203_sniper_marathon_duels.sql',
+  '204_duel_monthly_limits_130_26.sql', '208_scored_duel_result_clock_pause.sql',
+  '209_sniper_period_150_seconds.sql', '210_marathon_timed_player_speed.sql',
   '154_marksmanship_single_category_scoring.sql', '155_marksmanship_visible_techniques.sql',
   '161_marksmanship_scoring_v5.sql', '162_marksmanship_scoring_v6.sql',
   '163_easier_bonus_challenges.sql', '168_bonus_hockey_city_tours.sql',
@@ -72,7 +77,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus-only production migration', () => {
       const progress = await pool.query('select * from user_bonus_game_completion where user_id=$1', [user.id]);
       const applied = await applyMigrations(pool, migrations);
       expect(new Set(applied.applied)).toEqual(selected);
-      expect((await pool.query('select * from bonus_game_attempt where user_id=$1 order by id', [user.id])).rows).toEqual(oldAttempt.rows);
+      expect((await pool.query('select * from bonus_game_attempt where user_id=$1 order by id', [user.id])).rows).toEqual(oldAttempt.rows.map(row => ({ ...row, challenge_level: null })));
       expect((await pool.query('select * from user_bonus_game_completion where user_id=$1', [user.id])).rows).toEqual(progress.rows);
       const afterIds = new Set((await pool.query<{ id: string }>('select id from bonus_game')).rows.map(row => row.id));
       for (const { id } of ids.rows) expect(afterIds.has(id)).toBe(true);

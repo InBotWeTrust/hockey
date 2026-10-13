@@ -20,6 +20,12 @@ function remainingFromDeadline(deadline: string | null, authoritativeNowMs: numb
   return Math.max(0, deadlineMs - authoritativeNowMs);
 }
 
+/** A future start is waiting time, never extra playable seconds. */
+export function goalWindowRemainingMs(startsAtMs: number, endsAtMs: number, nowMs: number): number {
+  if (!Number.isFinite(endsAtMs) || !Number.isFinite(nowMs)) return 0;
+  return Math.max(0, endsAtMs - Math.max(nowMs, Number.isFinite(startsAtMs) ? startsAtMs : nowMs));
+}
+
 export function deriveEnduranceClock(
   attempt: BonusGameAttempt,
   receivedAtPerformanceMs: number,
@@ -45,9 +51,7 @@ export function deriveEnduranceClock(
 
   return {
     totalRemainingMs: remainingFromDeadline(attempt.period_ends_at, authoritativeNowMs),
-    goalRemainingMs: goalWindowPending
-      ? Math.max(0, goalWindowEndsAtMs - goalWindowStartedAtMs)
-      : remainingFromDeadline(attempt.goal_window_ends_at, authoritativeNowMs),
+    goalRemainingMs: goalWindowRemainingMs(goalWindowStartedAtMs, goalWindowEndsAtMs, authoritativeNowMs),
     goalWindowPending,
   };
 }
@@ -99,4 +103,9 @@ export function futureBonusPeriodDurationMs(attempt: BonusGameAttempt): number {
   return attempt.rules.periods
     .filter((period) => period.period_number > attempt.current_period)
     .reduce((total, period) => total + period.duration_ms, 0);
+}
+
+/** New beach flights may be longer than the dry rink or end early in deep water. */
+export function bonusPendingFlightMs(attempt: BonusGameAttempt, dryFlightMs: number): number {
+  return attempt.current_period_shot_pauses?.at(-1)?.flightMs ?? dryFlightMs;
 }

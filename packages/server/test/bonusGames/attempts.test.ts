@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { BONUS_GAME_CORE_VERSION as GAME_CORE_VERSION } from '@hockey/game-core';
+import { GAME_CORE_VERSION } from '@hockey/game-core';
 import type { Pool, PoolClient } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { findOrCreateTelegramUser } from '../../src/auth/users.js';

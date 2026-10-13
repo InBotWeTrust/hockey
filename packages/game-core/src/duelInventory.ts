@@ -475,3 +475,28 @@ function condition(
   reusable.skatesConsumed = skatesConsumed;
   return reusable;
 }
+
+
+export interface DuelTimedSpeedStage {
+  startsAtMs: number;
+  shooterSpeedDelta: number;
+}
+
+/** Apply a timed base-speed change before the ordinary inventory/fatigue calculation. */
+export function getTimedDuelPlayerCondition(
+  input: DuelPlayerConditionInput,
+  stages: readonly DuelTimedSpeedStage[] | undefined,
+  periodElapsedMs: number,
+  reusable?: DuelPlayerCondition,
+): DuelPlayerCondition {
+  if (!stages?.length) return getDuelPlayerCondition(input, reusable);
+  let delta = 0;
+  for (const stage of stages) {
+    if (periodElapsedMs >= stage.startsAtMs) delta = stage.shooterSpeedDelta;
+  }
+  const speed = Math.max(0.1, input.currentShooterSpeed + delta);
+  const ratio = speed / Math.max(0.1, input.currentShooterSpeed);
+  const result = getDuelPlayerCondition({ ...input, currentShooterSpeed: speed }, reusable);
+  result.shooterSpeedMultiplier *= ratio;
+  return result;
+}

@@ -88,7 +88,6 @@ function mockCatalog(
     marksmanshipRemaining?: number;
     enduranceRemaining?: number;
     challengeRemaining?: number;
-    challengeAvailable?: boolean;
     resetsAt?: string;
     dailyAccess?: { qualifyingGoals: number; unlockGoalsRequired: number };
   } = {},
@@ -104,7 +103,6 @@ function mockCatalog(
     marksmanshipRemaining = 100,
     enduranceRemaining = 100,
     challengeRemaining = 2,
-    challengeAvailable = true,
     resetsAt = '2026-08-25T00:00:00.000Z',
     dailyAccess,
   } = options;
@@ -117,7 +115,6 @@ function mockCatalog(
           new Response(
             JSON.stringify({
               games,
-              challenge_available: challengeAvailable,
               active_attempt:
                 games
                   .map((game) => (game as { active_attempt?: unknown }).active_attempt)
@@ -399,24 +396,6 @@ describe('BonusGamesScreen', () => {
     expect(screen.getByText('1 из 2 попыток')).toBeInTheDocument();
     expect(screen.getByText('До обновления: 5 сек')).toBeInTheDocument();
     expect(screen.getByText('До обновления: 5 сек').closest('[aria-live]')).toBeNull();
-  });
-
-  it('keeps the selected playable tab and toasts when production challenges are closed', async () => {
-    mockCatalog([card({})], { challengeAvailable: false });
-    renderCatalog();
-    await screen.findByText('Пляж');
-    fireEvent.click(screen.getByRole('tab', { name: 'Испытания' }));
-    expect(await screen.findByText('Раздел в разработке')).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
-  });
-
-  it('falls back from a persisted closed challenge selection', async () => {
-    localStorage.setItem('bonus-games:last-skill', 'challenge');
-    mockCatalog([card({})], { challengeAvailable: false });
-    renderCatalog();
-    await screen.findByText('Пляж');
-    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
-    expect(localStorage.getItem('bonus-games:last-skill')).toBe('speed');
   });
 
   it.each([
@@ -1899,4 +1878,131 @@ describe('BonusGamesScreen', () => {
     expect(urls.some((url) => url.endsWith('/unlock'))).toBe(false);
     expect(screen.queryByText(/Открыть за/)).not.toBeInTheDocument();
   });
+});
+
+it('opens the challenges section but blocks unreleased locations in production', async () => {
+  vi.stubEnv('DEV', false);
+  localStorage.clear();
+  mockCatalog([card({ title: 'Закрытый курорт', slug: 'challenge-ski-resort', skill_code: 'challenge', state: 'sequence_locked' })]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Закрыта' }));
+    expect(await screen.findByText('Локация в разработке')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it('renders Beach guidance as separate items with the target icon', async () => {
+  vi.stubEnv('DEV', true);
+  localStorage.clear();
+  mockCatalog([card({slug: 'challenge-beach', skill_code: 'challenge', preview_title: 'Жаркий матч',
+    challenge_environment: {beach: {interactive: {version: 1, wind: []}}}})]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', {name: 'Испытания'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Играть'}));
+    const dialog = screen.getByRole('dialog', {name: 'Описание игры «Пляж»'});
+    expect(within(dialog).getByRole('heading', {name: 'Жаркий матч'})).toBeInTheDocument();
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(4);
+    expect(dialog).toHaveTextContent('Ветер периодически сносит игрока, вратаря или ворота назад.');
+    expect(dialog.querySelector('.bonus-game-preview-modal__condition svg')).not.toBeNull();
+  } finally {vi.unstubAllEnvs();}
+});
+
+it('renders ski slope rules and the target icon only for the new ski catalog',async()=>{
+  vi.stubEnv('DEV',true);localStorage.clear();
+  mockCatalog([card({slug:'challenge-ski-resort',skill_code:'challenge',title:'Горнолыжный курорт',preview_title:'По склону',preview_story:'С горы надвигается лавина.',challenge_environment:{ski:{version:1,seed:'',durationMs:180000}}})]);
+  try {renderCatalog();fireEvent.click(await screen.findByRole('tab',{name:'Испытания'}));fireEvent.click(await screen.findByRole('button',{name:'Играть'}));
+    const dialog=screen.getByRole('dialog',{name:'Описание игры «Горнолыжный курорт»'});
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(4);
+    expect(dialog).toHaveTextContent('Во время соскальзывания и передышки игрок не может бросать.');
+    expect(dialog.querySelector('.bonus-game-preview-modal__condition svg')).not.toBeNull();
+  } finally {vi.unstubAllEnvs();}
+});
+
+it('selects cumulative challenge levels and shows the selected first-clear reward', async () => {
+  vi.stubEnv('DEV', true);
+  localStorage.clear();
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge', levels: [
+    { level: 1, preview_story: 'История ветра', preview_artwork_url: '/wind.webp', is_unlocked: true, is_completed: true, reward: { coins: 0, stars: 10, experience: 20 } },
+    { level: 2, preview_story: 'История луж', preview_artwork_url: '/puddles.webp', is_unlocked: true, is_completed: false, reward: { coins: 0, stars: 20, experience: 40 } },
+    { level: 3, is_unlocked: false, is_completed: false, reward: { coins: 0, stars: 30, experience: 60 } },
+  ], challenge_environment: { beach: { interactive: { version: 1, wind: [] } } } })]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Уровень 1/ }));
+    expect(dialog).toHaveTextContent('История ветра');
+    expect(dialog.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/wind.webp'));
+    expect(dialog).not.toHaveTextContent('Тапай по лужам');
+    expect(within(dialog).getByLabelText('Награда: 10 звёзд · 20 опыта')).toHaveClass('bonus-game-level-reward--received');
+    expect(dialog).not.toHaveTextContent('Награда получена');
+    expect(within(dialog).getByRole('button', { name: 'К игре' }).previousElementSibling)
+      .toBe(within(dialog).getByRole('group', { name: 'Уровень сложности' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: /Уровень 2/ }));
+    expect(dialog).toHaveTextContent('История луж');
+    expect(dialog.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/puddles.webp'));
+    expect(dialog).toHaveTextContent('Тапай по лужам');
+    expect(dialog).not.toHaveTextContent('На мокром льду игрок спотыкается');
+    expect(within(dialog).getByLabelText('Награда: 20 звёзд · 40 опыта')).not.toHaveClass('bonus-game-level-reward--received');
+    expect(dialog).not.toHaveTextContent('Награда получена');
+    const lockedLevel = within(dialog).getByRole('button', { name: /Уровень 3/ });
+    expect(lockedLevel).toBeDisabled();
+    expect(lockedLevel.querySelector('.bonus-game-level-choice__check')).toBeNull();
+    fireEvent.click(lockedLevel);
+    expect(dialog).toHaveTextContent('История луж');
+    expect(dialog.querySelector('img')).toHaveAttribute('src', expect.stringContaining('/puddles.webp'));
+    expect(within(dialog).getByRole('button', { name: /Уровень 2/ })).toHaveAttribute('aria-pressed', 'true');
+    expect(within(dialog).getByRole('button', { name: 'К игре' })).toBeEnabled();
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it('sends the selected level and refreshes a stale server lock without retrying start', async () => {
+  vi.stubEnv('DEV', true);
+  localStorage.clear();
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge', levels: [
+    { level: 1, is_unlocked: true, is_completed: true, reward: { coins: 0, stars: 10, experience: 20 } },
+    { level: 2, is_unlocked: true, is_completed: false, reward: { coins: 0, stars: 20, experience: 40 } },
+  ] })], { startFailure: new ApiError(409, 'bonus_previous_level_required', 'Сначала пройдите предыдущий уровень.') });
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    const dialog = screen.getByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: /Уровень 2/ }));
+    const readsBeforeStart = vi.mocked(globalThis.fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/bonus-games')).length;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'К игре' }));
+    await screen.findByRole('alert');
+    const posts = vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(JSON.parse(posts[0]![1]!.body as string)).toEqual({ level: 2 });
+    await waitFor(() => expect(vi.mocked(globalThis.fetch).mock.calls.filter(([url]) => String(url).endsWith('/api/bonus-games')).length).toBeGreaterThan(readsBeforeStart));
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it('opens the released beach preview in a production build', async () => {
+  vi.stubEnv('DEV', false);
+  localStorage.clear();
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge' })]);
+  try {
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('Локация в разработке')).not.toBeInTheDocument();
+  } finally { vi.unstubAllEnvs(); }
+});
+
+it.each(['Меткость', 'Выносливость', 'Испытания'])('keeps %s inaccessible to beginners', async name => {
+  useAuthStore.setState({ user: { id: 'beginner', displayName: 'Новичок', competitionLevel: 'beginner' } });
+  useDailyStore.setState({ data: { lifetime_total_goals: 0, amateur_unlock_goals_required: 300 } as DailyStateResponse });
+  localStorage.clear();
+  mockCatalog([card({})]);
+  renderCatalog();
+  fireEvent.click(await screen.findByRole('tab', { name }));
+  expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
+  expect(useAmateurAccessToastStore.getState().toast).not.toBeNull();
 });

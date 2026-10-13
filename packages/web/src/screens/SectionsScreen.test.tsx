@@ -1001,7 +1001,7 @@ describe('SectionsScreen', () => {
 
   it('opens the bar maintenance page from its card', () => {
     renderSections();
-    const card = screen.getByRole('button', { name: 'Бар' });
+    const card = screen.getByRole('button', { name: 'Бар «4-й период»' });
     expect(card.querySelector('img')).toHaveAttribute('src', '/bar/bar-repair-card-v3.webp');
     fireEvent.click(card);
     expect(screen.getByTestId('location')).toHaveTextContent('/bar');
@@ -1017,7 +1017,7 @@ describe('SectionsScreen', () => {
       within(quickAccess)
         .getAllByRole('button')
         .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин', 'Бар']);
+    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин', 'Бар «4-й период»']);
 
     const modes = screen.getByRole('region', { name: 'Игровые режимы' });
     expect(

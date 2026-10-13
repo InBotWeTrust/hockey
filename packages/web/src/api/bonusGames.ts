@@ -1,3 +1,4 @@
+import type {CyberpunkPanelEvent} from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
@@ -13,6 +14,7 @@ import type {
   MarksmanshipV6Technique,
   MarksmanshipSeriesClassification,
   MarksmanshipV3Reason,
+  BeachCleanupEvent,
   BonusChallengeEnvironmentRules,
 } from '@hockey/game-core';
 
@@ -123,6 +125,7 @@ export interface BonusGameCardAttempt {
 }
 
 export interface BonusGameCard {
+  levels?: { preview_story?: string; preview_artwork_url?: string; level: 1 | 2 | 3; is_unlocked: boolean; is_completed: boolean; reward: BonusReward }[] | null;
   id: string;
   slug: string;
   title: string;
@@ -154,7 +157,6 @@ export interface BonusGameCard {
 }
 
 export interface BonusCatalogResponse {
-  challenge_available?: boolean;
   games: BonusGameCard[];
   active_attempt: BonusGameCardAttempt | null;
   attempt_allowances?: Record<BonusSkillCode, BonusAttemptAllowance>;
@@ -187,7 +189,15 @@ export interface BonusAttemptRules {
   challenge_environment?: BonusChallengeEnvironmentRules | null;
 }
 
+export interface BonusRecordMetrics { elapsedMs: number; shots: number; goals: number; points: number }
+export interface BonusRecordResult extends BonusRecordMetrics { personalImproved: boolean; globalImproved: boolean; personalBest: BonusRecordMetrics; place: number; stars: number; experience: number }
+export interface BonusRecordPlayer extends BonusRecordMetrics { place: number; userId: string; displayName: string; avatarUrl: string | null }
+export interface BonusRecordPage { rows: BonusRecordPlayer[]; currentUser: BonusRecordPlayer | null; skillCode: BonusSkillCode; nextOffset: number | null }
+export const fetchBonusRecords = (gameId: string, offset = 0): Promise<BonusRecordPage> => apiFetch(`/bonus-games/${gameId}/records?offset=${offset}`);
+
 export interface BonusGameAttempt {
+  record?: BonusRecordResult | null;
+  challenge_level?: 1 | 2 | 3 | null;
   id: string;
   game_id: string;
   game_slug: string;
@@ -213,6 +223,8 @@ export interface BonusGameAttempt {
   reward_granted: boolean;
   attempt_seed: string;
   game_core_version: number;
+  current_period_panel_events?: CyberpunkPanelEvent[];
+  current_period_cleanup_events?: BeachCleanupEvent[];
   current_period_shot_pauses?: { tapTime: number; flightMs: number }[];
   definition_revision: number;
   server_now: string;
@@ -449,9 +461,9 @@ export const purchaseBonusGame = ({
     }),
   );
 
-export const startBonusAttempt = (gameId: string): Promise<BonusAttemptResponse> =>
+export const startBonusAttempt = (gameId: string, level?: 1 | 2 | 3): Promise<BonusAttemptResponse> =>
   bonusMutation(
-    apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST' }),
+    apiFetch<BonusAttemptResponse>(`/bonus-games/${gameId}/attempts`, { method: 'POST', ...(level === undefined ? {} : { body: JSON.stringify({ level }) }) }),
   );
 
 export const startBonusPeriod = (
@@ -495,3 +507,14 @@ export const abandonBonusAttempt = (attemptId: string): Promise<BonusAttemptResp
       method: 'POST',
     }).then(normalizeAttemptResponse),
   );
+
+export interface BeachCleanupRequest {
+  eventId: string; period: number; puddleId: string; tapTime: number; expectedShots: number; expectedCleanups: number;
+}
+export const cleanupBonusBeachPuddle = (attemptId: string, body: BeachCleanupRequest, options?: BonusRequestOptions): Promise<BonusAttemptResponse> =>
+  bonusMutation(apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/beach/cleanup`, {
+    method: 'POST', body: JSON.stringify(body), ...(options?.signal ? {signal: options.signal} : {}),
+  }).then(normalizeAttemptResponse));
+
+export interface CyberpunkPanelRequest {eventId:string;stripEventId:string;period:number;tapTime:number;expectedShots:number;expectedPanels:number}
+export const tapBonusCyberpunkPanel=(attemptId:string,body:CyberpunkPanelRequest,options?:BonusRequestOptions):Promise<BonusAttemptResponse>=>bonusMutation(apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/cyberpunk/panel`,{method:'POST',body:JSON.stringify(body),...(options?.signal?{signal:options.signal}:{})}));

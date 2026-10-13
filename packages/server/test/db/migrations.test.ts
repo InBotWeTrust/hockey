@@ -285,13 +285,13 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     ]);
     for (const game of challengeTrack) {
       const locationSlug = game.slug.replace('challenge-', '');
-      expect(game.preview_artwork_url).toBe(`/bonus-games/location-cards/${locationSlug}.webp`);
+      expect(game.preview_artwork_url).toBe(locationSlug === 'beach' ? '/bonus-games/location-cards/beach-match.png' : `/bonus-games/location-cards/${locationSlug}.webp`);
     }
     expect(challengeTrack[0]?.challenge_environment).toMatchObject({
       baseModifiers: {
         shooterMultiplier: 0.9,
         puckSpeedMultiplier: 0.9,
-        label: 'Лёд тает · игрок −10% · шайба −10%',
+        label: 'Лёд тает',
       },
       fatigue: { slowdownStartMs: 8_000 },
     });

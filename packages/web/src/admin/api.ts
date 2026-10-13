@@ -640,7 +640,7 @@ export type AdminMatchmakingVenuePolicy =
   | 'random_participant_home'
   | 'random_unselected';
 
-export type AdminDuelKind = 'express' | 'express_plus' | 'classic';
+export type AdminDuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
 
 export interface AdminDuelPeriodRule {
   periodNumber: number;

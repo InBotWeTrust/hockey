@@ -287,7 +287,7 @@ export function SectionsScreen(): JSX.Element {
               onClick={() => navigate('/inventory')}
             />
             <QuickSectionCard
-              title="Бар"
+              title="Бар «4-й период»"
               meta="Трансляции и обсуждения"
               tone="default"
               size="wide"

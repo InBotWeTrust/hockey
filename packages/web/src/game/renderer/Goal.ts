@@ -59,6 +59,10 @@ export class Goal {
     this.container.addChild(this.sprite);
   }
 
+  setSlipRotation(radians: number): void {
+    if (!this.destroyed) this.sprite.rotation = radians;
+  }
+
   triggerGoalLight(): void {
     if (this.destroyed) return;
     this.lightStartedAt = performance.now();

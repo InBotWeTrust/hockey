@@ -43,6 +43,7 @@ interface AmateurDuelStoreState {
     claimedResult: ShotResultType;
   }) => Promise<{
     serverResult: ShotResultType;
+    awardedPoints?: number;
     state: AmateurDuelMatchState;
     isCurrent: () => boolean;
   } | null>;
@@ -58,10 +59,16 @@ function applyShotAcknowledgement(
   inventoryReport.push(acknowledgement.current_period_inventory);
   return {
     ...match,
+    ...(acknowledgement.state_revision !== undefined ? {state_revision: acknowledgement.state_revision} : {}),
+    ...(acknowledgement.server_now ? {server_now: acknowledgement.server_now,
+      received_at_performance_ms: typeof performance === 'undefined' ? Date.now() : performance.now(),
+      period_started_at: acknowledgement.period_started_at ?? match.period_started_at,
+      period_ends_at: acknowledgement.period_ends_at ?? match.period_ends_at} : {}),
     current_period_shots: acknowledgement.participant.current_period_shots,
     current_period_goals: acknowledgement.participant.current_period_goals,
     me: {
       ...match.me,
+      ...acknowledgement.participant,
       state: acknowledgement.participant.state,
       current_period: acknowledgement.participant.current_period,
       current_period_shots: acknowledgement.participant.current_period_shots,
@@ -303,7 +310,15 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     }
   },
 
-  applyState: (next) => set({ match: next, loading: false, error: null }),
+  applyState: (next) => {
+    const current = get().match;
+    if (current?.id === next.id && (current.state_revision ?? 0) > (next.state_revision ?? 0)) return;
+    if (current?.id === next.id && (current.rules?.duelKind === 'sniper' || current.rules?.duelKind === 'marathon') &&
+        Date.parse(current.server_now) > Date.parse(next.server_now) &&
+        compareParticipantProgress(next.me, current.me) <= 0 &&
+        compareParticipantProgress(next.opponent, current.opponent) <= 0) return;
+    set({ match: next, loading: false, error: null });
+  },
 
   optimisticAddShot: (claimed) => {
     const cur = get().match;
@@ -380,6 +395,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       set({ error: null });
       return {
         serverResult: acknowledgement.server_result,
+        ...(acknowledgement.awarded_points === undefined ? {} : {awardedPoints: acknowledgement.awarded_points}),
         state: next,
         isCurrent: () => get().match === resolvedAgainst,
       };

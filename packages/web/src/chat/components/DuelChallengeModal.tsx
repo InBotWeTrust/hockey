@@ -1,3 +1,4 @@
+import { MarathonWindowPicker } from '../../components/duel/MarathonWindowPicker.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, X } from 'lucide-react';
@@ -32,6 +33,8 @@ const DUEL_KIND_ORDER: Record<AmateurDuelKind, number> = {
   express: 0,
   express_plus: 1,
   classic: 2,
+  sniper: 3,
+  marathon: 4,
 };
 
 export function hasOpenDuelWithUser(matches: AmateurDuelMatch[], userId: string): boolean {
@@ -43,6 +46,8 @@ export function hasOpenDuelWithUser(matches: AmateurDuelMatch[], userId: string)
 export function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express') return 'Экспресс';
   if (kind === 'express_plus') return 'Микс';
+  if (kind === 'sniper') return 'Снайпер';
+  if (kind === 'marathon') return 'Марафон';
   return 'Классика';
 }
 
@@ -139,6 +144,7 @@ export function DuelChallengeModal({
   onBlocked,
 }: DuelChallengeModalProps): JSX.Element {
   const queryClient = useQueryClient();
+  const [marathonWindow, setMarathonWindow] = useState<4000 | 7000>(7000);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
@@ -189,7 +195,13 @@ export function DuelChallengeModal({
 
   const challengeMutation = useMutation({
     mutationFn: (templateId: string) =>
-      challengeAmateurDuel({ template_id: templateId, opponent_user_id: opponentUserId }),
+      challengeAmateurDuel({
+        template_id: templateId,
+        opponent_user_id: opponentUserId,
+        ...(templates.find((item) => item.id === templateId)?.duel_kind === 'marathon'
+          ? { marathon_window_ms: marathonWindow }
+          : {}),
+      }),
     onMutate: () => {
       setError(null);
     },
@@ -323,6 +335,12 @@ export function DuelChallengeModal({
           )}
         </div>
 
+        {templates.find((item) => item.id === selectedTemplateId)?.duel_kind === 'marathon' && (
+          <MarathonWindowPicker
+            selected={[marathonWindow]}
+            onChange={(next) => setMarathonWindow(next[0]!)}
+          />
+        )}
         {error && (
           <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>{error}</div>
         )}
