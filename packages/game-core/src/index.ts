@@ -165,6 +165,8 @@ export {
   duelSpeedPressureMultiplier,
   createDuelStumbleRandomness,
   getDuelPlayerCondition,
+  getTimedDuelPlayerCondition,
+  type DuelTimedSpeedStage,
   normalizeDuelInventoryResource,
   type DuelInventoryItemSnapshot,
   type DuelInventoryLoadoutSnapshot,
