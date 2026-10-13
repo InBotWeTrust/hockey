@@ -1,3 +1,4 @@
+import { bonusLocationCompletedSql } from './challengeLevels.js';
 import type { Pool, PoolClient } from 'pg';
 import type { ChallengeLevel } from './challengeLevels.js';
 import { AppError } from '../plugins/errors.js';
@@ -115,13 +116,13 @@ async function fetchPurchasableGame(
     `select game.id, game.slug, game.status, game.access_type,
             game.unlock_price_stars, game.revision,
             predecessor.id as predecessor_id,
-            (predecessor_completion.id is not null) as predecessor_completed,
+            ${bonusLocationCompletedSql('predecessor', 'predecessor_completion')} as predecessor_completed,
             unlock.id as unlock_id,
             completion.id as completion_id,
             active_attempt.id as active_attempt_id
        from bonus_game game
        left join lateral (
-         select previous.id
+         select previous.id, previous.slug
            from bonus_game previous
           where previous.status = 'active'
             and previous.skill_code = game.skill_code

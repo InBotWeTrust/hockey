@@ -1,4 +1,4 @@
-import { challengeLevelPreview, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
+import { bonusLocationCompletedSql, challengeLevelPreview, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
 import type { Pool, PoolClient } from 'pg';
 import { assertFullAmateurAccess, resolveAmateurAccess } from '../profile/amateurAccess.js';
 import { normalizeBonusQualificationRules, type BonusQualificationRules } from './qualification.js';
@@ -178,6 +178,12 @@ function toIso(value: Date | null): string | null {
   return value === null ? null : value.toISOString();
 }
 
+function isLocationCompleted(row: CatalogRow): boolean {
+  return supportsChallengeLevels(row.slug)
+    ? [1, 2, 3].every(level => row.completed_levels.includes(level))
+    : row.completion_id !== null;
+}
+
 function deriveCardState(row: CatalogRow, hasAmateurAccess: boolean): BonusGameCardState {
   if (row.status === 'archived') return 'archived';
   if (
@@ -188,7 +194,7 @@ function deriveCardState(row: CatalogRow, hasAmateurAccess: boolean): BonusGameC
     return 'level_locked';
   }
   if (row.attempt_id !== null) return 'in_progress';
-  if (row.completion_id !== null) return 'completed';
+  if (isLocationCompleted(row)) return 'completed';
   if (row.predecessor_id !== null && !row.predecessor_completed) return 'sequence_locked';
   if (row.access_type === 'paid' && row.unlock_id === null) return 'purchase_required';
   return 'available';
@@ -279,7 +285,7 @@ export async function listBonusGameCards(
             arena.thumbnail_url as arena_thumbnail_url,
             game.predecessor_id,
             game.predecessor_title,
-            (predecessor_completion.id is not null) as predecessor_completed,
+            ${bonusLocationCompletedSql('predecessor_game', 'predecessor_completion')} as predecessor_completed,
             unlock.id as unlock_id,
             completion.id as completion_id,
             attempt.id as attempt_id,
@@ -298,6 +304,7 @@ export async function listBonusGameCards(
               where lc.user_id = $1 and lc.bonus_game_id = game.id) as completed_levels
        from catalog_games game
        join arena_theme arena on arena.id = game.arena_theme_id
+       left join bonus_game predecessor_game on predecessor_game.id = game.predecessor_id
        left join user_bonus_game_completion predecessor_completion
          on predecessor_completion.user_id = $1
         and predecessor_completion.bonus_game_id = game.predecessor_id
@@ -381,7 +388,7 @@ export async function listBonusGameCards(
             thumbnail_url: row.arena_thumbnail_url,
           },
       is_unlocked: row.access_type === 'free' || row.unlock_id !== null,
-      is_completed: row.completion_id !== null,
+      is_completed: isLocationCompleted(row),
       state,
       prerequisite:
         state === 'sequence_locked' && row.predecessor_id !== null && row.predecessor_title !== null

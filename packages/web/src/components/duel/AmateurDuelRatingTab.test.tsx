@@ -15,7 +15,7 @@ beforeEach(() => {
   } as never);
 });
 
-it('switches between four duel rating scopes while retaining the selected month', async () => {
+it('switches between six duel rating scopes while retaining the selected month', async () => {
   render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
       <AmateurDuelRatingTab currentUserId={null} initialSeasonKey="2026-09" onOpenProfile={() => undefined} />
@@ -29,7 +29,7 @@ it('switches between four duel rating scopes while retaining the selected month'
   fireEvent.click(screen.getByRole('tab', { name: 'Экспресс' }));
   await waitFor(() => expect(fetchAmateurRating).toHaveBeenCalledWith('2026-09', 'express'));
   expect(screen.getByText('Сентябрь 2026')).toBeInTheDocument();
-  for (const label of ['Общий', 'Экспресс', 'Микс', 'Классика']) {
+  for (const label of ['Общий', 'Экспресс', 'Микс', 'Классика', 'Снайпер', 'Марафон']) {
     expect(screen.getByRole('tab', { name: label })).toBeInTheDocument();
   }
 });
@@ -75,4 +75,18 @@ it('shows a player with one completed match directly in the standings', async ()
   );
   expect(await screen.findByRole('table')).toHaveTextContent('Новичок рейтинга');
   expect(screen.queryByText('Пока вне зачёта')).not.toBeInTheDocument();
+});
+
+
+it('exposes all six rating scopes in a horizontal scroll row and requests the new formats', async () => {
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+    <AmateurDuelRatingTab currentUserId={null} initialSeasonKey="2026-09" onOpenProfile={() => undefined} />
+  </QueryClientProvider>);
+  const tabs = await screen.findByRole('tablist', { name: 'Зачёт рейтинга дуэлей' });
+  expect(tabs).toHaveClass('segmented-tabs--scrollable');
+  for (const [label, scope] of [['Снайпер', 'sniper'], ['Марафон', 'marathon']] as const) {
+    fireEvent.click(screen.getByRole('tab', { name: label }));
+    await waitFor(() => expect(fetchAmateurRating).toHaveBeenCalledWith('2026-09', scope));
+    expect(screen.getByRole('tab', { name: label })).toHaveAttribute('aria-selected', 'true');
+  }
 });

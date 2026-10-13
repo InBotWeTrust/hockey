@@ -208,7 +208,11 @@ export function BonusGamesScreen(): JSX.Element {
       );
       return;
     }
-    if (isPlayable(game)) { setSelectedLevel(1); setPreviewGame(game); }
+    if (isPlayable(game)) {
+      const unlocked = game.levels?.filter(level => level.is_unlocked) ?? [];
+      setSelectedLevel(unlocked.reduce<1 | 2 | 3>((highest, entry) => entry.level > highest ? entry.level : highest, 1));
+      setPreviewGame(game);
+    }
   };
 
   const switchAttemptMutation = useMutation({
