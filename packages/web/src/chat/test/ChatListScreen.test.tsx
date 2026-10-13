@@ -59,6 +59,7 @@ describe('ChatListScreen — global search dropdown', () => {
   it('does not render the dropdown when filter has fewer than 2 chars', async () => {
     renderScreen();
     const input = await screen.findByLabelText(/Поиск чатов/);
+    expect(input.closest('.glass-edge-fade')).toBeNull();
     fireEvent.change(input, { target: { value: 'a' } });
     expect(screen.queryByText('Сообщения')).toBeNull();
     expect(api.searchMessagesApi).not.toHaveBeenCalled();

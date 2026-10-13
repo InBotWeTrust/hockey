@@ -322,7 +322,8 @@ export function appSurfaceClassName(pathname: string): string {
 }
 
 export function appThemeColor(pathname:string,search=''):string {
-  return appBackdropClassName(pathname,search)===''?'#9cbfdf':'#08182b';
+  const informationPage = ['/prices', '/terms', '/offer', '/privacy', '/personal-data-consent'].includes(pathname);
+  return !informationPage && appBackdropClassName(pathname,search)===''?'#9cbfdf':'#08182b';
 }
 
 function AppExperience(): JSX.Element {
@@ -381,7 +382,7 @@ function AppExperience(): JSX.Element {
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
-        className={`app-shell ${surfaceClassName}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
+        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
