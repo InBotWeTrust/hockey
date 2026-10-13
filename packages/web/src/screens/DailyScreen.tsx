@@ -6410,7 +6410,7 @@ export function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          noticesOnIce
+          noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
           suppressedByModal={!!fightOverlay}
           preserveSceneOnModalReturn
           showIceCar={false}
