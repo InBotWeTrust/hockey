@@ -270,3 +270,16 @@ describe('deriveEnduranceClock', () => {
     });
   });
 });
+
+it('restores the shooter clock from actual water flight durations', () => {
+  const attempt = activeAttempt({ current_period_shots_taken: 2,
+    server_now: '2026-08-24T10:00:10.000Z',
+    current_period_shot_pauses: [{ tapTime: 1000, flightMs: 1600 }, { tapTime: 4000, flightMs: 200 }] });
+  expect(deriveBonusGameClockBasis(attempt)).toEqual({ sceneElapsedMs: 8000, shooterElapsedMs: 6200 });
+});
+
+it('waits for the last authoritative water flight before the recovery fallback', async () => {
+  const { bonusPendingFlightMs } = await import('./bonusGameTiming.js');
+  expect(bonusPendingFlightMs(activeAttempt({ current_period_shot_pauses: [{ tapTime: 1000, flightMs: 2500 }] }), 400)).toBe(2500);
+  expect(bonusPendingFlightMs(activeAttempt(), 400)).toBe(400);
+});

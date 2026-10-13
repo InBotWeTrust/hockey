@@ -15,7 +15,7 @@ describe('bar maintenance', () => {
         </Routes>
       </MemoryRouter>,
     );
-    expect(screen.getByRole('heading', { name: 'Бар', level: 1 })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Бар «4-й период»', level: 1 })).toBeInTheDocument();
     expect(
       screen.getByText(
         'Бар на ремонте. Готовим место для трансляций, обсуждений и быстрых мини-игр. Скоро откроемся.',

@@ -19,7 +19,13 @@ import type { SessionPhaseOffsets } from './session.js';
 import { simulateShooter } from './shooter/simulate.js';
 import { SHOOTER_FREQUENCY, SHOOTER_MAX_X, SHOOTER_MIN_X } from './shooter/types.js';
 import { GOALIE_HITBOX_EXPAND, GOAL_HITBOX_MARGIN } from './shot/resolve.js';
-import { PUCK_SPEED_PER_MS, STICK_NEUTRAL, type ShotInput, type ShotResult } from './shot/types.js';
+import {
+  PUCK_SPEED_PER_MS,
+  STICK_NEUTRAL,
+  type ShotInput,
+  type ShotResult,
+  type StickEffects,
+} from './shot/types.js';
 import {
   classifyMarksmanshipV5Score,
   type MarksmanshipV5Measurements,
@@ -300,6 +306,9 @@ export function parseMarksmanshipScoringRules(value: unknown): MarksmanshipScori
 }
 
 export interface MarksmanshipShotInput {
+  shooterMotionAt?: ((time: number) => number) | undefined;
+  courtCrossings?: ((shot: ShotInput) => { goalieTimeMs: number; goalTimeMs: number }) | undefined;
+  stickEffects?: StickEffects;
   shotInput: ShotInput;
   goalie: GoalieConfig;
   seed: string;
@@ -566,10 +575,11 @@ export function isStrictCounterDirection(input: StrictCounterDirectionInput): bo
     : input.puckX > input.goalieCenterX;
 }
 
-function shiftedShotInput(input: ShotInput, deltaMs: number): ShotInput {
+function shiftedShotInput(input: ShotInput, deltaMs: number, motionAt?: (time:number)=>number): ShotInput {
   return {
     ...input,
     tapTime: input.tapTime + deltaMs,
+    ...(motionAt ? {shooterMotionTime:motionAt(input.tapTime+deltaMs)} : {}),
     ...(input.shooterTapTime === undefined
       ? {}
       : { shooterTapTime: input.shooterTapTime + deltaMs }),
@@ -589,13 +599,15 @@ function goalWindowDuration(input: MarksmanshipShotInput): number {
     const deltaMs = -(step * stepMs);
     if (input.shotInput.tapTime + deltaMs < lowerBound) break;
     const result = resolvePerspectiveCourtShot(
-      shiftedShotInput(input.shotInput, deltaMs),
+      shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt),
       input.goalie,
       input.seed,
       input.shotIndex,
-      STICK_NEUTRAL,
+      input.stickEffects ?? STICK_NEUTRAL,
       input.phaseOffsets,
-    );
+
+    input.courtCrossings?.(shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt)),
+);
     if (result.type !== 'goal') break;
     successfulSamples += 1;
   }
@@ -603,13 +615,15 @@ function goalWindowDuration(input: MarksmanshipShotInput): number {
   for (let step = 1; step <= maxSteps; step += 1) {
     const deltaMs = step * stepMs;
     const result = resolvePerspectiveCourtShot(
-      shiftedShotInput(input.shotInput, deltaMs),
+      shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt),
       input.goalie,
       input.seed,
       input.shotIndex,
-      STICK_NEUTRAL,
+      input.stickEffects ?? STICK_NEUTRAL,
       input.phaseOffsets,
-    );
+
+    input.courtCrossings?.(shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt)),
+);
     if (result.type !== 'goal') break;
     successfulSamples += 1;
   }
@@ -621,10 +635,17 @@ function goalWindowDurationV4(input: MarksmanshipShotInput): number {
   const coarse = goalWindowDuration(input);
   if (coarse > 40) return coarse;
   const step = input.scoring.scanStepMs;
-  const isGoal = (delta: number): boolean => resolvePerspectiveCourtShot(
-    shiftedShotInput(input.shotInput, delta), input.goalie, input.seed, input.shotIndex,
-    STICK_NEUTRAL, input.phaseOffsets,
-  ).type === 'goal';
+  const isGoal = (delta: number): boolean =>
+    resolvePerspectiveCourtShot(
+      shiftedShotInput(input.shotInput, delta, input.shooterMotionAt),
+      input.goalie,
+      input.seed,
+      input.shotIndex,
+      input.stickEffects ?? STICK_NEUTRAL,
+      input.phaseOffsets,
+
+    input.courtCrossings?.(shiftedShotInput(input.shotInput, delta, input.shooterMotionAt)),
+).type === 'goal';
   const earliest = Math.max(0, input.earliestTapTime);
   let left = 0;
   let right = 0;
@@ -670,7 +691,7 @@ function geometryForShot(
     frequency: input.shotInput.goalieFrequency ?? input.goalie.frequency,
     goalFrequency: input.shotInput.goalFrequency ?? input.goalie.goalFrequency,
   };
-  const goalieCrossTime = input.shotInput.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
+  const goalieCrossTime = input.courtCrossings?.(input.shotInput).goalieTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOALIE_Y) / speed);
   const before = simulateGoalie(
     effectiveGoalie,
     input.seed,
@@ -711,7 +732,7 @@ function geometryForShot(
       PERSPECTIVE_COURT_HITBOX_GOAL_INSET * 2,
   );
 
-  const shooterTime = input.shotInput.shooterTapTime ?? input.shotInput.tapTime;
+  const shooterTime = (input.shooterMotionAt?input.shotInput.shooterMotionTime:undefined) ?? input.shotInput.shooterTapTime ?? input.shotInput.tapTime;
   const shooterAt = simulateShooter(
     shooterTime + input.phaseOffsets.shooter,
     input.shotInput.shooterFrequency,
@@ -743,7 +764,7 @@ function geometryForShot(
 function resultX(input: MarksmanshipShotInput, result: ShotResult): number {
   if (result.type === 'goal') return result.hitPoint.x;
   if (result.type === 'save') return result.goalieContact.x;
-  const shooterTime = input.shotInput.shooterTapTime ?? input.shotInput.tapTime;
+  const shooterTime = (input.shooterMotionAt?input.shotInput.shooterMotionTime:undefined) ?? input.shotInput.shooterTapTime ?? input.shotInput.tapTime;
   return simulateShooter(
     shooterTime + input.phaseOffsets.shooter,
     input.shotInput.shooterFrequency,
@@ -758,8 +779,8 @@ function measurementsForV4Shot(input: MarksmanshipShotInput, puckX: number): Mar
     goalFrequency: input.shotInput.goalFrequency ?? input.goalie.goalFrequency,
   };
   const tapTime = input.shotInput.tapTime;
-  const goalieCrossTime = tapTime + (PUCK_START.y - GOALIE_Y) / speed;
-  const goalCrossTime = tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const goalieCrossTime = input.courtCrossings?.(input.shotInput).goalieTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOALIE_Y) / speed);
+  const goalCrossTime = input.courtCrossings?.(input.shotInput).goalTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed);
   const atTap = simulateGoalie(goalie, input.seed, input.shotIndex, tapTime, input.phaseOffsets.goalie);
   const atCross = simulateGoalie(goalie, input.seed, input.shotIndex, goalieCrossTime, input.phaseOffsets.goalie);
   const visualX = (x: number): number =>
@@ -824,13 +845,19 @@ function measurementsForV5Shot(input: MarksmanshipShotInput, puckX: number): Mar
     frequency: shot.goalieFrequency ?? input.goalie.frequency,
     goalFrequency: shot.goalFrequency ?? input.goalie.goalFrequency,
   };
-  const goalieCrossTime = shot.tapTime + (PUCK_START.y - GOALIE_Y) / speed;
-  const goalCrossTime = shot.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed;
+  const goalieCrossTime = input.courtCrossings?.(input.shotInput).goalieTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOALIE_Y) / speed);
+  const goalCrossTime = input.courtCrossings?.(input.shotInput).goalTimeMs ?? (input.shotInput.tapTime + (PUCK_START.y - GOAL_OPENING.y) / speed);
   const goalie = getPerspectiveCourtGoalieHitbox(
-    shot, effectiveGoalie, input.seed, input.shotIndex, STICK_NEUTRAL, input.phaseOffsets,
+    shot,
+    effectiveGoalie,
+    input.seed,
+    input.shotIndex,
+    input.stickEffects ?? STICK_NEUTRAL,
+    input.phaseOffsets,
+    goalieCrossTime,
   );
-  const goal = getPerspectiveCourtGoalOpening(shot, effectiveGoalie, input.phaseOffsets);
-  const shooterTime = (shot.shooterTapTime ?? shot.tapTime) + input.phaseOffsets.shooter;
+  const goal = getPerspectiveCourtGoalOpening(shot, effectiveGoalie, input.phaseOffsets, goalCrossTime);
+  const shooterTime = ((input.shooterMotionAt?shot.shooterMotionTime:undefined) ?? shot.shooterTapTime ?? shot.tapTime) + input.phaseOffsets.shooter;
   const shooterAt = simulateShooter(shooterTime, shot.shooterFrequency).x;
   const shooterBefore = simulateShooter(shooterTime - 5, shot.shooterFrequency).x;
   const goalieX = (timeMs: number): number => simulateGoalie(
@@ -861,13 +888,15 @@ function nearestGoalDelta(input: MarksmanshipShotInput): number | null {
       const deltaMs = step * stepMs * direction;
       if (input.shotInput.tapTime + deltaMs < Math.max(0, input.earliestTapTime)) continue;
       const result = resolvePerspectiveCourtShot(
-        shiftedShotInput(input.shotInput, deltaMs),
+        shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt),
         input.goalie,
         input.seed,
         input.shotIndex,
-        STICK_NEUTRAL,
+        input.stickEffects ?? STICK_NEUTRAL,
         input.phaseOffsets,
-      );
+
+    input.courtCrossings?.(shiftedShotInput(input.shotInput, deltaMs, input.shooterMotionAt)),
+);
       if (result.type === 'goal') return deltaMs;
     }
   }
@@ -882,9 +911,11 @@ export function resolveMarksmanshipShotContext(
     input.goalie,
     input.seed,
     input.shotIndex,
-    STICK_NEUTRAL,
+    input.stickEffects ?? STICK_NEUTRAL,
     input.phaseOffsets,
-  );
+
+    input.courtCrossings?.(input.shotInput),
+);
   const geometry = geometryForShot(input, resultX(input, result));
   const v4Measurements = input.scoring.version === 4
     ? measurementsForV4Shot(input, resultX(input, result)) : undefined;
@@ -931,7 +962,7 @@ export function classifyMarksmanshipShot(
     const opportunityInput = (input.scoring.version === 4 || input.scoring.version === 5 ||
       input.scoring.version === 6) &&
       timingErrorMs !== null
-      ? { ...input, shotInput: shiftedShotInput(input.shotInput, timingErrorMs) }
+      ? { ...input, shotInput: shiftedShotInput(input.shotInput, timingErrorMs, input.shooterMotionAt) }
       : null;
     const opportunityContext = opportunityInput === null ? null
       : resolveMarksmanshipShotContext(opportunityInput);

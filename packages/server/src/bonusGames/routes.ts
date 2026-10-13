@@ -1,9 +1,13 @@
-import type { FastifyInstance, FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
+import { listBonusRecords } from './records.js';
+import { assertBonusChallengeRouteAccess } from './challengeAccess.js';
+import type { FastifyInstance, FastifyPluginAsync, FastifyReply } from 'fastify';
 import { z, type ZodType } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { listBonusGameCards, type BonusGameCardDto } from './catalog.js';
 import { purchaseBonusGame } from './economy.js';
 import {
+  tapCyberpunkPanel,
+  cleanupBeachPuddle,
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   BonusAttemptAlreadyActiveError,
@@ -20,7 +24,7 @@ import type { BonusGameAttemptDTO, BonusPeriodRule } from './types.js';
 export interface BonusGameRouteOptions {
   bonusSeedSecret: string;
   dailyAttemptLimit: number;
-  challengesEnabled: boolean;
+  challengesEnabled?: boolean;
 }
 
 const gameParamsSchema = z.object({ gameId: z.string().uuid() }).strict();
@@ -251,6 +255,8 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     closed_at: attempt.closedAt,
     shots_taken: attempt.shotsTaken,
     current_period_shots_taken: attempt.currentPeriodShotsTaken,
+    ...(attempt.currentPeriodPanelEvents ? {current_period_panel_events:attempt.currentPeriodPanelEvents}:{}),
+    ...(attempt.currentPeriodCleanupEvents ? { current_period_cleanup_events: attempt.currentPeriodCleanupEvents } : {}),
     ...(attempt.currentPeriodShotPauses ? { current_period_shot_pauses: attempt.currentPeriodShotPauses } : {}),
     goals: attempt.goals,
     total_points: attempt.totalPoints,
@@ -258,9 +264,11 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     best_goal_streak: attempt.bestGoalStreak,
     preview_required: attempt.previewRequired,
     current_loadout: attempt.currentLoadout,
+    record: attempt.record ?? null,
     reward_granted: attempt.rewardGranted,
     attempt_seed: attempt.attemptSeed,
     game_core_version: attempt.gameCoreVersion,
+    challenge_level: attempt.rules.challengeLevel ?? null,
     definition_revision: attempt.rules.revision,
     server_now: now.toISOString(),
     rules: {
@@ -332,29 +340,19 @@ function activeAttemptConflict(reply: FastifyReply, error: BonusAttemptAlreadyAc
 }
 
 export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async (app, opts) => {
-  const assertChallengeAccessible = async (request: FastifyRequest): Promise<void> => {
-    if (opts.challengesEnabled) return;
-    const params = (request.params ?? {}) as { gameId?: string; attemptId?: string };
-    let skill: string | undefined;
-    if (params.gameId) {
-      const { gameId } = parseRequest(gameParamsSchema, params);
-      const result = await app.pg.query<{ skill_code: string }>('select skill_code from bonus_game where id=$1', [gameId]);
-      skill = result.rows[0]?.skill_code;
-    } else if (request.routeOptions.url === '/bonus-games/attempts/current') {
-      const result = await app.pg.query<{ skill_code: string }>(
-        "select rules_snapshot->>'skillCode' as skill_code from bonus_game_attempt where user_id=$1 and status='active'",
-        [request.user.id]);
-      skill = result.rows[0]?.skill_code;
-    } else if (params.attemptId) {
-      const { attemptId } = parseRequest(attemptParamsSchema, params);
-      const result = await app.pg.query<{ skill_code: string }>(
-        "select rules_snapshot->>'skillCode' as skill_code from bonus_game_attempt where id=$1 and user_id=$2",
-        [attemptId, request.user.id]);
-      skill = result.rows[0]?.skill_code;
-    }
-    if (skill === 'challenge') throw new AppError('bonus_section_in_development', 'Раздел в разработке', 403);
+  const challengeAccessGuard: typeof app.authenticate = async (request) => {
+    const raw = request.params as { gameId?: unknown; attemptId?: unknown };
+    const gameId = gameParamsSchema.safeParse(raw);
+    const attemptId = attemptParamsSchema.safeParse(raw);
+    await assertBonusChallengeRouteAccess(app.pg, opts.challengesEnabled === true, request.user.id,
+      gameId.success ? gameId.data : attemptId.success ? attemptId.data : {});
   };
-  app.get('/bonus-games', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
+  app.get('/bonus-games/:gameId/records', { preHandler: [app.authenticate] }, async (request) => {
+    const { gameId } = gameParamsSchema.parse(request.params);
+    const { offset } = z.object({ offset: z.coerce.number().int().min(0).max(99).default(0) }).strict().parse(request.query);
+    return listBonusRecords(app.pg, request.user.id, gameId, offset);
+  });
+  app.get('/bonus-games', { preHandler: [app.authenticate, challengeAccessGuard] }, async (request) =>
     runBonusRoute(async () => {
       const now = new Date();
       await reconcileCurrentAttempt(app, request.user.id, now);
@@ -366,7 +364,6 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
         opts.dailyAttemptLimit,
       );
       return {
-        challenge_available: opts.challengesEnabled,
         games: games.map(toCatalogGameHttpDto),
         active_attempt: games.find((game) => game.active_attempt !== null)?.active_attempt ?? null,
         attempt_allowances: {
@@ -410,7 +407,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     }),
   );
 
-  app.get('/bonus-games/attempts/current', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
+  app.get('/bonus-games/attempts/current', { preHandler: [app.authenticate, challengeAccessGuard] }, async (request) =>
     runBonusRoute(async () => {
       const now = new Date();
       const attempt = await reconcileCurrentAttempt(app, request.user.id, now);
@@ -418,7 +415,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     }),
   );
 
-  app.post('/bonus-games/:gameId/unlock', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
+  app.post('/bonus-games/:gameId/unlock', { preHandler: [app.authenticate, challengeAccessGuard] }, async (request) =>
     runBonusRoute(async () => {
       const params = parseRequest(gameParamsSchema, request.params);
       const body = parseRequest(unlockBodySchema, request.body);
@@ -434,14 +431,16 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/:gameId/attempts',
-    { preHandler: [app.authenticate, assertChallengeAccessible] },
+    { preHandler: [app.authenticate, challengeAccessGuard] },
     async (request, reply) => {
       try {
         const params = parseRequest(gameParamsSchema, request.params);
         const now = new Date();
+        const body = parseRequest(z.object({ level: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional() }).strict(), request.body ?? {});
         const result = await startOrResumeBonusAttempt(app.pg, {
           userId: request.user.id,
           gameId: params.gameId,
+          ...(body.level === undefined ? {} : { level: body.level }),
           now,
           seedSecret: opts.bonusSeedSecret,
           dailyAttemptLimit: opts.dailyAttemptLimit,
@@ -458,7 +457,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
     },
   );
 
-  app.get('/bonus-games/attempts/:attemptId', { preHandler: [app.authenticate, assertChallengeAccessible] }, async (request) =>
+  app.get('/bonus-games/attempts/:attemptId', { preHandler: [app.authenticate, challengeAccessGuard] }, async (request) =>
     runBonusRoute(async () => {
       const params = parseRequest(attemptParamsSchema, request.params);
       const now = new Date();
@@ -469,7 +468,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/preview/acknowledge',
-    { preHandler: [app.authenticate, assertChallengeAccessible] },
+    { preHandler: [app.authenticate, challengeAccessGuard] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
@@ -487,7 +486,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/period/start',
-    { preHandler: [app.authenticate, assertChallengeAccessible] },
+    { preHandler: [app.authenticate, challengeAccessGuard] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
@@ -514,9 +513,35 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
       }),
   );
 
+  app.post('/bonus-games/attempts/:attemptId/beach/cleanup',
+    { preHandler: [app.authenticate, challengeAccessGuard] }, async request => runBonusRoute(async () => {
+      const params = parseRequest(attemptParamsSchema, request.params);
+      const body = parseRequest(z.object({
+        eventId: z.string().uuid(), period: z.number().int().min(1).max(10),
+        puddleId: z.string().min(1).max(64), tapTime: z.number().finite().min(0).max(86400000),
+        expectedShots: z.number().int().min(0).max(10000), expectedCleanups: z.number().int().min(0).max(1000),
+      }).strict(), request.body);
+      const now = new Date();
+      const attempt = await cleanupBeachPuddle(app.pg, { ...body, userId: request.user.id, attemptId: params.attemptId, now });
+      return { attempt: toAttemptHttpDto(attempt, now) };
+    }));
+
+  app.post('/bonus-games/attempts/:attemptId/cyberpunk/panel',
+    { preHandler: [app.authenticate, challengeAccessGuard] }, async request => runBonusRoute(async () => {
+      const params = parseRequest(attemptParamsSchema, request.params);
+      const body = parseRequest(z.object({
+        eventId: z.string().uuid(), period: z.number().int().min(1).max(10),
+        stripEventId: z.string().min(1).max(64), tapTime: z.number().finite().min(0).max(86400000),
+        expectedShots: z.number().int().min(0).max(10000), expectedPanels: z.number().int().min(0).max(1000),
+      }).strict(), request.body);
+      const now = new Date();
+      const attempt = await tapCyberpunkPanel(app.pg, { ...body, userId: request.user.id, attemptId: params.attemptId, now });
+      return { attempt: toAttemptHttpDto(attempt, now) };
+    }));
+
   app.post(
     '/bonus-games/attempts/:attemptId/shot',
-    { preHandler: [app.authenticate, assertChallengeAccessible] },
+    { preHandler: [app.authenticate, challengeAccessGuard] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);
@@ -546,7 +571,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
 
   app.post(
     '/bonus-games/attempts/:attemptId/abandon',
-    { preHandler: [app.authenticate, assertChallengeAccessible] },
+    { preHandler: [app.authenticate, challengeAccessGuard] },
     async (request) =>
       runBonusRoute(async () => {
         const params = parseRequest(attemptParamsSchema, request.params);

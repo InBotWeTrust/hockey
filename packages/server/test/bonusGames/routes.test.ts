@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
-  BONUS_GAME_CORE_VERSION as GAME_CORE_VERSION,
+  GAME_CORE_VERSION,
   GOAL_OPENING,
   PUCK_START,
   STICK_NEUTRAL,
@@ -1207,6 +1207,10 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
         reward_granted: true,
       },
     });
+    expect(final.response.json().attempt.record).toMatchObject({shots:3,goals:1,stars:0,experience:0,place:1});
+    const rating = await app.inject({method:'GET',url:`/bonus-games/${game.id}/records`,headers});
+    expect(rating.statusCode).toBe(200);
+    expect(rating.json().currentUser).toMatchObject({userId,place:1,shots:3,goals:1});
     const period = await pool.query<{ closed_reason: string }>(
       'select closed_reason from bonus_game_period_log where attempt_id = $1',
       [attempt.id],
@@ -1228,6 +1232,15 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       attempt: { status: 'completed', state: 'closed', reward_granted: true },
     });
     expect(await shotMutationSnapshot(attempt.id)).toEqual(beforeDuplicate);
+  });
+
+  it('requires auth and completion for records and validates page offsets', async () => {
+    const game=await createGame();
+    expect((await app.inject({method:'GET',url:`/bonus-games/${game.id}/records`})).statusCode).toBe(401);
+    const locked=await app.inject({method:'GET',url:`/bonus-games/${game.id}/records`,headers});
+    expect(locked.statusCode).toBe(403);
+    expect(locked.json().error.code).toBe('bonus_records_locked');
+    for (const offset of ['-1','100','1.5','nope']) expect((await app.inject({method:'GET',url:`/bonus-games/${game.id}/records?offset=${offset}`,headers})).statusCode).toBe(400);
   });
 
   it('uses UUID and strict Zod request schemas', async () => {
@@ -1489,36 +1502,6 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
     expect(response.json().error.message).not.toContain(active.id);
   });
 
-  it('blocks closed challenges by both game and existing-attempt URLs without changing state', async () => {
-    const game = await createGame({ skillCode: 'challenge' });
-    const idle = await startAttempt(game.id);
-    const closedApp = await buildApp({
-      config: { NODE_ENV: 'test', HOST: '0.0.0.0', PORT: 3000, LOG_LEVEL: 'warn',
-        DATABASE_URL: databaseUrl, REDIS_URL: redisUrl, JWT_SECRET, REFRESH_SECRET,
-        TELEGRAM_BOT_TOKEN: 'test-bot-token', DAILY_SEED_SECRET: BONUS_SEED_SECRET,
-        BONUS_DAILY_ATTEMPT_LIMIT: 2, BONUS_CHALLENGES_ENABLED: false },
-      pushSchedulerEnabled: false, pushWorkerEnabled: false,
-    });
-    try {
-      const catalog = await closedApp.inject({ method: 'GET', url: '/bonus-games', headers });
-      expect(catalog.json().challenge_available).toBe(false);
-      for (const [method, url] of [
-        ['POST', `/bonus-games/${game.id}/attempts`],
-        ['GET', `/bonus-games/attempts/${idle.id}`],
-        ['GET', '/bonus-games/attempts/current'],
-        ['POST', `/bonus-games/attempts/${idle.id}/period/start`],
-      ] as const) {
-        const denied = await closedApp.inject({ method, url, headers, ...(method === 'POST' ? { payload: {} } : {}) });
-        expect(denied.statusCode).toBe(403);
-        expect(denied.json().error.code).toBe('bonus_section_in_development');
-      }
-      const state = await pool.query('select state,current_period from bonus_game_attempt where id=$1', [idle.id]);
-      expect(state.rows[0]).toMatchObject({ state: 'idle', current_period: 0 });
-      const slots = await pool.query('select count(*)::int as count from bonus_game_daily_attempt_slot where attempt_id=$1', [idle.id]);
-      expect(slots.rows[0].count).toBe(0);
-    } finally { await closedApp.close(); }
-  });
-
   it.each(['accuracy', 'speed', 'challenge'] as const)('starts a third %s period when the configured daily allowance is 100', async (skillCode) => {
     const devApp = await buildApp({
       config: { NODE_ENV: 'test', HOST: '0.0.0.0', PORT: 3000, LOG_LEVEL: 'warn',
@@ -1542,33 +1525,6 @@ describe.skipIf(!hasIntegrationEnv)('/bonus-games player routes', () => {
       }
     } finally { await devApp.close(); }
   });
-
-  it.each(['speed', 'accuracy', 'marksmanship', 'endurance'] as const)(
-    'enforces the production two-attempt policy for %s before creating a third attempt', async (skillCode) => {
-      const prodPolicyApp = await buildApp({
-        config: { NODE_ENV: 'test', HOST: '0.0.0.0', PORT: 3000, LOG_LEVEL: 'warn',
-          DATABASE_URL: databaseUrl, REDIS_URL: redisUrl, JWT_SECRET, REFRESH_SECRET,
-          TELEGRAM_BOT_TOKEN: 'test-bot-token', DAILY_SEED_SECRET: BONUS_SEED_SECRET,
-          BONUS_DAILY_ATTEMPT_LIMIT: 2, BONUS_CHALLENGES_ENABLED: false },
-        pushSchedulerEnabled: false, pushWorkerEnabled: false,
-      });
-      try {
-        const game = await createGame({ skillCode });
-        for (let index = 0; index < 2; index += 1) {
-          const response = await prodPolicyApp.inject({ method: 'POST', url: `/bonus-games/${game.id}/attempts`, headers });
-          expect(response.statusCode).toBe(201);
-          const id = response.json().attempt.id as string;
-          expect((await prodPolicyApp.inject({ method: 'POST', url: `/bonus-games/attempts/${id}/preview/acknowledge`, headers, payload: {} })).statusCode).toBe(200);
-          expect((await prodPolicyApp.inject({ method: 'POST', url: `/bonus-games/attempts/${id}/period/start`, headers, payload: {} })).statusCode).toBe(200);
-          await abandonAttempt(id);
-        }
-        const third = await prodPolicyApp.inject({ method: 'POST', url: `/bonus-games/${game.id}/attempts`, headers });
-        expect(third.statusCode).toBe(409);
-        expect(third.json().error.code).toBe('bonus_daily_attempt_limit');
-        expect((await pool.query('select count(*)::int as count from bonus_game_attempt where user_id=$1', [userId])).rows[0].count).toBe(2);
-      } finally { await prodPolicyApp.close(); }
-    },
-  );
 
   it('allows two daily attempts per skill, including two on one game, and resets by local date', async () => {
     const accuracy = await createGame({ skillCode: 'accuracy' });

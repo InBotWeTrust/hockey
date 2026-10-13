@@ -107,3 +107,25 @@ describe('Puck', () => {
     expect(puck.container.position.y).toBeCloseTo(95);
   });
 });
+
+it('renders a shared piecewise trajectory and holds its exact water endpoint', () => {
+  const puck = new Puck();
+  const scale = { factor: 1, offsetX: 0, offsetY: 0 };
+  puck.playShot({ x: 100, y: 500 }, { x: 100, y: 200 }, 1000, 400,
+    elapsed => ({ x: 100, y: elapsed <= 100 ? 500 - elapsed * 2 : 300 - (elapsed - 100) / 3 }));
+  puck.update(1200, scale);
+  expect(puck.container.position.y).toBeCloseTo(300 - 100 / 3);
+  puck.update(1400, scale);
+  expect(puck.container.position.y).toBe(200);
+  expect(puck.isHeld()).toBe(true);
+});
+
+it('finishes a zero-duration sampled flight without leaving the puck flying', () => {
+  const puck = new Puck('right', { flightVisualYOffset: -127 });
+  puck.playShot({ x: 100, y: 500 }, { x: 100, y: 200 }, 1000, 0, () => ({ x: 100, y: 200 }));
+  puck.update(1000, { factor: 1, offsetX: 0, offsetY: 0 });
+  expect(puck.isFlying()).toBe(false);
+  expect(puck.container.position.y).toBe(200);
+  puck.update(1100, { factor: 1, offsetX: 0, offsetY: 0 });
+  expect(puck.container.position.y).toBe(200);
+});

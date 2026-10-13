@@ -15,7 +15,7 @@ export function BarMaintenanceScreen(): JSX.Element {
         >
           <ChevronLeft size={22} />
         </button>
-        <h1>Бар</h1>
+        <h1>Бар «4-й период»</h1>
       </header>
       <section className="bar-content bar-maintenance-copy">
         <p>

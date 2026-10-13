@@ -6,6 +6,8 @@ import type {
   BonusShotResponse,
 } from '../api/bonusGames.js';
 import {
+  tapBonusCyberpunkPanel,
+  cleanupBonusBeachPuddle,
   abandonBonusAttempt,
   acknowledgeBonusPreview,
   fetchBonusAttempt,
@@ -17,6 +19,8 @@ import { ApiError } from '../api/apiFetch.js';
 import { useBonusGameStore } from './bonusGameStore.js';
 
 vi.mock('../api/bonusGames.js', () => ({
+  tapBonusCyberpunkPanel: vi.fn(),
+  cleanupBonusBeachPuddle: vi.fn(),
   abandonBonusAttempt: vi.fn(),
   acknowledgeBonusPreview: vi.fn(),
   fetchBonusAttempt: vi.fn(),
@@ -1110,4 +1114,44 @@ describe('bonusGameStore', () => {
     expect(result).toEqual(abandonedAttempt);
     expect(useBonusGameStore.getState().attempt).toEqual(abandonedAttempt);
   });
+});
+
+it('blocks shots and polls until cleanup is accepted and retains accepted event history', async () => {
+  const attempt = { ...initialAttempt, rules: { ...initialAttempt.rules, challenge_environment: {
+    beach: { version: 1 as const, meltDurationMs: 150000, finalSpeedMultiplier: .8, puddles: [], interactive: {version: 1 as const, wind: []} },
+  } }, current_period_cleanup_events: [] };
+  useBonusGameStore.setState({attempt, inFlight: false, pendingShot: null, needsReconcile: false});
+  let resolve!: (value: BonusAttemptResponse) => void;
+  vi.mocked(cleanupBonusBeachPuddle).mockImplementation(() => new Promise(done => {resolve = done;}));
+  const request = {eventId: 'event-one', period: 1, puddleId: 'left', tapTime: 4000, expectedShots: 2, expectedCleanups: 0};
+  const pending = useBonusGameStore.getState().cleanupPuddle(request);
+  expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+  const calls = vi.mocked(fetchBonusAttempt).mock.calls.length;
+  await useBonusGameStore.getState().loadAttempt(attempt.id);
+  expect(vi.mocked(fetchBonusAttempt).mock.calls.length).toBe(calls);
+  const accepted = {...attempt, current_period_cleanup_events: [{id: 'event-one', puddleId: 'left', tapTime: 4000}]};
+  resolve({attempt: accepted} as BonusAttemptResponse);
+  expect(await pending).toBe(true);
+  expect(useBonusGameStore.getState().attempt?.current_period_cleanup_events).toEqual(accepted.current_period_cleanup_events);
+  expect(useBonusGameStore.getState().inFlight).toBe(false);
+});
+
+it('blocks shots and polls until panel tap is accepted and retains accepted event history', async () => {
+  const attempt = { ...initialAttempt, rules: { ...initialAttempt.rules, challenge_environment: {
+    cyberpunk:{version:1 as const,seed:'yard',durationMs:150000},
+  } }, current_period_panel_events: [] };
+  useBonusGameStore.setState({attempt, inFlight: false, pendingShot: null, needsReconcile: false});
+  let resolve!: (value: BonusAttemptResponse) => void;
+  vi.mocked(tapBonusCyberpunkPanel).mockImplementation(() => new Promise(done => {resolve = done;}));
+  const request = {eventId: 'event-one', period: 1, stripEventId: 'strip-0', tapTime: 4000, expectedShots: 2, expectedPanels: 0};
+  const pending = useBonusGameStore.getState().tapPanel(request);
+  expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+  const calls = vi.mocked(fetchBonusAttempt).mock.calls.length;
+  await useBonusGameStore.getState().loadAttempt(attempt.id);
+  expect(vi.mocked(fetchBonusAttempt).mock.calls.length).toBe(calls);
+  const accepted = {...attempt, current_period_panel_events: [{id: 'event-one', eventId: 'strip-0', tapTime: 4000}]};
+  resolve({attempt: accepted} as BonusAttemptResponse);
+  expect(await pending).toBe(true);
+  expect(useBonusGameStore.getState().attempt?.current_period_panel_events).toEqual(accepted.current_period_panel_events);
+  expect(useBonusGameStore.getState().inFlight).toBe(false);
 });

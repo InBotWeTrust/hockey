@@ -14,6 +14,8 @@ const RATING_SCOPES: Array<{ id: RatingScope; label: string }> = [
   { id: 'express', label: 'Экспресс' },
   { id: 'express_plus', label: 'Микс' },
   { id: 'classic', label: 'Классика' },
+  { id: 'sniper', label: 'Снайпер' },
+  { id: 'marathon', label: 'Марафон' },
 ];
 
 function monthLabel(key: string): string {
@@ -64,6 +66,7 @@ export function AmateurDuelRatingTab({
         items={RATING_SCOPES}
         activeTab={scope}
         ariaLabel="Зачёт рейтинга дуэлей"
+        scrollable
         onChange={setScope}
       />
       <section

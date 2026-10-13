@@ -1,3 +1,7 @@
+import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
+import {resolveCyberpunkCourtShot,type CyberpunkRules,type CyberpunkPanelEvent} from '@hockey/game-core';
+import { SnowBurst } from './renderer/SnowBurst.js';
+import type { SkidVisual } from './loop.js';
 import {
   useCallback,
   useEffect,
@@ -25,6 +29,9 @@ import {
   getGoalie,
   getSessionPhaseOffsets,
   resolveShot,
+  getBeachPuckSpeed, type BonusChallengeCondition,
+  resolveBeachCourtShot, sampleBeachPuddles, sampleBeachPuckPosition,
+  type BonusChallengeEnvironmentRules,
   simulateGoal,
   simulateGoalie,
   type DailyPeriodSpeedPreset,
@@ -55,6 +62,10 @@ import { Goalie, type GoalieOptions } from './renderer/Goalie.js';
 import { Hitboxes, type HitboxesOptions } from './renderer/Hitboxes.js';
 import { IceCar, iceCarPosAt, type IceMaintenanceMode } from './renderer/IceCar.js';
 import { Player, type PlayerOptions } from './renderer/Player.js';
+import { BeachWind, type BeachWindTarget } from './renderer/BeachWind.js';
+import { BeachWater } from './renderer/BeachWater.js';
+import { beachNoticeLabel } from './beachNotice.js';
+import { projectBeachWaterY } from './beachWaterVisuals.js';
 import { Puck, type PuckOptions } from './renderer/Puck.js';
 import {
   puckOutcomeMotion,
@@ -113,7 +124,7 @@ const PLAY_ROUTE_TRANSITION_MS = 580;
 
 const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
 
-const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
+export const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
   top: '24.55%',
   height: '74.2%',
   bottom: 'auto',
@@ -247,8 +258,8 @@ export function duelFatigueNoticeLabel(
 
   const isHeavy = condition?.status === 'nutrition_slowdown' || condition?.fatigueLevel === 'heavy';
   const isTired = condition?.status === 'tired';
-  if (!isHeavy && !isTired && (!showPeriodFatigue || periodSpeedRatio >= 0.999)) return null;
   const effectiveSpeedRatio = periodSpeedRatio * (condition?.shooterSpeedMultiplier ?? 1);
+  if (!isHeavy && !isTired && (!showPeriodFatigue || effectiveSpeedRatio >= 0.999)) return null;
   if (!Number.isFinite(effectiveSpeedRatio)) return null;
   const slowdownPercent = Math.min(100, Math.max(0, Math.round((1 - effectiveSpeedRatio) * 100)));
   return `${isHeavy ? 'Сильная усталость' : 'Усталость'} · замедление ${slowdownPercent}%`;
@@ -315,6 +326,7 @@ export interface PlayViewProps<TState> {
   onInactiveActionStart?: (() => void) | undefined;
   entranceBeforeInactiveAction?: boolean | undefined;
   goalsOnlyWhileInactive?: boolean | undefined;
+  separatePeriodClock?: boolean | undefined;
   continuousClockDuringResult?: boolean | undefined;
   waitForShotResponseBeforeResultClose?: boolean | undefined;
   freezeRenderingDuringResult?: boolean | undefined;
@@ -327,6 +339,13 @@ export interface PlayViewProps<TState> {
   initialShooterElapsedMs?: number | undefined;
   clockRebaseKey?: string | number | undefined;
   periodEndsAt?: number | undefined;
+  resultPauseStartsAt?: string | undefined;
+  resultPauseEndsAt?: string | undefined;
+  periodRemainingMs?: number | undefined;
+  getPeriodElapsedMs?: (() => number) | undefined;
+  stopAtPeriodEnd?: boolean | undefined;
+  shotResultPauseMs?: number | undefined;
+  applyShotStateAtContact?: boolean | undefined;
   scoreboardEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
   optimisticAddShot: (claimed: ShotResult['type']) => void;
@@ -348,7 +367,10 @@ export interface PlayViewProps<TState> {
   rinkBorderRadius?: number | string | undefined;
   rinkBorder?: string | undefined;
   hideScoreboard?: boolean | undefined;
+  scoreboardDimmed?: boolean | undefined;
   overlayControls?: ReactNode;
+  rinkUnderlay?: ReactNode;
+  rinkOverlay?: ReactNode;
   gameLayerStyle?: CSSProperties | undefined;
   playerGrip?: 'left' | 'right' | undefined;
   playerOptions?: PlayerOptions | undefined;
@@ -358,7 +380,15 @@ export interface PlayViewProps<TState> {
   puckOptions?: PuckOptions | undefined;
   hitboxesVisible?: boolean | undefined;
   hitboxesOptions?: HitboxesOptions | undefined;
+  cyberpunkEnvironment?: {rules:CyberpunkRules;taps:readonly CyberpunkPanelEvent[]} | undefined;
   shotResolver?: PlayShotResolver | undefined;
+  courtMotionTime?: ((target: 'goal' | 'goalie', sceneMs: number) => number) | undefined;
+  skidVisual?: ((sceneMs: number) => SkidVisual | null) | undefined;
+  beachWindTarget?: ((sceneMs: number) => BeachWindTarget | null) | undefined;
+  beachCleanupHint?: boolean | undefined;
+  canStartAction?: (() => boolean) | undefined;
+  onBeachWaterTap?: ((x: number, y: number, time: number) => boolean | Promise<boolean>) | undefined;
+  beachEnvironment?: BonusChallengeEnvironmentRules['beach'] | undefined;
   shooterMotionTime?: ((sceneMs: number, pauses: readonly BonusChallengeShotPause[]) => number) | undefined;
   duelCondition?:
     | ((
@@ -369,10 +399,12 @@ export interface PlayViewProps<TState> {
     | undefined;
   hudAddon?: ReactNode;
   statusNotice?: ReactNode;
-  statusNoticeTone?: 'success' | 'warning' | 'error' | undefined;
+  statusNoticeTone?: 'success' | 'warning' | 'error' | 'slip' | 'magnetic' | undefined;
   statusNoticeClassName?: string | undefined;
+  conditionNoticeOverride?: boolean | undefined;
   statusNoticeDelayMs?: number | undefined;
   statusNoticeUnderScoreboard?: boolean | undefined;
+  noticesOnIce?: boolean | undefined;
   inlineResultNotice?: boolean | undefined;
   scoreboardOpponent?: ScoreBoardOpponent | undefined;
   readyPresence?: ReadyPresence | undefined;
@@ -385,7 +417,7 @@ export interface PlayViewProps<TState> {
   onResultComplete?: (() => void) | undefined;
   onResultVisibilityChange?: ((visible: boolean) => void) | undefined;
   onShotResolved?:
-    | ((context: PlayShotContext & { result: ShotResult }) => PlayResultPresentation | null)
+    | ((context: PlayShotContext & { result: ShotResult; flightMs?: number }) => PlayResultPresentation | null)
     | undefined;
   reduceMotion?: boolean | undefined;
 }
@@ -504,6 +536,8 @@ interface PlaySessionTiming {
   sessionStartedAt: string | null;
   serverNow: string | null;
   receivedAtPerformanceMs: number | null;
+  resultPauseStartsAt?: string | null;
+  resultPauseEndsAt?: string | null;
   initialSceneElapsedMs?: number | null;
   initialShooterElapsedMs?: number | null;
 }
@@ -513,7 +547,10 @@ export function computeInitialPlayClocks(timing: PlaySessionTiming): {
   shooterElapsedMs: number;
 } {
   const receivedAt = timing.receivedAtPerformanceMs ?? performance.now();
-  const clientElapsed = Math.max(0, performance.now() - receivedAt);
+  const wallElapsed = Math.max(0, performance.now() - receivedAt);
+  const serverNowMsForPause = timing.serverNow ? Date.parse(timing.serverNow) : 0;
+  const clientElapsed = scoredActiveDeltaMs(serverNowMsForPause, serverNowMsForPause + wallElapsed,
+    timing.resultPauseStartsAt, timing.resultPauseEndsAt);
   if (timing.initialSceneElapsedMs != null && timing.initialShooterElapsedMs != null) {
     return {
       sceneElapsedMs: Math.max(0, timing.initialSceneElapsedMs) + clientElapsed,
@@ -649,6 +686,7 @@ export function PlayView<TState>({
   onInactiveActionStart,
   entranceBeforeInactiveAction = false,
   goalsOnlyWhileInactive = false,
+  separatePeriodClock = false,
   continuousClockDuringResult = false,
   waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
@@ -661,6 +699,13 @@ export function PlayView<TState>({
   initialShooterElapsedMs,
   clockRebaseKey,
   periodEndsAt,
+  periodRemainingMs,
+  resultPauseStartsAt,
+  resultPauseEndsAt,
+  getPeriodElapsedMs,
+  stopAtPeriodEnd = false,
+  shotResultPauseMs,
+  applyShotStateAtContact = false,
   scoreboardEndsAt,
   onTimerExpired,
   optimisticAddShot,
@@ -673,7 +718,10 @@ export function PlayView<TState>({
   rinkBorderRadius = 36,
   rinkBorder = '3px solid #1e3a5f',
   hideScoreboard = true,
+  scoreboardDimmed = false,
   overlayControls,
+  rinkUnderlay,
+  rinkOverlay,
   gameLayerStyle = LONG_COURT_GAME_LAYER_STYLE,
   playerGrip,
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
@@ -683,15 +731,25 @@ export function PlayView<TState>({
   puckOptions = PERSPECTIVE_PUCK_OPTIONS,
   hitboxesVisible = false,
   hitboxesOptions = PERSPECTIVE_HITBOX_OPTIONS,
+  cyberpunkEnvironment,
   shotResolver = resolveNewTrainingCourtShot,
   duelCondition,
   shooterMotionTime,
+  beachEnvironment,
+  onBeachWaterTap,
+  canStartAction,
+  beachCleanupHint = false,
+  courtMotionTime,
+  skidVisual,
+  beachWindTarget,
   hudAddon,
   statusNotice,
   statusNoticeTone,
   statusNoticeClassName,
+  conditionNoticeOverride,
   statusNoticeDelayMs = 0,
   statusNoticeUnderScoreboard = false,
+  noticesOnIce = false,
   inlineResultNotice = false,
   scoreboardOpponent,
   readyPresence,
@@ -734,7 +792,15 @@ export function PlayView<TState>({
   }, [statusNotice, statusNoticeDelayMs]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const periodExpiredRef = useRef(false);
+  const expiryCheckRef = useRef<() => boolean>(() => false);
+  const sampledPeriodElapsed = getPeriodElapsedMs?.();
+  expiryCheckRef.current = () => stopAtPeriodEnd && periodEndsAt !== undefined && (
+    getPeriodElapsedMs ? getPeriodElapsedMs() >= ((sampledPeriodElapsed ?? 0) + (periodRemainingMs ?? 0)) : Date.now() >= periodEndsAt
+  );
   const sessionTimingRef = useRef<PlaySessionTiming>({
+    resultPauseStartsAt: resultPauseStartsAt ?? null,
+    resultPauseEndsAt: resultPauseEndsAt ?? null,
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
     receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
@@ -742,6 +808,8 @@ export function PlayView<TState>({
     initialShooterElapsedMs: initialShooterElapsedMs ?? null,
   });
   sessionTimingRef.current = {
+    resultPauseStartsAt: resultPauseStartsAt ?? null,
+    resultPauseEndsAt: resultPauseEndsAt ?? null,
     sessionStartedAt: sessionStartedAt ?? null,
     serverNow: serverNow ?? null,
     receivedAtPerformanceMs: receivedAtPerformanceMs ?? null,
@@ -756,6 +824,26 @@ export function PlayView<TState>({
   const rinkShellRef = useRef<HTMLDivElement | null>(null);
   const controlsRef = useRef<HTMLDivElement | null>(null);
   const loopRef = useRef<GameLoop | null>(null);
+  const beachEnvironmentRef = useRef(beachEnvironment);
+  beachEnvironmentRef.current = beachEnvironment;
+  const waterRulesRef = useRef(beachEnvironment?.puddles);
+  const [hasCleanedBeachWater, setHasCleanedBeachWater] = useState(false);
+  const beachCleanupHintRef = useRef(false);
+  beachCleanupHintRef.current = beachCleanupHint && !hasCleanedBeachWater;
+  const canStartActionRef = useRef(canStartAction);
+  canStartActionRef.current = canStartAction;
+  const courtMotionTimeRef = useRef(courtMotionTime);
+  courtMotionTimeRef.current = courtMotionTime;
+  const skidVisualRef = useRef(skidVisual);
+  skidVisualRef.current = skidVisual;
+  const snowBurstRef = useRef<SnowBurst | null>(null);
+  const beachWindTargetRef = useRef(beachWindTarget);
+  beachWindTargetRef.current = beachWindTarget;
+  const beachWindRef = useRef<BeachWind | null>(null);
+  const [windTarget, setWindTarget] = useState<BeachWindTarget | null>(null);
+  const windTargetRef = useRef<BeachWindTarget | null>(null);
+  const beachWaterRef = useRef<BeachWater | null>(null);
+  const beachReleaseTimeRef = useRef<number | null>(null);
   const puckRef = useRef<Puck | null>(null);
   const playerRef = useRef<Player | null>(null);
   const goalRef = useRef<Goal | null>(null);
@@ -888,6 +976,7 @@ export function PlayView<TState>({
   hitboxesVisibleRef.current = hitboxesVisible;
   const hitboxesOptionsRef = useRef(hitboxesOptions);
   hitboxesOptionsRef.current = hitboxesOptions;
+  const cyberpunkRef=useRef(cyberpunkEnvironment);cyberpunkRef.current=cyberpunkEnvironment;
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
   const shooterMotionTimeRef = useRef(shooterMotionTime);
@@ -1030,7 +1119,8 @@ export function PlayView<TState>({
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
   }, [periodEndsAt, scoreboardEndsAt]);
-  const remaining = periodEndsAt ? Math.max(0, periodEndsAt - now) : 0;
+  const remaining = periodRemainingMs ?? (periodEndsAt ? Math.max(0, periodEndsAt - now) : 0);
+  periodExpiredRef.current = stopAtPeriodEnd && periodEndsAt !== undefined && remaining <= 0;
   const scoreboardRemaining = scoreboardEndsAt ? Math.max(0, scoreboardEndsAt - now) : remaining;
 
   useLayoutEffect(() => {
@@ -1136,6 +1226,12 @@ export function PlayView<TState>({
       goalieRef.current?.destroy();
       playerRef.current?.destroy();
       puckRef.current?.destroy();
+      snowBurstRef.current?.destroy();
+      snowBurstRef.current = null;
+      beachWindRef.current?.destroy();
+      beachWindRef.current = null;
+      beachWaterRef.current?.destroy();
+      beachWaterRef.current = null;
       hitboxesRef.current?.destroy();
       iceCarRef.current?.destroy();
       loopRef.current = null;
@@ -1399,14 +1495,28 @@ export function PlayView<TState>({
       iceCarRef.current = iceCar;
 
       const layer = new Container();
+      if (beachEnvironmentRef.current) {
+        const water = new BeachWater(beachEnvironmentRef.current.puddles);
+        beachWaterRef.current = water;
+        layer.addChild(water.container);
+      }
       layer.addChild(iceCar.container);
+      if (skidVisualRef.current) {
+        const spray = new SnowBurst(); snowBurstRef.current = spray;
+      }
       layer.addChild(goal.container);
       layer.addChild(goalie.container);
       goalie.container.visible = !hideGoalieRef.current;
       layer.addChild(player.container);
+      if (snowBurstRef.current) layer.addChild(snowBurstRef.current.container);
       layer.addChild(puck.container);
       layer.addChild(hitboxes.container);
 
+      if (beachWindTargetRef.current) {
+        const wind = new BeachWind();
+        beachWindRef.current = wind;
+        layer.addChild(wind.container);
+      }
       app.stage.addChild(layer);
 
       const refreshScale = (s: Scale): void => {
@@ -1431,6 +1541,9 @@ export function PlayView<TState>({
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
+        getMaxSceneTimeMs: () => expiryCheckRef.current() && !shotAnimationInProgressRef.current ? loopRef.current?.getSceneT() ?? 0 : undefined,
+        ...(courtMotionTimeRef.current ? { getCourtMotionTime: (target: 'goal' | 'goalie', ms: number) =>
+          courtMotionTimeRef.current!(target, ms) } : {}),
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
         onDuelConditionChange: syncCurrentDuelCondition,
@@ -1438,6 +1551,37 @@ export function PlayView<TState>({
           getShooterMotionTime: (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
             shooterMotionTimeRef.current!(ms, pauses),
         } : {}),
+        ...(skidVisualRef.current ? {
+          getSkidVisual: (ms: number) => skidVisualRef.current?.(ms) ?? null,
+          onEntitiesRendered: (ms: number) => {
+            const effect = skidVisualRef.current?.(ms) ?? null;
+            const entity = effect?.target === 'goal' ? goal.container : effect?.target === 'goalie' ? goalie.container : player.container;
+            const sprite = entity.children[effect?.target === 'goal' ? 1 : 0];
+            snowBurstRef.current?.update(effect?.ageMs ?? null, entity.x + (sprite?.x ?? 0),
+              entity.y + (sprite?.y ?? 0) + (sprite?.height ?? 0) * .4, scaleRef.current, reduceMotion, ms);
+          },
+        } : {}),
+        onClockTick: (sceneElapsedMs) => {
+          if (waterRulesRef.current !== beachEnvironmentRef.current?.puddles && beachEnvironmentRef.current && beachWaterRef.current) {
+            beachWaterRef.current.setRules(beachEnvironmentRef.current.puddles);
+            waterRulesRef.current = beachEnvironmentRef.current.puddles;
+          }
+          beachWaterRef.current?.update(sceneElapsedMs, scaleRef.current, beachReleaseTimeRef.current,
+            beachCleanupHintRef.current);
+          let wind = beachWindTargetRef.current?.(sceneElapsedMs) ?? null;
+          const condition = duelConditionRef.current?.(sceneElapsedMs, speedsRef.current);
+          if (wind === 'player' && (condition?.canShoot === false || puck.isFlying() || puck.isHeld())) wind = null;
+          if (wind !== windTargetRef.current) {
+            windTargetRef.current = wind;
+            setWindTarget(wind);
+          }
+          if (beachWindRef.current) {
+            const entity = wind === 'goal' ? goal.container : wind === 'goalie' ? goalie.container : player.container;
+            const sprite = entity.children[wind === 'goal' ? 1 : 0];
+            beachWindRef.current.update(sceneElapsedMs, wind, entity.x + (sprite?.x ?? 0),
+              entity.y + (sprite?.y ?? 0), scaleRef.current, reduceMotion);
+          }
+        },
       });
       tickerRef.current = app.ticker;
       loopRef.current = loop;
@@ -1648,6 +1792,7 @@ export function PlayView<TState>({
   }, [onBack]);
 
   const handleShotTap = useCallback((): void => {
+    if (canStartActionRef.current?.() === false) return;
     const loop = loopRef.current;
     const puck = puckRef.current;
     const goalie = goalieRef.current;
@@ -1655,7 +1800,7 @@ export function PlayView<TState>({
     if (!loop || !puck || !goalie) return;
     if (puck.isFlying() || puck.isHeld()) return;
     if (shotSubmitPendingRef.current) return;
-    if (!cur.active) return;
+    if (!cur.active || expiryCheckRef.current()) return;
     if (!cur.seed) return;
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
 
@@ -1691,20 +1836,30 @@ export function PlayView<TState>({
     const sx =
       computeShooterX((shooterMotionT ?? shooterTapTime) + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
-    const puckSpeed = clampPuckSpeed(
+    const puckSpeed = beachEnvironmentRef.current
+      ? getBeachPuckSpeed(overrides.puckSpeed, (duelShotCondition as BonusChallengeCondition | null)?.puckSpeedMultiplier ?? 1)
+      : clampPuckSpeed(
       overrides.puckSpeed + (duelShotCondition?.puckSpeedDelta ?? 0),
     );
 
     const input = {
       tapTime,
       shooterTapTime,
+      ...(separatePeriodClock ? {
+        periodTapTime: getPeriodElapsedMs?.() ?? computeInitialElapsedMs({ ...sessionTimingRef.current, initialSceneElapsedMs: null, initialShooterElapsedMs: null }),
+        resultPauseMs: shotResultPauseMs ?? (reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS),
+      } : {}),
       ...(shooterMotionT !== undefined ? { shooterMotionTime: shooterMotionT } : {}),
       puckSpeedPerMs: puckSpeed,
       shooterFrequency: effectiveShooterFreq,
       goalieFrequency: activeCfg.frequency,
       goalFrequency: activeCfg.goalFrequency,
     };
-    const result: ShotResult =
+    const beachRules = beachEnvironmentRef.current;
+    const cyberpunk=cyberpunkRef.current;
+    const beachShot = cyberpunk?resolveCyberpunkCourtShot(input,activeCfg,seed,shotIndex,cyberpunk.rules,cyberpunk.taps,offsets): beachRules ? resolveBeachCourtShot(input, activeCfg, seed, shotIndex,
+      sampleBeachPuddles(beachRules.puddles, tapTime), offsets, courtMotionTimeRef.current) : null;
+    const result: ShotResult = beachShot?.result ??
       shotResolverRef.current?.({
         input,
         goalieConfig: activeCfg,
@@ -1714,7 +1869,7 @@ export function PlayView<TState>({
         phaseOffsets: offsets,
         shooterX: sx,
       }) ?? resolveShot(input, activeCfg, seed, shotIndex, stickEffectsRef.current, offsets);
-    const localResultPresentation =
+    const localResultPresentation = beachShot?.blockedByWater ? { title: 'Шайба застряла в луже' } :
       onShotResolved?.({
         input,
         goalieConfig: activeCfg,
@@ -1724,16 +1879,21 @@ export function PlayView<TState>({
         phaseOffsets: offsets,
         shooterX: sx,
         result,
+        flightMs:beachShot?.flight.durationMs ?? (PUCK_START.y-GOAL_OPENING.y)/puckSpeed,
       }) ?? null;
 
     let subText: string | null = null;
     let displayKind: ResultModalKind = result.type;
-    const flightMs = (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
-    const visualFlightMs = reduceMotion ? 0 : flightMs;
-    const visualPauseMs = reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS;
-    const tGoalCross = tapTime + flightMs;
-    const tGoalieCross = tapTime + (PUCK_START.y - GOALIE_Y) / puckSpeed;
-    if (result.type === 'save') {
+    const flightMs = beachShot?.flight.durationMs ?? (PUCK_START.y - GOAL_OPENING.y) / puckSpeed;
+    const visualFlightMs = reduceMotion && !shotResultPauseMs ? 0 : flightMs;
+    const visualPauseMs = shotResultPauseMs ?? (reduceMotion ? 1 : SHOT_RESULT_PAUSE_MS);
+    const rawGoalCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOAL_OPENING.y) ?? flightMs);
+    const tGoalCross = courtMotionTimeRef.current?.('goal', rawGoalCross) ?? rawGoalCross;
+    const rawGoalieCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOALIE_Y) ?? (PUCK_START.y - GOALIE_Y) / puckSpeed);
+    const tGoalieCross = courtMotionTimeRef.current?.('goalie', rawGoalieCross) ?? rawGoalieCross;
+    if (beachShot?.blockedByWater) {
+      subText = 'Шайба застряла в луже';
+    } else if (result.type === 'save') {
       const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
       const rel = sx - gs.position.x;
       const sixth = gs.width / 6;
@@ -1780,27 +1940,42 @@ export function PlayView<TState>({
 
     loop.beginShooterPause(flightMs);
     playerRef.current?.playShot();
-    const targetPoint = puckResultContact(result, sx);
+    const beachRenderPoint = (elapsed: number) => {
+      const point = sampleBeachPuckPosition(beachShot!.flight, elapsed);
+      const options = puckOptionsRef.current;
+      return { x: point.x, y: (projectBeachWaterY(point.y) - (options?.visualYOffset ?? 0))
+        / (options?.visualYScale ?? 1) };
+    };
+    const targetPoint = beachShot ? beachRenderPoint(flightMs) : puckResultContact(result, sx);
     const puckShotPath = {
-      start: puck.bladePoint(sx),
+      start: beachShot ? beachRenderPoint(0) : puck.bladePoint(sx),
       end: targetPoint,
     };
     const reboundObstacles =
       displayKind === 'miss'
         ? puckReboundObstacles(
             simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX,
-            simulateGoalie(activeCfg, seed, shotIndex, tGoalCross, offsets.goalie),
+            simulateGoalie(activeCfg, seed, shotIndex, courtMotionTimeRef.current?.('goalie', rawGoalCross) ?? rawGoalCross, offsets.goalie),
           )
         : [];
-    const outcomeMotion = puckOutcomeMotion(
+    // Sampled Beach points already include the flight offset. Outcome rendering
+    // adds that offset, so convert the contact without moving the visible puck.
+    const outcomeContact = beachShot ? {
+      x: puckShotPath.end.x,
+      y: puckShotPath.end.y - (puckOptionsRef.current?.flightVisualYOffset ?? 0)
+        / (puckOptionsRef.current?.visualYScale ?? 1),
+    } : puckShotPath.end;
+    const outcomeMotion = beachShot?.blockedByWater ? null : puckOutcomeMotion(
       displayKind,
-      puckShotPath.end,
+      outcomeContact,
       reduceMotion,
       puckSpeed,
       reboundObstacles,
     );
     const visualOutcomeDurationMs = outcomeMotion?.durationMs ?? 0;
-    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs);
+    beachReleaseTimeRef.current = beachShot ? tapTime : null;
+    puck.playShot(puckShotPath.start, puckShotPath.end, loop.getRenderNow(), visualFlightMs,
+      beachShot ? (elapsed) => beachRenderPoint(reduceMotion ? flightMs : elapsed) : undefined);
 
     const scheduleShotTimeout = (fn: () => void, delay: number): void => {
       const id = window.setTimeout(() => {
@@ -1812,20 +1987,25 @@ export function PlayView<TState>({
     };
 
     scheduleShotTimeout(() => {
+      beachReleaseTimeRef.current = null;
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
       if (outcomeMotion && visualOutcomeDurationMs > 0) {
         puck.playOutcomeMotion(
-          puckShotPath.end,
+          outcomeContact,
           outcomeMotion.end,
           loop.getRenderNow(),
           visualOutcomeDurationMs,
           outcomeMotion.waypoint,
         );
       } else {
-        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end);
+        puck.holdAt(outcomeMotion?.end ?? puckShotPath.end, beachShot !== null && outcomeMotion === null);
       }
       if (freezeRenderingDuringResult && visualOutcomeDurationMs === 0) loop.detach();
+      if (applyShotStateAtContact) {
+        pendingMidShotApplyRef.current?.();
+        pendingMidShotApplyRef.current = null;
+      }
       if (result.type === 'save') goalie.setSavePose(true);
       setScoreboardSnapshot(null);
       setLastResult(result);
@@ -1913,7 +2093,7 @@ export function PlayView<TState>({
           if (res.isCurrent?.() === false) return;
           (applyResolvedState ?? applyState)(res.state);
         };
-        if (shotAnimationInProgressRef.current) {
+        if (shotAnimationInProgressRef.current && !(applyShotStateAtContact && resultVisibilityRef.current)) {
           pendingMidShotApplyRef.current = applyNextState;
           return;
         }
@@ -1930,6 +2110,10 @@ export function PlayView<TState>({
         pendingResultCloseRef.current?.();
       });
   }, [
+    separatePeriodClock,
+    getPeriodElapsedMs,
+    applyShotStateAtContact,
+    shotResultPauseMs,
     continuousClockDuringResult,
     waitForShotResponseBeforeResultClose,
     freezeRenderingDuringResult,
@@ -2012,13 +2196,18 @@ export function PlayView<TState>({
   const effectiveShotButtonLabel = duelPrimaryButtonLabel(shotButtonLabel, currentDuelCondition);
   const firstPeriodSpeed = periodSpeedPresetFor(1, periodSpeedPresets).shooterFrequency;
   const periodSpeedRatio = firstPeriodSpeed > 0 ? speeds.shooterFreq / firstPeriodSpeed : 1;
-  const duelFatigueNotice = active
-    ? duelFatigueNoticeLabel(
+  const showBeachCleanupHint = beachCleanupHint && !hasCleanedBeachWater && active &&
+    (loopRef.current?.getSceneT() ?? 0) >= (beachEnvironment?.puddles[0]?.activeMs ?? Infinity) &&
+    currentDuelCondition?.canShoot !== false;
+  const windNotice = windTarget && currentDuelCondition?.canShoot !== false
+    ? `С моря задул ветер · сносит ${windTarget === 'player' ? 'игрока' : windTarget === 'goalie' ? 'вратаря' : 'ворота'}` : null;
+  const duelFatigueNotice = conditionNoticeOverride ? null : windNotice ?? (showBeachCleanupHint ? 'Тапай по лужам, чтобы уменьшать их' : active
+    ? beachEnvironment ? beachNoticeLabel(currentDuelCondition, speeds.puckSpeed, speeds.shooterFreq) : duelFatigueNoticeLabel(
         currentDuelCondition,
         periodSpeedRatio,
         showPeriodFatigueNotice || duelCondition !== undefined,
       )
-    : null;
+    : null);
   const showDuelStumbleNotice =
     duelStumbleNoticeVisible && currentDuelCondition?.status !== 'exhausted_stop';
   const isRouteCameraZoomed = routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting';
@@ -2029,14 +2218,16 @@ export function PlayView<TState>({
     willChange: isRouteCameraZoomed ? 'opacity' : 'auto',
   };
   const noticeInScoreboard =
+    !noticesOnIce &&
     !rinkLayer &&
     !hideRinkScoreboard &&
     (showDuelStumbleNotice || Boolean(duelFatigueNotice) || (statusNoticeUnderScoreboard && Boolean(effectiveStatusNotice)));
+  const iceNoticeClass = noticesOnIce && !noticeInScoreboard ? ' duel-condition-notice--ice' : '';
   const gameNotice = showDuelStumbleNotice ? (
     <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
       role="status"
       aria-live="polite"
-      className={`duel-stumble-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
+      className={`duel-stumble-notice${iceNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
       style={routeGameStyle}
     >
       Споткнулся · бросок недоступен
@@ -2045,7 +2236,7 @@ export function PlayView<TState>({
     <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
       role="status"
       aria-live="polite"
-      className={`duel-fatigue-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+      className={`duel-fatigue-notice${iceNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
         currentDuelCondition?.status === 'exhausted_stop'
           ? ' duel-rest-notice'
           : currentDuelCondition?.status === 'nutrition_slowdown' ||
@@ -2058,11 +2249,15 @@ export function PlayView<TState>({
       {duelFatigueNotice}
     </FittedNotice>
   ) : effectiveStatusNotice ? (
-    <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
+    <FittedNotice fit={noticesOnIce || (noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice')}
       role="status"
       aria-live="polite"
-      className={`initial-training-feedback-notice${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
-        effectiveStatusNoticeTone === 'warning'
+      className={`initial-training-feedback-notice${iceNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+        effectiveStatusNoticeTone === 'magnetic'
+          ? ' initial-training-feedback-notice--magnetic'
+          : effectiveStatusNoticeTone === 'slip'
+          ? ' initial-training-feedback-notice--slip'
+          : effectiveStatusNoticeTone === 'warning'
           ? ' initial-training-feedback-notice--warning'
           : effectiveStatusNoticeTone === 'error'
             ? ' initial-training-feedback-notice--error'
@@ -2084,7 +2279,7 @@ export function PlayView<TState>({
     isShotInProgress ||
     isShotSubmitPending ||
     isShowingResult ||
-    (!active && !inactiveAction) ||
+    periodExpiredRef.current || (!active && !inactiveAction) ||
     isDuelShotBlocked ||
     (active &&
       (routeCameraPhase === 'zoomed' || routeCameraPhase === 'exiting' || isEntrancePlaying)) ||
@@ -2095,7 +2290,7 @@ export function PlayView<TState>({
       longBackground={longCourtBackground}
       scoreboard={
         hideRinkScoreboard ? undefined : (
-          <div className="game-scoreboard-stack">
+          <div className={`game-scoreboard-stack${scoreboardDimmed ? ' cyberpunk-scoreboard--dark' : ''}`}>
             <GameScoreboard
               {...(visibleCustomScoreboardModel ??
                 buildGameScoreboardModel({
@@ -2160,6 +2355,7 @@ export function PlayView<TState>({
     >
       <div
         ref={scoreboardShellRef}
+        className={scoreboardDimmed ? 'cyberpunk-scoreboard--dark' : undefined}
         style={{
           display: hideScoreboard ? 'none' : 'grid',
           gap: 8,
@@ -2200,6 +2396,25 @@ export function PlayView<TState>({
         }}
       >
         <div
+          onPointerDown={async event => {
+            if (canStartActionRef.current?.() === false) return;
+            if (!onBeachWaterTap || !sessionRef.current.active || primaryActionBlocked ||
+              puckRef.current?.isFlying() || puckRef.current?.isHeld() || shotSubmitPendingRef.current) return;
+            const canvas = event.currentTarget.querySelector('canvas');
+            if (!canvas) return;
+            const rect = canvas.getBoundingClientRect();
+            const scale = scaleRef.current;
+            const x = (event.clientX - rect.left - scale.offsetX) / scale.factor;
+            const visualY = (event.clientY - rect.top - scale.offsetY) / scale.factor;
+            const y = (visualY - projectBeachWaterY(0)) / (projectBeachWaterY(1) - projectBeachWaterY(0));
+            const time = loopRef.current?.getSceneT() ?? 0;
+            const action = onBeachWaterTap(x, y, time);
+            if (action !== false) event.stopPropagation();
+            if (await action) {
+              setHasCleanedBeachWater(true);
+              beachWaterRef.current?.splash(x, y, time);
+            }
+          }}
           ref={rinkShellRef}
           style={{
             position: 'relative',
@@ -2224,11 +2439,13 @@ export function PlayView<TState>({
               ...routeGameStyle,
             }}
           >
+            {rinkUnderlay}
             <PixiStage
               onReady={handleReady}
               onResize={handleResize}
               preloadAssets={preloadAssets}
             />
+            {rinkOverlay}
           </div>
           {overlayControls && (
             <div

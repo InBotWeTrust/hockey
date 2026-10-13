@@ -7,6 +7,7 @@ export interface GameScoreboardMetric {
   value: string;
   tone?: GameScoreboardMetricTone;
   emphasis?: GameScoreboardMetricEmphasis;
+  columnWeight?: number;
   labelEmphasis?: 'default' | 'small';
 }
 
@@ -49,6 +50,8 @@ export interface ScoreBoardProps {
 }
 
 export interface ScoreBoardOpponent {
+  scoreSeparator?: string;
+  scoreColumnWeight?: number;
   name: string;
   avatarUrl: string | null;
   goals: number;
@@ -102,8 +105,11 @@ export function buildGameScoreboardModel({
   };
   const scoreMetric: GameScoreboardMetric = {
     id: opponent ? 'score' : 'goals',
+    ...(opponent?.scoreColumnWeight === undefined ? {} : {columnWeight: opponent.scoreColumnWeight}),
     label: opponent ? 'СЧЁТ' : scoreLabel,
-    value: opponent ? `${goals}:${opponent.goals}` : padded(goals),
+    value: opponent
+      ? `${goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}${opponent.scoreSeparator ?? ':'}${opponent.goals.toLocaleString('ru-RU', { maximumFractionDigits: 1 })}`
+      : padded(goals),
   };
   const statusLine: GameScoreboardStatusLine | undefined = opponent
     ? {
@@ -145,7 +151,9 @@ export function GameScoreboard({
               row.variant === 'secondary' ? ' game-scoreboard__row--secondary' : ''
             }${row.metrics.length >= 4 ? ' game-scoreboard__row--dense' : ''}`}
             data-testid={`scoreboard-row-${row.id}`}
-            style={{ gridTemplateColumns: `repeat(${row.metrics.length}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: row.metrics.some(metric => (metric.columnWeight ?? (metric.id === 'score' && metric.value.length > 7 ? 2 : 1)) !== 1)
+              ? row.metrics.map(metric => `minmax(0, ${metric.columnWeight ?? (metric.id === 'score' && metric.value.length > 7 ? 2 : 1)}fr)`).join(' ')
+              : `repeat(${row.metrics.length}, minmax(0, 1fr))` }}
           >
             {row.metrics.map((metric) => {
               const tone = metric.tone ?? 'default';
@@ -168,7 +176,22 @@ export function GameScoreboard({
                   >
                     {metric.label}
                   </span>
-                  <span className="game-scoreboard__value">{metric.value}</span>
+                  <span
+                    className="game-scoreboard__value"
+                    style={{ containerType: 'inline-size', width: '100%' }}
+                  >
+                    <span style={{ fontSize: `min(1em, ${155 / Math.max(1, metric.value.length)}cqw)` }}>
+                      {metric.id === 'score' && metric.value.includes('\u2009:\u2009') ? (
+                        <>
+                          {metric.value.split('\u2009:\u2009')[0]}
+                          <span style={{ fontSize: '0.5em' }}>{'\u2009'}</span>
+                          :
+                          <span style={{ fontSize: '0.5em' }}>{'\u2009'}</span>
+                          {metric.value.split('\u2009:\u2009')[1]}
+                        </>
+                      ) : metric.value}
+                    </span>
+                  </span>
                 </div>
               );
             })}

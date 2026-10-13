@@ -75,11 +75,23 @@ export interface GameSettings {
 }
 
 const goalieOptions = GOALIES.map((goalie) => ({ value: goalie.id, label: goalie.name }));
-const monthlyRatingScopes = ['overall', 'express', 'express_plus', 'classic'] as const;
+const monthlyRatingScopes = [
+  'overall',
+  'express',
+  'express_plus',
+  'classic',
+  'sniper',
+  'marathon',
+] as const;
 const overallRatingBands = ['first', 'second', 'third', 'fourToTen', 'elevenToFifty'] as const;
 const monthlyRatingCurrencies = ['coins', 'stars', 'experience', 'tokens'] as const;
 const monthlyScopeLabels = {
-  overall: 'Общий зачёт', express: 'Экспресс', express_plus: 'Микс', classic: 'Классика',
+  overall: 'Общий зачёт',
+  express: 'Экспресс',
+  express_plus: 'Микс',
+  classic: 'Классика',
+  sniper: 'Снайпер',
+  marathon: 'Марафон',
 };
 const monthlyBandLabels = {
   first: '1-е место', second: '2-е место', third: '3-е место',
@@ -501,8 +513,8 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
   ...([
     ['daily', 'Новых дуэлей в день', 8],
     ['weekly', 'Новых дуэлей в неделю', 40],
-    ['monthly', 'Новых дуэлей в месяц', 129],
-    ['per_format_monthly', 'Новых дуэлей формата в месяц', 43],
+    ['monthly', 'Новых дуэлей в месяц', 130],
+    ['per_format_monthly', 'Новых дуэлей формата в месяц', 26],
     ['outgoing_invites', 'Ожидающих исходящих вызовов', 2],
   ] as const).map(([key, label, defaultValue]) => ({
     key: `amateur.limits.${key}`,

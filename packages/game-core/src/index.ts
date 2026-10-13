@@ -98,6 +98,7 @@ export {
 } from './marksmanshipV6.js';
 export {
   getBonusChallengeCondition,
+  getBeachPuckSpeed,
   createBonusChallengeMotionSampler,
   getBonusChallengeShooterMotionTime,
   type BonusChallengeShotPause,
@@ -139,6 +140,8 @@ export {
   duelSpeedPressureMultiplier,
   createDuelStumbleRandomness,
   getDuelPlayerCondition,
+  getTimedDuelPlayerCondition,
+  type DuelTimedSpeedStage,
   normalizeDuelInventoryResource,
   type DuelInventoryItemSnapshot,
   type DuelInventoryLoadoutSnapshot,
@@ -150,3 +153,26 @@ export {
   type DuelPlayerFatigueLevel,
   type DuelPlayerConditionStatus,
 } from './duelInventory.js';
+
+export {
+  sampleBeachPuddles,
+  traceBeachPuckFlight,
+  sampleBeachPuckPosition,
+  type BeachPuddle,
+  type BeachPuddleRule,
+  type BeachPuckFlight,
+  type BeachFlightSegment,
+} from './beachEnvironment.js';
+export { resolveBeachCourtShot } from './beachCourtShot.js';
+export { getPlayerFatigueState } from './playerFatigue.js';
+
+export { createWindSchedule, activeWind, windIsActive, beachWindClock, beachWindMotion, type WindGust, type WindTarget } from './beachWind.js';
+export { beachCleanupRules, type BeachCleanupEvent } from './beachCleanup.js';
+
+export { skiSlopeMotionTime } from './skiSlope.js';
+
+export * from './skiEnvironment.js';
+
+export * from "./cyberpunkEnvironment.js";
+
+export * from "./cyberpunkCourtShot.js";

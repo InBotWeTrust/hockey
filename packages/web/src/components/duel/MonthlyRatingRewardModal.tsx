@@ -40,6 +40,8 @@ const scopeLabels = {
   express: 'Экспресс',
   express_plus: 'Микс',
   classic: 'Классика',
+  sniper: 'Снайпер',
+  marathon: 'Марафон',
 } as const;
 
 function seasonLabel(seasonKey: string): string {

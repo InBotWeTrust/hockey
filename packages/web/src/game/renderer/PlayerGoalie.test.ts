@@ -17,3 +17,19 @@ describe('rink character shadows', () => {
     expect(goalie.container.children).toHaveLength(1);
   });
 });
+
+describe('temporary ski goalkeeper pose',()=>{
+  it('restores the shot save pose correctly after a skid ends',()=>{
+    const goalie=new Goalie();const scale={factor:1,offsetX:0,offsetY:0};
+    const state={position:{x:286,y:100},width:30,height:40} as Parameters<Goalie['update']>[0];
+    goalie.update(state,scale);const idle=goalie.container.children[0]!.width;
+    goalie.setSlipPose(true);goalie.update(state,scale);
+    expect(goalie.container.children[0]!.width).toBeGreaterThan(idle);
+    const saving=goalie.container.children[0]!.width;
+    goalie.setSavePose(true);goalie.setSlipPose(false);goalie.update(state,scale);
+    expect(goalie.container.children[0]!.width).toBe(saving);
+    goalie.setSavePose(false);goalie.update(state,scale);
+    expect(goalie.container.children[0]!.width).toBe(idle);
+    goalie.destroy();
+  });
+});
