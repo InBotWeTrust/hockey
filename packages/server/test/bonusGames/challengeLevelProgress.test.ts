@@ -6,7 +6,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { startOrResumeBonusAttempt } from '../../src/bonusGames/service.js';
 import { listBonusGameCards } from '../../src/bonusGames/catalog.js';
-import { grantFirstClearReward, lockBonusEconomyBalances } from '../../src/bonusGames/economy.js';
+import { grantFirstClearReward, lockBonusEconomyBalances, purchaseBonusGame } from '../../src/bonusGames/economy.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 describe.skipIf(!hasIntegrationEnv)('challenge level progress and economy', () => {
@@ -95,4 +95,36 @@ describe.skipIf(!hasIntegrationEnv)('challenge level progress and economy', () =
     const rewards = (await pool.query('select count(*)::int n from bonus_game_economy_event where user_id=$1',[user.id])).rows[0];
     expect(rewards.n).toBe(1);
   });
+  it('requires all three levels before completing a challenge and opening its successor', async () => {
+    const user = await findOrCreateTelegramUser(pool, { providerUid: 'partial-level-progress', displayName: 'Progress Test' });
+    await pool.query('update users set level=2 where id=$1', [user.id]);
+    const games = await pool.query<{ id: string; slug: string }>("select id,slug from bonus_game where slug in ('challenge-beach','challenge-ski-resort')");
+    const beachId = games.rows.find(row => row.slug === 'challenge-beach')!.id;
+    const skiId = games.rows.find(row => row.slug === 'challenge-ski-resort')!.id;
+    const attempt = await startOrResumeBonusAttempt(pool, { userId: user.id, gameId: beachId, now, seedSecret: 'partial-level-progress' });
+    await pool.query("update bonus_game_attempt set status='completed', state='closed', closed_at=$2 where id=$1", [attempt.attempt.id, now]);
+    for (const level of [1, 2, 3] as const) {
+      const client = await pool.connect();
+      try {
+        await client.query('begin');
+        await lockBonusEconomyBalances(client, user.id, now);
+        await grantFirstClearReward(client, { userId: user.id, gameId: beachId, attemptId: attempt.attempt.id,
+          reward: attempt.attempt.reward, now, challengeLevel: level });
+        await client.query('commit');
+      } finally { client.release(); }
+      const cards = await listBonusGameCards(pool, user.id);
+      const beach = cards.find(card => card.id === beachId)!;
+      const ski = cards.find(card => card.id === skiId)!;
+      expect(beach.is_completed, `after level ${level}`).toBe(level === 3);
+      expect(beach.state).toBe(level === 3 ? 'completed' : 'available');
+      expect(ski.state).toBe(level === 3 ? 'available' : 'sequence_locked');
+      if (level < 3) {
+        await expect(startOrResumeBonusAttempt(pool, { userId: user.id, gameId: skiId, now, seedSecret: 'partial-level-progress' }))
+          .rejects.toMatchObject({ code: 'bonus_previous_game_required' });
+        await expect(purchaseBonusGame(pool, { userId: user.id, gameId: skiId, expectedPriceStars: 0, now }))
+          .rejects.toMatchObject({ code: 'bonus_previous_game_required' });
+      }
+    }
+  });
+
 });

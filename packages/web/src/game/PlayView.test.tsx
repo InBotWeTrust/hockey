@@ -7,6 +7,10 @@ import { PlayView, TRAINING_COURSE_GOAL_OPTIONS, type PlayShotResolver } from '.
 import type * as ReactModule from 'react';
 
 const tickerCallbacks = vi.hoisted(() => [] as Array<() => void>);
+const resizeCallbacks = vi.hoisted(() => [] as Array<(scale: { factor: number; offsetX: number; offsetY: number }) => void>);
+const goalOffsets = vi.hoisted(() => [] as number[]);
+const playerPositions = vi.hoisted(() => [] as Array<number | undefined>);
+const resizePuck = vi.hoisted(() => ({ flying: false, resets: 0 }));
 const tickerEvents = vi.hoisted(() => [] as Array<'add' | 'remove'>);
 const playerContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
 const goalieContainers = vi.hoisted(() => [] as Array<{ visible: boolean }>);
@@ -40,7 +44,7 @@ vi.mock('./renderer/BeachWater.js', () => ({ BeachWater: class { container = { v
 vi.mock('./renderer/Goal.js', () => ({
   Goal: class Goal {
     container = { visible: true };
-    update(): void {}
+    update(_scale: unknown, offsetX = 0): void { goalOffsets.push(offsetX); }
     destroy(): void {}
   },
 }));
@@ -81,7 +85,7 @@ vi.mock('./renderer/Player.js', () => ({
     constructor() {
       playerContainers.push(this.container);
     }
-    update(): void {}
+    update(_scale: unknown, x?: number): void { playerPositions.push(x); }
     playShot(): void {}
     destroy(): void {}
   },
@@ -91,12 +95,12 @@ vi.mock('./renderer/Puck.js', () => ({
   Puck: class Puck {
     container = { visible: true };
     isFlying(): boolean {
-      return false;
+      return resizePuck.flying;
     }
     isHeld(): boolean {
       return false;
     }
-    resetAtStart(): void {}
+    resetAtStart(): void { resizePuck.resets += 1; resizePuck.flying = false; }
     bladePoint(shooterX: number): { x: number; y: number } {
       return { x: shooterX + 41, y: 580 };
     }
@@ -128,8 +132,9 @@ vi.mock('./renderer/Puck.js', () => ({
 vi.mock('./PixiStage.js', async () => {
   const React = await vi.importActual<typeof ReactModule>('react');
   return {
-    PixiStage({ onReady }: { onReady: (app: never, scale: never) => void }) {
+    PixiStage({ onReady, onResize }: { onReady: (app: never, scale: never) => void; onResize: (scale: { factor: number; offsetX: number; offsetY: number }) => void }) {
       React.useEffect(() => {
+        resizeCallbacks.push(onResize);
         onReady(
           {
             stage: { addChild: vi.fn() },
@@ -180,6 +185,11 @@ describe('PlayView', () => {
 
   beforeEach(() => {
     tickerCallbacks.length = 0;
+    resizeCallbacks.length = 0;
+    goalOffsets.length = 0;
+    playerPositions.length = 0;
+    resizePuck.flying = false;
+    resizePuck.resets = 0;
     tickerEvents.length = 0;
     playerContainers.length = 0;
     goalieContainers.length = 0;
@@ -190,6 +200,30 @@ describe('PlayView', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.restoreAllMocks();
+  });
+
+  it('preserves moving entities and an in-flight puck across rink resize', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    render(<PlayView active suppressedByModal={false} showIceCar={false} onBack={vi.fn()}
+      seed="resize-motion" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+      goals={0} shots={0} speedOverrides={{ goalFreq: .45, goalieFreq: .5, shooterFreq: .65, puckSpeed: .85 }}
+      optimisticAddShot={vi.fn()} submitShot={() => new Promise(() => undefined)} applyState={vi.fn()} />);
+    await act(async () => Promise.resolve());
+    now = 1456;
+    act(() => tickerCallbacks.at(-1)?.());
+    const goalOffset = goalOffsets.at(-1)!;
+    const playerX = playerPositions.at(-1)!;
+    expect(Math.abs(goalOffset)).toBeGreaterThan(1);
+    // A ResizeObserver callback may arrive between frames, including during a shot.
+    resizePuck.flying = true;
+    const resets = resizePuck.resets;
+    now = 1458;
+    act(() => resizeCallbacks.at(-1)?.({ factor: .9, offsetX: 2, offsetY: 3 }));
+    expect(goalOffsets.at(-1)).toBeCloseTo(goalOffset);
+    expect(playerPositions.at(-1)).toBeCloseTo(playerX);
+    expect(resizePuck.resets).toBe(resets);
+    expect(resizePuck.flying).toBe(true);
   });
 
   it('keeps the upright transparent goal asset scoped to the initial training course', () => {

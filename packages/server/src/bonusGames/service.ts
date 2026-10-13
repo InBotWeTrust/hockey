@@ -1,3 +1,4 @@
+import { bonusLocationCompletedSql } from './challengeLevels.js';
 import { getBonusRecordResult, settleBonusRecord } from './records.js';
 import { challengeLevelPreview, buildChallengeLevelEnvironment, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
 import {cyberpunkEarliestTap,cyberpunkEnvironmentForHistory,cyberpunkShooterMotion} from '@hockey/game-core';
@@ -526,13 +527,13 @@ async function fetchStartableGame(
             arena.artwork_url as arena_artwork_url,
             arena.thumbnail_url as arena_thumbnail_url,
             predecessor.id as predecessor_id,
-            (predecessor_completion.id is not null) as predecessor_completed,
+            ${bonusLocationCompletedSql('predecessor', 'predecessor_completion')} as predecessor_completed,
             unlock.id as unlock_id, completion.id as completion_id,
             preview_preference.dismissed_revision as preview_dismissed_revision
        from bonus_game game
        join arena_theme arena on arena.id = game.arena_theme_id
        left join lateral (
-         select previous.id
+         select previous.id, previous.slug
            from bonus_game previous
           where previous.status = 'active'
             and previous.skill_code = game.skill_code

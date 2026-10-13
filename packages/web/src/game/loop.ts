@@ -68,6 +68,7 @@ export interface GameLoopOpts {
 export interface GameLoop {
   attach: (ticker: Ticker) => void;
   detach: () => void;
+  refresh: () => void;
   // Resets accumulated simulation time so the scene picks up from the active
   // session's base elapsed time. For daily periods this is usually t=0; for
   // persisted training sessions it is derived from the server's started_at.
@@ -203,12 +204,12 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     return renderNowMs;
   }
 
-  const onTick = (): void => {
+  const renderFrame = (advanceClock: boolean): void => {
     const custom = opts.getGoalieConfig?.() ?? null;
     const id = opts.getGoalieId();
     const cfg = custom ?? (id ? getGoalie(id) : null);
     if (!cfg) return;
-    const now = advanceRenderClock();
+    const now = advanceClock ? advanceRenderClock() : renderNowMs;
     const overrides = opts.getSpeedOverrides?.();
     const tScene = sceneT(now);
     const rawCondition = overrides
@@ -344,6 +345,8 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     }
   };
 
+  const onTick = (): void => renderFrame(true);
+
   let attachedTo: Ticker | null = null;
   let isAttached = false;
 
@@ -394,6 +397,10 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     },
     detach() {
       detachFromTicker();
+    },
+    refresh() {
+      // Resize redraws the current frame; it must not restart entities or a puck flight.
+      renderFrame(false);
     },
     resetTime(elapsedMs) {
       if (elapsedMs === undefined) {
