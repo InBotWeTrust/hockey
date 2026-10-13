@@ -192,7 +192,7 @@ describe('ChannelPostCommentsScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Аватар: Bob' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Написать', exact:true })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /написать в личку/i })).toBeNull();
   });
 });

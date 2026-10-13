@@ -95,7 +95,7 @@ describe('ChatInfoScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Player 12' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Написать', exact:true })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /написать в личку/i })).toBeNull();
   });
 
