@@ -67,7 +67,12 @@ export function createDemoModel(scenario:DemoScenario) {
  const accessible=(e:ActivityEvent)=>e.actors.some(a=>a.id===DEMO_OWNER.id||((follows.get(a.id)??Infinity)<=Date.parse(e.occurredAt)));
  const visible=(e:ActivityEvent)=>({...e,actors:e.actors.map(a=>({...a,visible:a.id===DEMO_OWNER.id||(follows.get(a.id)??Infinity)<=Date.parse(e.occurredAt)}))});
  const bios=new Map<string,string>([[DEMO_PLAYER.id,'Живу хоккеем. Болею за красивую игру и честную борьбу 🏒']]);
+ let readThrough=0;const readIds=new Set<string>();
+ const feedItems=():ActivityEvent[]=>[...events.filter(e=>e.actors.some(a=>(follows.get(a.id)??Infinity)<=Date.parse(e.occurredAt))).map(visible),...history.map(h=>({id:h.id,kind:'membership' as const,occurredAt:h.occurredAt,data:{action:h.action},actors:[{id:h.userId,displayName:h.displayName,avatarUrl:h.avatarUrl}]}))].sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)||b.id.localeCompare(a.id)).map(e=>({...e,unread:Date.parse(e.occurredAt)>readThrough&&!readIds.has(e.id)}));
+ const readStatus=()=>{const unreadCount=feedItems().filter(e=>e.unread).length;return {hasUnread:unreadCount>0,unreadCount,asOf:new Date().toISOString()};};
  const api:SocialApi={
+  feedUnread:async()=>{await wait();return readStatus();},
+  readFeed:async input=>{await wait();if('through' in input)readThrough=Math.max(readThrough,Date.parse(input.through));else input.ids.forEach(id=>readIds.add(id));return readStatus();},
   reactions:async ids=>events.filter(e=>ids.includes(e.id)&&accessible(e)).map(e=>({id:e.id,reactions:e.reactions??[]})),
   fanRating:async cursor=>paged([...people.values()].map(p=>({...p,count:summary(p.id).followersCount})).sort((a,b)=>b.count-a.count).map((p,i)=>({...p,place:i+1})),cursor),
   react:async(eventId,emoji,remove)=>{
@@ -89,7 +94,7 @@ export function createDemoModel(scenario:DemoScenario) {
   removeFan:async userId=>{await wait();if(scenario==='remove-error')throw new Error('Сеть недоступна');const p=people.get(userId);if(p&&fans.some(f=>f.id===userId)){fans=fans.filter(f=>f.id!==userId);history.unshift({...p,userId,id:id(Date.now()%100000000),action:'remove',occurredAt:new Date().toISOString()});}return summary(DEMO_OWNER.id);},
   people:async(userId,list,cursor)=>{await wait();const users=userId===DEMO_OWNER.id?(list==='fans'?fans:Array.from(follows.keys()).map(id=>people.get(id)!)):Array.from(people.values()).filter(p=>p.id!==userId);return paged(users,cursor);},
   membershipHistory:async cursor=>{await wait();return paged(history,cursor);},
-  feed:async cursor=>{await wait();return paged([...events.filter(e=>e.actors.some(a=>(follows.get(a.id)??Infinity)<=Date.parse(e.occurredAt))).map(visible),...history.map(h=>({id:h.id,kind:'membership' as const,occurredAt:h.occurredAt,data:{action:h.action},actors:[{id:h.userId,displayName:h.displayName,avatarUrl:h.avatarUrl}]}))].sort((a,b)=>b.occurredAt.localeCompare(a.occurredAt)||b.id.localeCompare(a.id)),cursor);},
+  feed:async cursor=>{await wait();return paged(feedItems(),cursor);},
   history:async(userId,cursor)=>{await wait();if(userId!==DEMO_OWNER.id&&!follows.has(userId))throw new Error('Сначала станьте болельщиком');return paged(events.filter(e=>e.actors.some(a=>a.id===userId)&&accessible(e)).map(visible),cursor);},
   event:async eventId=>{await wait();const e=events.find(e=>e.id===eventId);if(!e||!accessible(e)||scenario==='unavailable')throw new Error('Результат недоступен');return visible(e);},
  };

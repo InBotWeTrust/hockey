@@ -6,6 +6,7 @@ import { ChatListScreen } from '../screens/ChatListScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import * as api from '../api.js';
 import * as pushApi from '../../api/push.js';
+import { socialApi } from '../../social/api.js';
 
 function renderScreen(): void {
   const qc = new QueryClient({
@@ -32,6 +33,7 @@ describe('ChatListScreen — global search dropdown', () => {
     };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
+    vi.spyOn(socialApi,'feedUnread').mockResolvedValue({hasUnread:true,unreadCount:2,asOf:'2026-10-14T00:00:00Z'});
     vi.spyOn(api, 'searchMessagesApi').mockResolvedValue([]);
     vi.spyOn(pushApi, 'fetchPushPreferences').mockResolvedValue({
       chatNewDialogMessage: true,
@@ -59,6 +61,7 @@ describe('ChatListScreen — global search dropdown', () => {
   it('does not render the dropdown when filter has fewer than 2 chars', async () => {
     renderScreen();
     const input = await screen.findByLabelText(/Поиск чатов/);
+    await waitFor(()=>expect(screen.getByRole('tab',{name:/Лента/}).querySelector('.segmented-tabs__attention')).not.toBeNull());
     expect(input.closest('.glass-edge-fade')).toBeNull();
     fireEvent.change(input, { target: { value: 'a' } });
     expect(screen.queryByText('Сообщения')).toBeNull();
