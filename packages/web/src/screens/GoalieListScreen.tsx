@@ -1,3 +1,4 @@
+import { HorizontalFilterRow } from '../components/HorizontalFilterRow.js';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Filter } from 'lucide-react';
@@ -36,7 +37,7 @@ export function GoalieListScreen(): JSX.Element {
         </button>
       </header>
 
-      <div
+      <HorizontalFilterRow aria-label="Фильтры вратарей"
         style={{
           display: 'flex',
           gap: 6,
@@ -51,7 +52,7 @@ export function GoalieListScreen(): JSX.Element {
           active={filter === 'beaten'}
           onClick={() => setFilter('beaten')}
         />
-      </div>
+      </HorizontalFilterRow>
 
       <div
         style={{

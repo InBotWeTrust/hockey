@@ -1,3 +1,4 @@
+import { HorizontalFilterRow } from '../components/HorizontalFilterRow.js';
 import { useEffect, useState, type ReactNode } from 'react';
 import { X } from 'lucide-react';
 import type {
@@ -560,7 +561,7 @@ export function TournamentPlayoffBracket({
   return (
     <div className="tournament-bracket">
       {tabs.length > 1 && (
-        <div className="tournament-bracket__round-tabs" role="tablist" aria-label="Раунды плей-офф">
+        <HorizontalFilterRow className="tournament-bracket__round-tabs" role="tablist" aria-label="Раунды плей-офф">
           {tabs.map((view) => (
             <button
               type="button"
@@ -581,7 +582,7 @@ export function TournamentPlayoffBracket({
               {view.label}
             </button>
           ))}
-        </div>
+        </HorizontalFilterRow>
       )}
       {selectedKey === 'overview' ? (
         <TournamentPlayoffOverview

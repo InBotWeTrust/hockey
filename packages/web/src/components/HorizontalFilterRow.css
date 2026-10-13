@@ -1,0 +1,13 @@
+.horizontal-filters { position: relative; min-width: 0; max-width: 100%; }
+.horizontal-filters > .horizontal-filters__row { min-width: 0; max-width: 100%; }
+.horizontal-filter-row--dragging { cursor: grabbing !important; user-select: none; scroll-snap-type: none !important; scroll-behavior: auto !important; }
+.horizontal-filter-row--dragging * { cursor: grabbing !important; user-select: none; }
+.horizontal-filters__arrow { display: none; }
+.tournament-details > .horizontal-filters .segmented-tabs--scrollable .segmented-tabs__item { flex: 1 1 0; min-width: max-content; }
+@media (hover: hover) and (pointer: fine) {
+  .horizontal-filters--overflow > .horizontal-filters__row { cursor: grab; }
+  .horizontal-filters--overflow > .horizontal-filters__row > button { cursor: inherit; }
+  .horizontal-filters__arrow { display: grid; place-items: center; position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 24px; height: 28px; padding: 0; border: 1px solid var(--line); border-radius: 999px; background: var(--surface, #e5edf3); color: var(--ink); font-size: 23px; line-height: 1; cursor: pointer; }
+  .horizontal-filters__arrow--left { left: 3px; }
+  .horizontal-filters__arrow--right { right: 3px; }
+}
