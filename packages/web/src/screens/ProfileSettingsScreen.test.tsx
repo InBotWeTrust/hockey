@@ -304,6 +304,14 @@ describe('ProfileSettingsScreen', () => {
     expect(screen.getByRole('button', { name: 'Изменить аватар' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Сохранить профиль' })).toBeDisabled();
   });
+  it('edits the biography inside the existing profile form',async()=>{
+    mockSettingsFetch();renderProfileSettings();
+    const bio=await screen.findByLabelText('О себе');
+    fireEvent.change(bio,{target:{value:'Люблю хоккей'}});
+    expect(screen.getByText('12 / 160')).toBeInTheDocument();
+    expect(screen.getByRole('button',{name:'Сохранить профиль'})).toBeEnabled();
+    expect(screen.queryByRole('dialog',{name:'О себе'})).not.toBeInTheDocument();
+  });
 
   it('saves a custom first and last name and updates the active profile', async () => {
     const fetchMock = mockSettingsFetch();
