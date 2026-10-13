@@ -107,10 +107,9 @@
   }
 }
 
-:root:not([data-theme='light']):has(.app-shell--arena),
-:root:not([data-theme='light']):has(.profile-screen--locker-bg) {
-  --app-bg-top: #08182b;
-  --app-bg-bottom: #08182b;
+:root:has(.app-shell:not(.app-shell--gameplay)) {
+  --app-bg-top: #08182b !important;
+  --app-bg-bottom: #08182b !important;
 }
 
 html,
