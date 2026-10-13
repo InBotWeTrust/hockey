@@ -36,6 +36,7 @@ const PUSH_PREFERENCE_ITEMS: Array<{
   label: string;
   hint: string;
 }> = [
+  { key:'newFans', label:'Новые болельщики', hint:'Когда другой игрок стал вашим болельщиком' },
   {
     key: 'chatNewDialogMessage',
     label: 'Первое сообщение в личке',
@@ -149,7 +150,7 @@ function getReadyServiceWorkerRegistration(): Promise<ServiceWorkerRegistration>
   });
 }
 
-function PushPreferenceToggle({
+export function PushPreferenceToggle({
   label,
   hint,
   checked,
@@ -748,7 +749,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
     if (!pushPreferences || pendingPreference !== null) return;
 
     const previous = pushPreferences;
-    const next = { ...previous, [key]: !previous[key] };
+    const next = { ...previous, [key]: !(previous[key] ?? true) };
     setPendingPreference(key);
     setPushMessage('');
     queryClient.setQueryData<PushPreferences>(PUSH_PREFERENCES_QUERY_KEY, next);
@@ -902,7 +903,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
                         key={item.key}
                         label={item.label}
                         hint={item.hint}
-                        checked={pushPreferences[item.key]}
+                        checked={pushPreferences[item.key] ?? true}
                         disabled={pendingPreference !== null}
                         onToggle={() => void handleTogglePushPreference(item.key)}
                       />

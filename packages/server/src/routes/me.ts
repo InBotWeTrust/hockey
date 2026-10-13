@@ -1,4 +1,5 @@
 import type { FastifyPluginAsync } from 'fastify';
+import { getFanSummary } from '../social/service.js';
 import { z } from 'zod';
 import { recomputeEffectiveProfile, type DisplaySource } from '../auth/profile.js';
 import { canUseExperimentalTrainingCourt } from '../auth/featureAccess.js';
@@ -116,6 +117,7 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
   return {
     id: row.id,
     registeredAt: row.created_at.toISOString(),
+    social:await getFanSummary(app.pg,userId,userId),
     displayName: row.display_name,
     ...(row.avatar_url !== null ? { avatarUrl: row.avatar_url } : {}),
     role: row.role,

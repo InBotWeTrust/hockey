@@ -9,7 +9,7 @@ export interface AchievementDto {
   title: string;
   description: string;
   requirement: string;
-  category: 'career' | 'daily' | 'training' | 'duel' | 'tournament' | 'shop' | 'rating' | 'level';
+  category: 'career' | 'daily' | 'training' | 'duel' | 'tournament' | 'shop' | 'rating' | 'level' | 'fans';
   availability: AchievementAvailability;
   futureTag: string | null;
   rewardCurrency: number;

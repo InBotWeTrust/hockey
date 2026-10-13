@@ -3435,6 +3435,33 @@
   flex: 0 0 auto;
 }
 
+.sheet-title-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.sheet-card .modal-header:has(.sheet-title-hidden) {
+  position: relative;
+  height: 0;
+  justify-content: flex-end;
+  margin: 0;
+}
+.sheet-card .modal-header:has(.sheet-title-hidden) .icon-btn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+}
+.sheet-card .modal-header:has(.sheet-title-hidden) .modal-title {
+  margin: 0;
+  padding: 0;
+}
+
 .modal-title {
   margin: 0;
   color: var(--ink);

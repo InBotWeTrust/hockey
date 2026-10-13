@@ -1,4 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { SocialProfile } from '../../social/SocialProfile.js';
+import { ProfileBio } from '../../social/ProfileBio.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Award, Medal, Sunrise, Target, TrendingUp, Trophy, X } from 'lucide-react';
@@ -83,7 +85,7 @@ function PublicExperienceBadge({ experience }: { experience: number }): JSX.Elem
   );
 }
 
-function PublicSportingPassport({
+export function PublicSportingPassport({
   profile,
   displayName,
   avatarUrl,
@@ -123,19 +125,18 @@ function PublicSportingPassport({
       className="profile-passport public-profile-passport"
       aria-label="Публичный спортивный паспорт"
     >
-      <div className="profile-passport__top">
+      <SocialProfile userId={profile.id} renderIdentity={counts=><>
+      <div className="profile-passport__top public-profile-social-identity">
         <div className="profile-identity__main public-profile-identity">
           <div className="public-profile-avatar">
             <UserAvatar avatarUrl={avatarUrl} name={displayName} size={80} fontSize={30} />
             <PublicExperienceBadge experience={profile.experienceBalance ?? 0} />
           </div>
           <div className="profile-identity__copy">
-            <span className="profile-identity__name public-profile-identity__name">
-              {displayName}
-            </span>
             <span className="profile-identity__level">
               {getLevelLabel(profile.competitionLevel)}
             </span>
+            {counts}
           </div>
           <button
             type="button"
@@ -151,8 +152,10 @@ function PublicSportingPassport({
             />
           </button>
         </div>
+        <span className="profile-identity__name public-profile-centered-name" title={displayName}>{displayName}</span>
+        <ProfileBio userId={profile.id}/>
       </div>
-      <div className="profile-sporting-metrics" aria-label="Главные показатели">
+      </>} profileContent={<><div className="profile-sporting-metrics" aria-label="Главные показатели">
         <div className="profile-sporting-metrics__item">
           <strong>{formatProfileNumber(profile.stats.goals)}</strong>
           <span>Шайбы</span>
@@ -219,7 +222,7 @@ function PublicSportingPassport({
             </div>
           );
         })}
-      </section>
+      </section></>}/>
     </section>
   );
 }
@@ -400,6 +403,7 @@ function UserProfileSheetContent({
     <Sheet
       open
       title="Профиль игрока"
+      hideTitle
       onRequestClose={() => onClose()}
       maxHeight="94dvh"
       grabberPlacement="top"
@@ -420,13 +424,13 @@ function UserProfileSheetContent({
         }}
       >
         {profile ? (
-          <PublicSportingPassport
+          <><PublicSportingPassport
             profile={profile}
             displayName={displayName}
             avatarUrl={avatarUrl}
             onOpenTrophy={setSelectedTrophy}
             onOpenEarlyPlayerStatus={() => setEarlyPlayerStatusOpen(true)}
-          />
+          /></>
         ) : (
           <div
             className="glass"

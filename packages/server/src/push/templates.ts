@@ -47,6 +47,7 @@ export interface PushTemplateFallback {
 export type PushTemplateVariables = Record<string, string | number | null | undefined>;
 
 const TEMPLATE_ORDER: PushEventType[] = [
+  'social.new_fan',
   'chat.new_dialog_message',
   'daily.available',
   'daily.unlocked_after_training',
@@ -82,6 +83,7 @@ const DEFAULT_PUSH_NOTIFICATION_TEMPLATES: Array<{
   trigger: string;
   clickUrl: string;
 }> = [
+  { key:'social.new_fan', category:'chat', title:'Новый болельщик', body:'{{fanName}} теперь болеет за вас', trigger:'Игрок стал вашим болельщиком', clickUrl:'/profile?social=fans&fanId={{fanId}}' },
   {
     key: 'chat.new_dialog_message',
     category: 'chat',

@@ -35,6 +35,7 @@ const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: mo
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const FansDemoScreen=import.meta.env.DEV?lazy(()=>import('../social/FansDemoScreen.js').then(module=>({default:module.FansDemoScreen}))):null;
 const TournamentResultPreviewScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({
     default: module.TournamentResultPreviewScreen,
@@ -622,6 +623,7 @@ function AppFrame(): JSX.Element {
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
 
+  if (FansDemoScreen && location.pathname === '/dev/fans') return <Suspense fallback={<RouteLoading/>}><FansDemoScreen/></Suspense>;
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 
   return (
