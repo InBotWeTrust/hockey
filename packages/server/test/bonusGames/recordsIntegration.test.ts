@@ -100,15 +100,19 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
     });
     const tie = await attempt(uid);
     expect(await settle(tie, 10000)).toMatchObject({ stars: 0 });
+    const balancesBefore = (await pool.query('select xp,experience from users where id=$1', [uid])).rows[0];
     const better = await attempt(uid);
     expect(await settle(better, 9000)).toMatchObject({
-      stars: 12,
+      stars: 40,
       experience: 40,
       personalImproved: true,
       globalImproved: true,
     });
+    const balancesAfter = (await pool.query('select xp,experience from users where id=$1', [uid])).rows[0];
+    expect(Number(balancesAfter.xp) - Number(balancesBefore.xp)).toBe(40);
+    expect(Number(balancesAfter.experience) - Number(balancesBefore.experience)).toBe(40);
     const again = await attempt(uid);
-    expect(await settle(again, 8000)).toMatchObject({ stars: 12, experience: 40 });
+    expect(await settle(again, 8000)).toMatchObject({ stars: 40, experience: 40 });
     const before = (await pool.query('select xp,experience from users where id=$1', [uid])).rows[0];
     await settle(again, 8000);
     expect(
@@ -116,13 +120,13 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
     ).toEqual(before);
     const fresh = await user('fresh');
     expect(await settle(await attempt(fresh), 7000)).toMatchObject({
-      stars: 10,
+      stars: 30,
       experience: 30,
       personalImproved: false,
       globalImproved: true,
     });
     expect(await settle(await attempt(uid), 7500)).toMatchObject({
-      stars: 2,
+      stars: 10,
       experience: 10,
       personalImproved: true,
       globalImproved: false,
@@ -141,7 +145,7 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
           [[a1.id, a2.id]],
         )
       ).rows[0].n,
-    ).toBe(10);
+    ).toBe(30);
     expect(results[0]).toEqual(results[2]);
     const rating = await listBonusRecords(pool, u1, gameId, 0);
     expect(rating.rows.slice(0, 3).map((r) => r.place)).toEqual([1, 1, 3]);
@@ -209,7 +213,7 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
       expect(await settle(await counted(a,20,20),20000)).toMatchObject({stars:0,place:1});
       expect(await settle(await counted(b,10,10),30000)).toMatchObject({stars:0,place:2});
       expect(await settle(await counted(c,9,10),10000)).toMatchObject({stars:0,place:3});
-      expect(await settle(await counted(b,10,10),10000)).toMatchObject({stars:12,place:1});
+      expect(await settle(await counted(b,10,10),10000)).toMatchObject({stars:40,place:1});
       expect(await settle(await counted(d,1,1),10000)).toMatchObject({stars:0,place:1});
       const rating=await listBonusRecords(pool,c,gameId,0);
       expect(rating.rows.map(row=>row.place)).toEqual([1,1,3,4]);

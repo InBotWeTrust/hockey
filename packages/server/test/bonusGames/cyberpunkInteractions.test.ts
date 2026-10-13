@@ -59,6 +59,15 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative cyberpunk attempts', (
     );
     const skiId = (await pool.query("select id from bonus_game where slug='challenge-ski-resort'")).rows[0].id;
     await pool.query("insert into user_bonus_game_completion(user_id,bonus_game_id,attempt_id,reward_snapshot) values($1,$2,$3,'{}'::jsonb)",[userId,skiId,beach.attempt.id]);
+    // This fixture represents full prerequisite clears, including all tier credits.
+    await pool.query(`insert into user_bonus_game_level_completion
+      (user_id,bonus_game_id,level,attempt_id,reward_snapshot,completed_at,source)
+      select completion.user_id,completion.bonus_game_id,levels.level,completion.attempt_id,
+        completion.reward_snapshot,completion.completed_at,'legacy_credit'
+      from user_bonus_game_completion completion
+      cross join generate_series(1,3) levels(level)
+      where completion.user_id=$1
+      on conflict(user_id,bonus_game_id,level) do nothing`, [userId]);
     const created = await startOrResumeBonusAttempt(pool, {
       userId,
       gameId,

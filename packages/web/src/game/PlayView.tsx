@@ -1521,6 +1521,10 @@ export function PlayView<TState>({
 
       const refreshScale = (s: Scale): void => {
         scaleRef.current = s;
+        if (loopRef.current && sessionRef.current.active && !suppressedRef.current) {
+          loopRef.current.refresh();
+          return;
+        }
         goal.update(s);
         player.update(s);
         puck.resetAtStart(s);

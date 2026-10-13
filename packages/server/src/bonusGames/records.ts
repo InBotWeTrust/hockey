@@ -32,7 +32,7 @@ export function recordReward(
   global: boolean,
 ): { stars: number; experience: number } {
   return {
-    stars: (personal ? 2 : 0) + (global ? 10 : 0),
+    stars: (personal ? 10 : 0) + (global ? 30 : 0),
     experience: (personal ? 10 : 0) + (global ? 30 : 0),
   };
 }
