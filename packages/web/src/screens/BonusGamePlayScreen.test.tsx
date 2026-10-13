@@ -1715,6 +1715,16 @@ describe('BonusGamePlayScreen', () => {
     expect(dialog).not.toHaveTextContent('100 монет');
   });
 
+  it.each([40, 12])('shows the stored record award breakdown for %s stars', (stars) => {
+    setStore({attempt:attempt({status:'completed',state:'closed',reward_granted:false,
+      record:{elapsedMs:130000,shots:28,goals:18,points:0,personalBest:{elapsedMs:130000,shots:28,goals:18,points:0},place:1,personalImproved:true,globalImproved:true,stars,experience:40}})});
+    renderScreen();
+    const personal = screen.getByText('Ты побил свой личный рекорд').parentElement!;
+    const global = screen.getByText((_, element) => element?.tagName === 'SPAN' && element.textContent === 'Ты показал лучший результатсреди всех игроков').parentElement!;
+    expect(personal.querySelector('.bonus-game-result-reward-value')).toHaveTextContent(stars === 40 ? '10' : '2');
+    expect(global.querySelector('.bonus-game-result-reward-value')).toHaveTextContent(stars === 40 ? '30' : '10');
+  });
+
   it.each([
     ['failed', false, 'Попытка завершена', 'Цель не достигнута'],
     ['completed', true, 'Игра пройдена', 'Награда за первое прохождение'],

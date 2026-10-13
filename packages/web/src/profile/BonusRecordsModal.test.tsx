@@ -61,6 +61,15 @@ describe('bonus records modal', () => {
     );
     expect(formatBonusRecord('endurance', { elapsedMs: 65000, shots: 7, goals: 0 })).toBe('—');
   });
+  it('shows equal star and experience awards for personal and location records', () => {
+    fetch.mockResolvedValue({ rows: [], currentUser: null, skillCode: 'speed', nextOffset: null });
+    show();
+    expect(screen.getByLabelText('10 звёзд')).toBeInTheDocument();
+    expect(screen.getByLabelText('30 звёзд')).toBeInTheDocument();
+    expect(screen.getByLabelText('10 опыта')).toBeInTheDocument();
+    expect(screen.getByLabelText('30 опыта')).toBeInTheDocument();
+    expect(screen.queryByLabelText('2 звезды')).not.toBeInTheDocument();
+  });
   it('renders loading, empty and retry after failure', async () => {
     fetch.mockRejectedValueOnce(new Error('network'));
     show();
