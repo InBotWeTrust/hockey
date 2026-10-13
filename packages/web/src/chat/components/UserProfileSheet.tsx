@@ -133,9 +133,6 @@ export function PublicSportingPassport({
             <PublicExperienceBadge experience={profile.experienceBalance ?? 0} />
           </div>
           <div className="profile-identity__copy">
-            <span className="profile-identity__level">
-              {getLevelLabel(profile.competitionLevel)}
-            </span>
             {counts}
           </div>
           <button
@@ -152,7 +149,7 @@ export function PublicSportingPassport({
             />
           </button>
         </div>
-        <span className="profile-identity__name public-profile-centered-name" title={displayName}>{displayName}</span>
+        <span className="profile-identity__name public-profile-name-status"><span className="public-profile-name-text" title={displayName}>{displayName}</span><span className="profile-identity__level public-profile-status">{getLevelLabel(profile.competitionLevel)}</span></span>
         <ProfileBio userId={profile.id}/>
       </div>
       </>} profileContent={<><div className="profile-sporting-metrics" aria-label="Главные показатели">
@@ -314,8 +311,6 @@ function UserProfileSheetContent({
   sender: UserPickerItem;
   onClose: () => void;
 }): JSX.Element {
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const meId = useAuthStore((s) => s.user?.id ?? null);
   const senderId = sender.userId;
   const [selectedAchievement, setSelectedAchievement] = useState<ProfileAchievement | null>(null);
@@ -333,17 +328,6 @@ function UserProfileSheetContent({
     },
     onError: (error) => {
       setDuelToast(error instanceof Error ? error.message : 'Не удалось проверить доступность дуэли');
-    },
-  });
-
-  const { mutate, isPending } = useMutation({
-    mutationFn: (otherUserId: string) => findOrCreateDM(otherUserId),
-    onSuccess: ({ chatId, created }) => {
-      if (created) {
-        void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
-      }
-      navigate(`/chat/${chatId}`);
-      onClose();
     },
   });
 
@@ -494,20 +478,7 @@ function UserProfileSheetContent({
                 {hasOpenDuel ? 'Дуэль уже открыта' : 'Вызвать на дуэль'}
               </button>
             )}
-            <button
-              type="button"
-              className="btn btn--ghost"
-              onClick={() => mutate(sender.userId)}
-              disabled={isPending}
-              style={{
-                marginTop: canDuel ? 8 : 14,
-                padding: '14px 0',
-                fontSize: 15,
-                fontWeight: 600,
-              }}
-            >
-              {isPending ? 'Открываем чат…' : 'Написать в личку'}
-            </button>
+
           </>
         )}
         {selectedAchievement !== null && (

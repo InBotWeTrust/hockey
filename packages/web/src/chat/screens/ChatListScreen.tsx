@@ -213,15 +213,15 @@ export function ChatListScreen(): JSX.Element {
 
   return (
     <main
-      className="screen"
+      className="screen chat-list-screen"
       style={{
         paddingBottom: 16,
       }}
     >
-      <SegmentedTabs ariaLabel="Раздел чата" activeTab={searchParams.get('view')==='feed'?'feed':'messenger'} items={[{id:'messenger',label:'Мессенджер'},{id:'feed',label:'Лента'}]} onChange={tab=>{const next=new URLSearchParams(searchParams);if(tab==='feed')next.set('view','feed');else next.delete('view');setSearchParams(next);}}/>
-      {searchParams.get('view')==='feed'?<SocialFeed/>:<><div
+      <div className="chat-list-switcher"><SegmentedTabs ariaLabel="Раздел чата" activeTab={searchParams.get('view')==='feed'?'feed':'messenger'} items={[{id:'messenger',label:'Мессенджер'},{id:'feed',label:'Лента'}]} onChange={tab=>{const next=new URLSearchParams(searchParams);if(tab==='feed')next.set('view','feed');else next.delete('view');setSearchParams(next);}}/></div>
+      {searchParams.get('view')==='feed'?<div className="chat-feed-content"><SocialFeed/></div>:<><div
         className="chat-edge-top glass-edge-fade glass-edge-fade--top"
-        style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
+        style={{ paddingTop: 10 }}
       >
         <div
           className="chat-dock-header chat-dock-header--bare"

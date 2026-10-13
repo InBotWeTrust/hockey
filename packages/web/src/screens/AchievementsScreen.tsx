@@ -56,7 +56,6 @@ const FILTERS: Array<{ id: AchievementFilter; label: string }> = [
   { id: 'duel', label: 'Дуэли' },
   { id: 'tournament', label: 'Турниры' },
   { id: 'shop', label: 'Магазин' },
-  { id: 'fans', label: 'Болельщики' },
   { id: 'future', label: 'Будущее' },
 ];
 const ACHIEVEMENT_PAGE_TABS: Array<{ id: AchievementPageTab; label: string }> = [
