@@ -71,7 +71,7 @@ export class SqlConversationStore implements ConversationStore {
           if (!quota.rows.length) result = { kind: 'limit' };
           else {
             await db.query(
-              `update bar_conversations set pending_id=$3,pending_until=now()+interval '60 seconds' where user_id=$1 and character_id=$2`,
+              `update bar_conversations set pending_id=$3,pending_until=now()+interval '150 seconds' where user_id=$1 and character_id=$2`,
               [user, character, id],
             );
             result = { kind: 'reserved', record };
