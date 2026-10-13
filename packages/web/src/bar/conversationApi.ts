@@ -31,7 +31,7 @@ export const sendConversation = (character: BarCharacter, message: ConversationM
   apiFetch<ConversationSnapshot>(`/bar/conversations/${character}`, {
     method: 'POST',
     body: JSON.stringify(message),
-    signal: AbortSignal.timeout(45000),
+    signal: AbortSignal.timeout(120000),
   });
 
 export const sendPhysicalIncident=(character:BarCharacter,eventId:string)=>apiFetch<ConversationSnapshot>(`/bar/conversations/${character}/physical-incident`,{method:'POST',body:JSON.stringify({eventId})});
