@@ -7,6 +7,7 @@ export const ACHIEVEMENT_CATEGORIES = [
   'shop',
   'rating',
   'level',
+  'fans',
 ] as const;
 
 export type AchievementCategory = (typeof ACHIEVEMENT_CATEGORIES)[number];
@@ -39,6 +40,7 @@ export interface AchievementSeed {
 }
 
 const DEFAULT_REWARD_BY_CATEGORY = {
+  fans: { rewardCurrency:0,rewardStars:0,rewardExperience:0 },
   career: { rewardCurrency: 0, rewardStars: 0, rewardExperience: 0 },
   daily: { rewardCurrency: 150, rewardStars: 1, rewardExperience: 75 },
   training: { rewardCurrency: 120, rewardStars: 1, rewardExperience: 60 },
@@ -138,6 +140,7 @@ const REMOVED_ACHIEVEMENT_IDS = new Set([
 const ACHIEVEMENT_ARTWORK_VERSION = '20260906-hd1';
 
 function versionArtworkUrl(photoUrl: string): string {
+  if(photoUrl.startsWith('/achievements/fans-')) return `${photoUrl}?v=20261013`;
   return `${photoUrl}?v=${ACHIEVEMENT_ARTWORK_VERSION}`;
 }
 
@@ -883,7 +886,12 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
   },
 ];
 
-export const ACHIEVEMENT_SEEDS: AchievementSeed[] = ACHIEVEMENT_SEED_DEFINITIONS.map(
+const FAN_ACHIEVEMENT_SEEDS:AchievementSeed[] = [
+  [1,'Первый болельщик',5],[10,'Группа поддержки',10],[20,'Свой сектор',15],[50,'Всё громче',30],
+  [100,'Трибуна за тебя',50],[500,'Любимец трибун',140],[1000,'Целая арена',250],
+].map(([threshold,title,reward],index)=>({id:`fans-${threshold}`,photoUrl:`/achievements/fans-${threshold}.webp`,title:String(title),description:'Трибуны поддерживают тебя.',requirement:`Набрать ${threshold} ${Number(threshold)===1?'болельщика':'болельщиков'}.`,category:'fans',availability:'active',futureTag:null,rewardCurrency:0,rewardStars:Number(reward),rewardExperience:Number(reward),rewardTokens:0,sortOrder:30001+index}));
+
+export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [...ACHIEVEMENT_SEED_DEFINITIONS,...FAN_ACHIEVEMENT_SEEDS].map(
   (achievement) => ({
     ...achievement,
     ...(APPROVED_REWARDS[achievement.id] ?? {}),

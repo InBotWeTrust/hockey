@@ -288,14 +288,14 @@ describe('UserProfileSheet', () => {
     ).toHaveLength(4);
     expect(screen.getByText('Любитель')).toHaveClass('profile-identity__level');
     expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
-    const identity = screen.getByText('Иван Петров').closest('.profile-identity__main');
+    const identity = screen.getByText('Иван Петров').closest('.public-profile-social-identity')?.querySelector('.profile-identity__main');
     expect(identity).toHaveClass('public-profile-identity');
     expect(identity?.querySelector('[aria-hidden="true"]')).toHaveStyle({
       width: '80px',
       height: '80px',
     });
     expect(identity?.querySelector('.public-profile-experience')).toBeInTheDocument();
-    expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-identity__name');
+    expect(screen.getByText('Иван Петров')).toHaveClass('public-profile-centered-name');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveClass('sheet-card');
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' }).firstElementChild).toHaveClass(
       'sheet-drag-handle',

@@ -2862,7 +2862,7 @@ function ModeInfoModal({
   );
 }
 
-function DailyGameStatsModal({
+export function DailyGameStatsModal({
   stats,
   totalPeriods,
   title = 'Статистика прошлой игры',
@@ -7675,13 +7675,15 @@ interface DuelResultCompactStats {
   durationMs: number;
 }
 
-function DuelResultCompactStatsTable({
+export function DuelResultCompactStatsTable({
   label,
   me,
+  meLabel = 'Вы',
   opponentName,
   opponent,
 }: {
   label: string;
+  meLabel?: string;
   me: DuelResultCompactStats | null;
   opponentName: string;
   opponent: DuelResultCompactStats | null;
@@ -7698,7 +7700,7 @@ function DuelResultCompactStatsTable({
         </tr>
       </thead>
       <tbody>
-        <DuelResultCompactStatsRow title="Вы" stats={me} />
+        <DuelResultCompactStatsRow title={meLabel} stats={me} />
         <DuelResultCompactStatsRow title={opponentName} stats={opponent} />
       </tbody>
     </table>

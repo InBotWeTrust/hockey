@@ -29,6 +29,8 @@ import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import { NAV_HEIGHT } from '../../components/BottomNav.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { SegmentedTabs } from '../../components/SegmentedTabs.js';
+import { SocialFeed } from '../../social/SocialFeed.js';
 
 const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
 
@@ -216,7 +218,8 @@ export function ChatListScreen(): JSX.Element {
         paddingBottom: 16,
       }}
     >
-      <div
+      <SegmentedTabs ariaLabel="Раздел чата" activeTab={searchParams.get('view')==='feed'?'feed':'messenger'} items={[{id:'messenger',label:'Мессенджер'},{id:'feed',label:'Лента'}]} onChange={tab=>{const next=new URLSearchParams(searchParams);if(tab==='feed')next.set('view','feed');else next.delete('view');setSearchParams(next);}}/>
+      {searchParams.get('view')==='feed'?<SocialFeed/>:<><div
         className="chat-edge-top glass-edge-fade glass-edge-fade--top"
         style={{ paddingTop: 'calc(10px + var(--app-safe-top))' }}
       >
@@ -376,6 +379,7 @@ export function ChatListScreen(): JSX.Element {
           navigate(`/chat/${chatId}`);
         }}
       />
+      </>}
     </main>
   );
 }

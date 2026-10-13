@@ -1,0 +1,78 @@
+/* Compact social metadata; typography and controls inherit the project theme. */
+.profile-bio { margin: 5px 0 0; color: var(--muted); font-size: 14px; line-height: 1.45; white-space: pre-wrap; overflow-wrap: anywhere; }
+.profile-bio-edit { margin-top: 8px; font-size: 12px; }
+.social-retry-link { appearance: none; padding: 0; margin: 8px 0; border: 0; background: transparent; color: var(--danger, #dc2626); font: inherit; font-size: 12px; font-weight: 400; letter-spacing: 0; cursor: pointer; }
+.social-retry-link:focus-visible { outline: auto; outline-offset: 3px; }
+.social-error-state { margin: 12px 0; text-align: center; color: var(--danger, #dc2626); font-size: 12px; font-weight: 400; }
+.profile-social-counts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.profile-social-count {
+  appearance: none;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  line-height: inherit;
+  cursor: pointer;
+}
+.profile-social-count strong { color: var(--ink); }
+.profile-social-separator { color: var(--muted); }
+.public-profile-centered-name { display: block; width: 100%; text-align: left; margin: 12px 0 0; max-width: 100%; line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sheet-card:has(.sheet-title-hidden) .public-profile-passport > section[aria-label='Болельщики'] { margin-top: 0 !important; }
+.sheet-card:has(.public-profile-centered-name) .modal-header:has(.sheet-title-hidden) .icon-btn { top: -14px; }
+.sheet-card:has(.sheet-title-hidden) .public-profile-social-identity { padding-top: 6px; }
+.public-profile-social-identity { display: block; }
+.public-profile-social-identity .profile-social-counts { flex-direction: column; align-items: flex-start; gap: 4px; margin: 6px 0 0; }
+.public-profile-social-identity .profile-social-separator { display: none; }
+.public-profile-social-identity .profile-social-count { font-size: 12px; }
+.profile-social-count:focus-visible { outline: auto; outline-offset: 4px; }
+.profile-social-actions { display: flex; align-items: stretch; gap: 8px; margin-top: 12px; }
+.public-profile-passport .profile-social-actions { margin-top: 8px; }
+.profile-social-actions > .btn { flex: 1; min-width: 0; height: 48px; min-height: 48px; box-sizing: border-box; margin: 0; padding: 0 8px; display: inline-flex; align-items: center; justify-content: center; font-size: 12px; line-height: 1.2; letter-spacing: 0; }
+.social-history-list { padding: 14px; border-radius: 18px; }
+.social-history-date { margin: 18px 0 8px; color: var(--muted); font-size: 12px; font-weight: 900; }
+.social-history-date:first-child { margin-top: 0; }
+.social-history-row { appearance: none; display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 0; border: 0; border-radius: 0; background: transparent; color: var(--ink); font: inherit; text-align: left; cursor: pointer; }
+.social-history-row:focus-visible { outline: auto; outline-offset: 2px; }
+.social-history-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.social-history-copy strong { font-size: 14px; line-height: 1.4; overflow-wrap: anywhere; }
+.social-history-copy > span { color: var(--muted); font-size: 12px; line-height: 1.4; }
+.social-history-copy > .social-history-follow { color: var(--green-deep); }
+.social-history-copy > .social-history-unfollow { color: var(--danger, #dc2626); }
+.social-feed-event { display: flex; align-items: flex-start; gap: 8px; padding: 8px 0; }
+.social-feed-avatar { appearance: none; padding: 0; border: 0; background: transparent; cursor: pointer; flex: 0 0 auto; }
+.social-feed-content { flex: 1; min-width: 0; }
+.social-feed-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 2px; }
+.social-feed-name { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--ink); font-size: 13px; font-weight: 700; }
+.social-feed-time { color: var(--muted); font-size: 11px; white-space: nowrap; }
+.social-feed-result { appearance: none; display: block; width: 100%; padding: 0; border: 0; background: transparent; color: var(--ink); font: inherit; font-size: 13px; line-height: 1.35; text-align: left; overflow-wrap: anywhere; cursor: pointer; }
+.social-feed-avatar:focus-visible, .social-feed-result:focus-visible { outline: auto; outline-offset: 2px; }
+.social-feed-outcome { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; vertical-align: middle; background: var(--muted); }
+.social-feed-outcome--win { background: var(--green-deep); }
+.social-feed-outcome--loss { background: var(--danger, #dc2626); }
+.social-feed-outcome--draw { background: var(--gold, #eab308); }
+.social-feed-check { display: inline-block; vertical-align: middle; margin-right: 5px; color: var(--green-deep); }
+.social-feed-reactions { display: flex; align-items: center; gap: 4px; margin-top: 3px; }
+.social-feed-reactions > .icon-btn { width: 24px; height: 24px; }
+.social-feed-reactions .pill { border: 0; box-shadow: none; background: var(--glass-bg); }
+.social-feed-reactions .pill--dark { background: var(--liquid-inset-bg); color: var(--ink); }
+.social-people-sheet .segmented-tabs__item { font-size: 12px; padding-left: 4px; padding-right: 4px; letter-spacing: 0; }
+.social-people-list { padding: 0; }
+.social-people-list .social-history-row { padding: 10px 0; }
+.profile-social-count-block { appearance: none; border: 0; padding: 0; background: transparent; font: inherit; text-align: left; cursor: pointer; }
+.profile-social-count-block:focus-visible { outline: auto; outline-offset: 4px; }
+.profile-social-counts > span.profile-social-count { cursor: inherit; }
+.social-membership-icon { display: inline-block; vertical-align: middle; }
+.social-membership-icon--follow { color: var(--green-deep); }
+.social-membership-icon--unfollow { color: var(--danger, #dc2626); }
+.experience-rating-modal:has([aria-label='Управление болельщиками']) .tournament-standing-table--experience-rating th:last-child,
+.experience-rating-modal:has([aria-label='Управление болельщиками']) .tournament-standing-table--experience-rating td:last-child { width: 100px; min-width: 100px; }

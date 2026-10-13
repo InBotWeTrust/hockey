@@ -1,4 +1,6 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { SocialProfile } from '../social/SocialProfile.js';
+import { ProfileBio } from '../social/ProfileBio.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
@@ -871,7 +873,7 @@ export function ProfileScreen(): JSX.Element {
     >
       <section className="profile-passport glass" aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
-          <div className="profile-identity__main">
+          <SocialProfile userId={profile.id} renderIdentity={counts=><div className="public-profile-social-identity"><div className="profile-identity__main">
             {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
               <button
                 type="button"
@@ -895,10 +897,10 @@ export function ProfileScreen(): JSX.Element {
               </div>
             )}
             <div className="profile-identity__copy">
-              <span className="profile-identity__name">{profile.displayName}</span>
               <span className="profile-identity__level">
                 {getLevelLabel(profile.competitionLevel)}
               </span>
+              {counts}
             </div>
             <button
               type="button"
@@ -914,6 +916,9 @@ export function ProfileScreen(): JSX.Element {
               />
             </button>
           </div>
+          <span className="profile-identity__name public-profile-centered-name" title={profile.displayName}>{profile.displayName}</span>
+          <ProfileBio userId={profile.id}/>
+          </div>}/>
           <div className="profile-balances" aria-label="Баланс игрока">
             <ProfileBalance
               label="Монеты"
@@ -998,6 +1003,7 @@ export function ProfileScreen(): JSX.Element {
         </AccessibleModal>
       ) : null}
 
+      <ProfileBio userId={profile.id} editor/>
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
         <EquipmentPanel
           inventory={inventoryQuery.data}

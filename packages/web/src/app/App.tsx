@@ -61,6 +61,8 @@ const DestinationIntroductionPreviewScreen = import.meta.env.DEV
     )
   : null;
 
+const FansDemoScreen=import.meta.env.DEV?lazy(()=>import('../social/FansDemoScreen.js').then(module=>({default:module.FansDemoScreen}))):null;
+
 const DailyPeriodPreviewScreen = import.meta.env.DEV
   ? lazy(() =>
       import('../screens/DailyScreen.js').then((module) => ({
@@ -687,6 +689,7 @@ function AppFrame(): JSX.Element {
     return <Suspense fallback={<RouteLoading />}><DestinationIntroductionPreviewScreen /></Suspense>;
   }
 
+  if (FansDemoScreen && location.pathname === '/dev/fans') return <Suspense fallback={<RouteLoading/>}><FansDemoScreen/></Suspense>;
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 
   return (

@@ -6,7 +6,7 @@ export function PrivateRoute({ children }: { children: ReactNode }): JSX.Element
   const isAuth = useAuthStore((s) => Boolean(s.accessToken));
   const location = useLocation();
   if (!isAuth) {
-    return <Navigate to="/login" state={{ from: location.pathname }} replace />;
+    return <Navigate to="/login" state={{ from: location.pathname + location.search }} replace />;
   }
   return <>{children}</>;
 }

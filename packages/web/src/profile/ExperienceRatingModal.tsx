@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { TrendingUp, X } from 'lucide-react';
 import { fetchExperienceRatingPage, type ExperienceRatingPlayer } from '../api/experienceRating.js';
@@ -19,13 +19,19 @@ function RatingTable({
   rows,
   currentUserId,
   currentRowRef,
+  heading,
+  onPlayerClick,
 }: {
+  heading?:string;
+  onPlayerClick?:(row:Record<string,unknown>)=>void;
   rows: ExperienceRatingPlayer[];
   currentUserId: string;
   currentRowRef: (node: HTMLTableRowElement | null) => void;
 }): JSX.Element {
   return (
     <TournamentStandingsTable
+      {...(heading?{resultHeading:heading}:{})}
+      {...(onPlayerClick?{onPlayerClick}:{})}
       variant="experience-rating"
       regularSource="head_to_head"
       dailyMetric={null}
@@ -41,7 +47,9 @@ export function ExperienceRatingModal({
   currentUserId,
   onCurrentUser,
   onClose,
+  source,
 }: {
+  source?:{key:readonly unknown[];title:string;heading:string;icon?:ReactNode;load:(cursor:string|null)=>Promise<{rows:ExperienceRatingPlayer[];nextCursor:string|null;currentUser?:ExperienceRatingPlayer}>;headerAction?:ReactNode;content?:ReactNode;onPlayerClick?:(row:Record<string,unknown>)=>void};
   currentUserId: string;
   onCurrentUser: (player: ExperienceRatingPlayer) => void;
   onClose: () => void;
@@ -56,8 +64,8 @@ export function ExperienceRatingModal({
   }, []);
 
   const query = useInfiniteQuery({
-    queryKey: ['profile', 'experience-rating'],
-    queryFn: ({ pageParam }) => fetchExperienceRatingPage(pageParam),
+    queryKey: source?.key??['profile', 'experience-rating'],
+    queryFn: ({ pageParam }) => source?source.load(pageParam):fetchExperienceRatingPage(pageParam),
     initialPageParam: null as string | null,
     getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     refetchOnMount: 'always',
@@ -119,21 +127,21 @@ export function ExperienceRatingModal({
     <AccessibleModal
       title={
         <span className="experience-rating__title">
-          <TrendingUp data-testid="experience-rating-title-icon" aria-hidden="true" />
-          <span>Рейтинг по опыту</span>
+          {source?.icon??<TrendingUp data-testid="experience-rating-title-icon" aria-hidden="true" />}
+          <span>{source?.title??'Рейтинг по опыту'}</span>
         </span>
       }
-      ariaLabel="Рейтинг по опыту"
+      ariaLabel={source?.title??'Рейтинг по опыту'}
       onRequestClose={onClose}
       cardClassName="experience-rating-modal"
       headerAction={
-        <button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
+        <div style={{display:'flex',alignItems:'center',gap:8}}>{source?.headerAction}<button type="button" className="icon-btn" aria-label="Закрыть" onClick={onClose}>
           <X size={15} />
-        </button>
+        </button></div>
       }
     >
       <div className="experience-rating__viewport" ref={scrollRef}>
-        {query.isLoading ? (
+        {source?.content??(query.isLoading ? (
           <p className="experience-rating__state" role="status">Загружаем рейтинг…</p>
         ) : query.isError && rows.length === 0 ? (
           <div className="experience-rating__state" role="alert">
@@ -145,8 +153,8 @@ export function ExperienceRatingModal({
         ) : rows.length === 0 ? (
           <p className="experience-rating__state">Рейтинг пока пуст</p>
         ) : (
-          <RatingTable rows={rows} currentUserId={currentUserId} currentRowRef={currentRowRef} />
-        )}
+          <RatingTable rows={rows} currentUserId={currentUserId} currentRowRef={currentRowRef} {...(source?{heading:source.heading}: {})} {...(source?.onPlayerClick?{onPlayerClick:source.onPlayerClick}:{})}/>
+        ))}
         <div ref={sentinelRef} data-testid="experience-rating-sentinel" aria-hidden="true" />
         {query.isFetchingNextPage ? <p className="experience-rating__more">Загружаем ещё…</p> : null}
         {query.isFetchNextPageError ? (
@@ -160,7 +168,7 @@ export function ExperienceRatingModal({
           </button>
         ) : null}
       </div>
-      {currentUser !== undefined && !currentRowVisible ? (
+      {!source?.content && currentUser !== undefined && !currentRowVisible ? (
         <div className="experience-rating__pinned" data-testid="experience-rating-pinned-current">
           <TournamentStandingsTable
             variant="experience-rating"
