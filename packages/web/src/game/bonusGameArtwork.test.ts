@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { catalogBonusGameArtwork, versionBonusGameArtwork } from './bonusGameArtwork.js';
 
 describe('catalogBonusGameArtwork', () => {
+  it.each([['philadelphia', '20261012-philadelphia-v4'], ['chicago', '20261012-chicago-v2']])('refreshes the cache URL for the new %s preview', (city, version) => {
+    expect(versionBonusGameArtwork(`/bonus-games/nhl-cities/previews/${city}.webp`)).toBe(`/bonus-games/nhl-cities/previews/${city}.webp?v=${version}`);
+  });
   it('versions challenge stories without invalidating unrelated artwork', () => {
     for (const folder of ['level-previews', 'finales']) {
       expect(versionBonusGameArtwork(`/bonus-games/${folder}/beach.webp`)).toBe(

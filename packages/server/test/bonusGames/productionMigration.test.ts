@@ -13,7 +13,7 @@ const migrations = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '.
 const selected = new Set([
   '174_beach_interactions.sql', '175_beach_preview_copy.sql', '176_ski_resort_slope.sql',
   '178_cyberpunk_yard_effects.sql', '183_ordinary_duel_fight_clocks.sql',
-  '187_challenge_levels.sql', '188_bonus_records.sql', '203_sniper_marathon_duels.sql',
+  '187_challenge_levels.sql', '188_bonus_records.sql', '194_bonus_city_preview_stories.sql', '203_sniper_marathon_duels.sql',
   '204_duel_monthly_limits_130_26.sql', '208_scored_duel_result_clock_pause.sql',
   '209_sniper_period_150_seconds.sql', '210_marathon_timed_player_speed.sql',
   '154_marksmanship_single_category_scoring.sql', '155_marksmanship_visible_techniques.sql',
@@ -95,6 +95,8 @@ describe.skipIf(!hasIntegrationEnv)('bonus-only production migration', () => {
         { skill_code: 'marksmanship', cities: ['Торонто', 'Монреаль', 'Бостон', 'Нью-Йоркская агломерация', 'Филадельфия', 'Вашингтон', 'Питтсбург', 'Детройт', 'Чикаго', 'Нэшвилл'] },
         { skill_code: 'speed', cities: ['Минск', 'Шанхай', 'Сочи', 'Тольятти', 'Москва', 'Нижний Новгород', 'Череповец', 'Ярославль', 'Казань', 'Санкт-Петербург'] },
       ]);
+      const stories = await pool.query<{ count: number }>("select count(distinct preview_story)::int as count from bonus_game where status='active' and skill_code<>'challenge'");
+      expect(stories.rows[0]!.count).toBe(40);
       const resumed = await startOrResumeBonusAttempt(pool, {
         userId: user.id, gameId: first.rows[0]!.id, now: new Date(),
         seedSecret: 'isolated-migration-seed-secret', dailyAttemptLimit: 2,
