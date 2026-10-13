@@ -6410,7 +6410,7 @@ export function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          noticesOnIce
+          noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
           suppressedByModal={!!fightOverlay}
           preserveSceneOnModalReturn
           showIceCar={false}
@@ -8531,7 +8531,7 @@ function DuelRinkLoadoutHud({
       aria-label="Выбор инвентаря"
       style={{
         display: 'flex',
-        gap: 18,
+        gap: 9,
         pointerEvents: locked ? 'none' : 'auto',
       }}
     >
@@ -9004,7 +9004,7 @@ export function DuelInventoryMiniHud({
       style={{
         display: 'flex',
         justifyContent: 'flex-start',
-        gap: 18,
+        gap: 9,
         pointerEvents: onSelectKind ? 'auto' : 'none',
       }}
     >
