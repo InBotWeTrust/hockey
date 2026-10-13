@@ -28,6 +28,37 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     app = await buildApp({ config: { NODE_ENV:'test', HOST:'127.0.0.1', PORT:3000, LOG_LEVEL:'warn', DATABASE_URL:urls.databaseUrl, REDIS_URL:urls.redisUrl, JWT_SECRET:secret, REFRESH_SECRET:secret, TELEGRAM_BOT_TOKEN:'111:test', DAILY_SEED_SECRET:secret }, pushSchedulerEnabled:false, pushWorkerEnabled:false, tournamentLifecycleEnabled:false, monthlyRatingLifecycleEnabled:false, duelFightWorkerEnabled:false });
   });
   afterAll(async () => { await app?.close(); });
+  it('persists feed reads per viewer and keeps events arriving after the read-all snapshot unread',async()=>{
+    const owner=await user('Read owner'),fan=await user('Read fan'),other=await user('Read other');
+    await request(fan,'PUT',`/users/${owner.id}/fan`);
+    const status=await request(owner,'GET','/social/feed/unread');
+    expect(status.statusCode).toBe(200);expect(status.json().hasUnread).toBe(true);expect(status.json().unreadCount).toBe(1);
+    const feed=(await request(owner,'GET','/social/feed')).json();
+    expect(feed.items[0].unread).toBe(true);
+    const read=(payload:unknown)=>app.inject({method:'POST',url:'/social/feed/read',headers:{authorization:`Bearer ${owner.token}`},payload});
+    const foreign=await app.inject({method:'POST',url:'/social/feed/read',headers:{authorization:`Bearer ${other.token}`},payload:{ids:[feed.items[0].id]}});
+    expect(foreign.statusCode).toBe(404);
+    expect((await read({ids:[feed.items[0].id]})).statusCode).toBe(200);
+    expect((await read({ids:[feed.items[0].id]})).statusCode).toBe(200);
+    expect((await request(owner,'GET','/social/feed/unread')).json().hasUnread).toBe(false);
+    const eventId=randomUUID();
+    await request(owner,'PUT',`/users/${fan.id}/fan`);
+    await app.pg.query("update user_follows set created_at=now()-interval '2 days' where follower_id=$1 and player_id=$2",[owner.id,fan.id]);
+    await app.pg.query("insert into social_activity(id,source_key,kind,occurred_at,data) values($1,$2,'training',now()-interval '1 day','{}')",[eventId,eventId]);
+    await app.pg.query('insert into social_activity_actor(activity_id,user_id) values($1,$2)',[eventId,fan.id]);
+    expect((await request(owner,'GET','/social/feed/unread')).json().hasUnread).toBe(true);
+    expect((await request(owner,'GET','/social/feed')).json().items.find((e:{id:string})=>e.id===eventId).unread).toBe(true);
+    expect((await read({ids:[eventId]})).statusCode).toBe(200);
+    await request(other,'PUT',`/users/${owner.id}/fan`);
+    expect((await read({through:status.json().asOf})).statusCode).toBe(200);
+    expect((await request(owner,'GET','/social/feed/unread')).json().hasUnread).toBe(true);
+    const current=(await request(owner,'GET','/social/feed/unread')).json();
+    expect((await read({through:current.asOf})).statusCode).toBe(200);
+    expect((await read({through:status.json().asOf})).statusCode).toBe(200);
+    expect((await request(owner,'GET','/social/feed/unread')).json().hasUnread).toBe(false);
+    expect((await read({through:'2099-01-01T00:00:00Z'})).statusCode).toBe(400);
+    expect((await app.inject({method:'POST',url:'/social/feed/read',payload:{ids:[]}})).statusCode).toBe(401);
+  });
   it('saves biography with the existing profile endpoint and keeps names on bio-only updates',async()=>{
     const owner=await user('Settings owner');
     const patch=(payload:unknown)=>app.inject({method:'PATCH',url:'/me',headers:{authorization:`Bearer ${owner.token}`},payload});

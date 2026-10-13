@@ -9,11 +9,42 @@ const querySchema = z.object({cursor:z.string().max(500).optional()});
 const authorizedActivity = `exists(select 1 from social_activity_actor actor
   left join user_follows f on f.player_id=actor.user_id and f.follower_id=$1
   where actor.activity_id=e.id and (actor.user_id=$1 or (f.created_at<=e.occurred_at)))`;
+const feedActivityAccess = `exists(select 1 from social_activity_actor a join user_follows f on f.player_id=a.user_id
+  where a.activity_id=e.id and f.follower_id=$1 and f.created_at<=e.occurred_at)`;
+const unreadEvent = (alias:string, published:string) => `${published} > (select social_feed_read_until from users where id=$1)
+  and not exists(select 1 from social_feed_read r where r.user_id=$1 and r.event_id=${alias}.id)`;
 
 export const socialRoutes: FastifyPluginAsync = async app => {
   const userId = (params: unknown) => { const parsed=userParams.safeParse(params); if(!parsed.success) throw new AppError('bad_request','Неверный игрок',400); return parsed.data.userId; };
   const cursor = (query: unknown) => { const parsed=querySchema.safeParse(query); if(!parsed.success) throw new AppError('bad_request','Неверная страница',400); return parseCursor(parsed.data.cursor); };
   const auth={preHandler:[app.authenticate]};
+  async function unreadStatus(viewer:string) {
+    return (await app.pg.query(`with unread as (
+      select e.id from social_activity e where ${feedActivityAccess} and ${unreadEvent('e','e.published_at')}
+      union all select h.id from fan_membership_history h where h.player_id=$1 and ${unreadEvent('h','h.occurred_at')}
+    ) select to_char(clock_timestamp() at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "asOf",
+      count(*)::int as "unreadCount",count(*)>0 as "hasUnread" from unread`,[viewer])).rows[0];
+  }
+  app.get('/social/feed/unread',auth,req=>unreadStatus(req.user.id));
+  app.post('/social/feed/read',auth,async req=>{
+    const body=z.union([
+      z.object({through:z.string().datetime({offset:true})}).strict(),
+      z.object({ids:z.array(z.string().uuid()).min(1).max(50)}).strict(),
+    ]).safeParse(req.body);
+    if(!body.success)throw new AppError('bad_request','Неверные события',400);
+    const viewer=req.user.id;
+    if('through' in body.data) {
+      const result=await app.pg.query(`update users set social_feed_read_until=greatest(social_feed_read_until,$2::timestamptz)
+        where id=$1 and $2::timestamptz<=clock_timestamp() returning id`,[viewer,body.data.through]);
+      if(!result.rowCount)throw new AppError('bad_request','Неверная дата прочтения',400);
+    } else {
+      const allowed=await app.pg.query(`select e.id from social_activity e where e.id=any($2::uuid[]) and ${feedActivityAccess}
+        union select h.id from fan_membership_history h where h.player_id=$1 and h.id=any($2::uuid[])`,[viewer,body.data.ids]);
+      if(allowed.rowCount!==new Set(body.data.ids).size)throw new AppError('not_found','Событие недоступно',404);
+      await app.pg.query(`insert into social_feed_read(user_id,event_id) select $1,unnest($2::uuid[]) on conflict do nothing`,[viewer,body.data.ids]);
+    }
+    return unreadStatus(viewer);
+  });
   app.get('/social/fans/rating',auth,async req=>{
     const raw=querySchema.safeParse(req.query);if(!raw.success)throw new AppError('bad_request','Неверная страница',400);
     let cursorValue:{count:number;id:string;registered:string}|null=null;
@@ -71,6 +102,7 @@ export const socialRoutes: FastifyPluginAsync = async app => {
   async function activity(viewer:string,c:ReturnType<typeof parseCursor>,player:string|null,event:string|null,feedOnly=false) {
     // Never expose a subscribed opponent's pre-follow result through a followed participant.
     const rows=await app.pg.query(`select e.id,e.kind,to_char(e.occurred_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "occurredAt",e.data,
+      (${unreadEvent('e','e.published_at')}) as unread,
       coalesce((select jsonb_agg(groups) from (select emoji,count(*)::int as count,bool_or(user_id=$1) as "reactedByMe" from social_activity_reaction where activity_id=e.id group by emoji order by emoji) groups),'[]'::jsonb) reactions,
       (select jsonb_agg(jsonb_build_object('id',u.id,'displayName',u.display_name,'avatarUrl',u.avatar_url,'visible',
          u.id=$1 or exists(select 1 from user_follows f where f.follower_id=$1 and f.player_id=u.id and f.created_at<=e.occurred_at)) order by u.id)
@@ -88,7 +120,7 @@ export const socialRoutes: FastifyPluginAsync = async app => {
   app.get('/social/feed',auth,async req=> {
     const c=cursor(req.query);
     const games=await activity(req.user.id,c,null,null,true);
-    const history=await app.pg.query(`select h.id,'membership' as kind,
+    const history=await app.pg.query(`select h.id,'membership' as kind,(${unreadEvent('h','h.occurred_at')}) as unread,
       to_char(h.occurred_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as "occurredAt",
       jsonb_build_object('action',h.action) as data,
       jsonb_build_array(jsonb_build_object('id',u.id,'displayName',u.display_name,'avatarUrl',u.avatar_url,'visible',true)) as actors
