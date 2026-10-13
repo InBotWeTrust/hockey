@@ -1194,7 +1194,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         scoreboardModel={enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
           showEnduranceTimer ? (
-            <EnduranceTimer remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
+            <EnduranceTimer windowMs={enduranceRules!.goalWindowMs} remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
               tone={(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4000 ? 'danger'
                 : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 10000 ? 'warning' : 'success'} />
           ) : marksmanshipScoreParts?.length ? (

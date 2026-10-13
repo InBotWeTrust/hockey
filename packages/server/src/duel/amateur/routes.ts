@@ -789,6 +789,7 @@ interface DuelParticipantDTO {
   marathon_penalties?: number;
   result_pause_starts_at?: string | null;
   result_pause_ends_at?: string | null;
+  marathon_window_started_at?: string | null;
   marathon_window_ends_at?: string | null;
   average_goal_ms?: number | null;
   clock?: ReturnType<typeof getParticipantClock>;
@@ -3916,6 +3917,10 @@ async function scoredParticipantFields(
     format_score: projection.score,
     marathon_penalties: projection.penalties,
     average_goal_ms: projection.goals > 0 ? durationMs / projection.goals : null,
+    marathon_window_started_at:
+      participant.period_started_at === null
+        ? null
+        : new Date((rules.shotResultPauseMs ? getEffectivePeriodStart(participant, now.getTime())! : participant.period_started_at).getTime() + projection.windowStartsMs).toISOString(),
     marathon_window_ends_at:
       participant.period_started_at === null
         ? null

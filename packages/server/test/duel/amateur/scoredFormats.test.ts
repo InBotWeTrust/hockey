@@ -122,6 +122,7 @@ describe('Marathon continuous-period windows', () => {
     for (const goal of [false,true]) {
       const input={durationMs:240000,windowMs,resetAfterShotPauseMs:1000,shots:[{startedMs:2000,flightMs:500,goal}]};
       const paused=project({...input,elapsedMs:2800});
+      expect(paused.windowStartsMs).toBe(3500);
       expect(paused.windowEndsMs).toBe(3500+windowMs);
       expect(project({...input,elapsedMs:3400}).penalties).toBe(paused.penalties);
       expect(project({...input,elapsedMs:3500}).windowEndsMs-3500).toBe(windowMs);

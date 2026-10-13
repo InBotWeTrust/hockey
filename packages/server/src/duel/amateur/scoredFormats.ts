@@ -9,6 +9,7 @@ export interface MarathonProjection {
   score: number;
   goals: number;
   penalties: number;
+  windowStartsMs: number;
   windowEndsMs: number;
 }
 /** Replay accepted shots against fixed deadlines. Penalties at zero never become debt. */
@@ -51,7 +52,7 @@ export function projectMarathon(input: {
   const showingResult = input.resetAfterShotPauseMs !== undefined && lastContactMs !== null &&
     input.elapsedMs >= lastContactMs && input.elapsedMs < lastContactMs + input.resetAfterShotPauseMs;
   if (!showingResult) expire(input.elapsedMs, true);
-  return { score, goals, penalties, windowEndsMs };
+  return { score, goals, penalties, windowStartsMs: windowEndsMs - input.windowMs, windowEndsMs };
 }
 export function compareScoredDuel(input: {
   kind: 'sniper' | 'marathon';
