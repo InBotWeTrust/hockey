@@ -38,7 +38,9 @@ describe('tournament achievement catalogue', () => {
     expect(ACHIEVEMENT_SEEDS).not.toHaveLength(0);
     expect(
       ACHIEVEMENT_SEEDS.every((achievement) =>
-        /^\/achievements\/[^?]+\.webp\?v=20260906-hd1$/.test(achievement.photoUrl),
+        achievement.id.startsWith('fans-')
+          ? /^\/achievements\/fans-\d+\.webp\?v=20261013$/.test(achievement.photoUrl)
+          : /^\/achievements\/[^?]+\.webp\?v=20260906-hd1$/.test(achievement.photoUrl),
       ),
     ).toBe(true);
   });
