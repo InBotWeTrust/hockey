@@ -2006,3 +2006,22 @@ it.each(['Меткость', 'Выносливость', 'Испытания'])(
   expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected', 'true');
   expect(useAmateurAccessToastStore.getState().toast).not.toBeNull();
 });
+
+
+it.each([0, 1, 2, 3])('opens the highest unlocked challenge level after %i completed levels', async (completed) => {
+  localStorage.clear();
+  useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
+  useBonusGameStore.getState().applyState(null);
+  useDailyStore.setState({ data: null });
+  mockCatalog([card({ slug: 'challenge-beach', skill_code: 'challenge', levels: [1, 2, 3].map((level) => ({
+    level, is_unlocked: level <= completed + 1, is_completed: level <= completed,
+    preview_story: `Level ${level}`, preview_artwork_url: `/level-${level}.webp`,
+    reward: { coins: 0, stars: level * 10, experience: level * 20 },
+  })) })]);
+  renderCatalog();
+  fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Играть' }));
+  const expected = Math.min(completed + 1, 3);
+  expect(within(screen.getByRole('dialog')).getByRole('button', { name: new RegExp(`Уровень ${expected}`) }))
+    .toHaveAttribute('aria-pressed', 'true');
+});

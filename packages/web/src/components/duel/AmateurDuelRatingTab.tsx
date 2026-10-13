@@ -62,13 +62,15 @@ export function AmateurDuelRatingTab({
           <Info size={12} color="rgba(240, 248, 255, 0.92)" />
         </button>
       </div>
-      <SegmentedTabs
-        items={RATING_SCOPES}
-        activeTab={scope}
-        ariaLabel="Зачёт рейтинга дуэлей"
-        scrollable
-        onChange={setScope}
-      />
+      <div style={{ minWidth: 0, maxWidth: '100%', touchAction: 'pan-x' }}>
+        <SegmentedTabs
+          items={RATING_SCOPES}
+          activeTab={scope}
+          ariaLabel="Зачёт рейтинга дуэлей"
+          scrollable
+          onChange={setScope}
+        />
+      </div>
       <section
         className="glass tournament-details__content duel-rating-table-card"
         aria-label="Таблица рейтинга дуэлей"

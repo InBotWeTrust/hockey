@@ -51,3 +51,11 @@ export function challengeLevelPreview(slug: string, level: ChallengeLevel, fallb
   const artworkLocation = { 'challenge-beach': 'beach', 'challenge-ski-resort': 'ski', 'challenge-cyberpunk-yard': 'cyberpunk' }[slug];
   return { preview_story: levelStories[slug]?.[level - 1] ?? '', preview_artwork_url: artworkLocation ? `/bonus-games/level-previews/${artworkLocation}-level-${level}.webp` : fallbackArtwork };
 }
+
+/** Shared prerequisite predicate; all query callers bind the user as $1. */
+export function bonusLocationCompletedSql(gameAlias: string, completionAlias: string): string {
+  const slugs = Array.from(tieredSlugs, slug => `'${slug}'`).join(', ');
+  return `(${completionAlias}.id is not null and (${gameAlias}.slug not in (${slugs}) or
+    (select count(*) from user_bonus_game_level_completion level_completion
+      where level_completion.user_id = $1 and level_completion.bonus_game_id = ${gameAlias}.id) = 3))`;
+}
