@@ -315,4 +315,47 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     );
     expect(reservations.rows[0].total).toBe(2);
   });
+  it.each([79999, 80000, 159999, 160000])('uses the lowered Marathon base before missing-energy fatigue at %i', async (time) => {
+    const invited = await challenge('marathon', 4000);
+    const rules = invited.json().match.rules;
+    const id = invited.json().match.id;
+    expect(rules.marathonSpeedStages.map((stage: any) => stage.startsAtMs)).toEqual([80000, 160000]);
+    for (const timing of [rules.noInventoryTiming.skates, rules.noInventoryTiming.nutrition]) {
+      timing.stumbleDurationMinMs = timing.stumbleDurationMaxMs = 0;
+      timing.fatigueGraceMs = timing.fatigueSlowdownStartMs = timing.fatigueHeavySlowdownStartMs = 0;
+      timing.fatigueStopStartMs = 10000000;
+      timing.fatigueHeavyMultiplier = 0.65;
+    }
+    await app.pg.query('update amateur_duel_match set rules_snapshot=$2 where id=$1', [id, JSON.stringify(rules)]);
+    const post = (path: string, player: number, payload?: object) => app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${id}/${path}`, headers: players[player]!.headers,
+      ...(payload ? { payload } : {}),
+    });
+    expect((await post('accept', 1)).statusCode).toBe(200);
+    for (const player of [0, 1]) expect((await post('ready', player, { loadout: {} })).statusCode).toBe(200);
+    expect((await post('period/start', 0)).statusCode).toBe(200);
+    await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond') where match_id=$1 and user_id=$3", [id, time, players[0]!.id]);
+    const shot = { shot_index: 1, input: { tapTime: time, periodTapTime: time }, claimed_result: 'goal' };
+    expect((await post('shot', 0, shot)).statusCode).toBe(200);
+    const row = (await app.pg.query('select input_payload from shot_session where amateur_duel_match_id=$1', [id])).rows[0];
+    const delta = rules.marathonSpeedStages.filter((stage: any) => stage.startsAtMs <= time).at(-1)?.shooterSpeedDelta ?? 0;
+    expect(row.input_payload.shooterFrequency).toBeCloseTo((rules.periodSpeedPresets[0].shooterFrequency + delta) * 0.65, 4);
+    expect(row.input_payload.goalFrequency).toBe(rules.periodSpeedPresets[0].goalFrequency);
+    expect(row.input_payload.goalieFrequency).toBe(rules.periodSpeedPresets[0].goalieFrequency);
+    expect((await post('shot', 0, shot)).statusCode).toBe(200);
+  });
+
+  it('gives an admin-created replacement Marathon template the frozen speed schedule', async () => {
+    await app.pg.query("update users set role='admin' where id=$1", [players[0]!.id]);
+    const existing = (await app.inject({ url: '/admin/duel-templates', headers: players[0]!.headers })).json().templates.find((t: any) => t.duelKind === 'marathon');
+    const response = await app.inject({ method: 'POST', url: '/admin/duel-templates', headers: players[0]!.headers, payload: {
+      ...existing, sniperScoring: undefined, title: 'Replacement Marathon', isActive: false,
+      startsAt: new Date(Date.now() - 1000).toISOString(), endsAt: new Date(Date.now() + 3600000).toISOString(),
+    } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().template.marathonSpeedStages).toEqual(existing.marathonSpeedStages);
+    const classic = (await app.pg.query("select marathon_speed_stages from amateur_duel_template where id=$1", [templates.classic])).rows[0];
+    expect(classic.marathon_speed_stages).toEqual(existing.marathonSpeedStages);
+  });
+
 });

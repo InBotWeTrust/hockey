@@ -37,7 +37,8 @@ import {
   SHOOTER_AMPLITUDE,
   STICK_NEUTRAL,
   getGoalie,
-  getDuelPlayerCondition,
+  getTimedDuelPlayerCondition,
+  type DuelTimedSpeedStage,
   getSessionPhaseOffsets,
   resolvePerspectiveCourtShot,
   type DailyPeriodSpeedPreset,
@@ -484,6 +485,11 @@ const activeLoadoutBodySchema = z.object({
   }),
 });
 
+const timedPlayerSpeedStagesSchema = z.array(z.object({
+  startsAtMs: z.number().int().nonnegative(),
+  shooterSpeedDelta: z.number().min(-3).max(0),
+})).max(2);
+
 interface DuelTemplateRow {
   id: string;
   title: string;
@@ -493,6 +499,7 @@ interface DuelTemplateRow {
   duel_kind: DuelKind;
   marathon_window_ms?: MarathonWindowMs;
   sniper_scoring_rules?: unknown;
+  marathon_speed_stages?: unknown;
   duel_variant: DuelVariant;
   ranked_enabled: boolean;
   matchmaking_enabled: boolean;
@@ -736,6 +743,7 @@ interface DuelRulesSnapshot {
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: MarathonWindowMs;
+  marathonSpeedStages?: DuelTimedSpeedStage[];
   sniperScoring?: MarksmanshipScoringRules;
   duelVariant: DuelVariant;
   rankedEnabled: boolean;
@@ -1346,7 +1354,10 @@ export function makeRulesSnapshot(
     duelKind: template.duel_kind,
     ...(['sniper', 'marathon'].includes(template.duel_kind) ? { shotResultPauseMs: 1000 as const, scoredClockVersion: 2 as const } : {}),
     ...(template.duel_kind === 'marathon'
-      ? { marathonWindowMs: template.marathon_window_ms ?? 7000 }
+      ? { marathonWindowMs: template.marathon_window_ms ?? 7000,
+          ...(template.marathon_speed_stages == null ? {} : {
+            marathonSpeedStages: timedPlayerSpeedStagesSchema.parse(template.marathon_speed_stages),
+          }) }
       : {}),
     ...(template.duel_kind === 'sniper'
       ? {
@@ -1470,6 +1481,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       shotResultPauseMs: z.literal(1000).optional(),
       marathonWindowMs: z.union([z.literal(4000), z.literal(7000)]).optional(),
       sniperScoring: z.unknown().optional(),
+      marathonSpeedStages: timedPlayerSpeedStagesSchema.optional(),
       duelVariant: z.enum(['classic', 'time_attack']).default('classic'),
       rankedEnabled: z.boolean().default(true),
       matchmakingEnabled: z.boolean().default(true),
@@ -1505,11 +1517,12 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
-  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, shotResultPauseMs, scoredClockVersion, ...rules } =
+  const { tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, marathonSpeedStages, shotResultPauseMs, scoredClockVersion, ...rules } =
     parsed.data;
   return {
     ...rules,
     ...(marathonWindowMs === undefined ? {} : { marathonWindowMs }),
+    ...(marathonSpeedStages === undefined ? {} : { marathonSpeedStages }),
     ...(shotResultPauseMs === undefined ? {} : { shotResultPauseMs }),
     ...(scoredClockVersion === undefined ? {} : { scoredClockVersion }),
     ...(sniperScoring === undefined
@@ -1690,7 +1703,7 @@ async function fetchTemplate(client: PoolClient, templateId: string): Promise<Du
             matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
             period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
             ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+            ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
             stake_amount, entry_fee_amount, required_inventory_item_id,
             inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
             win_star_reward, reward_rules, created_at, updated_at
@@ -2780,7 +2793,7 @@ async function closeParticipantPeriod(
     if (!basePeriodSpeeds || !periodSpeeds) {
       throw new AppError('server_error', 'missing duel period speeds', 500);
     }
-    const condition = getDuelPlayerCondition({
+    const condition = getTimedDuelPlayerCondition({
       seed: (await fetchMatchForUpdate(client, participant.match_id)).match_seed,
       userId: participant.user_id,
       periodNumber: participant.current_period,
@@ -2795,7 +2808,7 @@ async function closeParticipantPeriod(
         participant.current_period,
         rules,
       ),
-    });
+    }, rules.marathonSpeedStages, durationMs);
     await consumeInventoryForShot(client, participant, loadout, inventoryReport, {
       skatesConsumed: condition.skatesConsumed,
       nutritionConsumed: condition.nutritionConsumed,
@@ -3457,7 +3470,7 @@ async function fetchMatchmakingTemplates(
               matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
               win_star_reward, reward_rules, created_at, updated_at,
@@ -3473,7 +3486,7 @@ async function fetchMatchmakingTemplates(
              matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
              period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
              ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+             ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
              stake_amount, entry_fee_amount, required_inventory_item_id,
              inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
              win_star_reward, reward_rules, created_at, updated_at
@@ -4935,7 +4948,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                 matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                 period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                 ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+                ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
                 stake_amount, entry_fee_amount, required_inventory_item_id,
                 inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
                 win_star_reward, reward_rules, created_at, updated_at,
@@ -4947,7 +4960,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
               win_star_reward, reward_rules, created_at, updated_at
@@ -6959,7 +6972,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         if (!periodSpeeds)
           throw new AppError('server_error', 'missing effective period speeds', 500);
         const elapsedMs = Math.max(0, body.input.tapTime);
-        const condition = getDuelPlayerCondition({
+        const condition = getTimedDuelPlayerCondition({
           seed: match.match_seed,
           userId: participant.user_id,
           periodNumber: participant.current_period,
@@ -6977,7 +6990,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             participant.current_period,
             rules,
           ),
-        });
+        }, rules.marathonSpeedStages, periodTapTime);
         if (!condition.canShoot) {
           throw new AppError(
             'conflict',
@@ -7511,7 +7524,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
               period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
               ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+              ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
               stake_amount, entry_fee_amount, required_inventory_item_id,
               inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
               win_star_reward, reward_rules, created_at, updated_at
@@ -7544,12 +7557,12 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             matchmaking_venue_policy, reward_rules, marathon_window_ms, sniper_scoring_rules)
          values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13,
                  $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27,
-                 $28, $29, $30, $31, $32, $33, $34, $35, $36)
+                 $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
          returning id, title, description, is_active, difficulty, duel_kind, duel_variant, ranked_enabled,
                    matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                    period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                    ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                   ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+                   ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
                    stake_amount, entry_fee_amount, required_inventory_item_id,
                    inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
                    win_star_reward, reward_rules, created_at, updated_at`,
@@ -7719,7 +7732,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
                       matchmaking_enabled, matchmaking_venue_policy, starts_at, ends_at, total_periods, shots_per_period,
                       period_duration_ms, break_duration_ms, challenge_ttl_ms, ready_duration_ms,
                       ready_no_show_cooldown_ms, matchmaking_timeout_ms, ranked_daily_limit,
-                      ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules,
+                      ranked_same_opponent_limit, power_cap, goalie_id, period_speed_presets, period_rules, marathon_window_ms, sniper_scoring_rules, marathon_speed_stages,
                       stake_amount, entry_fee_amount, required_inventory_item_id,
                       inventory_charges_per_period, win_points, draw_points, win_currency_reward, draw_currency_reward,
                       win_star_reward, reward_rules, created_at, updated_at`,
@@ -8021,6 +8034,9 @@ function mapAdminTemplate(template: DuelTemplateRow) {
     difficulty: template.difficulty,
     duelKind: template.duel_kind,
     marathonWindowMs: template.marathon_window_ms ?? 7000,
+    ...(template.marathon_speed_stages == null ? {} : {
+      marathonSpeedStages: timedPlayerSpeedStagesSchema.parse(template.marathon_speed_stages),
+    }),
     sniperScoring: template.sniper_scoring_rules,
     duelVariant: template.duel_variant,
     rankedEnabled: template.ranked_enabled,

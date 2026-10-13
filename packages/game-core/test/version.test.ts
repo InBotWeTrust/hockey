@@ -8,6 +8,6 @@ describe('GAME_CORE_VERSION', () => {
   });
 
   it('is bumped for card turn timing and automatic final-card responses', () => {
-    expect(GAME_CORE_VERSION).toBe(87);
+    expect(GAME_CORE_VERSION).toBe(88);
   });
 });

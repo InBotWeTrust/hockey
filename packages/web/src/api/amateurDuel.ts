@@ -107,6 +107,7 @@ export interface AmateurDuelRules {
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: 4000 | 7000;
+  marathonSpeedStages?: Array<{ startsAtMs: number; shooterSpeedDelta: number }>;
   sniperScoring?: MarksmanshipScoringRules;
   duelVariant: 'classic' | 'time_attack';
   rankedEnabled: boolean;

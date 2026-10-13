@@ -42,6 +42,7 @@ import {
   SHOOTER_AMPLITUDE,
   createDuelStumbleRandomness,
   getDuelPlayerCondition,
+  getTimedDuelPlayerCondition,
   type DailyPeriodSpeedPreset,
   type DuelInventoryLoadoutSnapshot,
   type DuelPlayerCondition,
@@ -8980,7 +8981,9 @@ function createDuelConditionForMatch(
     conditionInput.elapsedMs = Math.max(0, elapsedMs);
     conditionInput.movementDistancePx = movementDistancePxForElapsed(elapsedMs, speeds.shooterFreq);
     conditionInput.currentShooterSpeed = speeds.shooterFreq;
-    return getDuelPlayerCondition(conditionInput, reusable);
+    const periodElapsedMs = (match.me.clock?.periodElapsedMs ?? elapsedMs) +
+      (match.me.clock ? Math.max(0, duelMatchNowMs(match, Date.now()) - timestampMs(match.server_now)) : 0);
+    return getTimedDuelPlayerCondition(conditionInput, match.rules.marathonSpeedStages, periodElapsedMs, reusable);
   };
 }
 

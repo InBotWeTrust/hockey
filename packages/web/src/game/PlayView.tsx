@@ -247,8 +247,8 @@ export function duelFatigueNoticeLabel(
 
   const isHeavy = condition?.status === 'nutrition_slowdown' || condition?.fatigueLevel === 'heavy';
   const isTired = condition?.status === 'tired';
-  if (!isHeavy && !isTired && (!showPeriodFatigue || periodSpeedRatio >= 0.999)) return null;
   const effectiveSpeedRatio = periodSpeedRatio * (condition?.shooterSpeedMultiplier ?? 1);
+  if (!isHeavy && !isTired && (!showPeriodFatigue || effectiveSpeedRatio >= 0.999)) return null;
   if (!Number.isFinite(effectiveSpeedRatio)) return null;
   const slowdownPercent = Math.min(100, Math.max(0, Math.round((1 - effectiveSpeedRatio) * 100)));
   return `${isHeavy ? 'Сильная усталость' : 'Усталость'} · замедление ${slowdownPercent}%`;
