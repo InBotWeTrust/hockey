@@ -52,6 +52,7 @@
 .chat-list-switcher { padding: calc(10px + var(--app-safe-top)) 14px 0; }
 .chat-feed-content { padding: 0 14px; }
 .social-feed-tools { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; margin-bottom: 10px; }
+.social-feed-tools .icon-btn.icon-btn--dark { background: rgba(15, 23, 42, 0.9); border-color: rgba(15, 23, 42, 0.9); color: #fff; }
 .social-feed-tools .section-label { margin: 0; padding-left: 8px; }
 .social-feed-time-group { display: inline-flex; align-items: center; gap: 8px; }
 .social-feed-unread.segmented-tabs__attention { position: static; flex: 0 0 auto; width: 7px; height: 7px; }
