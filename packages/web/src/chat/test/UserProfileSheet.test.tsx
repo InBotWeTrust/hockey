@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { UserProfileSheet } from '../components/UserProfileSheet.js';
 import * as api from '../api.js';
+import { socialApi } from '../../social/api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import { ApiError } from '../../api/apiFetch.js';
 import { useAuthStore } from '../../auth/authStore.js';
@@ -62,6 +63,8 @@ const publicProfile: api.UserPublicProfileDTO = {
   lastSeenAt: null,
 };
 
+function CurrentChatPath(): JSX.Element { return <output data-testid="chat-path">{useLocation().pathname}</output>; }
+
 async function renderSheet(
   props: Parameters<typeof UserProfileSheet>[0],
   configure?: (queryClient: QueryClient) => void,
@@ -77,6 +80,7 @@ async function renderSheet(
           initialEntries={['/chat/c1']}
           future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
         >
+          <CurrentChatPath />
           <Routes>
             <Route path="/chat/:chatId" element={<UserProfileSheet {...props} />} />
           </Routes>
@@ -89,6 +93,17 @@ async function renderSheet(
 }
 
 describe('UserProfileSheet', () => {
+  it('closes the player sheet after opening the personal conversation', async () => {
+    const onClose = vi.fn();
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
+    useAuthStore.setState({user: {id: 'viewer'} as never});
+    await renderSheet({sender: {userId: 'u1', displayName: 'Иван Петров', avatarUrl: null, accountKind: 'player'}, onClose});
+    fireEvent.click(await screen.findByRole('button', {name: 'Написать'}));
+    await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith('u1'));
+    await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('chat-path')).toHaveTextContent('/chat/dm1');
+  });
+
   beforeEach(() => {
     useAuthStore.setState({ accessToken: null, refreshToken: null, user: null });
     useDailyStore.setState({ data: null, loading: false, inFlight: false, error: null });

@@ -85,6 +85,7 @@ function countedStages(
 }
 
 export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[] = [
+  ...numericStages('fans-support', 'followers', [1,10,20,50,100,500,1000], [5,10,15,30,50,140,250], value => `Набрать ${value} ${value === 1 ? 'болельщика' : 'болельщиков'}.`),
   ...numericStages(
     'career-goals',
     'total',

@@ -10,7 +10,7 @@ import { AchievementDetailsSheet } from '../screens/profileSections.js';
 import { PushPreferenceToggle } from '../screens/ProfileSupportSections.js';
 import { SocialFeed } from './SocialFeed.js';
 import { SocialProvider } from './SocialContext.js';
-import { createDemoModel, DEMO_OWNER, DEMO_PLAYER, DEMO_OPPONENT, DEMO_SCENARIOS, demoProfile, fanAchievements, type DemoScenario } from './demoFixtures.js';
+import { FAN_STAGES, createDemoModel, DEMO_OWNER, DEMO_PLAYER, DEMO_OPPONENT, DEMO_SCENARIOS, demoProfile, fanAchievements, type DemoScenario } from './demoFixtures.js';
 import type { SocialUser } from './api.js';
 import type { AchievementDto } from '../api/achievements.js';
 
@@ -30,7 +30,7 @@ export function FansDemoScreen():JSX.Element {
  const [count,setCount]=useState(1000);const [peak,setPeak]=useState(1000);
  const [claimed,setClaimed]=useState(new Set<string>());const [achievement,setAchievement]=useState<AchievementDto|null>(null);
  const [pushEnabled,setPushEnabled]=useState(true);const [pushCount,setPushCount]=useState(0);
- const rewards=fanAchievements(peak,claimed);const stars=rewards.filter(a=>a.status==='claimed').reduce((sum,a)=>sum+a.rewardStars,0);
+ const rewards=fanAchievements(peak,claimed);const stars=FAN_STAGES.filter(([threshold])=>claimed.has(`fans-${threshold}`)).reduce((sum,[,,reward])=>sum+reward,0);
  const changeScenario=(value:DemoScenario)=>{
   const next=new URLSearchParams({case:value});
   if(value==='push'||value==='push-missing'){next.set('social','fans');next.set('fanId',value==='push'?DEMO_OPPONENT.id:'missing');}
@@ -64,7 +64,7 @@ export function FansDemoScreen():JSX.Element {
     <label className="section-label" htmlFor="fans-demo-count">Текущее количество болельщиков</label>
     <select id="fans-demo-count" className="input" value={count} onChange={e=>{const n=Number(e.target.value);setCount(n);setPeak(v=>Math.max(v,n));}}>{[0,1,10,20,50,100,500,1000].map(n=><option key={n} value={n}>{n}</option>)}</select>
     <button className="btn btn--ghost" onClick={()=>{setCount(0);setPeak(0);setClaimed(new Set());}}>Начать цепочку заново</button>
-    <div className="achievements-list">{rewards.map(a=><AchievementCard key={a.id} achievement={a} claimDisabled={!a.isClaimable} onOpen={()=>setAchievement(a)} onClaim={()=>setClaimed(previous=>new Set([...previous,a.id]))}/>)}</div>
+    <div className="achievements-list">{rewards.map(a=><AchievementCard key={a.id} achievement={a} claimDisabled={!a.isClaimable} onOpen={()=>setAchievement(a)} onClaim={()=>setClaimed(previous=>new Set([...previous,`fans-${FAN_STAGES[a.stage!.current-1]![0]}`]))}/>)}</div>
    </>}
    {selected&&<FixtureProfile user={selected} onClose={()=>setSelected(null)}/>}
    {achievement&&<AchievementDetailsSheet achievement={achievement} onClose={()=>setAchievement(null)}/>}
