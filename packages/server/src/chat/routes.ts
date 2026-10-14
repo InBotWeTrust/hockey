@@ -1,3 +1,4 @@
+import { fetchTrophyDetails } from '../profile/summary.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { getFanSummary } from '../social/service.js';
 import { z } from 'zod';
@@ -624,12 +625,23 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
 
   app.get('/users/:userId', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { userId } = z.object({ userId: uuid }).parse(req.params);
-    const profile = await getUserPublicProfile(app.pg, userId);
+    const {summary} = z.object({summary:z.enum(['true','false']).optional()}).parse(req.query);
+    const profile = await getUserPublicProfile(app.pg, userId, {summary:summary==='true'});
     if (!profile) {
       reply.code(404);
       return { error: { code: 'user_not_found', message: 'user not found' } };
     }
     return {...profile,social:await getFanSummary(app.pg,req.user.id,userId)};
+  });
+
+  app.get('/users/:userId/trophies', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const {userId} = z.object({userId:uuid}).parse(req.params);
+    const player = await app.pg.query("select 1 from users where id=$1 and account_kind='player'",[userId]);
+    if (!player.rowCount) {
+      reply.code(404);
+      return {error:{code:'user_not_found',message:'user not found'}};
+    }
+    return fetchTrophyDetails(app.pg,userId);
   });
 
   app.post('/chat/:chatId/pin', { preHandler: [app.authenticate] }, async (req, reply) => {

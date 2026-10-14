@@ -408,6 +408,7 @@ export async function getChatInfo(
 export async function getUserPublicProfile(
   pool: Pool,
   userId: string,
+  options: { summary?: boolean } = {},
 ): Promise<UserPublicProfileDTO | null> {
   const r = await pool.query<{
     id: string;
@@ -437,10 +438,10 @@ export async function getUserPublicProfile(
   );
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
-  const profileProgress = await buildProfileProgress(pool, row, { claimedOnly: false });
-  const [trophySummary, trophyDetails] = await Promise.all([
+  const [profileProgress, trophySummary, trophyDetails] = await Promise.all([
+    buildProfileProgress(pool, row, { claimedOnly: false }),
     fetchTrophySummary(pool, row.id),
-    fetchTrophyDetails(pool, row.id),
+    options.summary ? Promise.resolve(undefined) : fetchTrophyDetails(pool, row.id),
   ]);
 
   return {
@@ -454,7 +455,7 @@ export async function getUserPublicProfile(
     starBalance: Number(row.star_balance),
     experienceBalance: Number(row.experience_balance),
     trophySummary,
-    trophyDetails,
+    ...(trophyDetails === undefined ? {} : { trophyDetails }),
     createdAt: row.created_at.toISOString(),
     lastSeenAt: row.last_seen_at !== null ? row.last_seen_at.toISOString() : null,
   };
