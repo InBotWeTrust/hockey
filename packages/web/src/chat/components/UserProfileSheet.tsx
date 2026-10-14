@@ -91,7 +91,9 @@ export function PublicSportingPassport({
   avatarUrl,
   onOpenTrophy,
   onOpenEarlyPlayerStatus,
+  onMessageOpened,
 }: {
+  onMessageOpened?: () => void;
   profile: UserPublicProfileDTO;
   displayName: string;
   avatarUrl: string | null;
@@ -125,7 +127,7 @@ export function PublicSportingPassport({
       className="profile-passport public-profile-passport"
       aria-label="Публичный спортивный паспорт"
     >
-      <SocialProfile userId={profile.id} renderIdentity={counts=><>
+      <SocialProfile userId={profile.id} onMessageOpened={onMessageOpened} renderIdentity={counts=><>
       <div className="profile-passport__top public-profile-social-identity">
         <div className="profile-identity__main public-profile-identity">
           <div className="public-profile-avatar">
@@ -410,6 +412,7 @@ function UserProfileSheetContent({
         {profile ? (
           <><PublicSportingPassport
             profile={profile}
+            onMessageOpened={onClose}
             displayName={displayName}
             avatarUrl={avatarUrl}
             onOpenTrophy={setSelectedTrophy}
