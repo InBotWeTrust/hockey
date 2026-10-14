@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
-import { completeAchievements } from '../achievements/service.js';
+import { observeFanAchievement } from '../achievements/fanStages.js';
 import { enqueuePushDelivery } from '../push/queue.js';
 import { renderPushNotificationPayload } from '../push/templates.js';
 
@@ -34,7 +34,7 @@ export async function changeFollow(pool: Pool, followerId: string, playerId: str
     if (changed.rowCount) {
       const history = await db.query<{ id: string }>('insert into fan_membership_history(player_id,follower_id,action) values($1,$2,$3) returning id', [playerId,followerId,follow ? 'follow':removedByOwner?'remove':'unfollow']);
       if (follow) {
-        await completeAchievements(db,playerId,[1,10,20,50,100,500,1000].filter(n=>summary.followersCount>=n).map(n=>`fans-${n}`),{followersCount:summary.followersCount});
+        await observeFanAchievement(db,playerId);
         const allowed = await db.query(`select 1 from users u left join user_push_preferences p on p.user_id=u.id
           where u.id=$1 and coalesce(p.new_fans,true) and
           (exists(select 1 from push_subscriptions where user_id=u.id) or exists(select 1 from android_push_installations where user_id=u.id))`,[playerId]);
