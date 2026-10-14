@@ -6,6 +6,7 @@ import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
+import { socialApi } from '../../social/api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
 import type { DailyStateResponse } from '../../api/duel.js';
@@ -95,6 +96,7 @@ async function runAllTimersInAct(): Promise<void> {
 
 describe('ChatRoomScreen', () => {
   beforeEach(() => {
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = {
       id: SELF_ID,
       displayName: 'Me',
@@ -519,7 +521,7 @@ describe('ChatRoomScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть профиль игрока' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
   });
 
   it('opens the official card from its dialog header without a duplicate message action', async () => {
@@ -1096,6 +1098,7 @@ describe('ChatRoomScreen', () => {
 
 describe('ChatRoomScreen — ?goto=<messageId>', () => {
   beforeEach(() => {
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
@@ -1240,6 +1243,7 @@ describe('ChatRoomScreen — ?goto=<messageId>', () => {
 
 describe('ChatRoomScreen — profile preview', () => {
   beforeEach(() => {
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromOther]);
@@ -1267,11 +1271,13 @@ describe('ChatRoomScreen — profile preview', () => {
   });
 
   it('opens UserProfileSheet on author tap and navigates to DM after "Написать"', async () => {
+    vi.spyOn(api,'fetchUserProfile').mockResolvedValue({id:OTHER_ID,displayName:'Иван',avatarUrl:null,competitionLevel:'beginner',stats:{shots:0,goals:0,accuracy:0,playStreakDays:0,bestPlayStreakDays:0},achievements:[],createdAt:'2026-05-04T09:00:00Z',lastSeenAt:null});
     renderRoom('c1');
     const nameBtn = await screen.findByRole('button', { name: 'Профиль: Иван' });
     fireEvent.click(nameBtn);
-    const writeBtn = await screen.findByRole('button', { name: /написать в личку/i });
+    const writeBtn = await screen.findByRole('button', { name: 'Написать' });
     fireEvent.click(writeBtn);
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith(OTHER_ID));
+    await waitFor(() => expect(screen.queryByTestId('profile-sheet-backdrop')).not.toBeInTheDocument());
   });
 });

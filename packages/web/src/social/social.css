@@ -40,7 +40,7 @@
 .public-profile-social-identity .profile-social-counts { flex-direction: column; align-items: flex-start; gap: 4px; margin: 0; }
 .public-profile-social-identity .profile-social-separator { display: none; }
 .public-profile-social-identity .profile-social-count { font-size: 14px; }
-.public-profile-social-identity .profile-social-count strong { color: #fff; font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; }
+.public-profile-social-identity .profile-social-count strong { color: var(--ink); font-size: 16px; font-weight: 900; font-variant-numeric: tabular-nums; }
 .public-profile-name-status { display: flex; align-items: baseline; gap: .25em; width: 100%; margin-top: 12px; line-height: 1.2; }
 .public-profile-name-text { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .profile-identity__name .public-profile-status { flex: 0 0 auto; color: rgba(230, 242, 250, 0.74); font-size: 8px; line-height: 1.12; font-weight: 850; letter-spacing: 0.025em; text-transform: uppercase; }

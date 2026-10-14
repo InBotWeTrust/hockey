@@ -19,13 +19,14 @@ export function SocialUserPreview({user,onClose}:{user:SocialUser;onClose:()=>vo
  const {renderProfile}=useSocial();
  return <>{renderProfile ? renderProfile(user,onClose) : <UserProfileSheet sender={{userId:user.id,displayName:user.displayName,avatarUrl:user.avatarUrl,accountKind:'player'}} onClose={onClose}/>}</>;
 }
-export function SocialProfile({userId,profileContent,renderIdentity}:{userId:string;profileContent?:ReactNode;renderIdentity?:(counts:ReactNode)=>ReactNode}):JSX.Element|null {
+export function SocialProfile({userId,profileContent,renderIdentity,onMessageOpened}:{onMessageOpened?:(()=>void)|undefined;userId:string;profileContent?:ReactNode;renderIdentity?:(counts:ReactNode)=>ReactNode}):JSX.Element|null {
  const {api,viewerId,openMessage}=useSocial(); const client=useQueryClient(); const navigate=useNavigate();
  const message=useMutation({mutationFn:async()=>{
-  if(openMessage){await openMessage(userId);return;}
+  if(openMessage){await openMessage(userId);onMessageOpened?.();return;}
   const result=await findOrCreateDM(userId);
   if(result.created)void client.invalidateQueries({queryKey:chatKeys.list()});
   navigate(`/chat/${result.chatId}`);
+  onMessageOpened?.();
  }});
  const [params,setParams]=useSearchParams();
  const [open,setOpen]=useState<'fans'|'following'|'rating'|null>(null);
