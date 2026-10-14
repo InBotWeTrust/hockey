@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type HTMLAttributes } from 'react';
 import './HorizontalFilterRow.css';
 
-/** Native touch scrolling, with mouse dragging and visible desktop controls. */
+/** Native touch scrolling, with mouse dragging on desktop. */
 export function HorizontalFilterRow({ children, ...props }: HTMLAttributes<HTMLDivElement>): JSX.Element {
   const rowRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<{ id: number; x: number; y: number; left: number; dragged: boolean } | null>(null);
@@ -58,12 +58,6 @@ export function HorizontalFilterRow({ children, ...props }: HTMLAttributes<HTMLD
   }, []);
   useEffect(measure, [children]);
 
-  const scroll = (direction: number): void => {
-    const row = rowRef.current!;
-    row.scrollLeft = Math.max(0, Math.min(row.scrollWidth - row.clientWidth, row.scrollLeft + direction * row.clientWidth * .75));
-    measure();
-  };
-  const label = props['aria-label'] ?? 'Фильтры';
   return (
     <div className={`horizontal-filters${edges.left || edges.right ? ' horizontal-filters--overflow' : ''}`}>
       <div {...props} ref={rowRef} className={`horizontal-filters__row ${props.className ?? ''}`}
@@ -82,8 +76,6 @@ export function HorizontalFilterRow({ children, ...props }: HTMLAttributes<HTMLD
         }}>
         {children}
       </div>
-      {edges.left && <button type="button" className="horizontal-filters__arrow horizontal-filters__arrow--left" aria-label={`${label}: прокрутить влево`} onClick={() => scroll(-1)}>‹</button>}
-      {edges.right && <button type="button" className="horizontal-filters__arrow horizontal-filters__arrow--right" aria-label={`${label}: прокрутить вправо`} onClick={() => scroll(1)}>›</button>}
     </div>
   );
 }
