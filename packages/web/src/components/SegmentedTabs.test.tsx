@@ -64,15 +64,15 @@ it('leaves touch gestures native and does not drag a row that fits', () => {
   expect(row.scrollLeft).toBe(0);
 });
 
-it('shows navigation arrows only for hidden content and updates them at the edges', () => {
+it('keeps overflowing filters scrollable without navigation arrows', () => {
   render(<SegmentedTabs scrollable items={[{id:'one',label:'Первый'}]} activeTab="one" ariaLabel="Фильтры" onChange={vi.fn()} />);
   const row=screen.getByRole('tablist');
   Object.defineProperties(row,{clientWidth:{configurable:true,value:100},scrollWidth:{configurable:true,value:400}});
   fireEvent(window,new Event('resize'));
   expect(screen.queryByRole('button',{name:'Фильтры: прокрутить влево'})).toBeNull();
-  fireEvent.click(screen.getByRole('button',{name:'Фильтры: прокрутить вправо'}));
-  expect(row.scrollLeft).toBeGreaterThan(0);
+  expect(screen.queryByRole('button',{name:'Фильтры: прокрутить вправо'})).toBeNull();
   row.scrollLeft=300;fireEvent.scroll(row);
   expect(screen.queryByRole('button',{name:'Фильтры: прокрутить вправо'})).toBeNull();
-  expect(screen.getByRole('button',{name:'Фильтры: прокрутить влево'})).toBeInTheDocument();
+  expect(screen.queryByRole('button',{name:'Фильтры: прокрутить влево'})).toBeNull();
+  expect(row).toHaveClass('segmented-tabs--scrollable');
 });
