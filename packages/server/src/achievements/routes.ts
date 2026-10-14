@@ -44,6 +44,7 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
       const params = paramsSchema.safeParse(req.params);
       if (!params.success) throw new AppError('bad_request', 'invalid achievement id', 400);
 
+      if (/^fans-\d+$/.test(params.data.achievementId)) throw new AppError('conflict', 'Обновите приложение: награды за болельщиков теперь объединены в уровни.', 409);
       const client = await app.pg.connect();
       try {
         await client.query('begin');

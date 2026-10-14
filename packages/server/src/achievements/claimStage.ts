@@ -4,7 +4,7 @@ import { observeCareerExperience } from './service.js';
 import { satisfiesTarget } from './stageProgress.js';
 
 const CUMULATIVE_STAGE_IDS = new Set([
-  'career-goals', 'career-experience', 'career-streak',
+  'fans-support', 'career-goals', 'career-experience', 'career-streak',
   'monthly-top-1', 'monthly-top-3',
   'regular-season-champion', 'regular-season-medalist',
   'playoff-semifinal', 'playoff-final', 'tournament-cup',
@@ -167,12 +167,16 @@ export async function claimCurrentAchievementStage(
          on previous.user_id = $1 and previous.achievement_id = $2
         and previous.stage_number = $3
       where stage.achievement_id = $2
-        and stage.stage_number = $3 + 1
+        and stage.stage_number = case when $2 = 'fans-support' then
+          (select min(candidate.stage_number) from achievement_stages candidate
+            where candidate.achievement_id=$2 and candidate.stage_number>$3 and candidate.is_enabled
+              and not exists(select 1 from user_achievement_stages claimed where claimed.user_id=$1 and claimed.achievement_id=$2 and claimed.stage_number=candidate.stage_number and claimed.claimed_at is not null))
+          else $3 + 1 end
         and stage.is_enabled
      on conflict (user_id, achievement_id, stage_number) do nothing
      returning stage_number,
        (select target from achievement_stages definition
-         where definition.achievement_id = $2 and definition.stage_number = $3 + 1) as target,
+         where definition.achievement_id = $2 and definition.stage_number = user_achievement_stages.stage_number) as target,
        progress`,
     [userId, achievementId, stage.stage_number, now, CUMULATIVE_STAGE_IDS.has(achievementId)],
   );

@@ -28,6 +28,24 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     app = await buildApp({ config: { NODE_ENV:'test', HOST:'127.0.0.1', PORT:3000, LOG_LEVEL:'warn', DATABASE_URL:urls.databaseUrl, REDIS_URL:urls.redisUrl, JWT_SECRET:secret, REFRESH_SECRET:secret, TELEGRAM_BOT_TOKEN:'111:test', DAILY_SEED_SECRET:secret }, pushSchedulerEnabled:false, pushWorkerEnabled:false, tournamentLifecycleEnabled:false, monthlyRatingLifecycleEnabled:false, duelFightWorkerEnabled:false });
   });
   afterAll(async () => { await app?.close(); });
+  it('uses one seven-level fan chain and keeps reached progress after unfollow', async () => {
+    const owner=await user('Level owner');
+    const fans=[];
+    for(let i=0;i<10;i++){const fan=await user(`Level fan ${i}`);fans.push(fan);await request(fan,'PUT',`/users/${owner.id}/fan`);}
+    const catalogue=()=>request(owner,'GET','/achievements');
+    const list=(await catalogue()).json().achievements.filter((a:{id:string})=>a.id.startsWith('fans-'));
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({id:'fans-support',title:'Болельщики',stage:{current:1,total:7,targetValue:1},rewardStars:5});
+    const claim=()=>app.inject({method:'POST',url:'/achievements/fans-support/claim',headers:{authorization:`Bearer ${owner.token}`}});
+    expect((await claim()).json()).toMatchObject({rewards:{stars:5},stage:{claimed:1,opened:2},achievement:{stage:{current:2,targetValue:10},isClaimable:true}});
+    expect((await claim()).json()).toMatchObject({rewards:{stars:10},achievement:{stage:{current:3,targetValue:20,progressValue:10},isClaimable:false}});
+    for(const fan of fans)await request(fan,'DELETE',`/users/${owner.id}/fan`);
+    const after=(await catalogue()).json().achievements.find((a:{id:string})=>a.id==='fans-support');
+    expect(after.stage.history).toHaveLength(2);expect(after.stage.progressValue).toBe(10);
+    expect((await claim()).statusCode).toBe(409);
+    expect((await app.inject({method:'POST',url:'/achievements/fans-10/claim',headers:{authorization:`Bearer ${owner.token}`}})).statusCode).toBe(409);
+  });
+
   it('persists feed reads per viewer and keeps events arriving after the read-all snapshot unread',async()=>{
     const owner=await user('Read owner'),fan=await user('Read fan'),other=await user('Read other');
     await request(fan,'PUT',`/users/${owner.id}/fan`);
@@ -121,13 +139,13 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     expect(results.map(r=>r.statusCode)).toEqual(Array(6).fill(200));
     expect(results[0]!.json()).toMatchObject({ following:true, followersCount:1 });
     expect((await request(b,'GET','/me/fan-history')).json().items).toHaveLength(1);
-    const achievements = await app.pg.query("select achievement_id from user_achievements where user_id=$1 and achievement_id='fans-1'",[b.id]);
+    const achievements = await app.pg.query("select achievement_id from user_achievement_stages where user_id=$1 and achievement_id='fans-support' and completed_at is not null",[b.id]);
     expect(achievements.rowCount).toBe(1);
     await request(a,'DELETE',`/users/${b.id}/fan`);
     await request(a,'DELETE',`/users/${b.id}/fan`);
     expect((await request(b,'GET','/me/fan-history')).json().items.map((e:{ action:string })=>e.action)).toEqual(['unfollow','follow']);
     expect((await request(a,'GET',`/users/${b.id}/fans/summary`)).json()).toMatchObject({ following:false, followersCount:0 });
-    expect((await app.pg.query("select 1 from user_achievements where user_id=$1 and achievement_id='fans-1'",[b.id])).rowCount).toBe(1);
+    expect((await app.pg.query("select 1 from user_achievement_stages where user_id=$1 and achievement_id='fans-support' and completed_at is not null",[b.id])).rowCount).toBe(1);
   });
 
   it('rejects anonymous, self and official subscriptions and keeps private history private', async () => {
@@ -174,9 +192,9 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     const exerciseKeys=INITIAL_TRAINING_EXERCISE_KEYS;
     expect(exerciseKeys.length).toBeGreaterThanOrEqual(keys.length);
     for(const key of exerciseKeys) await app.pg.query('insert into initial_training_completion(user_id,exercise_key,reward_stars,reward_experience) values($1,$2,1,1)',[b.id,key]);
-    await app.pg.query("insert into user_achievements(user_id,achievement_id,completed_at) values($1,'fans-1',now())",[b.id]);
+    const supporter=await user('Source supporter');await request(supporter,'PUT',`/users/${b.id}/fan`);
     expect((await request(b,'GET',`/users/${b.id}/activity`)).json().items.map((e:{kind:string})=>e.kind)).toEqual(['initial_course']);
-    const claim=await app.inject({method:'POST',url:'/achievements/fans-1/claim',headers:{authorization:`Bearer ${b.token}`}});
+    const claim=await app.inject({method:'POST',url:'/achievements/fans-support/claim',headers:{authorization:`Bearer ${b.token}`}});
     expect(claim.statusCode).toBe(200);
     expect((await request(b,'GET',`/users/${b.id}/activity`)).json().items.map((e:{kind:string})=>e.kind)).toEqual(['achievement','initial_course']);
   });

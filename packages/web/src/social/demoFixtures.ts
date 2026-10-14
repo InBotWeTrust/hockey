@@ -18,8 +18,14 @@ export const DEMO_SCENARIOS=[
  ['privacy','История доступна только болельщику'],
 ] as const;
 export type DemoScenario=(typeof DEMO_SCENARIOS)[number][0];
-export function fanAchievements(count:number,claimed:ReadonlySet<string>):AchievementDto[] {
+function fanMilestones(count:number,claimed:ReadonlySet<string>):AchievementDto[] {
  return FAN_STAGES.map(([threshold,title,reward])=>({id:`fans-${threshold}`,photoUrl:`/achievements/fans-${threshold}.webp?v=20261013`,title,description:'Трибуны поддерживают тебя.',requirement:`Набрать ${threshold} ${Number(threshold)===1?'болельщика':'болельщиков'}.`,category:'career',availability:'active',futureTag:null,rewardCurrency:0,rewardStars:reward,rewardExperience:reward,rewardTokens:0,status:claimed.has(`fans-${threshold}`)?'claimed':count>=threshold?'completed_unclaimed':'locked',isUnlocked:count>=threshold||claimed.has(`fans-${threshold}`),isClaimable:count>=threshold&&!claimed.has(`fans-${threshold}`)}));
+}
+export function fanAchievements(count:number,claimed:Set<string>):AchievementDto[] {
+ const milestones=fanMilestones(count,claimed);
+ const index=milestones.findIndex(a=>a.status!=='claimed');const current=index<0?milestones.length-1:index;
+ const achievement=milestones[current]!;const threshold=FAN_STAGES[current]![0];
+ return [{...achievement,id:'fans-support',title:'Болельщики',photoUrl:'/achievements/fans-1.webp?v=20261013',stage:{current:current+1,total:7,requirement:achievement.requirement,progressValue:count,targetValue:threshold,history:milestones.flatMap((a,i)=>a.status==='claimed'?[{stageNumber:i+1,claimedAt:'2026-10-14T00:00:00Z',requirement:a.requirement}]:[])}}];
 }
 export function demoProfile(user:SocialUser):UserPublicProfileDTO {
  return {id:user.id,displayName:user.displayName,avatarUrl:user.avatarUrl,competitionLevel:'amateur',stats:{shots:2000,goals:1250,accuracy:62.5,playStreakDays:9,bestPlayStreakDays:15},achievements:[],createdAt:'2026-01-01T00:00:00Z',lastSeenAt:new Date().toISOString()};
@@ -35,7 +41,7 @@ export function makeDemoEvents():ActivityEvent[] {
   if(kind==='daily')event.data={daily:{day_date:occurredAt.slice(0,10),total_shots:90,total_goals:76,total_duration_ms:240000,periods:[1,2,3].map(p=>({period_number:p,shots_taken:30,goals:p===3?24:26,closed_reason:'quota',duration_ms:80000,ended_at:occurredAt}))}};
   if(kind==='training')event.data={training:{day_date:occurredAt.slice(0,10),selected_period:1,shots_limit:50,total_shots:50,total_goals:42,completed:true}};
   if(kind==='initial_course'||kind==='advanced_course')event.data={exercises:kind==='initial_course'?7:8};
-  if(kind==='achievement')event.data={achievement:fanAchievements(1000,new Set(['fans-100']))[4]!};
+  if(kind==='achievement')event.data={achievement:{...fanMilestones(1000,new Set(['fans-100']))[4]!,title:'Болельщики'}};
   if(kind==='regular'||kind==='duel')event.data={participants,format:'express',winnerId:DEMO_PLAYER.id,outcome:'challenger_win',reason:'completed',tournamentTitle:'Кубок лиги'};
   if(kind==='playoff')event.data={seriesCompleted:index===6,seriesWinnerId:index===6?DEMO_PLAYER.id:null,roundName:'1/2 финала',day:index===6?2:1,tournamentTitle:'Кубок лиги · полуфинал',seriesScore:{home:index===6?2:1,away:1,homeId:DEMO_PLAYER.id,awayId:DEMO_OPPONENT.id},games:[{homeId:DEMO_PLAYER.id,awayId:DEMO_OPPONENT.id,homeScore:32,awayScore:29,outcome:index===6?'away_no_show':'home_win'}]};
   if(kind==='bar_fight')event.data={character:'oleg',outcome:index===15?'win':'loss',blockedUntil:index===15?null:new Date(new Date().setHours(24,0,0,0)).toISOString(),timezone:'Europe/Moscow'};
