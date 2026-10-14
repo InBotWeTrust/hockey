@@ -163,7 +163,7 @@ export function InventoryScreen(): JSX.Element {
   const returnedPaymentId = isPaymentReturn
     ? window.sessionStorage.getItem(PAYMENT_ID_STORAGE_KEY)
     : null;
-  const [activeTab, setActiveTab] = useState<ShopTab>(isPaymentReturn ? 'bank' : 'goods');
+  const [activeTab, setActiveTab] = useState<ShopTab>(isPaymentReturn || searchParams.get('tab') === 'bank' ? 'bank' : 'goods');
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
   const purchaseRequestIds = useRef<{ coins: string | null; stars: string | null }>({ coins: null, stars: null });

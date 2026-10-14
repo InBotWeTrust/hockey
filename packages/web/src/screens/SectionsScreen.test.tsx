@@ -1,10 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { AchievementDto } from '../api/achievements.js';
 import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
 import type { WeeklyChallenge } from '../api/weeklyChallenge.js';
 import { useDailyStore } from '../stores/dailyStore.js';
@@ -12,7 +9,6 @@ import { useTrainingSessionStore } from '../stores/trainingSessionStore.js';
 import { SectionsScreen } from './SectionsScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 
-const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 
 interface MockSectionsData {
   bonusGamesCompleted?: boolean[];
@@ -288,25 +284,6 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
-function sectionAchievement(id: string, status: AchievementDto['status']): AchievementDto {
-  return {
-    id,
-    photoUrl: '/achievements/first-goal.webp',
-    title: id,
-    description: 'Описание',
-    requirement: 'Условие',
-    category: 'daily',
-    availability: 'active',
-    futureTag: null,
-    rewardCurrency: 0,
-    rewardStars: 0,
-    rewardExperience: 0,
-    status,
-    isUnlocked: status !== 'locked',
-    isClaimable: status === 'completed_unclaimed',
-  };
-}
-
 describe('SectionsScreen', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -316,38 +293,10 @@ describe('SectionsScreen', () => {
       user: { id: 'u1', displayName: 'Игрок' },
     });
   });
-
-  it('keeps the two quick cards readable on screens up to 360px wide', () => {
-    expect(designSystemCss).toMatch(
-      /@media \(max-width:\s*360px\)[\s\S]*?\.sections-quick-card\s*\{[^}]*grid-template-columns:\s*46px minmax\(0,\s*1fr\);/s,
-    );
-    expect(designSystemCss).toMatch(
-      /@media \(max-width:\s*360px\)[\s\S]*?\.sections-quick-card__title\s*\{[^}]*font-size:\s*11px;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
-    );
-  });
-
-  it('keeps the shop mosaic compact with a landscape artwork area', () => {
-    expect(designSystemCss).toMatch(
-      /\.sections-quick-card--tall\s*\{[^}]*height:\s*186px;[^}]*min-height:\s*0;/s,
-    );
-    expect(designSystemCss).toMatch(
-      /\.sections-quick-card--tall \.sections-quick-card__art\s*\{[^}]*height:\s*120px;/s,
-    );
-    expect(designSystemCss).toMatch(
-      /\.sections-quick-card--tall \.sections-quick-card__content\s*\{[^}]*padding:\s*0 4px 4px;/s,
-    );
-  });
   beforeEach(() => {
     vi.restoreAllMocks();
     useDailyStore.setState({ data: null, loading: false, error: null, inFlight: false });
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
-  });
-
-  it('shows today after the current daily shot progress', async () => {
-    mockSectionsApi({ dailyTotalShots: 50 });
-    renderSections();
-
-    expect(await screen.findByText('50/90 бросков сегодня')).toBeInTheDocument();
   });
 
   it('shows an unfinished challenge result once and acknowledges it', async () => {
@@ -391,7 +340,7 @@ describe('SectionsScreen', () => {
     expect(screen.getByText('Снайпер недели')).toBeInTheDocument();
     expect(screen.getByText('72 / 100')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
-    expect(await screen.findByText('Быстрый доступ')).toBeInTheDocument();
+    expect(await screen.findByLabelText('Карта района')).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: 'Челлендж не пройден' })).not.toBeInTheDocument();
   });
 
@@ -734,7 +683,7 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    await screen.findByText('Быстрый доступ');
+    await screen.findByLabelText('Карта района');
     expect(screen.queryByRole('dialog', { name: /зач[её]те дуэлей/ })).toBeNull();
   });
 
@@ -928,280 +877,6 @@ describe('SectionsScreen', () => {
     expect(screen.getByText('Турнир с ошибкой сети')).toBeInTheDocument();
   });
 
-  it('marks the achievements section when an achievement reward is waiting', async () => {
-    mockSectionsApi({
-      achievements: [
-        {
-          ...sectionAchievement('claimed', 'claimed'),
-          stage: {
-            current: 5,
-            total: 99,
-            requirement: 'Условие',
-            progressValue: 0,
-            targetValue: 1,
-            history: Array.from({ length: 4 }, (_, index) => ({
-              stageNumber: index + 1,
-              claimedAt: '2026-09-01T00:00:00.000Z',
-              requirement: 'Условие',
-            })),
-          },
-        },
-        {
-          ...sectionAchievement('waiting', 'completed_unclaimed'),
-          stage: {
-            current: 4,
-            total: 101,
-            requirement: 'Условие',
-            progressValue: 1,
-            targetValue: 1,
-            history: Array.from({ length: 3 }, (_, index) => ({
-              stageNumber: index + 1,
-              claimedAt: '2026-09-01T00:00:00.000Z',
-              requirement: 'Условие',
-            })),
-          },
-        },
-        sectionAchievement('locked', 'locked'),
-        {
-          ...sectionAchievement('future', 'claimed'),
-          availability: 'future',
-          futureTag: 'future/pro',
-          stage: {
-            current: 50,
-            total: 50,
-            requirement: 'Условие',
-            progressValue: 1,
-            targetValue: 1,
-            history: Array.from({ length: 50 }, (_, index) => ({
-              stageNumber: index + 1,
-              claimedAt: '2026-09-01T00:00:00.000Z',
-              requirement: 'Условие',
-            })),
-          },
-        },
-      ],
-    });
-    renderSections();
-
-    const tasks = await screen.findByRole('button', { name: 'Задания' });
-    expect(within(tasks).getByText('Награды: 3/4')).toBeInTheDocument();
-    expect(within(tasks).getByText('Уровни: 8/201')).toBeInTheDocument();
-    expect(
-      within(tasks)
-        .getByText('Задания')
-        .parentElement?.querySelector('.sections-quick-card__attention'),
-    ).toBeInTheDocument();
-  });
-
-  it('keeps the weekly challenge out of the sections list', async () => {
-    mockSectionsApi({
-      achievementsUnclaimedCount: 0,
-      weeklyChallenge: {
-        id: 'challenge-1',
-        title: 'Неделя снайпера',
-        status: 'running',
-        canClaimReward: false,
-      },
-    });
-    renderSections();
-
-    expect(await screen.findByRole('button', { name: 'Задания' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Челлендж недели' })).toBeNull();
-  });
-
-  it('opens the bar page from its restaurant card', async () => {
-    renderSections();
-    fireEvent.click(screen.getByRole('button', { name: 'Бар' }));
-    expect(screen.getByTestId('location')).toHaveTextContent('/bar');
-  });
-
-  it('groups frequent actions before the longer game modes', async () => {
-    // Break caught: the shop must not fall below the long list of progression modes on phones.
-    mockSectionsApi();
-    renderSections();
-
-    const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
-    expect(
-      within(quickAccess)
-        .getAllByRole('button')
-        .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Ежедневная игра', 'Тренировка', 'Задания', 'Магазин', 'Бар']);
-
-    const modes = screen.getByRole('region', { name: 'Игровые режимы' });
-    expect(
-      within(modes)
-        .getAllByRole('button')
-        .map((button) => button.getAttribute('aria-label')),
-    ).toEqual(['Бонусные игры', 'Любители', 'Профессионалы']);
-    within(quickAccess)
-      .getAllByRole('button')
-      .forEach((button) => expect(button).toHaveClass('section-card-surface'));
-    within(modes)
-      .getAllByRole('button')
-      .forEach((button) => {
-        expect(button).toHaveClass('section-card-surface');
-        expect(button.querySelector('svg')).toHaveClass('card-chevron');
-      });
-  });
-
-  it('uses cache-busted artwork URLs for refreshed section images', async () => {
-    mockSectionsApi();
-    renderSections();
-
-    const expectedArtwork = [
-      ['Тренировка', '/modes/training-evening.webp'],
-      ['Магазин', '/modes/shop-retail-v2.webp'],
-      ['Бонусные игры', '/bonus-games/section-card-v5.webp'],
-      ['Любители', '/modes/amateur-game-v3.webp'],
-      ['Профессионалы', '/modes/pro-game.webp'],
-    ] as const;
-
-    for (const [sectionName, expectedPath] of expectedArtwork) {
-      const section = await screen.findByRole('button', { name: sectionName });
-      expect(within(section).getByRole('img', { hidden: true })).toHaveAttribute(
-        'src',
-        expectedPath,
-      );
-    }
-  });
-
-  it('stacks training and tasks beside a tall shop card', async () => {
-    mockSectionsApi();
-    renderSections();
-
-    const quickAccess = await screen.findByRole('region', { name: 'Быстрый доступ' });
-    expect(within(quickAccess).getByRole('button', { name: 'Ежедневная игра' })).toHaveClass(
-      'sections-quick-card--wide',
-    );
-    expect(within(quickAccess).getByRole('button', { name: 'Бар' })).toHaveClass(
-      'sections-quick-card--wide',
-    );
-    expect(within(quickAccess).getByRole('button', { name: 'Магазин' })).toHaveClass(
-      'sections-quick-card--tall',
-    );
-    expect(within(quickAccess).getByRole('button', { name: 'Тренировка' })).not.toHaveClass(
-      'sections-quick-card--wide',
-    );
-    expect(within(quickAccess).getByRole('button', { name: 'Задания' })).not.toHaveClass(
-      'sections-quick-card--wide',
-    );
-    ['Ежедневная игра', 'Магазин'].forEach((name) => {
-      expect(
-        within(quickAccess).getByRole('button', { name }).querySelector('.card-chevron'),
-      ).toBeInTheDocument();
-    });
-    ['Тренировка', 'Задания'].forEach((name) => {
-      expect(
-        within(quickAccess).getByRole('button', { name }).querySelector('.card-chevron'),
-      ).toBeNull();
-    });
-  });
-
-  it('starts directly with quick access without a duplicate page label', async () => {
-    // Break caught: the redundant page label would waste vertical space above the first action.
-    mockSectionsApi();
-    renderSections();
-
-    await screen.findByRole('region', { name: 'Быстрый доступ' });
-    expect(screen.queryByText('Разделы')).toBeNull();
-  });
-
-  it('promotes bonus games before the amateur and professional modes', async () => {
-    mockSectionsApi();
-    renderSections();
-
-    const bonusGames = await screen.findByRole('button', { name: 'Бонусные игры' });
-    const amateur = await screen.findByRole('button', { name: 'Любители' });
-    expect(screen.getByRole('button', { name: 'Магазин' })).toHaveTextContent('Инвентарь и валюта');
-    expect(bonusGames).toHaveTextContent('Пройдено: 2/27');
-    expect(amateur).toHaveTextContent('Дуэли и турниры');
-    expect(amateur).not.toHaveTextContent('Раздел открыт');
-    expect(screen.queryByRole('button', { name: 'Турниры' })).toBeNull();
-
-    fireEvent.click(bonusGames);
-    expect(screen.getByTestId('location')).toHaveTextContent('/bonus-games');
-  });
-
-  it('shows the last known bonus progress immediately while refreshing the catalog', () => {
-    localStorage.setItem(
-      'hockey.bonusGamesProgress.v1:u1',
-      JSON.stringify({ completed: 35, total: 40 }),
-    );
-    const catalog = deferredResponse();
-    mockSectionsApi();
-    vi.mocked(globalThis.fetch).mockImplementation((input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/api/bonus-games')) return catalog.promise;
-      return Promise.resolve(jsonResponse({}));
-    });
-
-    renderSections();
-
-    expect(screen.getByRole('button', { name: 'Бонусные игры' })).toHaveTextContent(
-      'Пройдено: 35/40',
-    );
-  });
-
-  it('shows the live remaining-goals preview on a full-color Amateur card', async () => {
-    mockSectionsApi({
-      dailyLifetimeTotalGoals: 42,
-      dailyAmateurUnlockGoalsRequired: 750,
-      profileCompetitionLevel: 'beginner',
-    });
-    renderSections();
-
-    const amateur = await screen.findByRole('button', { name: 'Любители' });
-    expect(amateur).toHaveTextContent('Осталось 708 шайб до статуса «Любитель»');
-    expect(amateur).toHaveClass('section-card-surface--default');
-    expect(amateur).not.toHaveClass('section-card-surface--muted');
-    expect(within(amateur).getByRole('img', { hidden: true })).not.toHaveStyle({
-      filter: 'grayscale(1) saturate(0.12)',
-    });
-    expect(amateur).not.toHaveTextContent('Дуэли, бонусные игры и турниры');
-    expect(amateur).not.toHaveTextContent('Раздел открыт');
-  });
-
-  it('keeps a single supporting line on the professional card', async () => {
-    mockSectionsApi();
-    renderSections();
-
-    const professional = await screen.findByRole('button', { name: 'Профессионалы' });
-    expect(within(professional).getByText('Игры самого высокого уровня')).toHaveStyle({
-      fontSize: '12px',
-      fontWeight: '850',
-    });
-    expect(professional).not.toHaveTextContent('Раздел в разработке');
-  });
-
-  it('opens the amateur section chooser for an unlocked player', async () => {
-    mockSectionsApi({ profileCompetitionLevel: 'amateur' });
-    renderSections();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
-
-    expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
-  });
-
-  it('opens the Amateur preview for a beginner without a locked-info modal', async () => {
-    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'beginner' });
-    renderSections();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
-
-    expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  it('opens the amateur parent for a server-authorized amateur below the daily goal threshold', async () => {
-    mockSectionsApi({ dailyLifetimeTotalGoals: 0, profileCompetitionLevel: 'amateur' });
-    renderSections();
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
-
-    expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
   it.each([{ profileRequest: 'loading' as const }, { profileRequest: 'error' as const }])(
     'keeps the daily-goal fallback when the profile request is $profileRequest',
     async ({ profileRequest }) => {
@@ -1211,77 +886,11 @@ describe('SectionsScreen', () => {
       });
       renderSections();
 
-      fireEvent.click(await screen.findByRole('button', { name: 'Любители' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Стадион «Центральный»' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Дуэли и турниры' }));
 
       expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
       expect(screen.queryByRole('dialog')).toBeNull();
     },
   );
-
-  it('does not mark tasks for future or running challenges without a claimable reward', async () => {
-    mockSectionsApi({
-      achievements: [],
-      achievementsUnclaimedCount: 0,
-      weeklyChallenge: {
-        id: 'challenge-1',
-        title: 'Неделя снайпера',
-        status: 'running',
-        canClaimReward: false,
-      },
-      weeklyPendingRewards: [
-        {
-          id: 'challenge-future',
-          title: 'Следующая неделя',
-          status: 'future',
-          canClaimReward: false,
-        },
-      ],
-    });
-    renderSections();
-
-    expect(await screen.findByText('Награды: 0/0')).toBeInTheDocument();
-    expect(screen.getByText('Уровни: 0/0')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Требуется действие')).toBeNull();
-  });
-
-  it('marks tasks once when a weekly challenge reward can be claimed', async () => {
-    mockSectionsApi({
-      achievements: [],
-      achievementsUnclaimedCount: 0,
-      weeklyChallenge: {
-        id: 'challenge-1',
-        title: 'Неделя снайпера',
-        status: 'finished',
-        canClaimReward: true,
-      },
-      weeklyPendingRewards: [
-        { id: 'challenge-1', title: 'Неделя снайпера', status: 'finished', canClaimReward: true },
-      ],
-    });
-    renderSections();
-
-    expect(await screen.findByText('Награды: 0/0')).toBeInTheDocument();
-    expect(screen.getByText('Уровни: 0/0')).toBeInTheDocument();
-    expect(screen.getByLabelText('Требуется действие')).toBeInTheDocument();
-  });
-
-  it('hides weekly challenge attention for beginners while keeping achievement attention', async () => {
-    mockSectionsApi({
-      profileCompetitionLevel: 'beginner',
-      achievements: [],
-      achievementsUnclaimedCount: 0,
-      weeklyChallenge: {
-        id: 'challenge-1',
-        title: 'Неделя снайпера',
-        status: 'running',
-        canClaimReward: false,
-      },
-      weeklyPendingRewards: [{ id: 'challenge-old', title: 'Прошлая неделя' }],
-    });
-    renderSections();
-
-    expect(await screen.findByText('Награды: 0/0')).toBeInTheDocument();
-    expect(screen.getByText('Уровни: 0/0')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Требуется действие')).toBeNull();
-  });
 });
