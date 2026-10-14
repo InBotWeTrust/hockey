@@ -19,7 +19,7 @@ export function SocialUserPreview({user,onClose}:{user:SocialUser;onClose:()=>vo
  const {renderProfile}=useSocial();
  return <>{renderProfile ? renderProfile(user,onClose) : <UserProfileSheet sender={{userId:user.id,displayName:user.displayName,avatarUrl:user.avatarUrl,accountKind:'player'}} onClose={onClose}/>}</>;
 }
-export function SocialProfile({userId,profileContent,renderIdentity,onMessageOpened}:{onMessageOpened?:(()=>void)|undefined;userId:string;profileContent?:ReactNode;renderIdentity?:(counts:ReactNode)=>ReactNode}):JSX.Element|null {
+export function SocialProfile({userId,profileContent,renderIdentity,onMessageOpened,initialSummary}:{initialSummary?:FanSummary;onMessageOpened?:(()=>void)|undefined;userId:string;profileContent?:ReactNode;renderIdentity?:(counts:ReactNode)=>ReactNode}):JSX.Element|null {
  const {api,viewerId,openMessage}=useSocial(); const client=useQueryClient(); const navigate=useNavigate();
  const message=useMutation({mutationFn:async()=>{
   if(openMessage){await openMessage(userId);onMessageOpened?.();return;}
@@ -33,7 +33,7 @@ export function SocialProfile({userId,profileContent,renderIdentity,onMessageOpe
  const [pushTarget,setPushTarget]=useState<string|null>(null);
  const pushProfile=useQuery({queryKey:['social',viewerId,'push-profile',pushTarget],queryFn:()=>api.profile(pushTarget!),enabled:Boolean(pushTarget),retry:false});
  const summaryKey=['social',viewerId,'summary',userId];
- const summary=useQuery({queryKey:summaryKey,queryFn:()=>api.summary(userId),enabled:Boolean(viewerId&&userId)});
+ const summary=useQuery({queryKey:summaryKey,queryFn:()=>api.summary(userId),enabled:Boolean(viewerId&&userId),initialData:initialSummary,staleTime:60_000});
  const own=viewerId===userId;
  const mutation=useMutation({mutationFn:(following:boolean)=>api.follow(userId,following),onSuccess:(data:FanSummary)=>{
   client.setQueryData(summaryKey,data);

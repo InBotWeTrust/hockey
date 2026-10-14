@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom';
 import { Award, Medal, Sunrise, Target, TrendingUp, Trophy, X } from 'lucide-react';
 import {
   fetchUserProfile,
+  fetchUserTrophyDetails,
   findOrCreateDM,
   type UserPickerItem,
   type UserPublicProfileDTO,
@@ -127,7 +128,7 @@ export function PublicSportingPassport({
       className="profile-passport public-profile-passport"
       aria-label="Публичный спортивный паспорт"
     >
-      <SocialProfile userId={profile.id} onMessageOpened={onMessageOpened} renderIdentity={counts=><>
+      <SocialProfile userId={profile.id} {...(profile.social?{initialSummary:profile.social}:{})} onMessageOpened={onMessageOpened} renderIdentity={counts=><>
       <div className="profile-passport__top public-profile-social-identity">
         <div className="profile-identity__main public-profile-identity">
           <div className="public-profile-avatar">
@@ -335,16 +336,24 @@ function UserProfileSheetContent({
 
   const { data: profile } = useQuery<UserPublicProfileDTO>({
     queryKey: userKeys.profile(senderId),
-    queryFn: () => fetchUserProfile(senderId),
+    queryFn: () => fetchUserProfile(senderId, {summary:true}),
     enabled: senderId.length > 0,
     staleTime: 60_000,
   });
   const { data: myProfile } = useQuery<UserPublicProfileDTO>({
     queryKey: userKeys.profile(meId ?? ''),
-    queryFn: () => fetchUserProfile(meId ?? ''),
+    queryFn: () => fetchUserProfile(meId ?? '', {summary:true}),
     enabled: meId !== null,
     staleTime: 60_000,
   });
+
+  const trophies = useQuery({
+    queryKey: ['users', senderId, 'trophies'],
+    queryFn: () => fetchUserTrophyDetails(senderId),
+    enabled: selectedTrophy !== null && profile !== undefined && profile.trophyDetails === undefined,
+    staleTime: 60_000,
+  });
+  const trophyDetails = profile?.trophyDetails ?? trophies.data;
 
   const isSelf = sender?.userId === meId;
   const canCurrentUserDuel =
@@ -490,12 +499,18 @@ function UserProfileSheetContent({
             onClose={() => setSelectedAchievement(null)}
           />
         )}
-        {selectedTrophy !== null && profile?.trophyDetails !== undefined && (
+        {selectedTrophy !== null && trophyDetails !== undefined && (
           <TrophyHistoryModal
             section={selectedTrophy}
-            details={profile.trophyDetails}
+            details={trophyDetails}
             onClose={() => setSelectedTrophy(null)}
           />
+        )}
+        {selectedTrophy !== null && trophyDetails === undefined && (
+          <AccessibleModal title="Награды" onClose={() => setSelectedTrophy(null)} headerAction={<button className="icon-btn" aria-label="Закрыть" onClick={() => setSelectedTrophy(null)}><X size={14}/></button>}>
+            <p className="modal-copy" role={trophies.isError ? 'alert' : 'status'}>{trophies.isError ? 'Не удалось загрузить награды' : 'Загрузка…'}</p>
+            {trophies.isError && <button className="btn btn--ghost" onClick={() => void trophies.refetch()}>Повторить</button>}
+          </AccessibleModal>
         )}
         {earlyPlayerStatusOpen && (
           <AccessibleModal
