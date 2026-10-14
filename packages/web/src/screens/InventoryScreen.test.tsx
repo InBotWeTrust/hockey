@@ -1433,3 +1433,8 @@ describe('parseShopCategory', () => {
     expect(parseShopCategory(category)).toBeNull(),
   );
 });
+
+it('opens the bank tab directly from the city bank link', async () => {
+  renderInventory('/inventory?tab=bank');
+  await waitFor(() => expect(screen.getByRole('tab', {name:'Банк'})).toHaveAttribute('aria-selected','true'));
+});
