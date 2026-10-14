@@ -889,9 +889,9 @@ const ACHIEVEMENT_SEED_DEFINITIONS: Array<Omit<AchievementSeed, 'rewardTokens'>>
 const FAN_ACHIEVEMENT_SEEDS:AchievementSeed[] = [
   [1,'Первый болельщик',5],[10,'Группа поддержки',10],[20,'Свой сектор',15],[50,'Всё громче',30],
   [100,'Трибуна за тебя',50],[500,'Любимец трибун',140],[1000,'Целая арена',250],
-].map(([threshold,title,reward],index)=>({id:`fans-${threshold}`,photoUrl:`/achievements/fans-${threshold}.webp`,title:String(title),description:'Трибуны поддерживают тебя.',requirement:`Набрать ${threshold} ${Number(threshold)===1?'болельщика':'болельщиков'}.`,category:'career',availability:'active',futureTag:null,rewardCurrency:0,rewardStars:Number(reward),rewardExperience:Number(reward),rewardTokens:0,sortOrder:30001+index}));
+].map(([threshold,title,reward],index)=>({id:`fans-${threshold}`,photoUrl:`/achievements/fans-${threshold}.webp`,title:String(title),description:'Трибуны поддерживают тебя.',requirement:`Набрать ${threshold} ${Number(threshold)===1?'болельщика':'болельщиков'}.`,category:'career',availability:'hidden',futureTag:null,rewardCurrency:0,rewardStars:Number(reward),rewardExperience:Number(reward),rewardTokens:0,sortOrder:30001+index}));
 
-export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [...ACHIEVEMENT_SEED_DEFINITIONS,...FAN_ACHIEVEMENT_SEEDS].map(
+export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [...ACHIEVEMENT_SEED_DEFINITIONS,...FAN_ACHIEVEMENT_SEEDS,{id:'fans-support',photoUrl:'/achievements/fans-1.webp',title:'Болельщики',description:'Трибуны поддерживают тебя.',requirement:'Набрать 1 болельщика.',category:'career' as const,availability:'active' as const,futureTag:null,rewardCurrency:0,rewardStars:0,rewardExperience:0,rewardTokens:0,sortOrder:30000}].map(
   (achievement) => ({
     ...achievement,
     ...(APPROVED_REWARDS[achievement.id] ?? {}),

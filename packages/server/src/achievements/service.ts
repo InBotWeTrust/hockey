@@ -1,4 +1,5 @@
 import type { Pool, PoolClient } from 'pg';
+import { observeFanAchievement } from './fanStages.js';
 import { getGameSettings } from '../duel/gameSettings.js';
 import { observeAchievementStage, openFirstAchievementStages } from './stageProgress.js';
 import { USER_ACTIVITY_STREAK_CTES } from '../profile/activityStreak.js';
@@ -114,6 +115,7 @@ export function resolveStageDisplayProgress({
     Array<[string, number]>;
   const targetEntry = targetEntries.find(([key]) =>
     [
+      'followers',
       'total',
       'goalStreak',
       'accuracyPercent',
@@ -278,6 +280,7 @@ export async function fetchAchievementCatalogueForUser(
   opts: { includeHidden?: boolean; claimedOnly?: boolean } = {},
 ): Promise<ProfileAchievementDTO[]> {
   await openFirstAchievementStages(db, userId, new Date());
+  await observeFanAchievement(db, userId);
   const clauses = [opts.includeHidden === true ? 'true' : `a.availability <> 'hidden'`];
   if (opts.claimedOnly === true) {
     clauses.push('(ua.claimed_at is not null or stage_state.stage_claimed_at is not null)');
