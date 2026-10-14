@@ -98,10 +98,54 @@ describe('UserProfileSheet', () => {
     vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     useAuthStore.setState({user: {id: 'viewer'} as never});
     await renderSheet({sender: {userId: 'u1', displayName: 'Иван Петров', avatarUrl: null, accountKind: 'player'}, onClose});
-    fireEvent.click(await screen.findByRole('button', {name: 'Написать'}));
+    fireEvent.click(await screen.findByRole('button', {name: 'Написать'}, {timeout:5000}));
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith('u1'));
     await waitFor(() => expect(onClose).toHaveBeenCalledTimes(1));
-    expect(screen.getByTestId('chat-path')).toHaveTextContent('/chat/dm1');
+    await waitFor(() => expect(screen.getByTestId('chat-path')).toHaveTextContent('/chat/dm1'));
+  });
+
+  it('requests the summary before loading trophy history on demand', async () => {
+    const summary = {...publicProfile};
+    delete summary.trophyDetails;
+    vi.mocked(api.fetchUserProfile).mockResolvedValue(summary);
+    await renderSheet({sender:{userId:'u1',displayName:'Иван Петров',avatarUrl:null,accountKind:'player'},onClose:vi.fn()});
+    await screen.findByText('Иван Петров');
+    expect(api.fetchUserProfile).toHaveBeenCalledWith('u1', {summary:true});
+  });
+
+  it('loads trophy history only after opening a trophy', async () => {
+    const {trophyDetails, ...summary} = publicProfile;
+    vi.mocked(api.fetchUserProfile).mockResolvedValue(summary);
+    const history = vi.spyOn(api,'fetchUserTrophyDetails').mockResolvedValue(trophyDetails!);
+    await renderSheet({sender:{userId:'u1',displayName:'Иван Петров',avatarUrl:null,accountKind:'player'},onClose:vi.fn()});
+    await screen.findByText('Иван Петров');
+    expect(history).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button',{name:/Победы в регулярке/}));
+    expect(await screen.findByText('Кубок открытия')).toBeInTheDocument();
+    expect(history).toHaveBeenCalledTimes(1);
+  });
+
+  it('uses fan counts from the profile without issuing a duplicate summary request', async () => {
+    useAuthStore.setState({user:{id:'viewer'} as never});
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({...publicProfile,social:{followersCount:2,followingCount:0,following:false,canFollow:true}});
+    const summary = vi.spyOn(socialApi,'summary');
+    await renderSheet({sender:{userId:'u1',displayName:'Иван Петров',avatarUrl:null,accountKind:'player'},onClose:vi.fn()});
+    await screen.findByText('Иван Петров');
+    expect(summary).not.toHaveBeenCalled();
+  });
+
+  it('keeps the profile visible when trophy history fails and allows retry', async () => {
+    const {trophyDetails,...summary} = publicProfile;
+    vi.mocked(api.fetchUserProfile).mockResolvedValue(summary);
+    const history = vi.spyOn(api,'fetchUserTrophyDetails').mockRejectedValue(new Error('Offline'));
+    await renderSheet({sender:{userId:'u1',displayName:'Иван Петров',avatarUrl:null,accountKind:'player'},onClose:vi.fn()});
+    await screen.findByText('Иван Петров');
+    fireEvent.click(screen.getByRole('button',{name:/Победы в регулярке/}));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить награды');
+    history.mockResolvedValue(trophyDetails!);
+    fireEvent.click(screen.getByRole('button',{name:'Повторить'}));
+    expect(await screen.findByText('Кубок открытия')).toBeInTheDocument();
+    expect(screen.getByText('Иван Петров')).toBeInTheDocument();
   });
 
   beforeEach(() => {

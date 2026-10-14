@@ -34,7 +34,7 @@ export function makeDemoEvents():ActivityEvent[] {
  const now=Date.now();
  const actors=[{...DEMO_PLAYER,visible:true},{...DEMO_OPPONENT,visible:true}];
  const participants=[{userId:DEMO_PLAYER.id,goals:27,shots:30,score:27,durationMs:80000},{userId:DEMO_OPPONENT.id,goals:24,shots:30,score:24,durationMs:85000}];
- const kinds:ActivityKind[]=['daily','training','initial_course','advanced_course','achievement','regular','playoff','playoff','duel','bar_fight','bar_cards','bar_cards','duel','duel','duel','bar_fight'];
+ const kinds:ActivityKind[]=['daily','training','initial_course','advanced_course','achievement','regular','playoff','playoff','duel','bar_fight','bar_cards','bar_cards','duel','duel','duel','bar_fight','duel'];
  return kinds.map((kind,index)=>{
   const occurredAt=new Date(now-(index+1)*60000).toISOString();
   const event:ActivityEvent={id:id(100+index),kind,occurredAt,actors:kind==='daily'||kind==='training'||kind.includes('course')||kind==='achievement'||kind==='bar_fight'||index===10?[actors[0]!]:actors,data:{}};
@@ -46,9 +46,10 @@ export function makeDemoEvents():ActivityEvent[] {
   if(kind==='playoff')event.data={seriesCompleted:index===6,seriesWinnerId:index===6?DEMO_PLAYER.id:null,roundName:'1/2 финала',day:index===6?2:1,tournamentTitle:'Кубок лиги · полуфинал',seriesScore:{home:index===6?2:1,away:1,homeId:DEMO_PLAYER.id,awayId:DEMO_OPPONENT.id},games:[{homeId:DEMO_PLAYER.id,awayId:DEMO_OPPONENT.id,homeScore:32,awayScore:29,outcome:index===6?'away_no_show':'home_win'}]};
   if(kind==='bar_fight')event.data={character:'oleg',outcome:index===15?'win':'loss',blockedUntil:index===15?null:new Date(new Date().setHours(24,0,0,0)).toISOString(),timezone:'Europe/Moscow'};
   if(kind==='bar_cards')event.data=index===10?{character:'maria',outcome:'loss',game:'Дурак'}:{participants:[{userId:DEMO_PLAYER.id,outcome:'win'},{userId:DEMO_OPPONENT.id,outcome:'loss'}],game:'Дурак'};
-  if(index===12)event.data={participants,winnerId:DEMO_OPPONENT.id,outcome:'opponent_win',format:'classic',reason:'completed'};
-  if(index===13)event.data={participants:participants.map(p=>({...p,score:24})),winnerId:null,outcome:'draw',format:'express_plus',reason:'completed'};
-  if(index===14)event.data={participants,winnerId:DEMO_PLAYER.id,outcome:'challenger_win',format:'sniper',reason:'opponent_forfeit'};
+  if(index===12)event.data={participants:[{...participants[0]!,goals:24,score:24},{...participants[1]!,goals:27,score:27}],winnerId:DEMO_OPPONENT.id,outcome:'opponent_win',format:'classic',reason:'completed'};
+  if(index===13)event.data={participants:participants.map(p=>({...p,goals:24,score:24})),winnerId:null,outcome:'draw',format:'express_plus',reason:'completed'};
+  if(index===14)event.data={participants:[{userId:DEMO_PLAYER.id,goals:54,shots:73,score:673,durationMs:150000},{userId:DEMO_OPPONENT.id,goals:54,shots:66,score:670,durationMs:150000}],winnerId:DEMO_PLAYER.id,outcome:'challenger_win',format:'sniper',reason:'completed'};
+  if(index===16)event.data={participants:[{userId:DEMO_PLAYER.id,goals:42,shots:55,score:42,durationMs:240000},{userId:DEMO_OPPONENT.id,goals:38,shots:52,score:38,durationMs:240000}],winnerId:DEMO_PLAYER.id,outcome:'challenger_win',format:'marathon',reason:'timeout'};
   return event;
  });
 }

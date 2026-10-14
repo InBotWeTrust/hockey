@@ -236,7 +236,8 @@ export interface UserPublicProfileDTO {
   starBalance: number;
   experienceBalance: number;
   trophySummary: TrophySummaryDTO;
-  trophyDetails: TrophyDetailsDTO;
+  // Omitted for summary requests; fetched on demand from /users/:userId/trophies.
+  trophyDetails?: TrophyDetailsDTO;
   // ISO; surface "joined at" on the profile screen.
   createdAt: string;
   // ISO; surface "last seen" subtitle on the public profile / DM header.

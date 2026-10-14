@@ -98,3 +98,20 @@
 .social-membership-icon--unfollow { color: var(--danger, #dc2626); }
 .experience-rating-modal:has([aria-label='Управление болельщиками']) .tournament-standing-table--experience-rating th:last-child,
 .experience-rating-modal:has([aria-label='Управление болельщиками']) .tournament-standing-table--experience-rating td:last-child { width: 100px; min-width: 100px; }
+
+.activity-duel-result {
+ display: flex;
+ align-items: baseline;
+ justify-content: space-between;
+ gap: 12px;
+ margin-top: 12px;
+}
+.activity-duel-result__score {
+ flex-shrink: 0;
+ white-space: nowrap;
+ font-family: var(--font-mono);
+ font-variant-numeric: tabular-nums;
+ font-size: 18px;
+ font-weight: 850;
+ color: var(--ink);
+}

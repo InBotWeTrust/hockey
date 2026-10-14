@@ -7784,7 +7784,7 @@ function DuelResultTinyStat({ label, value }: { label: string; value: string }):
   );
 }
 
-function DuelResultCompactFact({ label, value }: { label: string; value: string }): JSX.Element {
+export function DuelResultCompactFact({ label, value }: { label: string; value: string }): JSX.Element {
   return (
     <div className="duel-result-card__compact-fact">
       <span>{label}</span>

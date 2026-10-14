@@ -521,6 +521,9 @@ export function fetchChatInfo(chatId: string): Promise<ChatInfoDTO> {
   return apiFetch<ChatInfoDTO>(`/chat/${chatId}/info`);
 }
 
-export function fetchUserProfile(userId: string): Promise<UserPublicProfileDTO> {
-  return apiFetch<UserPublicProfileDTO>(`/users/${userId}`);
+export function fetchUserProfile(userId: string, options: {summary?:boolean} = {}): Promise<UserPublicProfileDTO> {
+  return apiFetch<UserPublicProfileDTO>(`/users/${userId}${options.summary?'?summary=true':''}`);
+}
+export function fetchUserTrophyDetails(userId: string): Promise<NonNullable<UserPublicProfileDTO['trophyDetails']>> {
+  return apiFetch(`/users/${userId}/trophies`);
 }

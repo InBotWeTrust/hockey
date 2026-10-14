@@ -70,6 +70,23 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     tokenC = await jwt.issueAccessToken({ sub: userC });
   });
 
+  it('omits expensive trophy histories from the summary and loads them separately', async () => {
+    const response = await app.inject({method:'GET',url:`/users/${userB}?summary=true`,headers:{authorization:`Bearer ${tokenA}`}});
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toHaveProperty('trophySummary');
+    expect(response.json()).not.toHaveProperty('trophyDetails');
+    const history = await app.inject({method:'GET',url:`/users/${userB}/trophies`,headers:{authorization:`Bearer ${tokenA}`}});
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toHaveProperty('regularSeasonWins');
+    const unauthenticated = await app.inject({method:'GET',url:`/users/${userB}/trophies`});
+    expect(unauthenticated.statusCode).toBe(401);
+    const missing = await app.inject({method:'GET',url:'/users/00000000-0000-4000-8000-000000000099/trophies',headers:{authorization:`Bearer ${tokenA}`}});
+    expect(missing.statusCode).toBe(404);
+    const full = await app.inject({method:'GET',url:`/users/${userB}`,headers:{authorization:`Bearer ${tokenA}`}});
+    expect(full.statusCode).toBe(200);
+    expect(full.json()).toHaveProperty('trophyDetails');
+  });
+
   afterAll(async () => {
     await app.close();
   });
