@@ -864,9 +864,12 @@
 }
 .bar-game-screen--playing[data-game='checkers'] > .bar-game-field--checkers {
   flex: none;
+  align-self: center;
+  width: min(100%, max(220px, calc(100dvh - 350px)));
+  margin-top: auto;
 }
-.bar-game-screen--playing[data-game='checkers'][data-character='arsenich'] > .bar-game-field--checkers {
-  margin-top: clamp(112px, 18dvh, 150px);
+.bar-game-screen--playing[data-game='checkers'] > .bar-game-header {
+  order: 1;
 }
 
 
