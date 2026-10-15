@@ -648,8 +648,8 @@
   padding: 4px;
 }
 .bar-game-menu .durak-menu__identity .user-avatar {
-  width: 36px !important;
-  height: 36px !important;
+  width: 30px !important;
+  height: 30px !important;
 }
 .bar-game-menu .durak-menu__identity { gap: 5px; }
 .bar-game-menu .durak-menu__row {
