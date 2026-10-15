@@ -122,8 +122,11 @@ it('shows opponent aim, then the stroke, then removes the cue during ball motion
   rerender(<PoolField {...props} now={500} shot={shot} />);
   expect(container.querySelector('.bar-pool-stroke')).not.toBeNull();
   rerender(<PoolField {...props} now={1000} shot={shot} opponent={true} />);
-  expect(container.querySelector('.bar-pool-stroke')).toBeNull();
+  expect(container.querySelector('.bar-pool-cue')).not.toBeNull();
+  expect(container.querySelector('.bar-pool-impact')).not.toBeNull();
+  rerender(<PoolField {...props} now={1400} shot={shot} opponent={true} />);
   expect(container.querySelector('.bar-pool-cue')).toBeNull();
+  expect(container.querySelector('.bar-pool-impact')).toBeNull();
 });
 it('pulls the whole fixed-length cue back as power increases', () => {
   const game = barPool.create(0);

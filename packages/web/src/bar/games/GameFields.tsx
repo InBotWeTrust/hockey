@@ -311,7 +311,7 @@ export function PoolField({
   const strokeClock = useRef({ start: animationStart, delay: Math.max(0, now - animationStart) });
   if (strokeClock.current.start !== animationStart)
     strokeClock.current = { start: animationStart, delay: Math.max(0, now - animationStart) };
-  const stroking = !!shot && now >= animationStart && now < animationStart + POOL_STROKE_MS;
+  const stroking = !!shot && now >= animationStart && now < animationStart + POOL_STROKE_MS + 500;
   const cue = stroking ? shot.cue : balls.find((b) => b.id === 0)!;
   const remoteAim = aim?.actor === game.turn ? aim : null;
   const displayAngle = stroking
@@ -480,6 +480,25 @@ export function PoolField({
               )}
             </g>
           ))}
+        {shot &&
+          now >= animationStart + POOL_STROKE_MS &&
+          now < animationStart + POOL_STROKE_MS + 300 && (
+            <g
+              className="bar-pool-impact"
+              key={animationStart}
+              transform={`translate(${shot.cue.x} ${shot.cue.y})`}
+              pointerEvents="none"
+            >
+              <circle
+                className="bar-pool-impact-ring"
+                r=".035"
+                fill="none"
+                stroke="#fff2c8"
+                strokeWidth=".005"
+              />
+              <circle className="bar-pool-impact-flash" r=".02" fill="#fff6db" />
+            </g>
+          )}
         {(stroking || !game.ballInHand) && (!disabled || stroking || (opponent && !!remoteAim)) && (
           <g className="bar-pool-cue" transform={`translate(${cue.x} ${cue.y})`}>
             <g
@@ -497,7 +516,7 @@ export function PoolField({
                     '--cue-contact': `${cuePull - barPool.R}px`,
                     ...(stroking
                       ? {
-                          animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS)}ms`,
+                          animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS + 500)}ms`,
                         }
                       : {}),
                   } as CSSProperties

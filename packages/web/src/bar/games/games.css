@@ -520,22 +520,53 @@
   opacity: 0.4;
 }
 .bar-pool-stroke {
-  animation: bar-pool-stroke 800ms ease-in-out both;
+  animation: bar-pool-stroke 1300ms ease-in-out both;
 }
 @keyframes bar-pool-stroke {
   0% {
     transform: translateX(0);
+    opacity: 1;
   }
-  65% {
+  40% {
     transform: translateX(-0.06px);
+    opacity: 1;
   }
+  61.54%,
   85% {
     transform: translateX(var(--cue-contact));
+    opacity: 1;
   }
   100% {
-    transform: translateX(0);
+    transform: translateX(var(--cue-contact));
+    opacity: 0;
   }
 }
+.bar-pool-impact-ring {
+  animation: bar-pool-impact-ring 300ms ease-out both;
+  transform-origin: 0 0;
+}
+.bar-pool-impact-flash {
+  animation: bar-pool-impact-flash 180ms ease-out both;
+}
+@keyframes bar-pool-impact-ring {
+  from {
+    transform: scale(0.65);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+@keyframes bar-pool-impact-flash {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bar-pool-stroke {
     animation: none;
@@ -550,4 +581,12 @@
   height: 44px;
   min-height: 44px;
   overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-pool-impact-ring,
+  .bar-pool-impact-flash {
+    animation: none;
+    opacity: 0.3;
+  }
 }
