@@ -995,7 +995,9 @@
 }
 .bar-game-menu .bar-game-notice-row .durak-turn-notice {
   grid-column: 2;
-  width: 100%;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
   min-width: 0;
   height: 44px;
   min-height: 44px;
@@ -1058,4 +1060,17 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .bar-darts-throw--idle svg { animation: none; }
+}
+
+.bar-game-notice-retry {
+  pointer-events: auto;
+  display: inline;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }

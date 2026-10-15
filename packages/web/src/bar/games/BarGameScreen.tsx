@@ -68,18 +68,8 @@ export function BarGameScreen() {
         <>
           <GameTable view={view} now={match.now} disabled={match.busy} send={match.send}
             onExit={() => view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)}
-            onRules={() => setHelp(true)} />
-          {match.error && (
-            <div className="bar-game-error" role="alert">
-              {match.error}
-              {match.uncertain && (
-                <button className="btn btn--ghost" onClick={match.retry}>
-                  Повторить отправку
-                </button>
-              )}
-            </div>
-          )}
-          {replayError && <p role="alert">{replayError}</p>}
+            onRules={() => setHelp(true)} notice={match.error ?? replayError}
+            onRetry={match.uncertain ? match.retry : undefined} />
           {view.ready?.cancelled && (
             <AccessibleModal
               title="Партия не началась"
@@ -134,6 +124,8 @@ export function GameTable({
   send,
   onExit,
   onRules,
+  notice,
+  onRetry,
 }: {
   view: BarGameSnapshot;
   now: number;
@@ -141,6 +133,8 @@ export function GameTable({
   send: (a: BarGameAction | { type: 'ready' }) => void;
   onExit?: (() => void) | undefined;
   onRules?: (() => void) | undefined;
+  notice?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
 }) {
   const { runtime: m, player } = view;
   const game = m.game;
@@ -169,7 +163,7 @@ export function GameTable({
   }
   return (
     <>
-      <GameMenu view={view} now={now} onExit={onExit} onRules={onRules} />
+      <GameMenu view={view} now={now} onExit={onExit} onRules={onRules} notice={notice} onRetry={onRetry} />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
         {game.kind === 'darts' ? (
           <DartsField

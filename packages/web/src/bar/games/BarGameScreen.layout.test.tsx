@@ -1,10 +1,10 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createMatch } from '@hockey/game-core';
 import { BarGameScreen } from './BarGameScreen.js';
-const scenario = vi.hoisted(() => ({ kind: 'checkers' as 'checkers' | 'darts' }));
-afterEach(cleanup);
+const scenario = vi.hoisted(() => ({ kind: 'checkers' as 'checkers' | 'darts' | 'billiards', error: null as string | null, retry: vi.fn() }));
+afterEach(() => { cleanup(); scenario.error = null; });
 vi.mock('./useGameMatch.js', () => ({
   useGameMatch: () => ({
     view: {
@@ -20,6 +20,9 @@ vi.mock('./useGameMatch.js', () => ({
       ready: null,
     },
     now: Date.now(),
+    error: scenario.error,
+    uncertain: !!scenario.error,
+    retry: scenario.retry,
     busy: false,
     send: vi.fn(),
   }),
@@ -50,4 +53,14 @@ it('removes the darts title and renders controls outside its throwing area', () 
     expect(button.closest('.bar-darts-field')).toBeNull();
     expect(button.closest('.bar-game-notice-row')).not.toBeNull();
   }
+});
+
+it.each(['checkers', 'darts', 'billiards'] as const)('shows %s sync failures inside the notice with retry', kind => {
+ scenario.kind=kind; scenario.error='Не удалось подтвердить ход';
+ render(<MemoryRouter><BarGameScreen/></MemoryRouter>);
+ const alert=screen.getByRole('alert');
+ expect(alert.closest('.bar-game-notice-row')).not.toBeNull();
+ expect(document.querySelector('.bar-game-error')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Повторить отправку'}));
+ expect(scenario.retry).toHaveBeenCalled();
 });

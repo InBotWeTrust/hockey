@@ -1,6 +1,6 @@
 import { useLayoutEffect, useRef, type HTMLAttributes } from 'react';
 
-export function FittedNotice({ fit, maxLines = 1, children, className, ...props }:
+export function FittedNotice({ fit, maxLines = 1, children, className, role = 'status', ...props }:
   HTMLAttributes<HTMLDivElement> & { fit: boolean; maxLines?: number }) {
   const textRef = useRef<HTMLSpanElement>(null);
   useLayoutEffect(() => {
@@ -28,7 +28,7 @@ export function FittedNotice({ fit, maxLines = 1, children, className, ...props 
     window.addEventListener('resize', resize);
     return () => { observer?.disconnect(); window.removeEventListener('resize', resize); };
   }, [fit, maxLines, children]);
-  return <div {...props} role="status" className={`${className ?? ''}${fit ? ' fitted-scoreboard-notice' : ''}`}>
+  return <div {...props} role={role} className={`${className ?? ''}${fit ? ' fitted-scoreboard-notice' : ''}`}>
     {fit ? <span ref={textRef}>{children}</span> : children}
   </div>;
 }
