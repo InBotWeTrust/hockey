@@ -464,6 +464,9 @@
 }
 
 .bar-game-screen--playing[data-game='billiards'] {
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  gap: 8px;
   background: #382416 url('/bar/games/billiards-floor-v1.webp') center/cover fixed;
 }
 .bar-game-field--billiards {
@@ -896,4 +899,32 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .bar-checker--jumping { animation-name: bar-checker-slide; }
+}
+
+.bar-game-screen--playing[data-game='billiards'] > .bar-game-header {
+  order: 1;
+  flex: none;
+}
+.bar-game-screen--playing[data-game='billiards'] > .bar-game-header h1 {
+  display: none;
+}
+.bar-game-screen--playing[data-game='billiards'] > .bar-game-field--billiards {
+  flex: 1;
+  min-height: 0;
+  overflow: visible;
+}
+.bar-game-field--billiards > .bar-pool-field {
+  height: 100%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+.bar-game-field--billiards .bar-pool-field > svg {
+  flex: 1;
+  min-height: 0;
+  height: 0;
+  max-height: none;
+}
+.bar-game-field--billiards .bar-pool-controls {
+  flex: none;
 }
