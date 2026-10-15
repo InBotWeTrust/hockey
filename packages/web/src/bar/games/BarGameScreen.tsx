@@ -194,7 +194,15 @@ export function GameTable({
       <GameMenu view={view} now={now} />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
         {game.kind === 'darts' ? (
-          <DartsField game={game} lastDart={m.lastDart} disabled={!active} send={send} />
+          <DartsField
+            game={game}
+            lastDart={m.lastDart}
+            dartHits={m.dartHits}
+            animationStart={m.animationStart}
+            now={now}
+            disabled={!active}
+            send={send}
+          />
         ) : game.kind === 'checkers' ? (
           <CheckersField game={game} disabled={!active} send={send} player={player} />
         ) : (

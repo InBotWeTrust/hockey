@@ -398,3 +398,61 @@
 .bar-game-field--darts .bar-darts-throw svg {
   height: 85px;
 }
+
+/* Reserve the complete menu slot so wrapping feedback never moves the target. */
+.bar-game-screen--playing[data-game='darts'] > .bar-game-menu {
+  height: 128px;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+.bar-game-screen--playing[data-game='darts'] .durak-turn-notice {
+  height: 44px;
+  min-height: 44px;
+  overflow: hidden;
+}
+.bar-game-field--darts .bar-dartboard {
+  overflow: visible;
+}
+.bar-dart-flight {
+  pointer-events: none;
+  animation: bar-dart-flight 700ms linear both;
+  filter: drop-shadow(2px 4px 2px #0008);
+}
+@keyframes bar-dart-flight {
+  0% {
+    transform: translate(var(--dart-x), var(--dart-y)) scale(2.1);
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 0) rotate(152deg) scale(0.85);
+  }
+}
+.bar-dart-impact {
+  transform-origin: 0 0;
+  animation: bar-dart-impact 350ms ease-out both;
+}
+@keyframes bar-dart-impact {
+  0% {
+    transform: rotate(12deg);
+  }
+  30% {
+    transform: rotate(-9deg);
+  }
+  60% {
+    transform: rotate(5deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-dart-flight {
+    animation-name: none;
+    transform: scale(0.85);
+  }
+  .bar-dart-impact {
+    animation: none;
+  }
+}

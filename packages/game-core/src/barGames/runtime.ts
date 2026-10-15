@@ -11,6 +11,9 @@ export type BarGameAction =
   | { type: 'surrender' };
 export const ENGINE_VERSION = 1;
 export const TURN_MS = 40000;
+export const DART_FLIGHT_MS = 700;
+export const DART_IMPACT_MS = 350;
+const botPause = (kind: BarGameId) => (kind === 'darts' ? 1800 : 900);
 export const CHARACTER_GAME = {
   maria: 'darts',
   veronika: 'billiards',
@@ -37,6 +40,7 @@ export interface Runtime {
   seed: number;
   reason: 'played' | 'surrender' | 'inactivity' | null;
   lastDart: darts.Point | null;
+  dartHits?: darts.Point[];
   poolFrames: pool.Ball[][];
   animationStart: number;
   revision: number;
@@ -57,7 +61,7 @@ export function createMatch(
           ? checkers.create(starter)
           : pool.create(starter),
     deadline: now + TURN_MS,
-    animationUntil: now + (computer && starter === 1 ? 900 : 0),
+    animationUntil: now + (computer && starter === 1 ? botPause(kind) : 0),
     missed: [0, 0],
     computer,
     seed,
@@ -97,7 +101,8 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
       points: n.game.lastScore,
       bust: n.game.lastScore > m.game.scores[p],
     };
-    duration = 600;
+    n.dartHits = [...m.game.hits, n.lastDart];
+    duration = DART_FLIGHT_MS + DART_IMPACT_MS;
   } else if (m.game.kind === 'checkers' && action.type === 'checkers') {
     n.game = checkers.move(m.game, action.path);
     n.feedback = {
@@ -123,7 +128,7 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     duration = sim.durationMs;
   } else throw new Error('Wrong game action');
   if (manual) n.missed[p] = 0;
-  n.animationUntil = now + duration + (n.computer && n.game.turn === 1 ? 900 : 0);
+  n.animationUntil = now + duration + (n.computer && n.game.turn === 1 ? botPause(n.game.kind) : 0);
   n.deadline =
     n.game.turn !== p || m.game.kind !== 'darts' ? now + duration + TURN_MS : m.deadline + duration;
   if (n.game.winner !== null) n.reason = 'played';

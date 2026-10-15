@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for deterministic bar games', () => {
-    expect(GAME_CORE_VERSION).toBe(89);
+  it('is bumped for dart animation timing', () => {
+    expect(GAME_CORE_VERSION).toBe(90);
   });
 });

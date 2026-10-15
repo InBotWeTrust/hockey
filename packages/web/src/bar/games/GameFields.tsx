@@ -1,5 +1,12 @@
-import { useEffect, useRef, useState, type PointerEvent } from 'react';
-import { type barDarts, barCheckers, barPool, type BarGameAction } from '@hockey/game-core';
+import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
+import {
+  DART_FLIGHT_MS,
+  DART_IMPACT_MS,
+  type barDarts,
+  barCheckers,
+  barPool,
+  type BarGameAction,
+} from '@hockey/game-core';
 type Send = (action: BarGameAction) => void;
 const numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const point = (r: number, a: number) => `${150 + r * Math.sin(a)},${150 - r * Math.cos(a)}`;
@@ -11,14 +18,32 @@ function wedge(inner: number, outer: number, index: number) {
 export function DartsField({
   game,
   lastDart,
+  dartHits,
+  animationStart = 0,
+  now = Infinity,
   disabled,
   send,
 }: {
   game: barDarts.Game;
   lastDart: barDarts.Point | null;
+  dartHits?: barDarts.Point[] | undefined;
+  animationStart?: number;
+  now?: number;
   disabled: boolean;
   send: Send;
 }) {
+  const elapsed = Math.max(0, now - animationStart);
+  const flightClock = useRef({ start: animationStart, delay: elapsed });
+  if (flightClock.current.start !== animationStart)
+    flightClock.current = { start: animationStart, delay: elapsed };
+  const flying = !!lastDart && elapsed < DART_FLIGHT_MS;
+  const hits = dartHits ?? (game.hits.length ? game.hits : lastDart ? [lastDart] : []);
+  const visiblePoint = (p: barDarts.Point) => ({
+    x: Math.max(-1.25, Math.min(1.25, p.x)),
+    y: Math.max(-1.25, Math.min(1.25, p.y)),
+  });
+  const landing = lastDart ? visiblePoint(lastDart) : null;
+  const visibleHits = (flying ? hits.slice(0, -1) : hits).map(visiblePoint);
   const start = useRef<{ x: number; y: number; time: number; id: number } | null>(null);
   const release = (e: PointerEvent<HTMLDivElement>) => {
     const s = start.current;
@@ -102,14 +127,50 @@ export function DartsField({
           stroke="#b8b294"
           strokeWidth=".7"
         />
-        {[...game.hits, ...(lastDart ? [lastDart] : [])].map((p, i) => (
+        {visibleHits.map((p, i) => (
           <g key={i} transform={`translate(${150 + p.x * 111} ${150 + p.y * 111}) rotate(-28)`}>
-            <path d="M0 0L2 -26L-2 -26Z" fill="#d1d7d3" />
-            <path d="M0 -24L-7 -37L0 -34L7 -37Z" fill="#c9b15c" stroke="#3a3d35" strokeWidth="1" />
+            <g
+              className={
+                i === hits.length - 1 && elapsed < DART_FLIGHT_MS + DART_IMPACT_MS
+                  ? 'bar-dart-impact'
+                  : undefined
+              }
+            >
+              <path d="M0 0L2 -26L-2 -26Z" fill="#d1d7d3" />
+              <path
+                d="M0 -24L-7 -37L0 -34L7 -37Z"
+                fill="#c9b15c"
+                stroke="#3a3d35"
+                strokeWidth="1"
+              />
+            </g>
           </g>
         ))}
+        {flying && landing && (
+          <g transform={`translate(${150 + landing.x * 111} ${150 + landing.y * 111})`}>
+            <g
+              key={animationStart}
+              className="bar-dart-flight"
+              style={
+                {
+                  '--dart-x': `${-landing.x * 111}px`,
+                  '--dart-y': `${330 - landing.y * 111}px`,
+                  animationDuration: `${DART_FLIGHT_MS}ms`,
+                  animationDelay: `-${Math.min(flightClock.current.delay, DART_FLIGHT_MS)}ms`,
+                } as CSSProperties
+              }
+            >
+              <path d="M0 0L3 32L-3 32Z" fill="#f0f4ef" stroke="#56675e" />
+              <path d="M0 28L-10 48L0 42L10 48Z" fill="#edc65f" stroke="#443321" />
+            </g>
+          </g>
+        )}
       </svg>
-      <div className="bar-darts-throw" aria-label="Область броска">
+      <div
+        className="bar-darts-throw"
+        aria-label="Область броска"
+        style={{ opacity: flying ? 0 : 1 }}
+      >
         <svg viewBox="0 0 100 150" aria-hidden="true">
           <path d="M50 5L46 70L54 70Z" fill="#d7dedb" />
           <rect x="44" y="65" width="12" height="35" rx="4" fill="#85918c" />

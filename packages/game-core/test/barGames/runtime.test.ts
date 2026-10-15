@@ -4,9 +4,9 @@ it('uses a single 40s series deadline, excludes flight and resets only on manual
   let m = createMatch('darts', 0, 0, false, 1);
   expect(m.deadline).toBe(40000);
   m = command(m, 0, { type: 'dart', gesture: { dx: 0, dy: -0.5, durationMs: 400 } }, 1000);
-  expect(m.deadline).toBe(40600);
-  expect(m.animationUntil).toBe(1600);
-  m = advance(m, 40600);
+  expect(m.deadline).toBe(41050);
+  expect(m.animationUntil).toBe(2050);
+  m = advance(m, 41050);
   expect(m.missed[0]).toBe(1);
   expect(m.game.turn).toBe(1);
   expect(m.engineVersion).toBe(ENGINE_VERSION);
@@ -67,4 +67,14 @@ it('publishes action feedback with actual dart scoring and bust without changing
     points: 50,
     bust: true,
   });
+});
+
+it('spaces Maria darts and retains all hits for the final flight', () => {
+  const m = createMatch('darts', 1, 0, true, 20);
+  const first = advance(m, 1800);
+  expect(first.revision).toBe(1);
+  expect(first.animationUntil).toBe(4650);
+  expect(advance(first, 4649).revision).toBe(1);
+  const third = advance(first, 7500);
+  expect(third.dartHits).toHaveLength(3);
 });

@@ -1,4 +1,5 @@
-import type { BarGameSnapshot } from '@hockey/game-core';
+import { formatRussianCount } from '../../lib/russianPlural.js';
+import { DART_FLIGHT_MS, type BarGameSnapshot } from '@hockey/game-core';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { FittedNotice } from '../../game/FittedNotice.js';
 import { CardPlayerName, FittedMenuLabel } from '../cards/FittedMenuLabel.js';
@@ -23,7 +24,7 @@ function actionResult(view: BarGameSnapshot): string {
         ? 'Перебор — дротик не засчитан'
         : f.points === 0
           ? 'Промах'
-          : `${actor}: ${f.points} очков`;
+          : `${actor}: ${formatRussianCount(f.points ?? 0, 'очко', 'очка', 'очков')}`;
     case 'shot':
       return f.foul
         ? 'Фол — биток с руки'
@@ -57,17 +58,22 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
           : g.turn === player
             ? 'Твой ход'
             : 'Ход соперника';
-  if (g.kind === 'darts' && g.winner === null) turn += ` · Дротиков: ${g.dartsLeft}`;
+  if (g.kind === 'darts' && g.winner === null) turn += ` · Осталось дротиков: ${g.dartsLeft}`;
   if (g.kind === 'billiards' && g.winner === null) {
     const group = g.groups[g.turn];
     turn += group ? ` · ${group === 'solids' ? 'Сплошные' : 'Полосатые'}` : ' · Стол открыт';
   }
-  const result = actionResult(view);
+  const dartFeedback = g.kind === 'darts' && m.feedback?.type === 'dart';
+  const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
+  const result =
+    dartFeedback && (sinceContact < 0 || sinceContact >= 2000) ? '' : actionResult(view);
   const feedback =
     m.missed[player] > 0 && g.winner === null
       ? 'Ход пропущен. Следующий пропуск подряд — поражение.'
       : result
-        ? `${result} · ${turn}`
+        ? dartFeedback
+          ? result
+          : `${result} · ${turn}`
         : turn;
   const tone =
     m.missed[player] > 0 || m.feedback?.bust || m.feedback?.foul

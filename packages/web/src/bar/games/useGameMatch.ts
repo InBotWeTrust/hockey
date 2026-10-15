@@ -47,7 +47,7 @@ export function useGameMatch(id: string | undefined) {
       }
     };
     void refresh();
-    const timer = setInterval(() => void refresh(), 1500),
+    const timer = setInterval(() => void refresh(), 500),
       clock = setInterval(() => setNow(Date.now() + offset.current), 100);
     document.addEventListener('visibilitychange', refresh);
     return () => {

@@ -1,6 +1,12 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
-import { barCheckers, barPool, createMatch, type BarGameSnapshot, type barDarts } from '@hockey/game-core';
+import {
+  barCheckers,
+  barPool,
+  createMatch,
+  type BarGameSnapshot,
+  type barDarts,
+} from '@hockey/game-core';
 import { CheckersField, PoolField, DartsField } from './GameFields.js';
 import { GameResult, GameHelp } from './GameModals.js';
 const snapshot = (kind: 'darts' | 'billiards' | 'checkers'): BarGameSnapshot => ({
@@ -66,4 +72,24 @@ it('renders a precise dartboard rather than generated scoring geometry', () => {
   );
   expect(screen.getByLabelText('Мишень для дартса')).toBeInTheDocument();
   expect(screen.getByText('20')).toBeInTheDocument();
+});
+
+it('shows flight before one embedded dart, with impact after contact', () => {
+  const g = createMatch('darts', 0, 0, false, 1).game as barDarts.Game;
+  const hit = { x: 0, y: 0 };
+  g.hits = [hit];
+  const props = { game: g, lastDart: hit, animationStart: 100, disabled: true, send: vi.fn() };
+  const { container, rerender } = render(<DartsField {...props} now={200} />);
+  expect(container.querySelectorAll('.bar-dart-flight')).toHaveLength(1);
+  expect(container.querySelectorAll('.bar-dart-impact')).toHaveLength(0);
+  const delay = (container.querySelector('.bar-dart-flight') as SVGElement).style.animationDelay;
+  rerender(<DartsField {...props} now={400} />);
+  expect((container.querySelector('.bar-dart-flight') as SVGElement).style.animationDelay).toBe(
+    delay,
+  );
+  rerender(<DartsField {...props} now={850} />);
+  expect(container.querySelector('.bar-dart-flight')).toBeNull();
+  expect(container.querySelectorAll('.bar-dart-impact')).toHaveLength(1);
+  rerender(<DartsField {...props} now={1700} />);
+  expect(container.querySelector('.bar-dart-impact')).toBeNull();
 });

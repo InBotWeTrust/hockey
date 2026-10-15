@@ -30,6 +30,7 @@ it('uses the card menu with two avatars, a central timer and feedback above the 
 it('reports the actual hit result in the feedback strip and preserves timer warning colours', () => {
   const v = view();
   v.runtime.feedback = { type: 'dart', actor: 0, points: 20, bust: false };
+  v.runtime.animationStart = 32000;
   v.runtime.game.kind === 'darts' && (v.runtime.game.scores[0] = 281);
   render(<GameTable view={v} now={33000} disabled={false} send={() => {}} />);
   const menu = screen.getByRole('region', { name: 'Меню игры' });
@@ -39,6 +40,7 @@ it('reports the actual hit result in the feedback strip and preserves timer warn
 it('shows a bust rather than awarded points after an overscoring dart', () => {
   const v = view();
   v.runtime.feedback = { type: 'dart', actor: 0, points: 60, bust: true };
+  v.runtime.animationStart = 36000;
   render(<GameTable view={v} now={37000} disabled={false} send={() => {}} />);
   expect(
     within(screen.getByRole('region', { name: 'Меню игры' })).getByRole('status'),
@@ -57,3 +59,27 @@ it.each(['darts', 'billiards', 'checkers'] as const)(
     expect(screen.getByRole('region', { name: 'Меню игры' })).toBeInTheDocument();
   },
 );
+
+it.each([
+  [1, '1 очко'],
+  [2, '2 очка'],
+  [5, '5 очков'],
+  [11, '11 очков'],
+  [21, '21 очко'],
+  [22, '22 очка'],
+])('inflects %s points', (points, text) => {
+  const v = view();
+  v.runtime.feedback = { type: 'dart', actor: 0, points: Number(points) };
+  render(<GameTable view={v} now={800} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent(String(text));
+});
+
+it('shows the dart result for two seconds after contact, then only the next action', () => {
+  const v = view();
+  v.runtime.feedback = { type: 'dart', actor: 0, points: 5 };
+  if (v.runtime.game.kind === 'darts') v.runtime.game.dartsLeft = 1;
+  const { rerender } = render(<GameTable view={v} now={800} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent(/^Ты: 5 очков$/);
+  rerender(<GameTable view={v} now={2700} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent(/^Твой ход · Осталось дротиков: 1$/);
+});
