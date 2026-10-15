@@ -1,6 +1,7 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {ChevronRight,Snowflake,Goal} from 'lucide-react';
 import './city-map.css';
+import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
 type Props={owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;onNavigate:(path:string)=>void};
 const places=[
@@ -28,7 +29,7 @@ export function CityMap(props:Props){
  const positioned=useRef(false);
  const currentPlace=useRef(selected);currentPlace.current=selected;
  const place=places.find(p=>p.id===selected)!;
- const image=window.devicePixelRatio>1.5?'/maps/city-6144-950ff27a3699.webp':'/maps/city-4096-ff03b6a9e3f4.webp';
+ const image=useCityImage();
  const select=(id:string)=>{setSelected(id);try{sessionStorage.setItem(storageKey,id);}catch{/* Optional selection persistence. */}clearTimeout(timer.current);setFlash(null);if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)timer.current=setTimeout(()=>setFlash(id),280);};
  useEffect(()=>()=>clearTimeout(timer.current),[]);
  useLayoutEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w)return;const behavior=positioned.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto';el.scrollTo?.({left:w.clientWidth*place.x/100-el.clientWidth/2,behavior});const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior});positioned.current=true;},[place]);
@@ -53,7 +54,7 @@ export function CityMap(props:Props){
    onPointerUp={()=>{if(drag.current?.moved)blockUntil.current=performance.now()+500;drag.current=null;}}
    onPointerCancel={()=>{blockUntil.current=performance.now()+500;drag.current=null;}}
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
-   <div ref={world} className="district-world"><img src={image} alt="Зимний хоккейный район" draggable={false} decoding="async"/>
+   <div ref={world} className="district-world"><CityBackground image={image}/>
     {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>select(p.id)}/>)}
    </div>
   </div>
@@ -61,4 +62,13 @@ export function CityMap(props:Props){
    <nav className="district-dock" ref={dock} aria-label="Места района">{places.map(p=><button key={p.id} aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>select(p.id)}><span style={{backgroundImage:`url(${image})`,backgroundPosition:`${p.thumb?.[0]??p.x}% ${p.thumb?.[1]??p.y}%`}}/></button>)}</nav>
   </section>
  </section>;
+}
+
+function CityBackground({image}:{image:string}){
+ const [previous,setPrevious]=useState(image);
+ useEffect(()=>{const timer=setTimeout(()=>setPrevious(image),1000);return()=>clearTimeout(timer);},[image]);
+ return <>
+ <img src={previous} alt="" aria-hidden="true" draggable={false}/>
+ <img key={image} className={previous!==image?'district-light-enter':undefined} src={image} alt="Зимний хоккейный район" draggable={false} decoding="async"/>
+ </>;
 }
