@@ -59,3 +59,20 @@ it('restores every emotion from today, and resets yesterday at local midnight',(
   }
  }finally{vi.useRealTimers();}
 });
+it('preloads Daria’s distinct greeting smile while preserving her conversational joy gesture',async()=>{
+ const images:Array<{src:string;onload:(()=>void)|null}>=[];
+ vi.stubGlobal('Image',class{src='';onload=null;onerror=null;constructor(){images.push(this);}});
+ try{
+  const ready=prepareGreeting('daria');
+  expect(images[0]?.src).toBe('/bar/emotions/daria/greeting-smile-v1.webp');
+  images[0]?.onload?.();
+  expect(await ready).toBe(true);
+  expect(emotionAsset('daria','joy')).toBe('/bar/emotions/daria/joy-v1.webp');
+ }finally{vi.unstubAllGlobals();}
+});
+
+it('loads the revised low-hand interest pose for Timofey without changing other emotions',()=>{
+ expect(emotionAsset('timofey','interest')).toBe('/bar/emotions/timofey/interest-v2.webp');
+ expect(emotionAsset('timofey','neutral')).toBe('/bar/emotions/timofey/neutral-v1.webp');
+ expect(emotionAsset('timofey','joy')).toBe('/bar/emotions/timofey/joy-v1.webp');
+});

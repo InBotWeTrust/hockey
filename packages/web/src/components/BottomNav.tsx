@@ -101,10 +101,13 @@ export function isOpenRinkRoute(location: NavLocation): boolean {
   return view === 'amateur' && params.has('match') && params.get('play') === '1';
 }
 
+const isBarRoute=(pathname:string):boolean=>pathname==='/bar'||pathname.startsWith('/bar/');
+
 export function isBottomNavVisible(location: string | NavLocation, user: AuthUser | null): boolean {
   const { pathname } = normalizeNavLocation(location);
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
   return (
+    !isBarRoute(pathname) &&
     pathname !== '/sections' &&
     pathname !== '/sections/' &&
     pathname !== '/login' &&
@@ -207,7 +210,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
   const cardInviteCount = useCardInvites(s => s.incoming.length);
 
   // Hide nav inside a chat room — composer takes the nav's spot.
-  if (!preview && !isBottomNavVisible(location, user)) {
+  if (isBarRoute(location.pathname) || (!preview && !isBottomNavVisible(location, user))) {
     return null;
   }
 

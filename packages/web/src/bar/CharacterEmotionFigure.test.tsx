@@ -68,3 +68,14 @@ it('greets with the neutral body and only a masked smiling face',()=>{
  expect(images[1]?.getAttribute('mask')).toContain('url(#');
  expect(frame.querySelector('ellipse')?.getAttribute('cy')).toBe('280');
 });
+it('greets Daria using the distinct smile over her neutral body instead of her nearly neutral joy face',()=>{
+ const loaders:Array<{src:string;onload:(()=>void)|null}>=[];
+ vi.stubGlobal('Image',class{src='';onload=null;onerror=null;constructor(){loaders.push(this);}});
+ const view=render(<CharacterEmotionFigure character="daria" emotion="greeting" fallback="/bar/original.webp" style={{}} onFallbackError={()=>{}}/>);
+ expect(loaders[0]?.src).toBe('/bar/emotions/daria/greeting-smile-v1.webp');
+ act(()=>loaders[0]?.onload?.());
+ const images=view.container.querySelectorAll('svg[data-current] image');
+ expect(images[0]?.getAttribute('href')).toBe('/bar/emotions/daria/neutral-v1.webp');
+ expect(images[1]?.getAttribute('href')).toBe('/bar/emotions/daria/greeting-smile-v1.webp');
+ expect(images[1]?.getAttribute('mask')).toContain('url(#');
+});

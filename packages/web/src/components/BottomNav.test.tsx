@@ -35,7 +35,7 @@ function AdminHomeProbe(): JSX.Element {
   return <output aria-label="admin-section">{section}</output>;
 }
 
-function renderBottomNav(path: string, extra?: JSX.Element): QueryClient {
+function renderBottomNav(path: string, extra?: JSX.Element, preview = false): QueryClient {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -44,7 +44,7 @@ function renderBottomNav(path: string, extra?: JSX.Element): QueryClient {
       <MemoryRouter initialEntries={[path]}>
         <LocationProbe />
         {extra}
-        <BottomNav />
+        <BottomNav preview={preview} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -164,9 +164,16 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
   });
 
-  it('keeps bar and spectator pages within the second tab', () => {
+  it('hides navigation in the bar while remembering its section route', () => {
     renderBottomNav('/bar/duel/11111111-1111-4111-8111-111111111111');
-    expect(screen.getByRole('button', { name: 'Разделы' })).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByLabelText('Навигация')).not.toBeInTheDocument();
+    expect(sessionStorage.getItem('hockey.nav.lastSectionsRoute')).toBe('/bar/duel/11111111-1111-4111-8111-111111111111');
+  });
+
+  it.each(['/bar','/bar/','/bar/broadcasts','/bar/games','/bar/games/match/id','/bar/cards/room/id','/bar/duel/id'].flatMap(path=>[[path,false],[path,true]] as const))('hides the global dock at %s (preview=%s)',(path,preview)=>{
+    renderBottomNav(path,undefined,preview);
+    expect(screen.queryByLabelText('Навигация')).not.toBeInTheDocument();
+    expect(isBottomNavVisible(path,{id:'test',displayName:'Player'})).toBe(false);
   });
 
   it('opens sections from the second tab', () => {
@@ -738,7 +745,7 @@ describe('BottomNav remembered navigation', () => {
 
   it('opens the last remembered profile route from another tab', () => {
     sessionStorage.setItem('hockey.nav.lastProfileRoute', '/profile/settings');
-    renderBottomNav('/bar');
+    renderBottomNav('/achievements');
 
     fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
 
@@ -803,4 +810,8 @@ it('hides global navigation on the district map only',()=>{
  expect(isBottomNavVisible('/sections',user)).toBe(false);
  expect(isBottomNavVisible('/profile',user)).toBe(true);
  expect(isBottomNavVisible('/chat',user)).toBe(true);
+});
+
+it('does not hide navigation on unrelated routes sharing the bar prefix',()=>{
+ expect(isBottomNavVisible('/barbers',{id:'test',displayName:'Player'})).toBe(true);
 });

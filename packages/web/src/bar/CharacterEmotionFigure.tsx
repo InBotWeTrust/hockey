@@ -1,5 +1,5 @@
 import {useEffect,useRef,useState,useId,type CSSProperties} from 'react';
-import {emotionAsset,type CharacterExpression} from './characterEmotion.js';
+import {emotionAsset,greetingSourceAsset,type CharacterExpression} from './characterEmotion.js';
 export function CharacterEmotionFigure({character,emotion,fallback,style,onFallbackError}:{
  character:string;emotion:CharacterExpression;fallback:string;style:CSSProperties;onFallbackError:()=>void;
 }) {
@@ -15,7 +15,7 @@ export function CharacterEmotionFigure({character,emotion,fallback,style,onFallb
   const image=new Image();
   image.onload=()=>{if(!cancelled){setPrevious(currentRef.current);setCurrent(desired);}};
   image.onerror=()=>{if(!cancelled){setPrevious(null);setCurrent(neutral);}};
-  image.src=desired.endsWith('/greeting-v1.webp')?emotionAsset(character,'joy')!:desired;
+  image.src=desired.endsWith('/greeting-v1.webp')?greetingSourceAsset(character)!:desired;
   return()=>{cancelled=true;image.onload=null;image.onerror=null;};
  },[desired,neutral,previous]);
  useEffect(()=>{
@@ -40,7 +40,7 @@ export function CharacterEmotionFigure({character,emotion,fallback,style,onFallb
      <mask id={`${maskId}-${isCurrent?'current':'previous'}`} maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1536"><ellipse cx={cx} cy={cy} rx={rx} ry={ry} fill={`url(#${maskId}-fade)`}/></mask>
     </defs>
     <image href={neutral} width="1024" height="1536" onError={failed}/>
-    <image href={emotionAsset(character,'joy')!} width="1024" height="1536" mask={`url(#${maskId}-${isCurrent?'current':'previous'})`} onError={failed}/>
+    <image href={greetingSourceAsset(character)!} width="1024" height="1536" mask={`url(#${maskId}-${isCurrent?'current':'previous'})`} onError={failed}/>
    </svg>;
   }
   return <img key={source} {...attributes} className={className} src={source} alt="" draggable={false} style={style} onError={failed}/>;
