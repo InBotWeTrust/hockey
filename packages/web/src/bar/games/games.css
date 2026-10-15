@@ -401,7 +401,7 @@
 
 /* Reserve the complete menu slot so wrapping feedback never moves the target. */
 .bar-game-screen--playing[data-game='darts'] > .bar-game-menu {
-  height: 128px;
+  height: 98px;
   overflow: hidden;
   justify-content: flex-start;
 }
@@ -573,7 +573,7 @@
   }
 }
 .bar-game-screen--playing[data-game='billiards'] > .bar-game-menu {
-  height: 128px;
+  height: 98px;
   overflow: hidden;
   justify-content: flex-start;
 }
@@ -634,4 +634,28 @@
       opacity: 0;
     }
   }
+}
+
+/* Fixed compact rows avoid grid stretching inside the reserved menu slot. */
+.bar-game-menu {
+  grid-template-rows: 46px 44px;
+  gap: 8px;
+  align-content: start;
+}
+.bar-game-menu .durak-menu__row {
+  height: 44px;
+  box-sizing: border-box;
+  padding: 4px;
+}
+.bar-game-menu .durak-menu__identity .user-avatar {
+  width: 36px !important;
+  height: 36px !important;
+}
+.bar-game-menu .durak-menu__identity { gap: 5px; }
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+}
+.bar-game-menu .durak-player-label .durak-player-name,
+.bar-game-menu .durak-player-count {
+  font-size: 10px;
 }

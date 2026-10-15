@@ -110,7 +110,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
               <UserAvatar
                 avatarUrl={view.participants[player]!.avatarUrl}
                 name={view.participants[player]!.displayName}
-                size={28}
+                size={36}
                 alt="Твой аватар"
               />
               <PoolGroup view={view} player={player} />
@@ -148,7 +148,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
               <UserAvatar
                 avatarUrl={view.participants[other]!.avatarUrl}
                 name={view.participants[other]!.displayName}
-                size={28}
+                size={36}
                 alt={`Аватар: ${view.participants[other]!.displayName}`}
               />
             </div>
