@@ -527,10 +527,10 @@
     transform: translateX(0);
   }
   65% {
-    transform: translateX(-0.12px);
+    transform: translateX(-0.06px);
   }
   85% {
-    transform: translateX(0.045px);
+    transform: translateX(var(--cue-contact));
   }
   100% {
     transform: translateX(0);

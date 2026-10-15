@@ -125,3 +125,19 @@ it('shows opponent aim, then the stroke, then removes the cue during ball motion
   expect(container.querySelector('.bar-pool-stroke')).toBeNull();
   expect(container.querySelector('.bar-pool-cue')).toBeNull();
 });
+it('pulls the whole fixed-length cue back as power increases', () => {
+  const game = barPool.create(0);
+  const { container } = render(
+    <PoolField game={game} balls={game.balls} disabled={false} send={vi.fn()} />,
+  );
+  const slider = screen.getByRole('slider');
+  fireEvent.change(slider, { target: { value: '3' } });
+  const body = container.querySelector('.bar-pool-cue-body');
+  expect(body).not.toBeNull();
+  const low = Number(body?.getAttribute('transform')?.match(/translate\(([^ ]+)/)?.[1]);
+  const shape = body?.innerHTML;
+  fireEvent.change(slider, { target: { value: '100' } });
+  const high = Number(body?.getAttribute('transform')?.match(/translate\(([^ ]+)/)?.[1]);
+  expect(low - high).toBeGreaterThan(0.15);
+  expect(body?.innerHTML).toBe(shape);
+});

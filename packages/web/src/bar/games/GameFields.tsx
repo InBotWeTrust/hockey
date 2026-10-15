@@ -320,6 +320,7 @@ export function PoolField({
       ? (remoteAim?.angle ?? -Math.PI / 2)
       : angle;
   const displayPower = stroking ? shot.power : opponent ? (remoteAim?.power ?? 0.45) : power;
+  const cuePull = 0.045 + displayPower * 0.16;
   const dragging = useRef(false);
   const published = useRef(0);
   const select = (e: PointerEvent<SVGSVGElement>) => {
@@ -492,29 +493,36 @@ export function PoolField({
                 key={stroking ? animationStart : 'aim'}
                 className={stroking ? 'bar-pool-stroke' : undefined}
                 style={
-                  stroking
-                    ? {
-                        animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS)}ms`,
-                      }
-                    : undefined
+                  {
+                    '--cue-contact': `${cuePull - barPool.R}px`,
+                    ...(stroking
+                      ? {
+                          animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS)}ms`,
+                        }
+                      : {}),
+                  } as CSSProperties
                 }
               >
-                <path
-                  d={`M${-0.055 - displayPower * 0.025} 0 L-.42 0`}
-                  stroke="#33251c"
-                  strokeWidth=".022"
-                  strokeLinecap="round"
-                />
-                <path
-                  d={`M${-0.055 - displayPower * 0.025} 0 L-.42 0`}
-                  stroke="#d6af72"
-                  strokeWidth=".014"
-                />
-                <path
-                  d={`M${-0.055 - displayPower * 0.025} 0 l-.025 0`}
-                  stroke="#b6ded6"
-                  strokeWidth=".016"
-                />
+                <g className="bar-pool-cue-body" transform={`translate(${-cuePull} 0)`}>
+                  <path
+                    d="M0 -.004 L-.73 -.014 Q-.745 0 -.73 .014 L0 .004Z"
+                    fill="#261d16"
+                    stroke="#211a14"
+                    strokeWidth=".004"
+                  />
+                  <path d="M-.018 -.004 L-.48 -.010 L-.48 .010 L-.018 .004Z" fill="#dbb77b" />
+                  <path d="M-.035 -.002 L-.47 -.006" stroke="#f2d69e" strokeWidth=".002" />
+                  <path d="M-.48 -.010 L-.71 -.013 L-.71 .013 L-.48 .010Z" fill="#70412a" />
+                  <path
+                    d="M-.49 -.009 L-.52 0 L-.49 .009 M-.60 -.011 L-.63 0 L-.60 .011"
+                    fill="none"
+                    stroke="#bc9158"
+                    strokeWidth=".003"
+                  />
+                  <path d="M-.018 0 L-.006 0" stroke="#f3e5ca" strokeWidth=".009" />
+                  <path d="M-.006 0 L0 0" stroke="#76b9b6" strokeWidth=".01" />
+                  <path d="M-.722 0 L-.738 0" stroke="#211b18" strokeWidth=".026" />
+                </g>
               </g>
             </g>
           </g>
