@@ -8,12 +8,14 @@ export type BarGameAction =
   | { type: 'checkers'; path: number[] }
   | { type: 'place'; point: darts.Point }
   | { type: 'shot'; angle: number; power: number }
+  | { type: 'aim'; angle: number; power: number }
   | { type: 'surrender' };
 export const ENGINE_VERSION = 1;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
 export const DART_IMPACT_MS = 350;
-const botPause = (kind: BarGameId) => (kind === 'darts' ? 1800 : 900);
+export const POOL_STROKE_MS = 800;
+const botPause = (kind: BarGameId) => (kind === 'checkers' ? 900 : 1800);
 export const CHARACTER_GAME = {
   maria: 'darts',
   veronika: 'billiards',
@@ -41,6 +43,8 @@ export interface Runtime {
   reason: 'played' | 'surrender' | 'inactivity' | null;
   lastDart: darts.Point | null;
   dartHits?: darts.Point[];
+  poolAim?: { angle: number; power: number; actor: darts.Player } | null;
+  poolShot?: { angle: number; power: number; cue: darts.Point } | null;
   poolFrames: pool.Ball[][];
   animationStart: number;
   revision: number;
@@ -117,6 +121,9 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     return n;
   } else if (m.game.kind === 'billiards' && action.type === 'shot') {
     const sim = pool.shoot(m.game, action);
+    n.poolAim = null;
+    const cue = m.game.balls.find((b) => b.id === 0)!;
+    n.poolShot = { angle: action.angle, power: action.power, cue: { x: cue.x, y: cue.y } };
     n.game = sim.game;
     n.poolFrames = sim.frames;
     n.feedback = {
@@ -125,7 +132,7 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
       pocketed: sim.pocketed.filter((id) => id !== 0),
       foul: sim.game.lastFoul,
     };
-    duration = sim.durationMs;
+    duration = sim.durationMs + POOL_STROKE_MS;
   } else throw new Error('Wrong game action');
   if (manual) n.missed[p] = 0;
   n.animationUntil = now + duration + (n.computer && n.game.turn === 1 ? botPause(n.game.kind) : 0);
@@ -151,6 +158,22 @@ export function command(
     };
   if (m.game.turn !== player || now >= m.deadline || now < m.animationUntil)
     throw new Error('Not your turn');
+  if (action.type === 'aim') {
+    if (
+      m.game.kind !== 'billiards' ||
+      m.game.ballInHand ||
+      !Number.isFinite(action.angle) ||
+      !Number.isFinite(action.power) ||
+      action.power < 0.03 ||
+      action.power > 1
+    )
+      throw new Error('Invalid aim');
+    return {
+      ...m,
+      poolAim: { angle: action.angle, power: action.power, actor: player },
+      revision: m.revision + 1,
+    };
+  }
   return perform(m, action, now, true);
 }
 export function advance(m: Runtime, now: number): Runtime {
@@ -163,9 +186,25 @@ export function advance(m: Runtime, now: number): Runtime {
       if (n.game.kind === 'checkers')
         n = perform(n, { type: 'checkers', path: checkers.bot(n.game) }, at, false);
       else if (n.game.kind === 'billiards') {
-        const b = pool.bot(n.game);
-        if (b.placement) n = perform(n, { type: 'place', point: b.placement }, at, false);
-        n = perform(n, { type: 'shot', ...b.shot }, at, false);
+        if (n.poolAim?.actor === 1) {
+          n = perform(
+            n,
+            { type: 'shot', angle: n.poolAim.angle, power: n.poolAim.power },
+            at,
+            false,
+          );
+        } else {
+          const b = pool.bot(n.game);
+          if (b.placement) n = perform(n, { type: 'place', point: b.placement }, at, false);
+          n = {
+            ...n,
+            poolAim: { ...b.shot, actor: 1 },
+            poolShot: null,
+            poolFrames: [],
+            animationUntil: at + 1800,
+            revision: n.revision + 1,
+          };
+        }
       } else {
         const copy = { ...n };
         const target = Math.min(n.game.scores[1], 60);

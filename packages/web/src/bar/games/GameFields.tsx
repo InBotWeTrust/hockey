@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import {
+  POOL_STROKE_MS,
+  type Runtime,
   DART_FLIGHT_MS,
   DART_IMPACT_MS,
   type barDarts,
@@ -278,37 +280,72 @@ export function PoolField({
   balls,
   disabled,
   send,
+  aim,
+  shot,
+  animationStart = 0,
+  now = Infinity,
+  opponent = false,
 }: {
+  aim?: Runtime['poolAim'];
+  shot?: Runtime['poolShot'];
+  animationStart?: number;
+  now?: number;
+  opponent?: boolean;
   game: barPool.Game;
   balls: barPool.Ball[];
   disabled: boolean;
   send: Send;
 }) {
-  const [angle, setAngle] = useState<number | null>(null),
+  const [angle, setAngle] = useState(-Math.PI / 2),
     [power, setPower] = useState(0.45);
   const svg = useRef<SVGSVGElement>(null);
   const fired = useRef(false);
   useEffect(() => {
-    setAngle(null);
+    setAngle(-Math.PI / 2 + Math.sin(game.balls[0]!.x * 71 + game.turn * 13) * 0.15);
     fired.current = false;
   }, [game.balls.map((b) => `${b.x}:${b.y}:${b.pocketed}`).join(','), game.turn, game.ballInHand]);
-  const cue = balls.find((b) => b.id === 0)!;
+  useEffect(() => {
+    if (!disabled && !game.ballInHand && aim?.actor !== game.turn)
+      send({ type: 'aim', angle, power });
+  }, [disabled, game.ballInHand, game.turn, aim?.actor]);
+  const strokeClock = useRef({ start: animationStart, delay: Math.max(0, now - animationStart) });
+  if (strokeClock.current.start !== animationStart)
+    strokeClock.current = { start: animationStart, delay: Math.max(0, now - animationStart) };
+  const stroking = !!shot && now >= animationStart && now < animationStart + POOL_STROKE_MS;
+  const cue = stroking ? shot.cue : balls.find((b) => b.id === 0)!;
+  const remoteAim = aim?.actor === game.turn ? aim : null;
+  const displayAngle = stroking
+    ? shot.angle
+    : opponent
+      ? (remoteAim?.angle ?? -Math.PI / 2)
+      : angle;
+  const displayPower = stroking ? shot.power : opponent ? (remoteAim?.power ?? 0.45) : power;
+  const dragging = useRef(false);
+  const published = useRef(0);
   const select = (e: PointerEvent<SVGSVGElement>) => {
     if (disabled) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = ((e.clientX - rect.left) / rect.width) * 1.24 - 0.12,
-      y = ((e.clientY - rect.top) / rect.height) * 2.24 - 0.12;
+    const matrix = e.currentTarget.getScreenCTM();
+    if (!matrix) return;
+    const point = e.currentTarget.createSVGPoint();
+    point.x = e.clientX;
+    point.y = e.clientY;
+    const { x, y } = point.matrixTransform(matrix.inverse());
     if (game.ballInHand) {
       send({ type: 'place', point: { x, y } });
       return;
     }
-    setAngle(Math.atan2(y - cue.y, x - cue.x));
+    const nextAngle = Math.atan2(y - cue.y, x - cue.x);
+    setAngle(nextAngle);
+    if (performance.now() - published.current > 300) {
+      published.current = performance.now();
+      send({ type: 'aim', angle: nextAngle, power });
+    }
   };
   let length = 0.5,
     hit: barPool.Ball | undefined;
-  if (angle !== null) {
-    const dx = Math.cos(angle),
-      dy = Math.sin(angle);
+  if (displayAngle !== null) {
+    const dx = Math.cos(displayAngle),
+      dy = Math.sin(displayAngle);
     length = Math.min(
       dx > 0 ? (1 - barPool.R - cue.x) / dx : dx < 0 ? (barPool.R - cue.x) / dx : Infinity,
       dy > 0 ? (2 - barPool.R - cue.y) / dy : dy < 0 ? (barPool.R - cue.y) / dy : Infinity,
@@ -329,9 +366,12 @@ export function PoolField({
     }
   }
   const end =
-    angle === null
+    displayAngle === null
       ? cue
-      : { x: cue.x + Math.cos(angle) * length, y: cue.y + Math.sin(angle) * length };
+      : {
+          x: cue.x + Math.cos(displayAngle) * Math.min(length, 0.55),
+          y: cue.y + Math.sin(displayAngle) * Math.min(length, 0.55),
+        };
   const fire = () => {
     if (disabled || angle === null || fired.current) return;
     fired.current = true;
@@ -344,7 +384,22 @@ export function PoolField({
         viewBox="-.12 -.12 1.24 2.24"
         role="img"
         aria-label="Бильярдный стол"
-        onPointerDown={select}
+        onPointerDown={(e) => {
+          if (disabled) return;
+          dragging.current = true;
+          e.currentTarget.setPointerCapture(e.pointerId);
+          select(e);
+        }}
+        onPointerMove={(e) => {
+          if (dragging.current && !game.ballInHand) select(e);
+        }}
+        onPointerUp={() => {
+          dragging.current = false;
+          if (!disabled && !game.ballInHand) send({ type: 'aim', angle, power });
+        }}
+        onPointerCancel={() => {
+          dragging.current = false;
+        }}
       >
         <defs>
           <radialGradient id="pool-felt">
@@ -380,10 +435,10 @@ export function PoolField({
             strokeWidth=".012"
           />
         ))}
-        {!disabled && angle !== null && (
+        {!game.ballInHand && !stroking && (!disabled || (opponent && !!remoteAim)) && (
           <g stroke="#f4eac9" strokeWidth=".004" strokeDasharray=".018 .014" fill="none">
             <path d={`M${cue.x} ${cue.y} L${end.x} ${end.y}`} />
-            {hit && (
+            {hit && length <= 0.55 && (
               <path
                 d={`M${hit.x} ${hit.y} l${((hit.x - end.x) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18} ${((hit.y - end.y) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18}`}
               />
@@ -424,27 +479,69 @@ export function PoolField({
               )}
             </g>
           ))}
-        {!disabled && angle !== null && (
-          <path
-            d={`M${cue.x - Math.cos(angle) * 0.08} ${cue.y - Math.sin(angle) * 0.08} l${-Math.cos(angle) * (0.3 + power * 0.1)} ${-Math.sin(angle) * (0.3 + power * 0.1)}`}
-            stroke="#d1aa6a"
-            strokeWidth=".012"
-          />
+        {(stroking || !game.ballInHand) && (!disabled || stroking || (opponent && !!remoteAim)) && (
+          <g className="bar-pool-cue" transform={`translate(${cue.x} ${cue.y})`}>
+            <g
+              className="bar-pool-cue-angle"
+              style={{
+                transform: `rotate(${(displayAngle * 180) / Math.PI}deg)`,
+                transition: opponent && !stroking ? 'transform 280ms ease-out' : 'none',
+              }}
+            >
+              <g
+                key={stroking ? animationStart : 'aim'}
+                className={stroking ? 'bar-pool-stroke' : undefined}
+                style={
+                  stroking
+                    ? {
+                        animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS)}ms`,
+                      }
+                    : undefined
+                }
+              >
+                <path
+                  d={`M${-0.055 - displayPower * 0.025} 0 L-.42 0`}
+                  stroke="#33251c"
+                  strokeWidth=".022"
+                  strokeLinecap="round"
+                />
+                <path
+                  d={`M${-0.055 - displayPower * 0.025} 0 L-.42 0`}
+                  stroke="#d6af72"
+                  strokeWidth=".014"
+                />
+                <path
+                  d={`M${-0.055 - displayPower * 0.025} 0 l-.025 0`}
+                  stroke="#b6ded6"
+                  strokeWidth=".016"
+                />
+              </g>
+            </g>
+          </g>
         )}
       </svg>
       <label className="bar-pool-power">
-        Сила удара
+        <span>
+          Сила удара <strong>{Math.round(displayPower * 100)}%</strong>
+        </span>
         <input
           type="range"
           aria-label="Сила удара"
           min="3"
           max="100"
           value={Math.round(power * 100)}
-          disabled={disabled || angle === null}
+          disabled={disabled || game.ballInHand}
           onPointerDown={() => {
             fired.current = false;
           }}
-          onChange={(e) => setPower(Number(e.target.value) / 100)}
+          onChange={(e) => {
+            const nextPower = Number(e.target.value) / 100;
+            setPower(nextPower);
+            if (performance.now() - published.current > 300) {
+              published.current = performance.now();
+              send({ type: 'aim', angle, power: nextPower });
+            }
+          }}
           onPointerUp={fire}
           onKeyUp={(e) => {
             if (e.key.startsWith('Arrow')) {
@@ -456,10 +553,10 @@ export function PoolField({
       </label>
       <p className="bar-game-hint">
         {game.ballInHand
-          ? 'Выбери свободное место для битка'
-          : angle === null
-            ? 'Коснись стола для прицела'
-            : 'Оттяни ползунок и отпусти'}
+          ? 'Выбери место для битка'
+          : opponent
+            ? 'Соперник готовит удар'
+            : 'Вращай прицел пальцем · Оттяни силу и отпусти'}
       </p>
     </div>
   );

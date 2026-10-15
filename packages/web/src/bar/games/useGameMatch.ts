@@ -12,6 +12,7 @@ export function useGameMatch(id: string | undefined) {
     [error, setError] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
     [now, setNow] = useState(Date.now());
+  const queued = useRef<BarGameAction | null>(null);
   const current = useRef(view);
   current.current = view;
   const pending = useRef<BarGameCommand | null>(null),
@@ -23,6 +24,7 @@ export function useGameMatch(id: string | undefined) {
       if (next.id !== id) return;
       offset.current = next.serverNow - Date.now();
       setNow(Date.now() + offset.current);
+      current.current = mergeGameSnapshot(current.current, next);
       setView((v) => mergeGameSnapshot(v, next));
     },
     [id],
@@ -30,6 +32,7 @@ export function useGameMatch(id: string | undefined) {
   useEffect(() => {
     const token = ++generation.current;
     pending.current = null;
+    queued.current = null;
     sending.current = false;
     setBusy(false);
     setView(null);
@@ -62,7 +65,7 @@ export function useGameMatch(id: string | undefined) {
     const token = generation.current,
       input = pending.current;
     sending.current = true;
-    setBusy(true);
+    setBusy(input.action.type !== 'aim');
     setError(null);
     try {
       const next = await gameApi.command(id, input);
@@ -83,12 +86,26 @@ export function useGameMatch(id: string | undefined) {
     } finally {
       if (token === generation.current) {
         sending.current = false;
-        setBusy(!!pending.current);
+        setBusy(!!pending.current && pending.current.action.type !== 'aim');
+        if (!pending.current && queued.current) {
+          const action = queued.current;
+          queued.current = null;
+          send(action);
+        }
       }
     }
   };
   const send = (action: BarGameAction | { type: 'ready' }) => {
-    if (pending.current || !current.current) return;
+    if (pending.current) {
+      if (
+        pending.current.action.type === 'aim' &&
+        action.type !== 'ready' &&
+        queued.current?.type !== 'shot'
+      )
+        queued.current = action;
+      return;
+    }
+    if (!current.current) return;
     pending.current = {
       requestId: crypto.randomUUID(),
       revision: current.current.runtime.revision,

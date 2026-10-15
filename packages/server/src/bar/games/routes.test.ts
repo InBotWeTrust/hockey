@@ -47,3 +47,9 @@ it('bounds gesture duration, chain length and finite coordinates', () => {
   expect(gameAction.safeParse({ type: 'place', point: { x: Infinity, y: 0 } }).success).toBe(false);
   expect(gameAction.safeParse({ type: 'checkers', path: [1] }).success).toBe(false);
 });
+
+it('accepts finite bounded shared aim and rejects excessive power', () => {
+  expect(gameAction.safeParse({ type: 'aim', angle: 1, power: 0.5 }).success).toBe(true);
+  expect(gameAction.safeParse({ type: 'aim', angle: Infinity, power: 0.5 }).success).toBe(false);
+  expect(gameAction.safeParse({ type: 'aim', angle: 1, power: 2 }).success).toBe(false);
+});

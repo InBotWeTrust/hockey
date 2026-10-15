@@ -78,3 +78,20 @@ it('spaces Maria darts and retains all hits for the final flight', () => {
   const third = advance(first, 7500);
   expect(third.dartHits).toHaveLength(3);
 });
+it('shares aim without resetting the clock or inactivity and previews the bot shot before motion', () => {
+  const m = createMatch('billiards', 0, 0, false, 1);
+  m.missed[0] = 1;
+  const aimed = command(m, 0, { type: 'aim', angle: -1, power: 0.5 }, 100);
+  expect(aimed.poolAim).toMatchObject({ angle: -1, actor: 0 });
+  expect(aimed.deadline).toBe(m.deadline);
+  expect(aimed.missed[0]).toBe(1);
+  expect(() => command(m, 1, { type: 'aim', angle: 0, power: 0.5 }, 100)).toThrow();
+  const bot = createMatch('billiards', 1, 0, true, 1);
+  const preparing = advance(bot, bot.animationUntil);
+  expect(preparing.poolAim?.actor).toBe(1);
+  expect(preparing.poolFrames).toHaveLength(0);
+  expect(advance(preparing, preparing.animationUntil - 1)).toEqual(preparing);
+  const shot = advance(preparing, preparing.animationUntil);
+  expect(shot.poolShot).toBeDefined();
+  expect(shot.poolFrames.length).toBeGreaterThan(0);
+});

@@ -1,3 +1,4 @@
+import { POOL_STROKE_MS } from '@hockey/game-core';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { HelpCircle, LogOut } from 'lucide-react';
@@ -181,11 +182,14 @@ export function GameTable({
   if (
     game.kind === 'billiards' &&
     m.poolFrames.length &&
-    now < m.animationStart + ((m.poolFrames.length - 1) * 1000) / 60
+    now < m.animationStart + POOL_STROKE_MS + ((m.poolFrames.length - 1) * 1000) / 60
   ) {
     const index = Math.max(
       0,
-      Math.min(m.poolFrames.length - 1, Math.floor(((now - m.animationStart) * 60) / 1000)),
+      Math.min(
+        m.poolFrames.length - 1,
+        Math.floor(((now - m.animationStart - POOL_STROKE_MS) * 60) / 1000),
+      ),
     );
     balls = m.poolFrames[index]!;
   }
@@ -206,7 +210,17 @@ export function GameTable({
         ) : game.kind === 'checkers' ? (
           <CheckersField game={game} disabled={!active} send={send} player={player} />
         ) : (
-          <PoolField game={game} balls={balls} disabled={!active} send={send} />
+          <PoolField
+            game={game}
+            balls={balls}
+            disabled={!active}
+            send={send}
+            aim={m.poolAim}
+            shot={m.poolShot}
+            animationStart={m.animationStart}
+            now={now}
+            opponent={game.turn !== player}
+          />
         )}
       </div>
     </>

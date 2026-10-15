@@ -93,3 +93,35 @@ it('shows flight before one embedded dart, with impact after contact', () => {
   rerender(<DartsField {...props} now={1700} />);
   expect(container.querySelector('.bar-dart-impact')).toBeNull();
 });
+
+it('shows an initial pool cue and allows power without an initial table tap', () => {
+  const game = barPool.create(0);
+  const { container } = render(
+    <PoolField game={game} balls={game.balls} disabled={false} send={vi.fn()} />,
+  );
+  expect(container.querySelector('.bar-pool-cue')).not.toBeNull();
+  expect(screen.getByRole('slider')).toBeEnabled();
+});
+it('shows opponent aim, then the stroke, then removes the cue during ball motion', () => {
+  const game = barPool.create(1);
+  const props = {
+    game,
+    balls: game.balls,
+    disabled: true,
+    opponent: true,
+    send: vi.fn(),
+    animationStart: 100,
+  };
+  const { container, rerender } = render(
+    <PoolField {...props} now={0} aim={{ angle: 1, power: 0.6, actor: 1 }} />,
+  );
+  expect((container.querySelector('.bar-pool-cue-angle') as SVGElement)?.style.transform).toContain(
+    '57.295',
+  );
+  const shot = { angle: 1, power: 0.6, cue: { x: 0.5, y: 1.5 } };
+  rerender(<PoolField {...props} now={500} shot={shot} />);
+  expect(container.querySelector('.bar-pool-stroke')).not.toBeNull();
+  rerender(<PoolField {...props} now={1000} shot={shot} opponent={true} />);
+  expect(container.querySelector('.bar-pool-stroke')).toBeNull();
+  expect(container.querySelector('.bar-pool-cue')).toBeNull();
+});

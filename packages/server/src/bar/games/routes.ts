@@ -26,6 +26,17 @@ export const gameAction = z.discriminatedUnion('type', [
   z.object({ type: z.literal('place'), point }).strict(),
   z
     .object({
+      type: z.literal('aim'),
+      angle: z
+        .number()
+        .finite()
+        .min(-Math.PI * 4)
+        .max(Math.PI * 4),
+      power: z.number().min(0.03).max(1),
+    })
+    .strict(),
+  z
+    .object({
       type: z.literal('shot'),
       angle: z
         .number()
