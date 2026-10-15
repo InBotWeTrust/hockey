@@ -613,7 +613,7 @@ export function PoolField({
     <div className="bar-pool-field">
       <svg
         ref={svg}
-        viewBox="-.12 -.12 1.24 2.24"
+        viewBox="-.15 -.13 1.3 2.28"
         role="img"
         aria-label="Бильярдный стол"
         onPointerDown={(e) => {
@@ -635,37 +635,28 @@ export function PoolField({
         }}
       >
         <defs>
-          <radialGradient id="pool-felt">
-            <stop stopColor="#278b70" />
-            <stop offset="1" stopColor="#105a4b" />
-          </radialGradient>
           <radialGradient id="ball-shine" cx="30%" cy="25%">
             <stop stopColor="white" stopOpacity=".7" />
             <stop offset=".5" stopColor="white" stopOpacity="0" />
             <stop offset="1" stopColor="black" stopOpacity=".35" />
           </radialGradient>
         </defs>
-        <rect
-          x="-.12"
-          y="-.12"
-          width="1.24"
-          height="2.24"
-          rx=".07"
-          fill="#543522"
-          stroke="#ad7945"
-          strokeWidth=".015"
+        {/* Register the artwork using its corner pocket centers: (102, 88) and (830, 1577). */}
+        <image
+          href="/bar/games/billiards-table-v1.webp"
+          x={-102 / 728}
+          y={-88 / 744.5}
+          width={933 / 728}
+          height={1685 / 744.5}
+          preserveAspectRatio="none"
         />
-        <rect x="-.025" y="-.025" width="1.05" height="2.05" rx=".045" fill="#16483b" />
-        <rect width="1" height="2" fill="url(#pool-felt)" />
         {barPool.POCKETS.map((p, i) => (
           <circle
             key={i}
             cx={p.x}
             cy={p.y}
-            r=".065"
-            fill="#111612"
-            stroke="#674b32"
-            strokeWidth=".012"
+            r=".059"
+            fill="#080b09"
           />
         ))}
         {!game.ballInHand && !stroking && (!disabled || (opponent && !!remoteAim)) && (
