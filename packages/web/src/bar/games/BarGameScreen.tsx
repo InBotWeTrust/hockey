@@ -5,7 +5,7 @@ import type { BarGameSnapshot, BarGameAction } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { GameMenu } from './GameMenu.js';
 import { gameApi } from './api.js';
-import { gameNames, gameCopy, eventReplies } from './content.js';
+import { gameNames } from './content.js';
 import { GameHelp, GameResult, gameClose } from './GameModals.js';
 import { DartsField, CheckersField, PoolField } from './GameFields.js';
 import { useGameMatch } from './useGameMatch.js';
@@ -201,17 +201,6 @@ export function GameTable({
           <PoolField game={game} balls={balls} disabled={!active} send={send} />
         )}
       </div>
-      {view.character && (
-        <p className="bar-game-reply">
-          {game.kind === 'darts' && m.lastDart
-            ? game.lastScore === 0
-              ? eventReplies.darts.miss
-              : eventReplies.darts.hit
-            : game.kind === 'billiards' && game.lastFoul
-              ? eventReplies.billiards.foul
-              : gameCopy[view.kind].playing}
-        </p>
-      )}
     </>
   );
 }

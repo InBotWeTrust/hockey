@@ -115,7 +115,6 @@ export function DartsField({
           <rect x="44" y="65" width="12" height="35" rx="4" fill="#85918c" />
           <path d="M50 95L25 135L50 124L75 135Z" fill="#ba9a51" stroke="#3b3328" strokeWidth="2" />
         </svg>
-        <span>{disabled ? 'Ход соперника' : 'Проведи дротик вверх'}</span>
       </div>
     </div>
   );

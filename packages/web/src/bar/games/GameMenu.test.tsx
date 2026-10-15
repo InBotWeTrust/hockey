@@ -45,3 +45,15 @@ it('shows a bust rather than awarded points after an overscoring dart', () => {
   ).toHaveTextContent('Перебор');
   expect(screen.getByRole('timer')).toHaveAttribute('data-tone', 'danger');
 });
+it.each(['darts', 'billiards', 'checkers'] as const)(
+  'keeps %s field free of duplicate instructions and character commentary',
+  (kind) => {
+    const v = view();
+    v.kind = kind;
+    v.runtime = createMatch(kind, 0, 0, true, 1);
+    const { container } = render(<GameTable view={v} now={0} disabled={false} send={() => {}} />);
+    expect(container.querySelector('.bar-game-reply')).toBeNull();
+    expect(screen.queryByText('Проведи дротик вверх')).not.toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Меню игры' })).toBeInTheDocument();
+  },
+);
