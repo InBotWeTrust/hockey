@@ -10,8 +10,10 @@ export function mergeGameSnapshot(current: BarGameSnapshot | null, next: BarGame
 export function useGameMatch(id: string | undefined) {
   const [view, setView] = useState<BarGameSnapshot | null>(null),
     [error, setError] = useState<string | null>(null),
+    [readError, setReadError] = useState<string | null>(null),
     [busy, setBusy] = useState(false),
     [now, setNow] = useState(Date.now());
+  const recovering = useRef(false);
   const queued = useRef<BarGameAction | null>(null);
   const current = useRef(view);
   current.current = view;
@@ -35,6 +37,9 @@ export function useGameMatch(id: string | undefined) {
     queued.current = null;
     sending.current = false;
     setBusy(false);
+    setError(null);
+    setReadError(null);
+    recovering.current = false;
     setView(null);
     let reading = false;
     const refresh = async () => {
@@ -42,9 +47,13 @@ export function useGameMatch(id: string | undefined) {
       reading = true;
       try {
         const next = await gameApi.read(id);
-        if (token === generation.current) apply(next);
+        if (token === generation.current) {
+          apply(next);
+          setReadError(null);
+          if (recovering.current) { recovering.current = false; setError(null); }
+        }
       } catch {
-        if (token === generation.current) setError('Не удалось обновить партию. Пробуем снова…');
+        if (token === generation.current) setReadError('Не удалось обновить партию. Пробуем снова…');
       } finally {
         reading = false;
       }
@@ -76,13 +85,18 @@ export function useGameMatch(id: string | undefined) {
       if (token !== generation.current) return;
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
         pending.current = null;
+        recovering.current = e.status === 409;
         setError(e.status === 409 ? 'Ход уже изменился. Обновляем поле.' : e.message);
         try {
-          apply(await gameApi.read(id));
+          const next = await gameApi.read(id);
+          if (token !== generation.current) return;
+          apply(next);
+          setReadError(null);
+          if (recovering.current) { recovering.current = false; setError(null); }
         } catch {
           /* Polling retries. */
         }
-      } else setError('Не удалось подтвердить ход. Отправь ещё раз – он не выполнится дважды.');
+      } else setError('Не удалось подтвердить ход.');
     } finally {
       if (token === generation.current) {
         sending.current = false;
@@ -115,7 +129,7 @@ export function useGameMatch(id: string | undefined) {
   };
   return {
     view,
-    error,
+    error: error ?? readError,
     busy,
     now,
     send,

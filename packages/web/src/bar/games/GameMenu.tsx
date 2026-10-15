@@ -60,7 +60,7 @@ function actionResult(view: BarGameSnapshot): string {
       return 'Время на ход вышло';
   }
 }
-export function GameMenu({ view, now, onExit, onRules }: { view: BarGameSnapshot; now: number; onExit?: (() => void) | undefined; onRules?: (() => void) | undefined }) {
+export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view: BarGameSnapshot; now: number; onExit?: (() => void) | undefined; onRules?: (() => void) | undefined; notice?: string | null | undefined; onRetry?: (() => void) | undefined }) {
   const { runtime: m, player } = view,
     g = m.game,
     other = player === 0 ? 1 : 0;
@@ -192,11 +192,12 @@ export function GameMenu({ view, now, onExit, onRules }: { view: BarGameSnapshot
       <FittedNotice
         fit
         maxLines={2}
-        role="status"
-        data-tone={tone}
+        role={notice ? 'alert' : 'status'}
+        data-tone={notice ? 'warning' : tone}
         className="duel-fatigue-notice initial-training-feedback-notice--scoreboard durak-turn-notice"
       >
-        {feedback}
+        {notice ?? feedback}
+        {notice && onRetry && <button className="bar-game-notice-retry" onClick={onRetry}>Повторить отправку</button>}
       </FittedNotice>
         {onRules && <button className="icon-btn" aria-label="Правила игры" onClick={onRules}><HelpCircle size={20} /></button>}
       </div>
