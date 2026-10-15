@@ -1,4 +1,4 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {ChevronRight,Snowflake,Goal} from 'lucide-react';
 import './city-map.css';
 type Level='beginner'|'amateur'|'professional';
@@ -25,11 +25,15 @@ export function CityMap(props:Props){
  const timer=useRef<ReturnType<typeof setTimeout>>();
  const drag=useRef<{x:number;y:number;left:number;type:string;moved:boolean}|null>(null);
  const blockUntil=useRef(0);
+ const positioned=useRef(false);
+ const currentPlace=useRef(selected);currentPlace.current=selected;
  const place=places.find(p=>p.id===selected)!;
  const image=window.devicePixelRatio>1.5?'/maps/city-6144-950ff27a3699.webp':'/maps/city-4096-ff03b6a9e3f4.webp';
  const select=(id:string)=>{setSelected(id);try{sessionStorage.setItem(storageKey,id);}catch{/* Optional selection persistence. */}clearTimeout(timer.current);setFlash(null);if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)timer.current=setTimeout(()=>setFlash(id),280);};
  useEffect(()=>()=>clearTimeout(timer.current),[]);
- useEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w)return;const move=(smooth:boolean)=>el.scrollTo?.({left:w.clientWidth*place.x/100-el.clientWidth/2,behavior:smooth&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto'});move(true);const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(()=>move(false));observer?.observe(el);const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior:'smooth'});return()=>observer?.disconnect();},[place]);
+ useLayoutEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w)return;const behavior=positioned.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto';el.scrollTo?.({left:w.clientWidth*place.x/100-el.clientWidth/2,behavior});const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior});positioned.current=true;},[place]);
+ useEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w||typeof ResizeObserver==='undefined')return;let width=el.clientWidth,height=el.clientHeight;const observer=new ResizeObserver(()=>{if(width===el.clientWidth&&height===el.clientHeight)return;width=el.clientWidth;height=el.clientHeight;const current=places.find(p=>p.id===currentPlace.current)!;el.scrollTo?.({left:w.clientWidth*current.x/100-width/2,behavior:'auto'});});observer.observe(el);return()=>observer.disconnect();},[]);
+
  let description='';const actions:{label:string;path:string;kind?:string}[]=[];
  if(selected==='yard'){description=level==='beginner'?`${daily} · Тренировка: ${training}`:'Открытая тренировка и упражнения';actions.push({label:'Тренировка',path:'/?view=training&from=sections',kind:'training'});}
  if(selected==='stadium'){description=level==='amateur'?daily:'Дуэли и турниры';actions.push({label:'Дуэли и турниры',path:'/?view=amateur&from=sections'});}

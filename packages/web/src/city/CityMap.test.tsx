@@ -18,3 +18,19 @@ it('uses bank route, real progress and development placeholders',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Задания'}));expect(screen.getByText(base.tasks)).toBeVisible();
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Спортзал'}));expect(screen.getByText('Физическая подготовка · в разработке')).toBeVisible();expect(screen.queryByRole('button',{name:'Войти'})).toBeNull();
 });
+
+it('restores both scrollers instantly and animates a new selection without observer interruption',()=>{
+ sessionStorage.clear();
+ const scroll=vi.fn();const original=HTMLElement.prototype.scrollTo;
+ HTMLElement.prototype.scrollTo=scroll;
+ const previous=globalThis.ResizeObserver;
+ globalThis.ResizeObserver=class {constructor(private cb:ResizeObserverCallback){} observe(target:Element){this.cb([{target} as ResizeObserverEntry],this as unknown as ResizeObserver);}unobserve(){}disconnect(){}} as typeof ResizeObserver;
+ try{
+  const view=render(<CityMap {...base} level="beginner"/>);
+  expect(scroll.mock.calls.map(c=>c[0].behavior)).toEqual(['auto','auto']);
+  scroll.mockClear();fireEvent.click(screen.getByRole('button',{name:'Выбрать Банк'}));
+  expect(scroll.mock.calls.map(c=>c[0].behavior)).toEqual(['smooth','smooth']);
+  view.unmount();scroll.mockClear();render(<CityMap {...base} level="beginner"/>);
+  expect(scroll.mock.calls.map(c=>c[0].behavior)).toEqual(['auto','auto']);
+ }finally{HTMLElement.prototype.scrollTo=original;globalThis.ResizeObserver=previous;}
+});
