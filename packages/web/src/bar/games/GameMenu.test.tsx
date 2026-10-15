@@ -90,7 +90,7 @@ it('keeps pool instructions in the menu notice and removes field hints', () => {
   const { container, rerender } = render(
     <GameTable view={v} now={0} disabled={false} send={() => {}} />,
   );
-  expect(screen.getByRole('status')).toHaveTextContent('Вращай прицел');
+  expect(screen.getByRole('status')).toHaveTextContent(/^Твой ход · Прицелься и выбери силу$/);
   expect(container.querySelector('.bar-game-hint')).toBeNull();
   if (v.runtime.game.kind === 'billiards') v.runtime.game.ballInHand = true;
   rerender(<GameTable view={v} now={0} disabled={false} send={() => {}} />);

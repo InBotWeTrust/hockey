@@ -72,10 +72,6 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
             ? 'Твой ход'
             : 'Ход соперника';
   if (g.kind === 'darts' && g.winner === null) turn += ` · Осталось дротиков: ${g.dartsLeft}`;
-  if (g.kind === 'billiards' && g.winner === null) {
-    const group = g.groups[g.turn];
-    turn += group ? ` · ${group === 'solids' ? 'Сплошные' : 'Полосатые'}` : ' · Стол открыт';
-  }
   const dartFeedback = g.kind === 'darts' && m.feedback?.type === 'dart';
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
@@ -87,7 +83,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
     g.kind === 'billiards' && g.winner === null && !view.ready && !animating && g.turn === player
       ? g.ballInHand
         ? 'Выбери место для битка'
-        : 'Вращай прицел · Оттяни силу и отпусти'
+        : 'Прицелься и выбери силу'
       : '';
   const feedback =
     m.missed[player] > 0 && g.winner === null
