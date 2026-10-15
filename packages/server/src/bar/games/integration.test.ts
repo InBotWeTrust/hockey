@@ -58,7 +58,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     );
   });
   it('persists a character game and applies concurrent retries only once', async () => {
-    const view = await startComputer(pool, a, 'maria', randomUUID());
+    const view = await startComputer(pool, a, 'daria', randomUUID());
     const first = await readGame(pool, a, view.id);
     const input = {
       requestId: randomUUID(),
@@ -73,7 +73,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     expect(replies[0].runtime.reason).toBe('surrender');
     const rows = await pool.query('select * from bar_game_commands');
     expect(rows.rows).toHaveLength(1);
-    const replay = await startComputer(pool, a, 'maria', randomUUID(), view.id);
+    const replay = await startComputer(pool, a, 'daria', randomUUID(), view.id);
     expect(replay.runtime.game.turn).not.toBe(view.runtime.game.turn);
   });
   it('matches queues atomically and isolates game kinds', async () => {
@@ -131,7 +131,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     await expect(joinCardRoom(pool, b, 2, false)).rejects.toMatchObject({ statusCode: 409 });
   });
   it('denies unrelated users, stale revisions and wrong turns without corrupting the match', async () => {
-    const view = await startComputer(pool, a, 'maria', randomUUID());
+    const view = await startComputer(pool, a, 'daria', randomUUID());
     await expect(readGame(pool, b, view.id)).rejects.toMatchObject({ statusCode: 404 });
     await expect(
       actGame(pool, a, view.id, {

@@ -80,7 +80,7 @@
 }
 .bar-checkers-surround {
   padding: 6.8%;
-  background: #704322 url('/bar/games/checkers-board-wood-v1.webp') center/100% 100%;
+  background: #704322 url('/bar/games/checkers-board-wood-v2.webp') center/100% 100%;
   box-shadow: 0 6px 15px #0006;
   border-radius: 4px;
 }
@@ -217,68 +217,16 @@
   min-width: 0;
 }
 .bar-games-lobby > .segmented-tabs {
-  margin-bottom: 10px;
+  margin: 0 0 16px;
 }
-.bar-new-lobby {
-  padding: 10px 0;
-}
-.bar-new-lobby h3 {
-  margin-bottom: 4px;
-}
-.bar-new-lobby p {
-  font-size: 14px;
-  line-height: 1.45;
-}
-.bar-game-lobby-heading {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.bar-game-lobby-heading h2 {
-  font-size: 18px;
-}
-.bar-game-search {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 12px;
-  border-radius: 12px;
-  border: 1px solid #b1b7b4;
-  margin: 8px 0;
-  font: inherit;
-}
-.bar-game-player-list > div,
-.bar-game-pending {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.bar-game-invite-toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(env(safe-area-inset-bottom) + 18px);
-  transform: translateX(-50%);
-  z-index: 2200;
-  width: min(350px, calc(100vw - 24px));
-  box-sizing: border-box;
-  padding: 14px;
-  border-radius: 18px;
-  background: #fff9ec;
-  box-shadow: 0 8px 30px #0004;
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-.bar-game-invite-toast p {
-  width: 100%;
+.bar-games-lobby .online-durak-lobby .duel-form-section-title {
   margin: 0;
-  font-size: 14px;
 }
-.bar-game-invite-toast .btn {
-  min-width: 100px;
+.bar-games-lobby .bar-connection {
+  margin: 0 0 16px;
 }
+
+
 @media (max-height: 720px) {
   .bar-darts-field {
     min-height: 350px;
@@ -373,7 +321,7 @@
   min-height: 0;
   overflow: hidden;
   gap: 8px;
-  background: #382416 url('/bar/games/darts-background-v1.webp') center center/cover;
+  background: #382416 url('/bar/games/darts-background-v2.webp') center center/cover;
 }
 .bar-game-screen--playing[data-game='darts'] > .bar-game-menu,
 .bar-game-screen--playing[data-game='darts'] > .bar-game-header {
@@ -467,7 +415,8 @@
   height: var(--app-viewport-height, 100dvh);
   min-height: 0;
   gap: 8px;
-  background: #382416 url('/bar/games/billiards-floor-v1.webp') center/cover fixed;
+  background: linear-gradient(#111b28a6, #111b28a6) center/cover fixed,
+    #30363e url('/bar/games/billiards-floor-v3.webp') center/cover fixed;
 }
 .bar-game-field--billiards {
   background: none;
@@ -723,6 +672,9 @@
   gap: 3px;
 }
 .bar-pool-controls {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   --pool-control-height: 80px;
   display: flex;
   gap: 10px;
@@ -857,7 +809,7 @@
 /* A clear opponent area keeps Arsenich visible above the separately drawn board. */
 .bar-game-screen--playing[data-game='checkers'][data-character='arsenich'] {
   background: linear-gradient(to bottom, transparent 720px, #472c1c 830px),
-    #472c1c url('/bar/games/checkers-arsenich-table-v1.webp') center 50px / auto 780px no-repeat;
+    #472c1c url('/bar/games/checkers-arsenich-table-v2.webp') center 50px / auto 780px no-repeat;
 }
 .bar-game-screen--playing[data-game='checkers'] > .bar-game-menu {
   height: 98px;
@@ -934,4 +886,191 @@
 }
 .bar-game-field--billiards .bar-pool-controls {
   flex: none;
+}
+
+.bar-game-screen--playing[data-game='darts'] > .bar-game-header {
+  position: absolute;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 52px);
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  z-index: 2;
+  pointer-events: none;
+}
+.bar-game-screen--playing[data-game='darts'] > .bar-game-header > button {
+  pointer-events: auto;
+}
+.bar-game-screen--playing[data-game='darts'] > .bar-game-header h1 {
+  display: none;
+}
+
+.bar-games-lobby .online-durak-lobby .duel-section-title {
+  margin: 0;
+}
+
+.bar-games-lobby .online-durak-lobby > .bar-content {
+  display: grid;
+  gap: 8px;
+}
+
+.bar-game-active-match {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bar-game-active-match {
+  grid-template-columns: 42px minmax(0, 1fr) 20px;
+}
+.bar-game-active-match .online-durak-invite__identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.bar-game-active-match__status {
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--liquid-muted, #ccc);
+}
+
+.bar-dartboard--impact {
+  animation: bar-dartboard-contact 180ms ease-out;
+  transform-origin: center;
+}
+.bar-dart-contact-ring {
+  animation: bar-dart-contact-ring 350ms ease-out both;
+  transform-origin: 0 0;
+}
+.bar-dart-contact-flecks {
+  animation: bar-dart-contact-flecks 300ms ease-out both;
+  transform-origin: 0 0;
+}
+@keyframes bar-dartboard-contact {
+  0% { transform: translateY(1px) scale(.997); }
+  40% { transform: translateY(-.5px); }
+  100% { transform: none; }
+}
+@keyframes bar-dart-contact-ring {
+  from { transform: scale(.6); opacity: .85; }
+  to { transform: scale(3.5); opacity: 0; }
+}
+@keyframes bar-dart-contact-flecks {
+  from { transform: scale(.7); opacity: .8; }
+  to { transform: scale(1.8); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-dartboard--impact { animation: none; }
+  .bar-dart-contact { display: none; }
+}
+
+.bar-game-screen--playing[data-game='billiards'] {
+  gap: 6px;
+  padding-bottom: calc(env(safe-area-inset-bottom) + 14px);
+}
+.bar-game-field--billiards .bar-pool-controls {
+  --pool-control-height: 64px;
+  margin-top: 10px;
+}
+.bar-game-field--billiards .bar-pool-controls .bar-pool-power {
+  padding: 8px 12px;
+}
+
+/* Fixed controls beside the notice; text cannot enter their hit areas. */
+.bar-game-notice-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  width: 100%;
+  min-width: 0;
+}
+.bar-game-notice-row > .icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.bar-game-menu .bar-game-notice-row .durak-turn-notice {
+  grid-column: 2;
+  justify-self: start;
+  width: fit-content;
+  max-width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 4px 7px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: normal;
+}
+.bar-game-notice-row > .icon-btn:last-child { grid-column: 3; }
+.bar-game-field--billiards .bar-pool-controls { margin-bottom: 0; }
+
+.bar-game-notice-row .durak-turn-notice > span {
+  display: block;
+  width: 100%;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.bar-game-field { position: relative; }
+.bar-game-ready-actions {
+  position: absolute;
+  bottom: 12px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+}
+
+/* Leave room below the resting dart to aim at the bottom of the board. */
+.bar-game-field--darts {
+  --darts-rest-bottom: calc(env(safe-area-inset-bottom) + 14px + clamp(90px, 15dvh, 140px));
+}
+.bar-game-field--darts .bar-darts-throw {
+  position: absolute;
+  bottom: var(--darts-rest-bottom);
+  left: 50%;
+  width: 100px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.bar-darts-throw--idle svg {
+  animation: bar-dart-idle 3.2s ease-in-out infinite;
+  transform-origin: 50% 60%;
+}
+.bar-darts-field:has([data-holding='true']) .bar-darts-throw--idle svg {
+  animation: none;
+}
+@keyframes bar-dart-idle {
+  0%, 100% { transform: translate(-4px, 2px) rotate(-3deg); }
+  50% { transform: translate(4px, -3px) rotate(3deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-darts-throw--idle svg { animation: none; }
+}
+
+.bar-game-notice-retry {
+  pointer-events: auto;
+  display: inline;
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
 }

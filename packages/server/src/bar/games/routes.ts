@@ -3,6 +3,7 @@ import { z } from 'zod';
 import * as service from './service.js';
 const id = z.object({ id: z.string().uuid() });
 const kind = z.enum(['darts', 'billiards', 'checkers']);
+export const computerCharacter = z.enum(['daria', 'veronika', 'arsenich']);
 const spin = z
   .object({ x: z.number().finite(), y: z.number().finite() })
   .strict()
@@ -69,7 +70,7 @@ export const barGameRoutes: FastifyPluginAsync = async (app) => {
   app.post('/bar/games/computer', auth, (req) => {
     const b = z
       .object({
-        character: z.enum(['maria', 'veronika', 'arsenich']),
+        character: computerCharacter,
         requestId: z.string().uuid(),
         previousId: z.string().uuid().optional(),
       })

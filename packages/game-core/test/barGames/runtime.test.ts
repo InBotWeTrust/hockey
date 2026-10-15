@@ -58,7 +58,7 @@ it('performs deterministic legal computer turns and never pauses on read', () =>
 });
 it('publishes action feedback with actual dart scoring and bust without changing the rules', () => {
   let m = createMatch('darts', 0, 0, false, 1);
-  const gesture = { dx: 0, dy: -0.5, durationMs: 400 };
+  const gesture = { dx: 0, dy: -0.5, durationMs: 225 };
   m = command(m, 0, { type: 'dart', gesture }, 100);
   expect(m.feedback).toMatchObject({ type: 'dart', actor: 0, points: 50, bust: false });
   const small = createMatch('darts', 0, 0, false, 1);

@@ -31,7 +31,7 @@ it('shows hand and deadline without menu exit or rules', () => {
   expect(screen.getByRole('region', { name: 'Меню игры' })).not.toContainElement(
     screen.getByRole('button', { name: 'Правила' }),
   );
-  expect(screen.getByRole('img', { name: 'Аватар: Дарья' })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Аватар: Мария' })).toBeInTheDocument();
 });
 it('shows settled result and supports replay', () => {
   render(
@@ -60,10 +60,10 @@ it.each(['attack', 'defend', 'taking'] as const)(
         <DurakScreen initialGame={game} />
       </MemoryRouter>,
     );
-    expect(screen.queryByRole('heading', { name: 'Дурак с Дарьей' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Дурак с Марией' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Назад' })).not.toBeInTheDocument();
     const menu = screen.getByRole('region', { name: 'Меню игры' });
-    expect(menu).toHaveTextContent('Дарья');
+    expect(menu).toHaveTextContent('Мария');
     expect(menu).toHaveTextContent(String(game.hands[1].length));
     expect(menu).toContainElement(screen.getByLabelText('Осталось времени'));
     if (phase === 'defend')
@@ -251,5 +251,5 @@ it('keeps computer trump on the deck without duplicating it in the menu', () => 
 it.each([true,false])('names the taking opponent and offers only available actions (throw=%s)',canThrow=>{
  vi.useFakeTimers();const g=createGame(()=>0.4);
  render(<MemoryRouter><DurakScreen initialGame={{...g,attacker:0,phase:'taking',limit:6,hands:[[{id:canThrow?'hearts-6':'hearts-7',suit:'hearts',rank:canThrow?6:7}],g.hands[1]],table:[{attack:{id:'clubs-6',suit:'clubs',rank:6}}]}}/></MemoryRouter>);
- expect(screen.getByRole('status')).toHaveTextContent(canThrow?'Дарья берёт. Подкинь или заверши ход.':'Дарья берёт. Заверши ход.');
+ expect(screen.getByRole('status')).toHaveTextContent(canThrow?'Мария берёт. Подкинь или заверши ход.':'Мария берёт. Заверши ход.');
 });

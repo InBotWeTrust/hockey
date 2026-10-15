@@ -49,11 +49,15 @@ export function GameResult({
       title={title}
       onRequestClose={back}
       headerAction={gameClose(back)}
-      cardClassName="bar-game-result"
+      cardClassName="bar-game-result bonus-game-preview-modal bonus-game-launch-modal"
     >
       <img
         className="bar-game-result__art"
-        src={gameArt(view.kind, `${view.character ? 'character' : 'online'}-${outcome}`)}
+        src={gameArt(
+          view.kind,
+          `${view.character ? 'character' : 'online'}-${outcome}`,
+          view.character ?? undefined,
+        )}
         alt={`${title}: ${view.character ? characterNames[view.character] : gameNames[view.kind]}`}
       />
       {reason && <p className="modal-copy">{reason}</p>}

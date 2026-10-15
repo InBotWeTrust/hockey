@@ -1,12 +1,10 @@
 import { POOL_STROKE_MS } from '@hockey/game-core';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { HelpCircle, LogOut } from 'lucide-react';
 import type { BarGameSnapshot, BarGameAction } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { GameMenu } from './GameMenu.js';
 import { gameApi } from './api.js';
-import { gameNames } from './content.js';
 import { GameHelp, GameResult, gameClose } from './GameModals.js';
 import { DartsField, CheckersField, PoolField } from './GameFields.js';
 import { useGameMatch } from './useGameMatch.js';
@@ -42,7 +40,10 @@ export function BarGameScreen() {
     setReplaying(true);
     setReplayError(null);
     try {
-      const next = await gameApi.start(view.character, replayRequest, view.id);
+      const next =
+        view.character === 'maria'
+          ? await gameApi.start('daria', replayRequest)
+          : await gameApi.start(view.character, replayRequest, view.id);
       navigate(`/bar/games/match/${next.id}`, { replace: true });
     } catch {
       setReplayError('Не удалось начать новую партию. Попробуй ещё раз.');
@@ -65,60 +66,10 @@ export function BarGameScreen() {
         </>
       ) : (
         <>
-          {view.kind === 'checkers' && (
-            <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
-          )}
-          <header className="bar-game-header">
-            <button
-              className="icon-btn"
-              aria-label="Выйти из партии"
-              onClick={() =>
-                view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)
-              }
-            >
-              <LogOut size={19} />
-            </button>
-            {view.kind !== 'checkers' && <h1>{gameNames[view.kind]}</h1>}
-            <button className="icon-btn" aria-label="Правила игры" onClick={() => setHelp(true)}>
-              <HelpCircle size={20} />
-            </button>
-          </header>
-          {view.kind !== 'checkers' && (
-            <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
-          )}
-          {match.error && (
-            <div className="bar-game-error" role="alert">
-              {match.error}
-              {match.uncertain && (
-                <button className="btn btn--ghost" onClick={match.retry}>
-                  Повторить отправку
-                </button>
-              )}
-            </div>
-          )}
-          {replayError && <p role="alert">{replayError}</p>}
-          {view.ready && !view.ready.cancelled && (
-            <AccessibleModal
-              title="Готов к игре?"
-              onRequestClose={() => setExit(true)}
-              headerAction={gameClose(() => setExit(true))}
-            >
-              <p className="modal-copy">
-                {view.ready.startsAt
-                  ? `Начинаем через ${Math.max(0, Math.ceil((view.ready.startsAt - match.now) / 1000))}…`
-                  : `Подтверди готовность. Осталось ${Math.max(0, Math.ceil((view.ready.expiresAt - match.now) / 1000))} сек.`}
-              </p>
-              <div className="modal-actions">
-                <button
-                  className="btn btn--cta"
-                  disabled={match.busy || view.ready.players.includes(view.player)}
-                  onClick={() => match.send({ type: 'ready' })}
-                >
-                  {view.ready.players.includes(view.player) ? 'Ждём соперника' : 'Готов'}
-                </button>
-              </div>
-            </AccessibleModal>
-          )}
+          <GameTable view={view} now={match.now} disabled={match.busy} send={match.send}
+            onExit={() => view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)}
+            onRules={() => setHelp(true)} notice={match.error ?? replayError}
+            onRetry={match.uncertain ? match.retry : undefined} />
           {view.ready?.cancelled && (
             <AccessibleModal
               title="Партия не началась"
@@ -171,11 +122,19 @@ export function GameTable({
   now,
   disabled,
   send,
+  onExit,
+  onRules,
+  notice,
+  onRetry,
 }: {
   view: BarGameSnapshot;
   now: number;
   disabled: boolean;
-  send: (a: BarGameAction) => void;
+  send: (a: BarGameAction | { type: 'ready' }) => void;
+  onExit?: (() => void) | undefined;
+  onRules?: (() => void) | undefined;
+  notice?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
 }) {
   const { runtime: m, player } = view;
   const game = m.game;
@@ -204,13 +163,14 @@ export function GameTable({
   }
   return (
     <>
-      <GameMenu view={view} now={now} />
+      <GameMenu view={view} now={now} onExit={onExit} onRules={onRules} notice={notice} onRetry={onRetry} />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
         {game.kind === 'darts' ? (
           <DartsField
             game={game}
             lastDart={m.lastDart}
             dartHits={m.dartHits}
+            engineVersion={m.engineVersion}
             animationStart={m.animationStart}
             now={now}
             disabled={!active}
@@ -237,7 +197,17 @@ export function GameTable({
             animationStart={m.animationStart}
             now={now}
             opponent={game.turn !== player}
+            pregame={!!view.ready}
           />
+        )}
+        {view.ready && !view.ready.cancelled && view.ready.startsAt === null && (
+          <div className="bar-game-ready-actions durak-ready-actions">
+            <button className="btn btn--cta"
+              disabled={disabled || view.ready.players.includes(player)}
+              onClick={() => send({ type: 'ready' })}>
+              {view.ready.players.includes(player) ? 'Вы готовы' : 'Готов'}
+            </button>
+          </div>
         )}
       </div>
     </>

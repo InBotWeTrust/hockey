@@ -1,3 +1,4 @@
+import { HelpCircle, LogOut } from 'lucide-react';
 import { formatRussianCount } from '../../lib/russianPlural.js';
 import {
   DART_FLIGHT_MS,
@@ -59,7 +60,7 @@ function actionResult(view: BarGameSnapshot): string {
       return 'Время на ход вышло';
   }
 }
-export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) {
+export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view: BarGameSnapshot; now: number; onExit?: (() => void) | undefined; onRules?: (() => void) | undefined; notice?: string | null | undefined; onRetry?: (() => void) | undefined }) {
   const { runtime: m, player } = view,
     g = m.game,
     other = player === 0 ? 1 : 0;
@@ -87,7 +88,9 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
     : g.winner !== null
       ? 'Партия завершена'
       : view.ready
-        ? 'Ожидаем начала'
+        ? view.ready.startsAt !== null
+          ? `Начинаем через ${Math.max(0, Math.ceil((view.ready.startsAt - now) / 1000))}…`
+          : view.ready.players.includes(other) ? 'Соперник готов' : 'Ждём соперника'
         : thinking
           ? `${view.participants[other]!.displayName} думает…`
           : animating
@@ -95,7 +98,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
             : g.turn === player
               ? 'Твой ход'
               : 'Ход соперника';
-  if (g.kind === 'darts' && g.winner === null) turn += ` · Осталось дротиков: ${g.dartsLeft}`;
+  if (g.kind === 'darts' && g.winner === null && !view.ready) turn += ` · Осталось дротиков: ${g.dartsLeft}`;
   const dartFeedback = g.kind === 'darts' && m.feedback?.type === 'dart';
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
@@ -184,14 +187,20 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
           </div>
         </div>
       </div>
+      <div className="bar-game-notice-row">
+        {onExit && <button className="icon-btn" aria-label="Выйти из партии" onClick={onExit}><LogOut size={18} /></button>}
       <FittedNotice
         fit
-        role="status"
-        data-tone={tone}
+        maxLines={2}
+        role={notice ? 'alert' : 'status'}
+        data-tone={notice ? 'warning' : tone}
         className="duel-fatigue-notice initial-training-feedback-notice--scoreboard durak-turn-notice"
       >
-        {feedback}
+        {notice ?? feedback}
+        {notice && onRetry && <button className="bar-game-notice-retry" onClick={onRetry}>Повторить отправку</button>}
       </FittedNotice>
+        {onRules && <button className="icon-btn" aria-label="Правила игры" onClick={onRules}><HelpCircle size={20} /></button>}
+      </div>
     </section>
   );
 }

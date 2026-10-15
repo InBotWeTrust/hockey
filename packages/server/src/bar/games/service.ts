@@ -14,9 +14,10 @@ import {
 import { cardTransaction, assertFree } from '../durakService.js';
 import { AppError } from '../../plugins/errors.js';
 import { reconcile, persist, type MatchRow } from './admission.js';
-const names = { maria: 'Мария', veronika: 'Вероника', arsenich: 'Арсенич' };
+const names = { maria: 'Мария', daria: 'Дарья', veronika: 'Вероника', arsenich: 'Арсенич' };
 const portraits = {
   maria: '/bar/cards/avatar-v2.webp',
+  daria: '/bar/cards/daria-avatar-v2.webp',
   veronika: '/bar/cards/veronika-avatar-v1.webp',
   arsenich: '/bar/cards/arsenich-avatar-v2.webp',
 };
@@ -217,12 +218,13 @@ export const gameLobby = (pool: Pool, user: string) =>
       sender_id: string;
       receiver_id: string;
       sender_name: string;
+      sender_avatar_url: string | null;
       receiver_name: string;
       status: string;
       match_id: string | null;
       expires_at: Date;
     }>(
-      `select i.*,s.display_name as sender_name,r.display_name as receiver_name from bar_game_invites i join users s on s.id=i.sender_id join users r on r.id=i.receiver_id where (i.sender_id=$1 or i.receiver_id=$1) and (i.status='pending' or (i.status='accepted' and i.created_at>$2)) order by i.created_at desc limit 30`,
+      `select i.*,s.display_name as sender_name,s.avatar_url as sender_avatar_url,r.display_name as receiver_name from bar_game_invites i join users s on s.id=i.sender_id join users r on r.id=i.receiver_id where (i.sender_id=$1 or i.receiver_id=$1) and (i.status='pending' or (i.status='accepted' and i.created_at>$2)) order by i.created_at desc limit 30`,
       [user, new Date(now - 600000)],
     );
     const invites: BarGameInvite[] = invitations.rows.map((i) => ({
@@ -231,6 +233,7 @@ export const gameLobby = (pool: Pool, user: string) =>
       senderId: i.sender_id,
       receiverId: i.receiver_id,
       senderName: i.sender_name,
+      senderAvatarUrl: i.sender_avatar_url,
       receiverName: i.receiver_name,
       status: i.status,
       matchId: i.match_id,

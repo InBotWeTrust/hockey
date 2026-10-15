@@ -546,7 +546,7 @@
 .bar-avatar-dock__portrait[data-character="maria"] img, .bar-detail-portrait[data-character="maria"] img { width:100%; height:100%; object-fit:cover; transform:scale(1.45) translateY(4%); transform-origin:50% 32%; }
 
 .bar-bottom-chrome .bar-space__actions--terminal { background:var(--liquid-card-bg); border-color:var(--liquid-border); box-shadow:var(--liquid-shadow); backdrop-filter:var(--liquid-blur); -webkit-backdrop-filter:var(--liquid-blur); }
-.bar-terminal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:12px; color:var(--liquid-ink); font-weight:650; }
+.bar-terminal-header { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:16px; color:var(--liquid-ink); font-weight:650; }
 .bar-terminal-header .icon-btn { width:34px; height:34px; min-width:34px; color:var(--liquid-ink); }
 .bar-space .online-durak-lobby--embedded .segmented-tabs__item { color:var(--liquid-ink); }
 .bar-space .online-durak-lobby--embedded .segmented-tabs__item--active { background:var(--liquid-selected-bg); color:var(--liquid-ink); }

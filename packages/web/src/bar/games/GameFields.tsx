@@ -1,3 +1,4 @@
+import { DartsAimControl } from './DartsAimControl.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { gameClose } from './GameModals.js';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
@@ -8,7 +9,7 @@ import {
   type Runtime,
   DART_FLIGHT_MS,
   DART_IMPACT_MS,
-  type barDarts,
+  barDarts,
   barCheckers,
   barPool,
   type BarGameAction,
@@ -27,6 +28,7 @@ export function DartsField({
   game,
   lastDart,
   dartHits,
+  engineVersion = 4,
   animationStart = 0,
   now = Infinity,
   disabled,
@@ -35,6 +37,7 @@ export function DartsField({
   game: barDarts.Game;
   lastDart: barDarts.Point | null;
   dartHits?: barDarts.Point[] | undefined;
+  engineVersion?: number;
   animationStart?: number;
   now?: number;
   disabled: boolean;
@@ -45,7 +48,15 @@ export function DartsField({
   if (flightClock.current.start !== animationStart)
     flightClock.current = { start: animationStart, delay: elapsed };
   const flying = !!lastDart && elapsed < DART_FLIGHT_MS;
-  const hits = dartHits ?? (game.hits.length ? game.hits : lastDart ? [lastDart] : []);
+  const impacting =
+    !!lastDart &&
+    Math.hypot(lastDart.x, lastDart.y) <= 1 &&
+    elapsed >= DART_FLIGHT_MS &&
+    elapsed < DART_FLIGHT_MS + DART_IMPACT_MS;
+  const showingLastImpact = !!lastDart && elapsed < DART_FLIGHT_MS + DART_IMPACT_MS;
+  const hits = game.hits.length || showingLastImpact
+    ? (dartHits ?? (game.hits.length ? game.hits : lastDart ? [lastDart] : []))
+    : [];
   const visiblePoint = (p: barDarts.Point) => ({
     x: Math.max(-1.25, Math.min(1.25, p.x)),
     y: Math.max(-1.25, Math.min(1.25, p.y)),
@@ -56,7 +67,7 @@ export function DartsField({
   const release = (e: PointerEvent<HTMLDivElement>) => {
     const s = start.current;
     start.current = null;
-    if (!s || s.id !== e.pointerId || disabled) return;
+    if (!s || s.id !== e.pointerId || disabled || engineVersion >= 4) return;
     const w = e.currentTarget.getBoundingClientRect().width;
     const dt = performance.now() - s.time;
     if (dt < 40 || dt > 5000 || e.clientY >= s.y - 8) return;
@@ -69,7 +80,7 @@ export function DartsField({
     <div
       className="bar-darts-field"
       onPointerDown={(e) => {
-        if (disabled || !e.isPrimary) return;
+        if (disabled || !e.isPrimary || engineVersion >= 4) return;
         start.current = { x: e.clientX, y: e.clientY, time: performance.now(), id: e.pointerId };
         e.currentTarget.setPointerCapture(e.pointerId);
       }}
@@ -79,7 +90,7 @@ export function DartsField({
       }}
     >
       <svg
-        className="bar-dartboard"
+        className={`bar-dartboard${impacting ? ' bar-dartboard--impact' : ''}`}
         preserveAspectRatio="xMidYMin meet"
         viewBox="0 0 300 300"
         role="img"
@@ -135,17 +146,35 @@ export function DartsField({
           stroke="#b8b294"
           strokeWidth=".7"
         />
+        {impacting && landing && (
+          <g
+            key={animationStart}
+            className="bar-dart-contact"
+            transform={`translate(${150 + landing.x * 111} ${150 + landing.y * 111})`}
+            aria-hidden="true"
+          >
+            <circle
+              className="bar-dart-contact-ring"
+              r="3"
+              fill="none"
+              stroke="#e7d5a7"
+              strokeWidth=".8"
+            />
+            <g
+              className="bar-dart-contact-flecks"
+              stroke="#d6bf86"
+              strokeWidth="1"
+              strokeLinecap="round"
+            >
+              <path d="M-5 -4 l-2 -2 M5 -3 l3 -1 M-2 5 l-1 3" />
+            </g>
+          </g>
+        )}
         {visibleHits.map((p, i) => (
           <g key={i} transform={`translate(${150 + p.x * 111} ${150 + p.y * 111}) rotate(-28)`}>
-            <g
-              className={
-                i === hits.length - 1 && elapsed < DART_FLIGHT_MS + DART_IMPACT_MS
-                  ? 'bar-dart-impact'
-                  : undefined
-              }
-            >
+            <g className={i === hits.length - 1 && impacting ? 'bar-dart-impact' : undefined}>
               <image
-                href="/bar/games/dart-embedded-v1.webp"
+                href="/bar/games/dart-embedded-v2.webp"
                 x="-5.1"
                 y="0"
                 width="10.2"
@@ -170,7 +199,7 @@ export function DartsField({
               }
             >
               <image
-                href="/bar/games/dart-flight-v1.webp"
+                href="/bar/games/dart-flight-v2.webp"
                 x="-6.1"
                 y="0"
                 width="12.2"
@@ -180,13 +209,22 @@ export function DartsField({
           </g>
         )}
       </svg>
+      {engineVersion >= 4 && (
+        <DartsAimControl
+          disabled={disabled || flying}
+          throwAt={(p) => {
+            const dy = (-(1.6 - p.y) / barDarts.SWIPE_GAIN) * 400;
+            send({ type: 'dart', gesture: { dx: (p.x / 1.4) * -dy, dy, durationMs: 400 } });
+          }}
+        />
+      )}
       <div
-        className="bar-darts-throw"
+        className={`bar-darts-throw${!disabled && !flying ? ' bar-darts-throw--idle' : ''}`}
         aria-label="Область броска"
         style={{ opacity: flying ? 0 : 1 }}
       >
         <svg viewBox="0 0 100 150" aria-hidden="true">
-          <image href="/bar/games/dart-flight-v1.webp" x="32.2" y="5" width="35.6" height="140" />
+          <image href="/bar/games/dart-flight-v2.webp" x="32.2" y="5" width="35.6" height="140" />
         </svg>
       </div>
     </div>
@@ -379,19 +417,36 @@ function PoolBall({ ball }: { ball: barPool.Ball }) {
           cx={b.x}
           cy={b.y}
           r={barPool.R}
-          fill={b.id === 0 || b.id > 8 ? '#eee9d5' : colors[b.id]}
+          fill={b.id === 0 || b.id > 8 ? '#fffdf2' : colors[b.id]}
+          stroke="#0a211d"
+          strokeWidth=".0015"
         />
         {b.id > 8 && (
           <path
-            d={`M${b.x - barPool.R * 0.94} ${b.y - 0.01} Q${b.x} ${b.y - 0.02} ${b.x + barPool.R * 0.94} ${b.y - 0.01} L${b.x + barPool.R * 0.94} ${b.y + 0.01} Q${b.x} ${b.y + 0.02} ${b.x - barPool.R * 0.94} ${b.y + 0.01} Z`}
+            d={`M${b.x - barPool.R * 0.94} ${b.y - 0.008} Q${b.x} ${b.y - 0.016} ${b.x + barPool.R * 0.94} ${b.y - 0.008} L${b.x + barPool.R * 0.94} ${b.y + 0.008} Q${b.x} ${b.y + 0.016} ${b.x - barPool.R * 0.94} ${b.y + 0.008} Z`}
             fill={colors[b.id - 8]}
           />
         )}
         <circle cx={b.x} cy={b.y} r={barPool.R} fill="url(#ball-shine)" />
         {b.id > 0 && (
           <>
-            <circle cx={b.x} cy={b.y} r=".011" fill="#f9f3de" />
-            <text x={b.x} y={b.y + 0.005} fontSize=".014" textAnchor="middle" fill="#172421">
+            <circle
+              cx={b.x}
+              cy={b.y}
+              r=".0155"
+              fill="#fffef7"
+              stroke="#222b27"
+              strokeWidth=".0007"
+            />
+            <text
+              x={b.x}
+              y={b.y + 0.0075}
+              fontSize=".022"
+              fontWeight="800"
+              fontFamily="Arial, sans-serif"
+              textAnchor="middle"
+              fill="#101613"
+            >
               {b.id}
             </text>
           </>
@@ -486,12 +541,14 @@ export function PoolField({
   animationStart = 0,
   now = Infinity,
   opponent = false,
+  pregame = false,
 }: {
   aim?: Runtime['poolAim'];
   shot?: Runtime['poolShot'];
   animationStart?: number;
   now?: number;
   opponent?: boolean;
+  pregame?: boolean;
   game: barPool.Game;
   balls: barPool.Ball[];
   disabled: boolean;
@@ -544,7 +601,10 @@ export function PoolField({
       ? (remoteAim?.spin ?? { x: 0, y: 0 })
       : spin;
   const cuePull = 0.045 + displayPower * 0.16;
-  const dragging = useRef(false);
+  const dragging = useRef<{ id: number; pointerAngle: number; angle: number } | null>(null);
+  useEffect(() => {
+    dragging.current = null;
+  }, [disabled, game.turn, game.ballInHand]);
   const published = useRef(0);
   const select = (e: PointerEvent<SVGSVGElement>) => {
     if (disabled) return;
@@ -558,7 +618,14 @@ export function PoolField({
       send({ type: 'place', point: { x, y } });
       return;
     }
-    const nextAngle = Math.atan2(y - cue.y, x - cue.x);
+    const drag = dragging.current;
+    if (!drag) return;
+    const pointerAngle = Math.atan2(y - cue.y, x - cue.x);
+    // Relative, damped rotation keeps pickup stable and gives touch aiming finer control.
+    const delta = Math.atan2(Math.sin(pointerAngle - drag.pointerAngle), Math.cos(pointerAngle - drag.pointerAngle));
+    const nextAngle = Math.atan2(Math.sin(drag.angle + delta * 0.35), Math.cos(drag.angle + delta * 0.35));
+    drag.pointerAngle = pointerAngle;
+    drag.angle = nextAngle;
     setAngle(nextAngle);
     if (performance.now() - published.current > 300) {
       published.current = performance.now();
@@ -593,8 +660,8 @@ export function PoolField({
     displayAngle === null
       ? cue
       : {
-          x: cue.x + Math.cos(displayAngle) * Math.min(length, 0.55),
-          y: cue.y + Math.sin(displayAngle) * Math.min(length, 0.55),
+          x: cue.x + Math.cos(displayAngle) * Math.min(length, 0.65),
+          y: cue.y + Math.sin(displayAngle) * Math.min(length, 0.65),
         };
   const cancelPullback = () => {
     powerDrag.current = null;
@@ -618,20 +685,39 @@ export function PoolField({
         aria-label="Бильярдный стол"
         onPointerDown={(e) => {
           if (disabled) return;
-          dragging.current = true;
+          if (game.ballInHand) {
+            select(e);
+            return;
+          }
+          if (!(e.target instanceof Element) || !e.target.closest('.bar-pool-cue-body')) return;
+          const matrix = e.currentTarget.getScreenCTM();
+          if (!matrix) return;
+          const point = e.currentTarget.createSVGPoint();
+          point.x = e.clientX;
+          point.y = e.clientY;
+          const { x, y } = point.matrixTransform(matrix.inverse());
+          dragging.current = {
+            id: e.pointerId,
+            pointerAngle: Math.atan2(y - cue.y, x - cue.x),
+            angle,
+          };
           e.currentTarget.setPointerCapture(e.pointerId);
-          select(e);
+          e.preventDefault();
         }}
         onPointerMove={(e) => {
-          if (dragging.current && !game.ballInHand) select(e);
+          if (dragging.current?.id === e.pointerId && !game.ballInHand) select(e);
         }}
-        onPointerUp={() => {
-          dragging.current = false;
-          if (!disabled && !game.ballInHand)
-            send({ type: 'aim', angle, power: Math.max(0.03, power), spin });
+        onPointerUp={(e) => {
+          const drag = dragging.current;
+          if (!drag || drag.id !== e.pointerId) return;
+          if (!disabled && !game.ballInHand) {
+            select(e);
+            send({ type: 'aim', angle: drag.angle, power: Math.max(0.03, power), spin });
+          }
+          dragging.current = null;
         }}
         onPointerCancel={() => {
-          dragging.current = false;
+          dragging.current = null;
         }}
       >
         <defs>
@@ -643,7 +729,7 @@ export function PoolField({
         </defs>
         {/* Register the artwork using its corner pocket centers: (102, 88) and (830, 1577). */}
         <image
-          href="/bar/games/billiards-table-v1.webp"
+          href="/bar/games/billiards-table-v2.webp"
           x={-102 / 728}
           y={-88 / 744.5}
           width={933 / 728}
@@ -651,13 +737,7 @@ export function PoolField({
           preserveAspectRatio="none"
         />
         {barPool.POCKETS.map((p, i) => (
-          <circle
-            key={i}
-            cx={p.x}
-            cy={p.y}
-            r=".059"
-            fill="#080b09"
-          />
+          <circle key={i} cx={p.x} cy={p.y} r=".059" fill="#080b09" />
         ))}
         {!game.ballInHand && !stroking && (!disabled || (opponent && !!remoteAim)) && (
           <g
@@ -672,7 +752,7 @@ export function PoolField({
                 d={`M${cue.x + Math.cos(displayAngle) * (barPool.R + 0.018)} ${cue.y + Math.sin(displayAngle) * (barPool.R + 0.018)} L${end.x} ${end.y}`}
               />
             )}
-            {hit && length <= 0.55 && (
+            {hit && length <= 0.65 && (
               <path
                 d={`M${hit.x} ${hit.y} l${((hit.x - end.x) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18} ${((hit.y - end.y) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18}`}
               />
@@ -725,6 +805,17 @@ export function PoolField({
                 }
               >
                 <g className="bar-pool-cue-body" transform={`translate(${-cuePull} 0)`}>
+                  {!disabled && !stroking && (
+                    <path
+                      className="bar-pool-cue-handle"
+                      d="M-.06 0 L-.74 0"
+                      stroke="transparent"
+                      strokeWidth=".18"
+                      pointerEvents="stroke"
+                      style={{ cursor: 'grab' }}
+                    />
+                  )}
+
                   <path
                     d="M0 -.004 L-.73 -.014 Q-.745 0 -.73 .014 L0 .004Z"
                     fill="#261d16"
@@ -749,7 +840,7 @@ export function PoolField({
           </g>
         )}
       </svg>
-      <div className="bar-pool-controls">
+      {!pregame && <div className="bar-pool-controls">
         <label className="bar-pool-power bar-pool-power--pull">
           <span>
             Оттяни и отпусти <strong>{Math.round(displayPower * 100)}%</strong>
@@ -824,8 +915,8 @@ export function PoolField({
             />
           </span>
         </button>
-      </div>
-      {spinOpen && (
+      </div>}
+      {spinOpen && !pregame && (
         <PoolSpinPicker
           spin={spin}
           change={(point) => {
