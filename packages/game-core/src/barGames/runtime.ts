@@ -358,6 +358,7 @@ export interface BarGameInvite {
   senderId: string;
   receiverId: string;
   senderName: string;
+  senderAvatarUrl?: string | null;
   receiverName: string;
   status: string;
   matchId: string | null;

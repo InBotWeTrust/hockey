@@ -538,12 +538,14 @@ export function PoolField({
   animationStart = 0,
   now = Infinity,
   opponent = false,
+  pregame = false,
 }: {
   aim?: Runtime['poolAim'];
   shot?: Runtime['poolShot'];
   animationStart?: number;
   now?: number;
   opponent?: boolean;
+  pregame?: boolean;
   game: barPool.Game;
   balls: barPool.Ball[];
   disabled: boolean;
@@ -829,7 +831,7 @@ export function PoolField({
           </g>
         )}
       </svg>
-      <div className="bar-pool-controls">
+      {!pregame && <div className="bar-pool-controls">
         <label className="bar-pool-power bar-pool-power--pull">
           <span>
             Оттяни и отпусти <strong>{Math.round(displayPower * 100)}%</strong>
@@ -904,8 +906,8 @@ export function PoolField({
             />
           </span>
         </button>
-      </div>
-      {spinOpen && (
+      </div>}
+      {spinOpen && !pregame && (
         <PoolSpinPicker
           spin={spin}
           change={(point) => {

@@ -227,31 +227,6 @@
 }
 
 
-.bar-game-invite-toast {
-  position: fixed;
-  left: 50%;
-  bottom: calc(env(safe-area-inset-bottom) + 18px);
-  transform: translateX(-50%);
-  z-index: 2200;
-  width: min(350px, calc(100vw - 24px));
-  box-sizing: border-box;
-  padding: 14px;
-  border-radius: 18px;
-  background: #fff9ec;
-  box-shadow: 0 8px 30px #0004;
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-}
-.bar-game-invite-toast p {
-  width: 100%;
-  margin: 0;
-  font-size: 14px;
-}
-.bar-game-invite-toast .btn {
-  min-width: 100px;
-}
 @media (max-height: 720px) {
   .bar-darts-field {
     min-height: 350px;
@@ -440,7 +415,8 @@
   height: var(--app-viewport-height, 100dvh);
   min-height: 0;
   gap: 8px;
-  background: #382416 url('/bar/games/billiards-floor-v2.webp') center/cover fixed;
+  background: linear-gradient(#111b28a6, #111b28a6) center/cover fixed,
+    #30363e url('/bar/games/billiards-floor-v3.webp') center/cover fixed;
 }
 .bar-game-field--billiards {
   background: none;
@@ -696,6 +672,9 @@
   gap: 3px;
 }
 .bar-pool-controls {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
   --pool-control-height: 80px;
   display: flex;
   gap: 10px;
@@ -997,4 +976,58 @@
 }
 .bar-game-field--billiards .bar-pool-controls .bar-pool-power {
   padding: 8px 12px;
+}
+
+/* Fixed controls beside the notice; text cannot enter their hit areas. */
+.bar-game-notice-row {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  width: 100%;
+  min-width: 0;
+}
+.bar-game-notice-row > .icon-btn {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+}
+.bar-game-menu .bar-game-notice-row .durak-turn-notice {
+  grid-column: 2;
+  width: 100%;
+  min-width: 0;
+  height: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 4px 7px;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.3;
+  white-space: normal;
+}
+.bar-game-notice-row > .icon-btn:last-child { grid-column: 3; }
+.bar-game-field--billiards .bar-pool-controls { margin-bottom: 0; }
+
+.bar-game-notice-row .durak-turn-notice > span {
+  display: block;
+  width: 100%;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+
+.bar-game-field { position: relative; }
+.bar-game-ready-actions {
+  position: absolute;
+  bottom: 12px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
 }
