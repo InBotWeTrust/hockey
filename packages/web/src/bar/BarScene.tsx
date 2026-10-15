@@ -11,7 +11,7 @@ import { CharacterEmotionFigure } from './CharacterEmotionFigure.js';
 import type {CharacterExpression} from './characterEmotion.js';
 import { CharacterGesture } from './characterGesture.js';
 import { CharacterHitArea } from './CharacterHitArea.js';
-import { OnlineDurakLobby } from './cards/OnlineDurakLobby.js';
+import { BarGamesLobby } from './games/BarGamesLobby.js';
 import { BarIdentityPanel } from './BarIdentityPanel.js';
 import './bar-panorama.css';
 import { barCharacters, type BarCharacter } from './conversationApi.js';
@@ -215,7 +215,7 @@ export function BarScene({
       </button>
       <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
       <section ref={panel} className={`bar-space__actions${slot.occupantId === 'online' && terminalOpen ? ' bar-space__actions--terminal' : ''}`} aria-live="polite" hidden={hideIdentity}>
-        {slot.occupantId === 'online' && terminalOpen ? <><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div><OnlineDurakLobby embedded /></> : isUnfinished(slot.occupantId) ? (
+        {slot.occupantId === 'online' && terminalOpen ? <><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div><BarGamesLobby embedded /></> : isUnfinished(slot.occupantId) ? (
           <p className="bar-space__development">Персонаж в разработке</p>
         ) : profile ? (
           <BarIdentityPanel

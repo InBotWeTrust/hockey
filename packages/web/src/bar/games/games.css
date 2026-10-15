@@ -1,0 +1,337 @@
+.bar-game-screen {
+  max-width: 430px;
+  margin: auto;
+  min-height: 100dvh;
+  padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 14px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f5f0e5;
+  color: #283831;
+}
+.bar-game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bar-game-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.bar-game-scoreboard {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.bar-game-player {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 3px 8px;
+  padding: 8px;
+  border-radius: 14px;
+  background: #e6dfce;
+  border: 2px solid transparent;
+  font-size: 13px;
+  min-width: 0;
+}
+.bar-game-player.is-active {
+  border-color: #978052;
+  background: #f7edd4;
+}
+.bar-game-player > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-game-player strong {
+  grid-column: 2;
+  font-size: 15px;
+}
+.bar-game-player > div {
+  grid-row: span 2;
+}
+.bar-game-field {
+  border-radius: 18px;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 5px 18px #34241225;
+}
+.bar-game-field--darts {
+  background-image: url('/bar/games/darts-background-v1.webp');
+}
+.bar-game-field--checkers {
+  background-image: url('/bar/games/checkers-background-v1.webp');
+}
+.bar-game-field--billiards {
+  background-image: url('/bar/games/billiards-background-v1.webp');
+}
+.bar-darts-field {
+  touch-action: none;
+  user-select: none;
+  padding: 12px 8px 0;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.bar-dartboard {
+  width: 100%;
+  max-width: 350px;
+  filter: drop-shadow(0 10px 10px #0007);
+  overflow: visible;
+}
+.bar-darts-throw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 145px;
+  color: #fff4d5;
+  font-size: 13px;
+  text-shadow: 0 1px 3px #000;
+}
+.bar-darts-throw svg {
+  height: 110px;
+  width: 72px;
+  filter: drop-shadow(3px 5px 4px #0008);
+}
+.bar-checkers-surround {
+  padding: 16px;
+  background: #50301d66;
+}
+.bar-checkers {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 6px solid #583a24;
+  box-shadow: 0 5px 14px #0005;
+  aspect-ratio: 1;
+}
+.bar-checkers__cell {
+  border: 0;
+  border-radius: 0;
+  padding: 8%;
+  background: #d7be8e;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-width: 0;
+}
+.bar-checkers__cell--dark {
+  background: #6a4b31;
+}
+.bar-checkers__cell:disabled {
+  opacity: 1;
+}
+.bar-checkers__cell.is-selected {
+  box-shadow: inset 0 0 0 3px #f7d864;
+}
+.bar-checkers__cell.is-target:after {
+  content: '';
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: #f5d96ac9;
+  box-shadow: 0 0 8px #ffe48a;
+}
+.bar-checker {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 25%, #5c5751, #222723 70%);
+  border: 2px solid #121a16;
+  box-sizing: border-box;
+  box-shadow:
+    0 3px 3px #0006,
+    inset 0 0 0 3px #7775;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #e8c67d;
+}
+.bar-checker--white {
+  background: radial-gradient(circle at 35% 25%, #fff6db, #c5b38b 75%);
+  border-color: #9e8b62;
+  color: #66512d;
+}
+.bar-pool-field {
+  padding: 10px 14px 2px;
+}
+.bar-pool-field > svg {
+  display: block;
+  width: 100%;
+  max-height: 61dvh;
+  touch-action: none;
+  filter: drop-shadow(0 5px 6px #0005);
+}
+.bar-pool-power {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff4d5;
+  font-size: 12px;
+}
+.bar-pool-power input {
+  flex: 1;
+  min-width: 0;
+  accent-color: #dec17c;
+  touch-action: none;
+  height: 38px;
+}
+.bar-game-turn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.bar-game-turn strong {
+  font-variant-numeric: tabular-nums;
+}
+.bar-game-hint {
+  text-align: center;
+  font-size: 12px;
+  margin: 5px 0;
+  color: inherit;
+}
+.bar-pool-field .bar-game-hint {
+  color: #fff4d5;
+}
+.bar-game-warning,
+.bar-game-error {
+  font-size: 13px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #f8dfad;
+  margin: 0;
+}
+.bar-game-reply {
+  text-align: center;
+  font-size: 13px;
+  color: #6f604a;
+  margin: 0;
+}
+.bar-game-result__art,
+.bar-game-invite-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3/2;
+  object-fit: cover;
+  border-radius: 14px;
+}
+.bar-game-result {
+  overflow-y: auto;
+}
+.bar-games-lobby {
+  width: 100%;
+  min-width: 0;
+}
+.bar-games-lobby > .segmented-tabs {
+  margin-bottom: 10px;
+}
+.bar-new-lobby {
+  padding: 10px 0;
+}
+.bar-new-lobby h3 {
+  margin-bottom: 4px;
+}
+.bar-new-lobby p {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.bar-game-lobby-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bar-game-lobby-heading h2 {
+  font-size: 18px;
+}
+.bar-game-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #b1b7b4;
+  margin: 8px 0;
+  font: inherit;
+}
+.bar-game-player-list > div,
+.bar-game-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bar-game-invite-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  transform: translateX(-50%);
+  z-index: 2200;
+  width: min(350px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 14px;
+  border-radius: 18px;
+  background: #fff9ec;
+  box-shadow: 0 8px 30px #0004;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.bar-game-invite-toast p {
+  width: 100%;
+  margin: 0;
+  font-size: 14px;
+}
+.bar-game-invite-toast .btn {
+  min-width: 100px;
+}
+@media (max-height: 720px) {
+  .bar-darts-field {
+    min-height: 350px;
+  }
+  .bar-dartboard {
+    max-width: 290px;
+  }
+  .bar-darts-throw {
+    height: 100px;
+  }
+  .bar-darts-throw svg {
+    height: 78px;
+  }
+  .bar-pool-field > svg {
+    max-height: 55dvh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-game-screen * {
+    scroll-behavior: auto;
+  }
+}
+
+.modal-card.bar-game-help {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+}
+.bar-game-help .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(28, 36, 38, 0.97);
+  border-radius: 12px;
+  padding: 8px;
+  margin-top: -8px;
+}

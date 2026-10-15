@@ -2,7 +2,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { type durak, durakTable } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
-import { assertFree, cardTransaction } from './durakService.js';
+import { assertFree, cardTransaction, clearNewGameWaiting } from './durakService.js';
 
 type Room = {
   seats: string[];
@@ -334,6 +334,7 @@ export async function joinCardRoom(
         setFormats(r, common);
         r.ready = [];
         r.revision++;
+        await clearNewGameWaiting(client, [user]);
         await client.query('insert into bar_card_room_players(user_id,room_id) values($1,$2)', [
           user,
           row.id,
@@ -362,6 +363,7 @@ export async function joinCardRoom(
       id,
       JSON.stringify(data),
     ]);
+    await clearNewGameWaiting(client, [user]);
     await client.query('insert into bar_card_room_players(user_id,room_id) values($1,$2)', [
       user,
       id,
@@ -544,6 +546,7 @@ export async function acceptRoomInvite(client: PoolClient, user: string, id: str
   data.seats.push(user);
   data.ready = [];
   data.revision++;
+  await clearNewGameWaiting(client, [user]);
   await client.query('insert into bar_card_room_players(user_id,room_id) values($1,$2)', [
     user,
     id,

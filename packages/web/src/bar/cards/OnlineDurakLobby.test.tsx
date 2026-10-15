@@ -118,7 +118,7 @@ it('keeps several search formats selected and sends all of them', async () => {
   expect(rooms.joinRoom).toHaveBeenCalledWith([2, 4, 6]);
 });
 
-it('offers Maria through the existing launch modal', async () => {
+it('offers Daria through the existing launch modal', async () => {
   vi.mocked(api.lobby).mockResolvedValue({ matchId: null, searching: false, invites: [] });
   render(
     <MemoryRouter>
@@ -126,10 +126,8 @@ it('offers Maria through the existing launch modal', async () => {
     </MemoryRouter>,
   );
   await act(async () => {});
-  fireEvent.click(screen.getByRole('button', { name: 'Следующий персонаж' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Следующий персонаж' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Сыграть с Марией' }));
-  expect(screen.getByRole('dialog')).toHaveTextContent('Дурак с Марией');
+  fireEvent.click(screen.getByRole('button', { name: 'Сыграть с Дарьей' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Дурак с Дарьей');
   expect(screen.getByRole('button', { name: 'Играть' })).toBeInTheDocument();
 });
 
@@ -160,8 +158,6 @@ it('offers quick selection and a clear empty search result', async () => {
 
 it.each([
   ['Дарьей', 'Дарья'],
-  ['Григорием', 'Григорий'],
-  ['Арсеничем', 'Арсенич'],
 ])('opens the launch for %s with their own description', async (name, character) => {
   vi.mocked(api.lobby).mockResolvedValue({ matchId: null, searching: false, invites: [] });
   render(
@@ -197,13 +193,13 @@ it('separates character selection from online search and preserves the selected 
   expect(screen.getByRole('img', { name: 'Панорама бара «4-й период»' })).toBeInTheDocument();
   showOnline();
   expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Сыграть с Григорием' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Сыграть с Дарьей' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Игра с персонажем' }));
-  expect(screen.getByRole('button', { name: 'Сыграть с Григорием' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
   expect(screen.queryByText('Легко')).not.toBeInTheDocument();
 });
 
-it('changes one hero with a horizontal swipe but ignores vertical scrolling', async () => {
+it('keeps Daria as the only card opponent after horizontal or vertical swipes', async () => {
   vi.mocked(api.lobby).mockResolvedValue({ matchId: null, searching: false, invites: [] });
   render(
     <MemoryRouter>
@@ -214,10 +210,10 @@ it('changes one hero with a horizontal swipe but ignores vertical scrolling', as
   const carousel = screen.getByRole('region', { name: 'Выбор персонажа' });
   fireEvent.touchStart(carousel, { touches: [{ clientX: 250, clientY: 150 }] });
   fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 90, clientY: 160 }] });
-  expect(screen.getByRole('button', { name: 'Сыграть с Григорием' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
   fireEvent.touchStart(carousel, { touches: [{ clientX: 200, clientY: 100 }] });
   fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 150, clientY: 300 }] });
-  expect(screen.getByRole('button', { name: 'Сыграть с Григорием' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
 });
 
 it('moves one shared panorama between heroes and the online terminal', async () => {
@@ -229,14 +225,14 @@ it('moves one shared panorama between heroes and the online terminal', async () 
   expect(image).toHaveAttribute('src', '/bar/cards/bar-populated-panorama-v2.webp');
   expect(main).toHaveAttribute('data-scene', '0');
   fireEvent.click(screen.getByRole('button', { name: 'Следующий персонаж' }));
-  expect(main).toHaveAttribute('data-scene', '1');
+  expect(main).toHaveAttribute('data-scene', '0');
   expect(screen.getByRole('img', { name: 'Панорама бара «4-й период»' })).toBe(image);
   showOnline();
   expect(main).toHaveAttribute('data-scene', '4');
   expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Игра с персонажем' }));
-  expect(main).toHaveAttribute('data-scene', '1');
-  expect(screen.getByRole('button', { name: 'Сыграть с Григорием' })).toBeInTheDocument();
+  expect(main).toHaveAttribute('data-scene', '0');
+  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
 });
 
 it('opens online for a pending invitation and blocks a competing computer game', async () => {
@@ -251,15 +247,11 @@ it('opens online for a pending invitation and blocks a competing computer game',
   expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeDisabled();
 });
 
-it('embeds online controls with unavailable future games', async () => {
+it('embeds only card controls because game selection belongs to the shared lobby', async () => {
   vi.mocked(api.lobby).mockResolvedValue({ searching: false, invites: [], matchId: null });
   render(<MemoryRouter><OnlineDurakLobby embedded /></MemoryRouter>);
-  expect(screen.getByRole('tab', { name: 'Дурак' })).toHaveAttribute('aria-selected', 'true');
-  expect(screen.getByRole('tab', { name: 'Бильярд' })).toBeEnabled();
-  expect(screen.getByRole('tab', { name: 'Дартс' })).toBeEnabled();
-  fireEvent.click(screen.getByRole('tab', { name: 'Бильярд' }));
-  expect(screen.getByText('Раздел в разработке')).toBeInTheDocument();
-  expect(screen.getByRole('tab', { name: 'Дурак' })).toHaveAttribute('aria-selected', 'true');
+  expect(screen.queryByRole('tab', { name: 'Дартс' })).not.toBeInTheDocument();
+  expect(screen.queryByText('Раздел в разработке')).not.toBeInTheDocument();
   expect(screen.queryByRole('tab', { name: 'Игра с персонажем' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Вызвать' }));

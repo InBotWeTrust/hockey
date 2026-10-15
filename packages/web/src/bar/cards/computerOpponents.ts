@@ -1,5 +1,5 @@
 export type ComputerOpponentId = 'daria' | 'maria' | 'grigory' | 'arsenich';
-export const computerOpponents = [
+const legacyComputerOpponents = [
   {
     id: 'daria',
     name: 'Дарья',
@@ -36,7 +36,8 @@ export const computerOpponents = [
     loss: '«Не торопись с козырями. Сыграем ещё?»',
   },
 ] as const;
+export const computerOpponents = legacyComputerOpponents.filter(o=>o.id==='daria');
 export const computerOpponent = (id?: string) =>
-  computerOpponents.find((o) => o.id === id) ?? computerOpponents.find((o) => o.id === 'maria')!;
+  legacyComputerOpponents.find((o) => o.id === id) ?? legacyComputerOpponents.find((o) => o.id === 'daria')!;
 export const opponentArt = (id: ComputerOpponentId, variant: string) =>
   `/bar/cards/${id === 'maria' ? '' : `${id}-`}${variant}-${variant === 'avatar' ? 'v2' : 'v1'}.webp`;

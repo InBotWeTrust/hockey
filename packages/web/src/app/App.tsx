@@ -1,6 +1,7 @@
 import { useApplicationTheme } from './theme.js';
 import { BarAccessGate } from '../bar/BarAccessGate.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
+import {GameInvites} from '../bar/games/GameInvites.js';
 import { CardInviteToast } from '../bar/cards/CardInviteToast.js';
 import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
@@ -153,6 +154,8 @@ const ProfileStorySeriesScreen = lazy(() =>
     default: module.ProfileStorySeriesScreen,
   })),
 );
+const BarGameScreen = lazy(()=>import('../bar/games/BarGameScreen.js').then(m=>({default:m.BarGameScreen})));
+const BarGamesPage = lazy(()=>import('../bar/games/CharacterLaunch.js').then(m=>({default:m.BarGamesPage})));
 const DurakRoomScreen = lazy(() => import('../bar/cards/DurakRoomScreen.js').then(m => ({default:m.DurakRoomScreen})));
 const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js').then(m => ({default:m.OnlineDurakScreen})));
 const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
@@ -376,6 +379,7 @@ function AppExperience(): JSX.Element {
       <NativeNotificationBridge />
       <NativeUpdateBridge enabled={androidReleaseAccess} />
       <DuelInviteToast suppressed={isOpenRinkRoute(location) || hasCardInvite} />
+      <GameInvites/>
       <CardInviteToast suppressed={isOpenRinkRoute(location)} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
@@ -410,6 +414,8 @@ function AppExperience(): JSX.Element {
         <div className="app-content">
           <Suspense fallback={<RouteLoading />}>
             <Routes>
+              <Route path="/bar/games" element={<PrivateRoute><BarAccessGate><BarGamesPage/></BarAccessGate></PrivateRoute>}/>
+              <Route path="/bar/games/match/:id" element={<PrivateRoute><BarAccessGate><BarGameScreen/></BarAccessGate></PrivateRoute>}/>
               <Route path="/bar/cards/online" element={<PrivateRoute><BarAccessGate><Navigate to="/bar" replace /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/cards/room/:id" element={<PrivateRoute><BarAccessGate><DurakRoomScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/cards/match/:id" element={<PrivateRoute><BarAccessGate><OnlineDurakScreen /></BarAccessGate></PrivateRoute>} />

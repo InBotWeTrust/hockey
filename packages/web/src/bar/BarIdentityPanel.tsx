@@ -26,7 +26,7 @@ export function BarIdentityPanel({ profile, characterId, actions, onAction, onTa
    <div className="bar-identity__icon-actions">
     <button className="icon-btn" aria-label="Подробнее" title="Подробнее" onClick={()=>setExpanded(true)}><svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M8 8a4 4 0 0 1 8 0c0 3-4 3-4 6"/><path d="M12 18h.01"/></svg></button>
     {onTalk&&<button className="icon-btn" aria-label={conversationStarted?'Продолжить разговор':'Разговор'} title="Разговор" onClick={onTalk}><MessageCircle size={19} strokeWidth={1.5}/></button>}
-    {actions.map(action=><button key={action} className="icon-btn" aria-label={action==='cards'?'Игры':action==='online'?'Найти соперников':'Смотреть трансляции'} title={action==='broadcasts'?'Трансляции':'Игры'} onClick={()=>onAction(action)}>{action==='cards'?<Gamepad2 size={19} strokeWidth={1.5}/>:<Play size={19} strokeWidth={1.5}/>}</button>)}
+    {actions.map(action=><button key={action} className="icon-btn" aria-label={action==='online'?'Найти соперников':action==='broadcasts'?'Смотреть трансляции':'Игры'} title={action==='broadcasts'?'Трансляции':'Игры'} onClick={()=>onAction(action)}>{action!=='online'&&action!=='broadcasts'?<Gamepad2 size={19} strokeWidth={1.5}/>:<Play size={19} strokeWidth={1.5}/>}</button>)}
    </div>
   </div>
   {expanded&&createPortal(<div className="modal-backdrop bar-detail-backdrop" onClick={()=>setExpanded(false)}>

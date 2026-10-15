@@ -225,3 +225,5 @@ export * as durak from "./durak.js";
 export * as durakTable from './durakTable.js';
 
 export * from "./barLayout.js";
+
+export * from './barGames/runtime.js';
