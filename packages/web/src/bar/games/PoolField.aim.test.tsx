@@ -56,3 +56,16 @@ it('still places a ball in hand by tapping the table', () => {
   pointer('pointerDown', table, 35, 110);
   expect(send).toHaveBeenCalledWith({ type: 'place', point: { x: 0.35, y: 1.1 } });
 });
+it('reduces cue rotation for a broad finger movement without jumping on pickup', () => {
+ const {container,table,send}=setup();
+ const cue=container.querySelector('.bar-pool-cue-angle') as HTMLElement;
+ const initial=parseFloat(cue.style.transform.replace('rotate(',''))*Math.PI/180;
+ const handle=container.querySelector('.bar-pool-cue-handle')!;
+ pointer('pointerDown',handle,50,200);
+ pointer('pointerUp',table,50,200);
+ expect(send.mock.lastCall?.[0].angle).toBeCloseTo(initial,6);
+ pointer('pointerDown',handle,50,200);
+ pointer('pointerMove',table,98,200);
+ pointer('pointerUp',table,98,200);
+ expect(send.mock.lastCall?.[0].angle-initial).toBeCloseTo(-Math.PI/4*0.35,6);
+});

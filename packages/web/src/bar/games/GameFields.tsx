@@ -598,7 +598,7 @@ export function PoolField({
       ? (remoteAim?.spin ?? { x: 0, y: 0 })
       : spin;
   const cuePull = 0.045 + displayPower * 0.16;
-  const dragging = useRef<{ id: number; offset: number; angle: number } | null>(null);
+  const dragging = useRef<{ id: number; pointerAngle: number; angle: number } | null>(null);
   useEffect(() => {
     dragging.current = null;
   }, [disabled, game.turn, game.ballInHand]);
@@ -615,8 +615,14 @@ export function PoolField({
       send({ type: 'place', point: { x, y } });
       return;
     }
-    const nextAngle = Math.atan2(y - cue.y, x - cue.x) + (dragging.current?.offset ?? 0);
-    if (dragging.current) dragging.current.angle = nextAngle;
+    const drag = dragging.current;
+    if (!drag) return;
+    const pointerAngle = Math.atan2(y - cue.y, x - cue.x);
+    // Relative, damped rotation keeps pickup stable and gives touch aiming finer control.
+    const delta = Math.atan2(Math.sin(pointerAngle - drag.pointerAngle), Math.cos(pointerAngle - drag.pointerAngle));
+    const nextAngle = Math.atan2(Math.sin(drag.angle + delta * 0.35), Math.cos(drag.angle + delta * 0.35));
+    drag.pointerAngle = pointerAngle;
+    drag.angle = nextAngle;
     setAngle(nextAngle);
     if (performance.now() - published.current > 300) {
       published.current = performance.now();
@@ -689,7 +695,7 @@ export function PoolField({
           const { x, y } = point.matrixTransform(matrix.inverse());
           dragging.current = {
             id: e.pointerId,
-            offset: angle - Math.atan2(y - cue.y, x - cue.x),
+            pointerAngle: Math.atan2(y - cue.y, x - cue.x),
             angle,
           };
           e.currentTarget.setPointerCapture(e.pointerId);
