@@ -137,3 +137,24 @@ it('starts pool counters at zero and counts pocketed group balls with compact gr
     screen.getByRole('img', { name: 'Полосатые шары' }),
   );
 });
+it.each([
+  { pocketed: [], foul: false, winner: null, result: 'Шар не забит' },
+  { pocketed: [], foul: true, winner: null, result: 'Фол' },
+  { pocketed: [1], foul: false, winner: null, result: '1 шар' },
+  { pocketed: [8], foul: false, winner: 0, result: 'Партия завершена' },
+] as const)(
+  'hides pool outcome until motion ends: $result',
+  ({ pocketed, foul, winner, result }) => {
+    const v = view();
+    v.kind = 'billiards';
+    v.runtime = createMatch('billiards', 0, 0, false, 1);
+    v.runtime.feedback = { type: 'shot', actor: 0, pocketed: [...pocketed], foul };
+    v.runtime.animationUntil = 5000;
+    v.runtime.game.winner = winner;
+    const { rerender } = render(<GameTable view={v} now={1000} disabled={false} send={() => {}} />);
+    expect(screen.getByRole('status')).toHaveTextContent(/^Ход выполняется…$/);
+    expect(screen.getByRole('status')).toHaveAttribute('data-tone', 'warning');
+    rerender(<GameTable view={v} now={5000} disabled={false} send={() => {}} />);
+    expect(screen.getByRole('status')).toHaveTextContent(result);
+  },
+);

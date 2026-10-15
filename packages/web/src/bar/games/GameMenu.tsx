@@ -59,12 +59,14 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
     g = m.game,
     other = player === 0 ? 1 : 0;
   const animating = now < m.animationUntil;
+  const poolShotPending = g.kind === 'billiards' && m.feedback?.type === 'shot' && animating;
   const seconds =
-    g.winner !== null || view.ready
+    (g.winner !== null && !poolShotPending) || view.ready
       ? null
       : Math.max(0, Math.ceil((m.deadline - Math.max(now, m.animationUntil)) / 1000));
-  let turn =
-    g.winner !== null
+  let turn = poolShotPending
+    ? 'Ход выполняется…'
+    : g.winner !== null
       ? 'Партия завершена'
       : view.ready
         ? 'Ожидаем начала'
@@ -78,7 +80,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
     (dartFeedback && (sinceContact < 0 || sinceContact >= 2000)) ||
-    (g.kind === 'billiards' && now >= m.animationUntil + 2000)
+    (g.kind === 'billiards' && (animating || now >= m.animationUntil + 2000))
       ? ''
       : actionResult(view);
   const poolHint =
@@ -97,8 +99,9 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
         : poolHint
           ? `${turn} · ${poolHint}`
           : turn;
-  const tone =
-    m.missed[player] > 0 || m.feedback?.bust || m.feedback?.foul
+  const tone = poolShotPending
+    ? 'warning'
+    : m.missed[player] > 0 || m.feedback?.bust || m.feedback?.foul
       ? 'danger'
       : g.turn !== player || animating
         ? 'warning'
