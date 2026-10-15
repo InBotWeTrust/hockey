@@ -606,8 +606,18 @@ export function PoolField({
           />
         ))}
         {!game.ballInHand && !stroking && (!disabled || (opponent && !!remoteAim)) && (
-          <g stroke="#f4eac9" strokeWidth=".004" strokeDasharray=".018 .014" fill="none">
-            <path d={`M${cue.x} ${cue.y} L${end.x} ${end.y}`} />
+          <g
+            stroke="#f4eac9"
+            strokeOpacity=".4"
+            strokeWidth=".003"
+            strokeDasharray=".018 .014"
+            fill="none"
+          >
+            {length > barPool.R + 0.018 && (
+              <path
+                d={`M${cue.x + Math.cos(displayAngle) * (barPool.R + 0.018)} ${cue.y + Math.sin(displayAngle) * (barPool.R + 0.018)} L${end.x} ${end.y}`}
+              />
+            )}
             {hit && length <= 0.55 && (
               <path
                 d={`M${hit.x} ${hit.y} l${((hit.x - end.x) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18} ${((hit.y - end.y) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18}`}
