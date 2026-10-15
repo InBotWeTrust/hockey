@@ -10,7 +10,7 @@ export type BarGameAction =
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 4;
+export const ENGINE_VERSION = 5;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -18,7 +18,9 @@ export const DART_IMPACT_MS = 350;
 export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
-  return version === 1 || version === 2 || version === 3 || version === ENGINE_VERSION;
+  return (
+    version === 1 || version === 2 || version === 3 || version === 4 || version === ENGINE_VERSION
+  );
 }
 function botPause(m: Runtime, continuingDarts = false): number {
   if (m.engineVersion === 1) return m.game.kind === 'checkers' ? 900 : 1800;
@@ -256,6 +258,12 @@ export function advance(m: Runtime, now: number): Runtime {
           x: Math.sin(angle) * radius + x,
           y: -Math.cos(angle) * radius + (random(copy) - 0.5) * 0.15,
         };
+        if (n.engineVersion >= 5) {
+          const targetPoint = darts.botTarget(n.game.scores[1]);
+          const imprecise = random(copy) < 0.25;
+          point.x = targetPoint.x + (random(copy) - 0.5) * (imprecise ? 0.2 : 0.028);
+          point.y = targetPoint.y + (random(copy) - 0.5) * (imprecise ? 0.16 : 0.025);
+        }
         const gain = n.engineVersion >= 4 ? darts.SWIPE_GAIN : darts.LEGACY_SWIPE_GAIN;
         const speed = (1.6 - point.y) / gain;
         n = perform(

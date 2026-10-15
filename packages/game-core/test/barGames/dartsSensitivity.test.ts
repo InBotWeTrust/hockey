@@ -17,7 +17,7 @@ it('pins existing matches to their original swipe sensitivity', () => {
   expect(command(m, 0, { type: 'dart', gesture: gentle }, 1).lastDart?.y).toBeCloseTo(-0.2);
 });
 it('preserves Maria targeting and deterministic results after recalibration', () => {
-  const current = createMatch('darts', 1, 0, true, 12);
+  const current = { ...createMatch('darts', 1, 0, true, 12), engineVersion: 4 };
   const legacy = { ...current, engineVersion: 3 };
   const oldHit = advance(legacy, legacy.animationUntil).lastDart!;
   const hit = advance(current, current.animationUntil).lastDart!;
