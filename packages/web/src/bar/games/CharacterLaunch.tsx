@@ -36,19 +36,20 @@ export function CharacterLaunch({
   };
   return (
     <AccessibleModal
-      title={`${gameNames[kind]} · ${characterNames[character]}`}
+      title={`${gameNames[kind]} с ${{ maria: 'Марией', daria: 'Дарьей', veronika: 'Вероникой', arsenich: 'Арсеничем' }[character]}`}
       onRequestClose={close}
+      cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
       headerAction={gameClose(close)}
     >
       <img
         className="bar-game-invite-art"
-        src={gameArt(kind, 'invite')}
+        src={gameArt(kind, 'invite', character)}
         alt={characterNames[character]}
       />
-      <p className="modal-copy">{gameCopy[kind].invite}</p>
+      <p className="modal-copy bonus-game-preview-modal__story">{gameCopy[kind].invite}</p>
       {error && <p role="alert">{error}</p>}
       <div className="modal-actions">
-        <button className="btn btn--cta" onClick={() => void start()} disabled={busy}>
+        <button className="modal-primary btn btn--cta" onClick={() => void start()} disabled={busy}>
           Играть
         </button>
       </div>

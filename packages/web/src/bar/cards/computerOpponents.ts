@@ -36,8 +36,8 @@ const legacyComputerOpponents = [
     loss: '«Не торопись с козырями. Сыграем ещё?»',
   },
 ] as const;
-export const computerOpponents = legacyComputerOpponents.filter(o=>o.id==='daria');
+export const computerOpponents = legacyComputerOpponents.filter(o=>o.id==='maria');
 export const computerOpponent = (id?: string) =>
-  legacyComputerOpponents.find((o) => o.id === id) ?? legacyComputerOpponents.find((o) => o.id === 'daria')!;
+  legacyComputerOpponents.find((o) => o.id === id) ?? legacyComputerOpponents.find((o) => o.id === 'maria')!;
 export const opponentArt = (id: ComputerOpponentId, variant: string) =>
   `/bar/cards/${id === 'maria' ? '' : `${id}-`}${variant}-${variant === 'avatar' ? 'v2' : 'v1'}.webp`;

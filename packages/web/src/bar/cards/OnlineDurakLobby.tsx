@@ -234,11 +234,7 @@ export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
         />
       )}
       <section className="bar-content">
-        {embedded ? <>
-        <div className="durak-mode-tabs">
-
-        </div>
-        </> : <>
+        {!embedded && <>
         <div className="durak-mode-tabs">
           <SegmentedTabs
             items={[

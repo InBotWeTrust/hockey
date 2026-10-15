@@ -116,7 +116,7 @@ export function BarPanorama() {
   }, [retry]);
   const [gameCharacter, setGameCharacter] = useState<GameCharacter | null>(null);
   const action = (kind: BarAction, id: BarOccupantId) => {
-    if (kind === 'cards') setOpponent('daria');
+    if (kind === 'cards') setOpponent('maria');
     else if (kind === 'darts' || kind === 'billiards' || kind === 'checkers')
       setGameCharacter(id as GameCharacter);
     else if (kind === 'online') navigate('/bar/cards/online', { state: { mode: 'online' } });

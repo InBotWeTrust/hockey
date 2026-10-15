@@ -1,20 +1,22 @@
-import { render, screen } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { createMatch } from '@hockey/game-core';
 import { BarGameScreen } from './BarGameScreen.js';
+const scenario = vi.hoisted(() => ({ kind: 'checkers' as 'checkers' | 'darts' }));
+afterEach(cleanup);
 vi.mock('./useGameMatch.js', () => ({
   useGameMatch: () => ({
     view: {
       id: 'layout',
-      kind: 'checkers',
+      kind: scenario.kind,
       character: 'arsenich',
       player: 0,
       participants: [
         { userId: 'player', displayName: 'Игрок', avatarUrl: null },
         { userId: 'arsenich', displayName: 'Арсенич', avatarUrl: null },
       ],
-      runtime: createMatch('checkers', 0, Date.now(), true, 12),
+      runtime: createMatch(scenario.kind, 0, Date.now(), true, 12),
       ready: null,
     },
     now: Date.now(),
@@ -23,6 +25,7 @@ vi.mock('./useGameMatch.js', () => ({
   }),
 }));
 it('places checkers exit and rules after the board without a title', () => {
+  scenario.kind = 'checkers';
   render(
     <MemoryRouter>
       <BarGameScreen />
@@ -36,4 +39,19 @@ it('places checkers exit and rules after the board without a title', () => {
     ).toBeTruthy();
   }
   expect(screen.queryByRole('heading', { name: 'Шашки' })).not.toBeInTheDocument();
+});
+
+it('removes the darts title and renders controls outside its throwing area', () => {
+  scenario.kind = 'darts';
+  render(
+    <MemoryRouter>
+      <BarGameScreen />
+    </MemoryRouter>,
+  );
+  expect(screen.queryByRole('heading', { name: 'Дартс' })).not.toBeInTheDocument();
+  for (const name of ['Выйти из партии', 'Правила игры']) {
+    const button = screen.getByRole('button', { name });
+    expect(button.closest('.bar-darts-field')).toBeNull();
+    expect(button.closest('.bar-game-header')).not.toBeNull();
+  }
 });

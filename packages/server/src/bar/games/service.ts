@@ -14,9 +14,10 @@ import {
 import { cardTransaction, assertFree } from '../durakService.js';
 import { AppError } from '../../plugins/errors.js';
 import { reconcile, persist, type MatchRow } from './admission.js';
-const names = { maria: 'Мария', veronika: 'Вероника', arsenich: 'Арсенич' };
+const names = { maria: 'Мария', daria: 'Дарья', veronika: 'Вероника', arsenich: 'Арсенич' };
 const portraits = {
   maria: '/bar/cards/avatar-v2.webp',
+  daria: '/bar/cards/daria-avatar-v2.webp',
   veronika: '/bar/cards/veronika-avatar-v1.webp',
   arsenich: '/bar/cards/arsenich-avatar-v2.webp',
 };

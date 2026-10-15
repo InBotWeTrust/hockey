@@ -42,7 +42,10 @@ export function BarGameScreen() {
     setReplaying(true);
     setReplayError(null);
     try {
-      const next = await gameApi.start(view.character, replayRequest, view.id);
+      const next =
+        view.character === 'maria'
+          ? await gameApi.start('daria', replayRequest)
+          : await gameApi.start(view.character, replayRequest, view.id);
       navigate(`/bar/games/match/${next.id}`, { replace: true });
     } catch {
       setReplayError('Не удалось начать новую партию. Попробуй ещё раз.');
@@ -65,7 +68,7 @@ export function BarGameScreen() {
         </>
       ) : (
         <>
-          {view.kind === 'checkers' && (
+          {view.kind !== 'billiards' && (
             <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
           )}
           <header className="bar-game-header">
@@ -78,12 +81,12 @@ export function BarGameScreen() {
             >
               <LogOut size={19} />
             </button>
-            {view.kind !== 'checkers' && <h1>{gameNames[view.kind]}</h1>}
+            {view.kind === 'billiards' && <h1>{gameNames[view.kind]}</h1>}
             <button className="icon-btn" aria-label="Правила игры" onClick={() => setHelp(true)}>
               <HelpCircle size={20} />
             </button>
           </header>
-          {view.kind !== 'checkers' && (
+          {view.kind === 'billiards' && (
             <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
           )}
           {match.error && (
@@ -211,6 +214,7 @@ export function GameTable({
             game={game}
             lastDart={m.lastDart}
             dartHits={m.dartHits}
+            engineVersion={m.engineVersion}
             animationStart={m.animationStart}
             now={now}
             disabled={!active}

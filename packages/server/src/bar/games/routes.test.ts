@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
 import { errorsPlugin as errors } from '../../plugins/errors.js';
 import { barGameRoutes } from './routes.js';
-import { gameAction } from './routes.js';
+import { gameAction, computerCharacter } from './routes.js';
 it('rejects impossible inputs before touching persistent state and requires authentication', async () => {
   const app = Fastify();
   const query = vi.fn();
@@ -65,4 +65,9 @@ it('validates spin coordinates on shared aim and shots', () => {
       gameAction.safeParse({ type, angle: 0, power: 0.5, spin: { x: Infinity, y: 0 } }).success,
     ).toBe(false);
   }
+});
+
+it('starts new darts matches with Daria while retaining Maria only in stored matches', () => {
+  expect(computerCharacter.safeParse('daria').success).toBe(true);
+  expect(computerCharacter.safeParse('maria').success).toBe(false);
 });
