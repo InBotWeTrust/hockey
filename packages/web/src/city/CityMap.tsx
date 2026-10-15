@@ -30,11 +30,20 @@ export function CityMap(props:Props){
  const currentPlace=useRef(selected);currentPlace.current=selected;
  const place=places.find(p=>p.id===selected)!;
  const image=useCityImage();
- const select=(id:string)=>{setSelected(id);try{sessionStorage.setItem(storageKey,id);}catch{/* Optional selection persistence. */}clearTimeout(timer.current);setFlash(null);if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)timer.current=setTimeout(()=>setFlash(id),280);};
+ const targetLeft=(p:typeof places[number])=>{const el=viewport.current,w=world.current;if(!el||!w)return null;return Math.max(0,Math.min(Math.max(0,w.clientWidth-el.clientWidth),w.clientWidth*p.x/100-el.clientWidth/2));};
+ const center=(p:typeof places[number],behavior:ScrollBehavior)=>{const left=targetLeft(p);if(left!==null)viewport.current?.scrollTo?.({left,behavior});const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior});};
+ const select=(id:string)=>{if(id===selected)center(place,window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth');setSelected(id);try{sessionStorage.setItem(storageKey,id);}catch{/* Optional selection persistence. */}clearTimeout(timer.current);setFlash(null);if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)timer.current=setTimeout(()=>setFlash(id),280);};
  useEffect(()=>()=>clearTimeout(timer.current),[]);
- useLayoutEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w)return;const behavior=positioned.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto';el.scrollTo?.({left:w.clientWidth*place.x/100-el.clientWidth/2,behavior});const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior});positioned.current=true;},[place]);
+ useLayoutEffect(()=>{center(place,positioned.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto');positioned.current=true;},[place]);
  useEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w||typeof ResizeObserver==='undefined')return;let width=el.clientWidth,height=el.clientHeight;const observer=new ResizeObserver(()=>{if(width===el.clientWidth&&height===el.clientHeight)return;width=el.clientWidth;height=el.clientHeight;const current=places.find(p=>p.id===currentPlace.current)!;el.scrollTo?.({left:w.clientWidth*current.x/100-width/2,behavior:'auto'});});observer.observe(el);return()=>observer.disconnect();},[]);
 
+ const openBuilding=(p:typeof places[number])=>{
+  const left=targetLeft(p);
+  if(p.id!==selected||left===null||Math.abs((viewport.current?.scrollLeft??0)-left)>4){select(p.id);return;}
+  const routes:Record<string,string>={yard:'/?view=training&from=sections',stadium:'/?view=amateur&from=sections',shop:'/inventory',bank:'/inventory?tab=bank',tasks:'/achievements',bar:'/bar',bonus:'/bonus-games'};
+  const path=p.id===dailyId?'/daily':routes[p.id];
+  if(path)onNavigate(path);
+ };
  let description='';const actions:{label:string;path:string;kind?:string}[]=[];
  if(selected==='yard'){description=level==='beginner'?`${daily} · Тренировка: ${training}`:'Открытая тренировка и упражнения';actions.push({label:'Тренировка',path:'/?view=training&from=sections',kind:'training'});}
  if(selected==='stadium'){description=level==='amateur'?daily:'Дуэли и турниры';actions.push({label:'Дуэли и турниры',path:'/?view=amateur&from=sections'});}
@@ -55,7 +64,7 @@ export function CityMap(props:Props){
    onPointerCancel={()=>{blockUntil.current=performance.now()+500;drag.current=null;}}
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
    <div ref={world} className="district-world"><CityBackground image={image}/>
-    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>select(p.id)}/>)}
+    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>openBuilding(p)}/>)}
    </div>
   </div>
   <section className="district-panel" aria-label="Выбранное место"><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>onNavigate(a.path)}>{a.kind==='training'?<Snowflake/>:a.kind==='daily'?<Goal/>:<ChevronRight/>}</button>)}</div></div>
