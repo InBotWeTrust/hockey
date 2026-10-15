@@ -47,6 +47,7 @@ export function DartsField({
     >
       <svg
         className="bar-dartboard"
+        preserveAspectRatio="xMidYMin meet"
         viewBox="0 0 300 300"
         role="img"
         aria-label="Мишень для дартса"

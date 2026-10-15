@@ -17,7 +17,17 @@ export const CHARACTER_GAME = {
   arsenich: 'checkers',
 } as const;
 export type GameCharacter = keyof typeof CHARACTER_GAME;
+export interface BarGameFeedback {
+  type: 'dart' | 'checkers' | 'shot' | 'place' | 'timeout';
+  actor: darts.Player;
+  points?: number;
+  bust?: boolean;
+  captured?: number;
+  pocketed?: number[];
+  foul?: boolean;
+}
 export interface Runtime {
+  feedback?: BarGameFeedback;
   engineVersion: number;
   game: BarGame;
   deadline: number;
@@ -81,17 +91,35 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
   if (m.game.kind === 'darts' && action.type === 'dart') {
     n.lastDart = darts.aim(action.gesture);
     n.game = darts.hit(m.game, n.lastDart);
+    n.feedback = {
+      type: 'dart',
+      actor: p,
+      points: n.game.lastScore,
+      bust: n.game.lastScore > m.game.scores[p],
+    };
     duration = 600;
   } else if (m.game.kind === 'checkers' && action.type === 'checkers') {
     n.game = checkers.move(m.game, action.path);
+    n.feedback = {
+      type: 'checkers',
+      actor: p,
+      captured: m.game.board.filter(Boolean).length - n.game.board.filter(Boolean).length,
+    };
     duration = 350;
   } else if (m.game.kind === 'billiards' && action.type === 'place') {
     n.game = pool.place(m.game, action.point);
+    n.feedback = { type: 'place', actor: p };
     return n;
   } else if (m.game.kind === 'billiards' && action.type === 'shot') {
     const sim = pool.shoot(m.game, action);
     n.game = sim.game;
     n.poolFrames = sim.frames;
+    n.feedback = {
+      type: 'shot',
+      actor: p,
+      pocketed: sim.pocketed.filter((id) => id !== 0),
+      foul: sim.game.lastFoul,
+    };
     duration = sim.durationMs;
   } else throw new Error('Wrong game action');
   if (manual) n.missed[p] = 0;
@@ -189,6 +217,7 @@ export function advance(m: Runtime, now: number): Runtime {
           at + (game.kind === 'checkers' ? 350 : 0) + (n.computer && game.turn === 1 ? 900 : 0),
         poolFrames: [],
         lastDart: null,
+        feedback: { type: 'timeout', actor: p },
         reason: game.winner !== null ? 'played' : null,
       };
       n.deadline += game.kind === 'checkers' ? 350 : 0;

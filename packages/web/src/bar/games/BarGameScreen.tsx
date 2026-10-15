@@ -3,7 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { HelpCircle, LogOut } from 'lucide-react';
 import type { BarGameSnapshot, BarGameAction } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
-import { UserAvatar } from '../../chat/components/UserAvatar.js';
+import { GameMenu } from './GameMenu.js';
 import { gameApi } from './api.js';
 import { gameNames, gameCopy, eventReplies } from './content.js';
 import { GameHelp, GameResult, gameClose } from './GameModals.js';
@@ -49,7 +49,7 @@ export function BarGameScreen() {
     }
   };
   return (
-    <main className="bar-game-screen">
+    <main className="bar-game-screen bar-game-screen--playing" data-game={view?.kind}>
       {!view ? (
         <>
           <p role="status">Загружаем партию…</p>
@@ -177,7 +177,6 @@ export function GameTable({
     game.turn === player &&
     !animation &&
     now < m.deadline;
-  const p = player === 0 ? 1 : 0;
   let balls = game.kind === 'billiards' ? game.balls : [];
   if (
     game.kind === 'billiards' &&
@@ -190,32 +189,9 @@ export function GameTable({
     );
     balls = m.poolFrames[index]!;
   }
-  const seconds = Math.max(0, Math.ceil((m.deadline - Math.max(now, m.animationUntil)) / 1000));
   return (
     <>
-      <div className="bar-game-scoreboard">
-        {[player, p].map((i) => (
-          <div key={i} className={`bar-game-player ${game.turn === i ? 'is-active' : ''}`}>
-            <UserAvatar
-              name={view.participants[i]!.displayName}
-              avatarUrl={view.participants[i]!.avatarUrl}
-              size={34}
-            />
-            <span>{i === player ? 'Ты' : view.participants[i]!.displayName}</span>
-            <strong>
-              {game.kind === 'darts'
-                ? game.scores[i as 0 | 1]
-                : game.kind === 'billiards'
-                  ? game.groups[i as 0 | 1] === 'solids'
-                    ? 'Сплошные'
-                    : game.groups[i as 0 | 1] === 'stripes'
-                      ? 'Полосатые'
-                      : 'Стол открыт'
-                  : game.board.filter((x) => x && (x > 0 ? 0 : 1) === i).length}
-            </strong>
-          </div>
-        ))}
-      </div>
+      <GameMenu view={view} now={now} />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
         {game.kind === 'darts' ? (
           <DartsField game={game} lastDart={m.lastDart} disabled={!active} send={send} />
@@ -225,30 +201,6 @@ export function GameTable({
           <PoolField game={game} balls={balls} disabled={!active} send={send} />
         )}
       </div>
-      <div className="bar-game-turn" aria-live="polite">
-        {game.winner !== null
-          ? 'Партия завершена'
-          : view.ready
-            ? 'Ожидаем начала'
-            : animation
-              ? 'Ход выполняется…'
-              : game.turn === player
-                ? 'Твой ход'
-                : 'Ход соперника'}
-        {game.winner === null && !view.ready && !animation && <strong>{seconds} сек.</strong>}
-        {game.kind === 'darts' && <span>Дротиков: {game.dartsLeft}</span>}
-      </div>
-      {m.missed[player] > 0 && game.winner === null && (
-        <p className="bar-game-warning" role="status">
-          Один ход пропущен. Следующий пропуск подряд — поражение.
-        </p>
-      )}
-      {game.kind === 'billiards' && game.lastFoul && game.winner === null && (
-        <p className="bar-game-hint">
-          Фол.{' '}
-          {game.turn === player ? 'Поставь биток в свободное место.' : 'Соперник размещает биток.'}
-        </p>
-      )}
       {view.character && (
         <p className="bar-game-reply">
           {game.kind === 'darts' && m.lastDart

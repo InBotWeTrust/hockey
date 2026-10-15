@@ -20,39 +20,6 @@
   font-size: 20px;
   margin: 0;
 }
-.bar-game-scoreboard {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
-.bar-game-player {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
-  align-items: center;
-  gap: 3px 8px;
-  padding: 8px;
-  border-radius: 14px;
-  background: #e6dfce;
-  border: 2px solid transparent;
-  font-size: 13px;
-  min-width: 0;
-}
-.bar-game-player.is-active {
-  border-color: #978052;
-  background: #f7edd4;
-}
-.bar-game-player > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bar-game-player strong {
-  grid-column: 2;
-  font-size: 15px;
-}
-.bar-game-player > div {
-  grid-row: span 2;
-}
 .bar-game-field {
   border-radius: 18px;
   overflow: hidden;
@@ -60,8 +27,18 @@
   background-position: center;
   box-shadow: 0 5px 18px #34241225;
 }
+/* The dartboard is a separate transparent layer over the full-screen bar. */
 .bar-game-field--darts {
-  background-image: url('/bar/games/darts-background-v1.webp');
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 430px;
+  align-self: center;
+  display: flex;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
 }
 .bar-game-field--checkers {
   background-image: url('/bar/games/checkers-background-v1.webp');
@@ -334,4 +311,90 @@
   border-radius: 12px;
   padding: 8px;
   margin-top: -8px;
+}
+
+/* Reuse the card HUD; only scope its name/notice helpers to the new fields. */
+.bar-game-menu .durak-player-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+.bar-game-menu .durak-player-label .durak-player-name {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.bar-game-menu .durak-player-count {
+  flex: none;
+  font: 800 11px var(--font-sans);
+  white-space: nowrap;
+}
+.bar-game-menu .durak-turn-notice {
+  align-self: center;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  line-height: 1.3;
+  text-shadow: none;
+}
+
+.bar-game-screen--playing {
+  background: #164c3c url('/bar/cards/table-v1.webp') center top/cover;
+  color: white;
+}
+.bar-game-screen--playing .bar-game-reply {
+  color: #d8e2d9;
+}
+.bar-game-menu .durak-turn-notice > span {
+  white-space: normal;
+}
+
+.bar-game-screen--playing[data-game='darts'] {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  width: 100%;
+  max-width: none;
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  gap: 8px;
+  background: #382416 url('/bar/games/darts-background-v1.webp') center center/cover;
+}
+.bar-game-screen--playing[data-game='darts'] > .bar-game-menu,
+.bar-game-screen--playing[data-game='darts'] > .bar-game-header {
+  width: 100%;
+  max-width: 430px;
+  align-self: center;
+  flex: none;
+}
+.bar-game-field--darts > .bar-darts-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 110px;
+  justify-items: center;
+  gap: 4px;
+}
+.bar-game-field--darts .bar-dartboard {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+}
+.bar-game-field--darts .bar-darts-throw {
+  height: 110px;
+}
+.bar-game-field--darts .bar-darts-throw svg {
+  height: 85px;
 }

@@ -31,3 +31,11 @@ The full game-core run had 4 failures in `openWindowObservation.test.ts` and `op
 - Exercise invitation/search and full parties using existing authorized accounts on dev in two real clients.
 - Check touch controls on a physical phone, reconnect/background behavior, and verify exact deployed SHA after an authorized dev rollout.
 - Production is outside scope.
+
+## UI follow-up: card HUD and full-screen darts scene
+
+Reused the existing Durak HUD components/styles: player/avatar on the left, clock in the centre, opponent/avatar on the right, and action feedback directly below. Additive optional runtime feedback records actual scoring/bust, pocketed balls/fouls, captures and timeout actions without changing game rules or requiring a DB migration.
+
+Darts now uses one full-screen bar background. Its SVG board is a separate transparent layer beneath the HUD/feedback; the inset background, rounded frame and field shadow were removed. At 360×780 the rendered scene occupies exactly the viewport, document scroll height is 780, the field background is `none`, shadow is `none`, and corner radius is zero. Timer and menu centres both measured x=180.
+
+Follow-up verification: 20 core bar-game tests, 3 server service tests, 29 web/card regressions, root typecheck/lint and final web build passed. Dedicated HUD tests cover avatars, timer warning colours, feedback placement and bust text. Local browser verified both the updated menu and a real dart gesture. Existing known full-suite baseline gaps remain as described above.
