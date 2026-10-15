@@ -135,7 +135,7 @@ export function validSpin(spin: Point | undefined): boolean {
     (Number.isFinite(spin.x) && Number.isFinite(spin.y) && Math.hypot(spin.x, spin.y) <= 1)
   );
 }
-export function shoot(g: Game, s: Shot): Simulation {
+export function shoot(g: Game, s: Shot, pace: 'classic' | 'responsive' = 'responsive'): Simulation {
   if (
     g.winner !== null ||
     !validSpin(s.spin) ||
@@ -148,9 +148,12 @@ export function shoot(g: Game, s: Shot): Simulation {
   const balls = g.balls.map((b) => ({ ...b }));
   const cue = balls.find((b) => b.id === 0)!;
   if (g.ballInHand || cue.pocketed) throw new Error('Place the cue ball');
+  // Keep fine control at low power, with more pace towards a full stroke.
+  const speedScale = pace === 'classic' ? 2.8 : 2.8 + 0.8 * s.power;
+  const clothDeceleration = pace === 'classic' ? 0.4 : 0.32;
   const velocity = balls.map((b) => ({
-    x: b.id === 0 ? Math.cos(s.angle) * s.power * 2.8 : 0,
-    y: b.id === 0 ? Math.sin(s.angle) * s.power * 2.8 : 0,
+    x: b.id === 0 ? Math.cos(s.angle) * s.power * speedScale : 0,
+    y: b.id === 0 ? Math.sin(s.angle) * s.power * speedScale : 0,
   }));
   const events: Events = { firstContact: null, pocketed: [], railAfter: false, scratch: false };
   const frames: Ball[][] = [balls.map((b) => ({ ...b }))];
@@ -250,7 +253,7 @@ export function shoot(g: Game, s: Shot): Simulation {
       const b = balls[i]!,
         v = velocity[i]!;
       const speed = Math.hypot(v.x, v.y);
-      const factor = speed ? Math.max(0, speed - 0.4 * dt) / speed : 0;
+      const factor = speed ? Math.max(0, speed - clothDeceleration * dt) / speed : 0;
       v.x *= factor;
       v.y *= factor;
       b.x = Math.round(b.x * 1e9) / 1e9;

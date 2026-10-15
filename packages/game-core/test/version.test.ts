@@ -7,18 +7,18 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for Daria darts difficulty', () => {
-    expect(GAME_CORE_VERSION).toBe(96);
+  it('is bumped for responsive billiards pace', () => {
+    expect(GAME_CORE_VERSION).toBe(97);
   });
 });
 
 describe('shot core compatibility', () => {
   it('preserves sessions from the bar-only releases', () => {
-    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96])
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97])
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 97, NaN])
+    for (const version of [77, 87, 98, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });

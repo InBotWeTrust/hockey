@@ -968,7 +968,7 @@
 
 .bar-game-screen--playing[data-game='billiards'] {
   gap: 6px;
-  padding-bottom: calc(env(safe-area-inset-bottom) + 6px);
+  padding-bottom: calc(env(safe-area-inset-bottom) + 14px);
 }
 .bar-game-field--billiards .bar-pool-controls {
   --pool-control-height: 64px;
