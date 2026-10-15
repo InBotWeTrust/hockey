@@ -4,6 +4,9 @@ import { getApiBaseUrl } from '../platform/runtime.js';
 const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
+  bar_game_busy: 'Сначала заверши текущую партию в баре.',
+  bar_game_changed: 'Состояние партии изменилось. Обновляем поле.',
+  bar_invite_expired: 'Приглашение уже недоступно.',
   payments_unavailable: 'Пополнение монет временно недоступно. Загляните позже.',
   coin_package_unavailable: 'Пакет больше недоступен. Обновите каталог и выберите другой.',
   payment_balance_capacity:

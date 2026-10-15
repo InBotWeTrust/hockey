@@ -2,6 +2,8 @@ import { FittedNotice } from '../../game/FittedNotice.js';
 import { LogOut, X } from 'lucide-react';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { useEffect, useRef, useState } from 'react';
+import {Navigate} from 'react-router-dom';
+import {LocalCardAdmission,useLocalCardLease} from '../games/LocalCardAdmission.js';
 import { useNavigate, useParams } from 'react-router-dom';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { FittedMenuLabel, CardPlayerName } from './FittedMenuLabel.js';
@@ -29,7 +31,8 @@ export function DurakScreen({
   const params = useParams();
   const owner = useAuthStore(state => state.user?.id);
   const opponentId = computerOpponent(params.opponentId).id;
-  return (
+  if(!initialGame&&!previewPlayer&&params.opponentId!=='daria') return <Navigate to={params.opponentId==='maria'?'/bar/games?game=darts':params.opponentId==='arsenich'?'/bar/games?game=checkers':'/bar/games?game=cards'} replace/>;
+  const content = (
     <ComputerGame
       key={`${opponentId}:${owner ?? 'preview'}`}
       opponentId={opponentId}
@@ -37,6 +40,7 @@ export function DurakScreen({
       {...(previewPlayer ? { previewPlayer } : {})}
     />
   );
+  return initialGame||previewPlayer?content:<LocalCardAdmission>{content}</LocalCardAdmission>;
 }
 function ComputerGame({
   opponentId,
@@ -55,6 +59,10 @@ function ComputerGame({
     catch { setUnsaved(match); }
   };
   const controller = useDurakGame(initialGame, opponentId, save);
+  const lease=useLocalCardLease();
+  const result=controller.game.result;
+  useEffect(()=>{if(result!==null)void lease?.release().catch(()=>{});},[result]);
+  const restart=()=>{if(!lease){controller.restart();return;}void lease.reserve().then(()=>controller.restart()).catch(()=>{});};
   return (
     <>
     {unsaved && <div className="bar-card-history-error" role="alert">
@@ -63,7 +71,7 @@ function ComputerGame({
     </div>}
     <DurakTable
       opponentId={opponentId}
-      controller={controller}
+      controller={{...controller,restart}}
       {...(previewPlayer ? { previewPlayer } : {})}
     />
     </>

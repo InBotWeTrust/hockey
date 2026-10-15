@@ -46,8 +46,7 @@ it('offers a continued conversation from server history after entering the bar',
     </MemoryRouter>,
   );
   await screen.findByRole('heading', { name: 'Мария' });
-  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Продолжить разговор' }));
+  fireEvent.click(await screen.findByRole('button', { name: /^(Разговор|Продолжить разговор)$/ }));
   expect(await screen.findByRole('dialog', { name: 'Разговор: Мария' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'О персонаже: Мария' })).not.toBeInTheDocument();
   expect(await screen.findByText('Ответ')).toBeInTheDocument();
@@ -79,7 +78,7 @@ it('does not reset a selected stable slot on delayed reordered data', async () =
     </MemoryRouter>,
   );
   fireEvent.focus(screen.getByRole('button', { name: /^Мария$/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Перейти: Мария' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Мария$/ }));
   const data = fixture();
   data.layout.slots.reverse();
   data.layout.defaultSlotId = 'bar-1';
@@ -96,32 +95,28 @@ it('retains usable defaults on error and retries the read', async () => {
     </MemoryRouter>,
   );
   await screen.findByText('Не удалось загрузить расстановку.');
-  expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();
+  expect(screen.getByRole('heading',{name:'Вероника'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
   await act(async () => {});
   expect(fetchBarLayout).toHaveBeenCalledTimes(2);
 });
 
-it('restores the selected character after returning from a game', async () => {
+it('restores the selected character and keeps conversation controls available', async () => {
   sessionStorage.setItem('bar-active-slot', 'bar-1');
   vi.mocked(fetchBarLayout).mockResolvedValue(fixture());
   render(<MemoryRouter><BarPanorama /></MemoryRouter>);
   expect(await screen.findByRole('heading', { name: 'Дарья' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Показать действия' }));
-  expect(screen.getByRole('button', { name: 'Поговорить' })).toBeInTheDocument();
-  fireEvent.click(screen.getByRole('button', { name: 'Скрыть действия' }));
-  expect(screen.queryByRole('button', { name: 'Поговорить' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Разговор' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Игры' })).toBeInTheDocument();
 });
-
-it('expands character actions from the identity row without a modal', async () => {
-  const data = fixture();
-  data.layout.defaultSlotId = 'bar-3';
+it('opens the assigned darts game from Maria instead of cards', async () => {
+  const data = fixture(); data.layout.defaultSlotId='bar-3';
   vi.mocked(fetchBarLayout).mockResolvedValue(data);
   render(<MemoryRouter><BarPanorama /></MemoryRouter>);
-  fireEvent.click(await screen.findByRole('button', { name: 'О персонаже: Мария' }));
-  expect(screen.getByRole('button', { name: 'Сыграть в карты' })).toBeInTheDocument();
-  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  await screen.findByRole('heading',{name:'Мария'});
+  fireEvent.click(screen.getByRole('button',{name:'Игры'}));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Дартс · Мария');
+  expect(screen.getByRole('button',{name:'Играть'})).toBeInTheDocument();
 });
 
 it('shows a brief authored smile on entering a calm character and returns to neutral',async()=>{
@@ -149,7 +144,7 @@ it('does not overwrite a newer conversation emotion with a delayed entry read',a
  try{
   const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
   await screen.findByRole('heading',{name:'Мария'});
-  fireEvent.click(screen.getByRole('button',{name:'Показать действия'}));fireEvent.click(screen.getByRole('button',{name:'Поговорить'}));
+  fireEvent.click(screen.getByRole('button',{name:/^(Разговор|Продолжить разговор)$/}));
   await screen.findByText('Бывает.');
   await waitFor(()=>expect(view.container.querySelector('img[src="/bar/emotions/maria/empathy-v1.webp"]')).not.toBeNull());
   await act(async()=>old({revision:0,greeting:'Привет!',pending:false,turns:[]}));
@@ -164,8 +159,8 @@ it('greets again after swiping back from an opened conversation at the same revi
   vi.mocked(fetchBarLayout).mockResolvedValue(data);
   const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
   await screen.findByRole('heading',{name:'Мария'});
-  fireEvent.click(screen.getByRole('button',{name:'О персонаже: Мария'}));
-  fireEvent.click(screen.getByRole('button',{name:'Поговорить'}));
+
+  fireEvent.click(screen.getByRole('button',{name:/^(Разговор|Продолжить разговор)$/}));
   await screen.findByText('Привет!');
   fireEvent.click(screen.getByRole('button',{name:'Закрыть разговор'}));
   const scene=view.container.querySelector('main')!;

@@ -24,7 +24,7 @@ export function ComputerOpponentCarousel({
   const start = useRef<{ x: number; y: number } | null>(null);
   const opponent = computerOpponents[index]!;
   const move = (direction: number) =>
-    onSelect(Math.max(0, Math.min(computerOpponents.length, index + direction)));
+    onSelect(Math.max(0, Math.min(computerOpponents.length-1, index + direction)));
   const finish = (x: number, y: number) => {
     const origin = start.current;
     start.current = null;
@@ -80,7 +80,7 @@ export function ComputerOpponentCarousel({
           type="button"
           className="icon-btn durak-character__nav durak-character__nav--next"
           aria-label="Следующий персонаж"
-          disabled={false}
+          disabled={index >= computerOpponents.length-1}
           onClick={() => move(1)}
         >
           <ChevronRight aria-hidden="true" />

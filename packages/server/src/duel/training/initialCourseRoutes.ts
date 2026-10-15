@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import {
-  GAME_CORE_VERSION,
+  GAME_CORE_VERSION, isShotCoreVersionCompatible,
   STICK_NEUTRAL,
   getPerspectiveCourtGoalOpening,
   getGoalie,
@@ -387,7 +387,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         if (run.state !== 'active') {
           throw new AppError('initial_training_run_closed', 'initial training run is closed', 409);
         }
-        if (run.game_core_version !== GAME_CORE_VERSION) {
+        if (!isShotCoreVersionCompatible(run.game_core_version)) {
           throw new AppError(
             'initial_training_game_core_version_mismatch',
             'initial training run uses an outdated game core version',

@@ -236,7 +236,7 @@ export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
       <section className="bar-content">
         {embedded ? <>
         <div className="durak-mode-tabs">
-          <SegmentedTabs items={[{ id: 'durak', label: 'Дурак' }, { id: 'billiards', label: 'Бильярд' }, { id: 'darts', label: 'Дартс' }]} activeTab="durak" onChange={() => setDevelopmentToast(true)} ariaLabel="Игра" />
+
         </div>
         </> : <>
         <div className="durak-mode-tabs">

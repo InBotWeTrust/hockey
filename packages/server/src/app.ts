@@ -36,6 +36,7 @@ import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
 import { tournamentRoutes } from './tournament/routes.js';
+import { barGameRoutes } from './bar/games/routes.js';
 import { durakRoutes } from './bar/durakRoutes.js';
 import { barLayoutRoutes } from './bar/layoutRoutes.js';
 import { conversationRoutes } from './bar/conversationRoutes.js';
@@ -275,6 +276,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     ...(config.OPENAI_API_KEY ? { apiKey: config.OPENAI_API_KEY } : {}),
   });
   await app.register(durakRoutes);
+  await app.register(barGameRoutes);
   await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);

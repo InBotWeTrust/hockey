@@ -1,0 +1,102 @@
+[
+  [
+    "darts-background",
+    "Portrait 2:3 warm upscale hockey pub, polished honey-brown wood wall panels, subtle amber lamps at the edges, center clear for a code-rendered dartboard, no people, board, text or interface.",
+    null
+  ],
+  [
+    "billiards-background",
+    "Portrait 2:3 subtle dark polished wood pool-table surround, warm overhead glow, center empty deep dark green felt, no balls, markings, pockets or people.",
+    null
+  ],
+  [
+    "checkers-background",
+    "Portrait 2:3 overhead polished wooden pub tabletop, warm amber light and wood grain, empty central surface for a code-rendered checkerboard, no board, pieces or people.",
+    null
+  ],
+  [
+    "darts-invite",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Maria, the same adult dark-haired braided waitress in fully buttoned professional white shirt and burgundy waist apron from reference, standing beside a pub dartboard with darts in hand. Friendly inviting gesture toward the game, looking at the viewer. Preserve the reference face, hairstyle, age, and uniform colors. Chest-up friendly sports scene. Chest-up or waist-up composition with game visible. This is invitation before a friendly match.",
+    "packages/web/public/bar/cards/avatar-v2.webp"
+  ],
+  [
+    "darts-character-win",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Maria, the same adult dark-haired braided waitress in fully buttoned professional white shirt and burgundy waist apron from reference, standing beside a pub dartboard with darts in hand. The PLAYER has won; character has just LOST. Respectfully impressed, rueful playful smile, acknowledges viewer's skill. No triumph pose. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/avatar-v2.webp"
+  ],
+  [
+    "darts-character-loss",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Maria, the same adult dark-haired braided waitress in fully buttoned professional white shirt and burgundy waist apron from reference, standing beside a pub dartboard with darts in hand. The PLAYER has lost; character has just WON. Character shows restrained pleased pride and playful confidence toward viewer. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/avatar-v2.webp"
+  ],
+  [
+    "darts-online-win",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for darts. No people or faces. Accurate dartboard and three polished steel darts on a wooden pub counter. Warm golden victory lighting, proud balanced arrangement.",
+    null
+  ],
+  [
+    "darts-online-loss",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for darts. No people or faces. Accurate dartboard and three polished steel darts on a wooden pub counter. Quiet muted amber lighting, a slightly scattered arrangement suggesting a missed opportunity.",
+    null
+  ],
+  [
+    "billiards-invite",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Veronika, the same adult chestnut-haired green-eyed bar manager in navy waistcoat, white shirt, burgundy neck scarf and gray trousers from reference, beside a green pool table with cue. Friendly inviting gesture toward the game, looking at the viewer. Preserve the reference face, hairstyle, age, and uniform colors. Chest-up friendly sports scene. Chest-up or waist-up composition with game visible. This is invitation before a friendly match.",
+    "packages/web/public/bar/cards/veronika-avatar-v1.webp"
+  ],
+  [
+    "billiards-character-win",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Veronika, the same adult chestnut-haired green-eyed bar manager in navy waistcoat, white shirt, burgundy neck scarf and gray trousers from reference, beside a green pool table with cue. The PLAYER has won; character has just LOST. Respectfully impressed, rueful playful smile, acknowledges viewer's skill. No triumph pose. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/veronika-avatar-v1.webp"
+  ],
+  [
+    "billiards-character-loss",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Veronika, the same adult chestnut-haired green-eyed bar manager in navy waistcoat, white shirt, burgundy neck scarf and gray trousers from reference, beside a green pool table with cue. The PLAYER has lost; character has just WON. Character shows restrained pleased pride and playful confidence toward viewer. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/veronika-avatar-v1.webp"
+  ],
+  [
+    "billiards-online-win",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for billiards. No people or faces. Numbered solids and striped pool balls, white cue ball and wooden cue on green felt. Warm golden victory lighting, proud balanced arrangement.",
+    null
+  ],
+  [
+    "billiards-online-loss",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for billiards. No people or faces. Numbered solids and striped pool balls, white cue ball and wooden cue on green felt. Quiet muted amber lighting, a slightly scattered arrangement suggesting a missed opportunity.",
+    null
+  ],
+  [
+    "checkers-invite",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Arsenich, the same older stubbled stadium worker in dark knitted beanie, olive jacket and navy sweater from reference, seated at a wooden checkerboard with black and ivory round pieces. Friendly inviting gesture toward the game, looking at the viewer. Preserve the reference face, hairstyle, age, and uniform colors. Chest-up friendly sports scene. Chest-up or waist-up composition with game visible. This is invitation before a friendly match.",
+    "packages/web/public/bar/cards/arsenich-avatar-v2.webp"
+  ],
+  [
+    "checkers-character-win",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Arsenich, the same older stubbled stadium worker in dark knitted beanie, olive jacket and navy sweater from reference, seated at a wooden checkerboard with black and ivory round pieces. The PLAYER has won; character has just LOST. Respectfully impressed, rueful playful smile, acknowledges viewer's skill. No triumph pose. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/arsenich-avatar-v2.webp"
+  ],
+  [
+    "checkers-character-loss",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Arsenich, the same older stubbled stadium worker in dark knitted beanie, olive jacket and navy sweater from reference, seated at a wooden checkerboard with black and ivory round pieces. The PLAYER has lost; character has just WON. Character shows restrained pleased pride and playful confidence toward viewer. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/arsenich-avatar-v2.webp"
+  ],
+  [
+    "checkers-character-draw",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. Arsenich, the same older stubbled stadium worker in dark knitted beanie, olive jacket and navy sweater from reference, seated at a wooden checkerboard with black and ivory round pieces. Friendly drawn game; character gives a calm amused shrug acknowledging equal play. Preserve reference face and hairstyle, professional uniform colors; show recognisable game props. No other people.",
+    "packages/web/public/bar/cards/arsenich-avatar-v2.webp"
+  ],
+  [
+    "checkers-online-win",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for checkers. No people or faces. Round ivory and dark wooden checkers on a wooden checkerboard. Warm golden victory lighting, proud balanced arrangement.",
+    null
+  ],
+  [
+    "checkers-online-loss",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for checkers. No people or faces. Round ivory and dark wooden checkers on a wooden checkerboard. Quiet muted amber lighting, a slightly scattered arrangement suggesting a missed opportunity.",
+    null
+  ],
+  [
+    "checkers-online-draw",
+    "Production illustration for an upscale warm hockey pub mobile game. Semi-realistic hand-painted game art, rich polished wood, warm amber practical lighting, crisp expressive characters, same painterly style as supplied character reference. Landscape 3:2 for modal illustrations; no words, letters, UI, logos or watermarks. A composed still-life result illustration for checkers. No people or faces. Round ivory and dark wooden checkers on a wooden checkerboard. Balanced light and dark arrangement, calm even warm lighting, a drawn match.",
+    null
+  ]
+]

@@ -1,4 +1,4 @@
-export { GAME_CORE_VERSION } from './version.js';
+export { GAME_CORE_VERSION, isShotCoreVersionCompatible } from './version.js';
 export { OBSERVATION_BANK_VERSION, getObservationScene, validateObservationScene,
   evaluateObservationDecision, type ObservationScene, type ObservationStepKey,
   type ObservationInput, type ObservationEvaluation,
@@ -225,3 +225,5 @@ export * as durak from "./durak.js";
 export * as durakTable from './durakTable.js';
 
 export * from "./barLayout.js";
+
+export * from './barGames/runtime.js';

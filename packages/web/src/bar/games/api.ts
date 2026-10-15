@@ -1,0 +1,34 @@
+import type {
+  BarGameId,
+  GameCharacter,
+  BarGameSnapshot,
+  BarGameCommand,
+  BarGameLobby,
+  GameParticipant,
+} from '@hockey/game-core';
+import { apiFetch } from '../../api/apiFetch.js';
+const post = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
+export const gameApi = {
+  lobby: () => apiFetch<BarGameLobby>('/bar/games/lobby'),
+  players: (q: string) =>
+    apiFetch<GameParticipant[]>(`/bar/games/players?q=${encodeURIComponent(q)}`),
+  start: (character: GameCharacter, requestId: string, previousId?: string) =>
+    apiFetch<BarGameSnapshot>(
+      '/bar/games/computer',
+      post({ character, requestId, ...(previousId ? { previousId } : {}) }),
+    ),
+  read: (id: string) => apiFetch<BarGameSnapshot>(`/bar/games/matches/${id}`),
+  command: (id: string, input: BarGameCommand) =>
+    apiFetch<BarGameSnapshot>(`/bar/games/matches/${id}`, post(input)),
+  queue: (kind: BarGameId, cancel = false) =>
+    apiFetch<{ matchId: string | null }>(
+      '/bar/games/queue',
+      cancel ? { method: 'DELETE' } : post({ kind }),
+    ),
+  invite: (kind: BarGameId, userId: string) =>
+    apiFetch('/bar/games/invites', post({ kind, userId })),
+  respond: (id: string, action: 'accept' | 'decline' | 'cancel') =>
+    apiFetch<{ matchId: string | null }>(`/bar/games/invites/${id}`, post({ action })),
+  localCards: (id: string, leave = false) =>
+    apiFetch('/bar/games/local-cards', post({ id, leave })),
+};

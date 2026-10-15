@@ -1,3 +1,4 @@
+import { assertNewGamesFree } from './games/admission.js';
 import { randomUUID, randomInt } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { durak } from '@hockey/game-core';
@@ -102,6 +103,7 @@ async function active(client: PoolClient, user: string, now: number) {
   return null;
 }
 export async function assertFree(client: PoolClient, user: string, now: number) {
+  await assertNewGamesFree(client,user,now);
   const room = await currentRoom(client, user, now);
   if (room)
     throw new AppError('card_busy', 'Сначала покинь текущий стол.', 409, { roomId: room.id });
@@ -112,6 +114,7 @@ export async function assertFree(client: PoolClient, user: string, now: number) 
 async function create(client: PoolClient, a: string, b: string, now: number) {
   await assertFree(client, a, now);
   await assertFree(client, b, now);
+  await clearNewGameWaiting(client,[a,b]);
   const id = randomUUID();
   const game = durak.createGame(() => randomInt(0, 0x100000000) / 0x100000000);
   await client.query(
@@ -361,4 +364,9 @@ export async function tickCardMatches(pool: Pool) {
     for (const match of due.rows) await reconcile(client, match, now);
     await tickCardRooms(client, now);
   });
+}
+
+export async function clearNewGameWaiting(client:PoolClient,users:string[]){
+ await client.query('delete from bar_game_queue where user_id=any($1::uuid[])',[users]);
+ await client.query("update bar_game_invites set status='cancelled' where status='pending' and (sender_id=any($1::uuid[]) or receiver_id=any($1::uuid[]))",[users]);
 }

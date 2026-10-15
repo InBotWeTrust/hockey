@@ -2,6 +2,8 @@ import {emotionFromSnapshot,canGreet,preloadEmotions,prepareGreeting,entryEmotio
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createDefaultBarLayout, type BarAction, type BarOccupantId } from '@hockey/game-core';
+import { CharacterLaunch } from './games/CharacterLaunch.js';
+import type { GameCharacter } from '@hockey/game-core';
 import { DurakLaunchModal } from './cards/DurakModals.js';
 import type { ComputerOpponentId } from './cards/computerOpponents.js';
 import { fetchBarLayout } from './layoutApi.js';
@@ -112,8 +114,11 @@ export function BarPanorama() {
       cancelled = true;
     };
   }, [retry]);
+  const [gameCharacter, setGameCharacter] = useState<GameCharacter | null>(null);
   const action = (kind: BarAction, id: BarOccupantId) => {
-    if (kind === 'cards') setOpponent(id as ComputerOpponentId);
+    if (kind === 'cards') setOpponent('daria');
+    else if (kind === 'darts' || kind === 'billiards' || kind === 'checkers')
+      setGameCharacter(id as GameCharacter);
     else if (kind === 'online') navigate('/bar/cards/online', { state: { mode: 'online' } });
     else navigate('/bar/broadcasts');
   };
@@ -161,6 +166,7 @@ export function BarPanorama() {
           }}
         />
       )}
+      {gameCharacter && <CharacterLaunch character={gameCharacter} close={() => setGameCharacter(null)} />}
       {opponent && (
         <DurakLaunchModal
           opponentId={opponent}

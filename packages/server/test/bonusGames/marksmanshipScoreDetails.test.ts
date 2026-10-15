@@ -37,6 +37,8 @@ describe('marksmanship score details', () => {
     expect(bonusService.supportsBonusGameCoreVersion(64)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(65)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(61)).toBe(false);
+    for (const version of [88, 89, 90, 91, 92]) expect(bonusService.supportsBonusGameCoreVersion(version)).toBe(true);
+    expect(bonusService.supportsBonusGameCoreVersion(93)).toBe(false);
     expect(bonusService.supportsBonusGameCoreVersion(66)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(67)).toBe(true);
   });

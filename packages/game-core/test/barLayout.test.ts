@@ -19,7 +19,7 @@ describe('bar layout', () => {
     expect(a.slots[2]!.occupantId).toBe('maria');
   });
   it('only offers available actions', () => {
-    expect(barActionsFor('maria')).toEqual(['cards']);
+    expect(barActionsFor('maria')).toEqual(['darts']);
     expect(barActionsFor('oleg')).toEqual([]);
     expect(barActionsFor('online')).toEqual(['online']);
     expect(barActionsFor('broadcasts')).toEqual(['broadcasts']);

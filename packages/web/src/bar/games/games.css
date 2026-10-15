@@ -1,0 +1,841 @@
+.bar-game-screen {
+  max-width: 430px;
+  margin: auto;
+  min-height: 100dvh;
+  padding: calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 14px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #f5f0e5;
+  color: #283831;
+}
+.bar-game-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.bar-game-header h1 {
+  font-size: 20px;
+  margin: 0;
+}
+.bar-game-field {
+  border-radius: 18px;
+  overflow: hidden;
+  background-size: cover;
+  background-position: center;
+  box-shadow: 0 5px 18px #34241225;
+}
+/* The dartboard is a separate transparent layer over the full-screen bar. */
+.bar-game-field--darts {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  max-width: 430px;
+  align-self: center;
+  display: flex;
+  background: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+.bar-game-field--checkers {
+  background-image: url('/bar/games/checkers-background-v1.webp');
+}
+.bar-game-field--billiards {
+  background-image: url('/bar/games/billiards-background-v1.webp');
+}
+.bar-darts-field {
+  touch-action: none;
+  user-select: none;
+  padding: 12px 8px 0;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.bar-dartboard {
+  width: 100%;
+  max-width: 350px;
+  filter: drop-shadow(0 10px 10px #0007);
+  overflow: visible;
+}
+.bar-darts-throw {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  height: 145px;
+  color: #fff4d5;
+  font-size: 13px;
+  text-shadow: 0 1px 3px #000;
+}
+.bar-darts-throw svg {
+  height: 110px;
+  width: 72px;
+  filter: drop-shadow(3px 5px 4px #0008);
+}
+.bar-checkers-surround {
+  padding: 16px;
+  background: #50301d66;
+}
+.bar-checkers {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  border: 6px solid #583a24;
+  box-shadow: 0 5px 14px #0005;
+  aspect-ratio: 1;
+}
+.bar-checkers__cell {
+  border: 0;
+  border-radius: 0;
+  padding: 8%;
+  background: #d7be8e;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  min-width: 0;
+}
+.bar-checkers__cell--dark {
+  background: #6a4b31;
+}
+.bar-checkers__cell:disabled {
+  opacity: 1;
+}
+.bar-checkers__cell.is-selected {
+  box-shadow: inset 0 0 0 3px #f7d864;
+}
+.bar-checkers__cell.is-target:after {
+  content: '';
+  position: absolute;
+  width: 28%;
+  height: 28%;
+  border-radius: 50%;
+  background: #f5d96ac9;
+  box-shadow: 0 0 8px #ffe48a;
+}
+.bar-checker {
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 25%, #5c5751, #222723 70%);
+  border: 2px solid #121a16;
+  box-sizing: border-box;
+  box-shadow:
+    0 3px 3px #0006,
+    inset 0 0 0 3px #7775;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  color: #e8c67d;
+}
+.bar-checker--white {
+  background: radial-gradient(circle at 35% 25%, #fff6db, #c5b38b 75%);
+  border-color: #9e8b62;
+  color: #66512d;
+}
+.bar-pool-field {
+  padding: 10px 14px 2px;
+}
+.bar-pool-field > svg {
+  display: block;
+  width: 100%;
+  max-height: 61dvh;
+  touch-action: none;
+  filter: drop-shadow(0 5px 6px #0005);
+}
+.bar-pool-power {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff4d5;
+  font-size: 12px;
+}
+.bar-pool-power input {
+  flex: 1;
+  min-width: 0;
+  accent-color: #dec17c;
+  touch-action: none;
+  height: 38px;
+}
+.bar-game-turn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  font-size: 14px;
+  flex-wrap: wrap;
+}
+.bar-game-turn strong {
+  font-variant-numeric: tabular-nums;
+}
+.bar-game-hint {
+  text-align: center;
+  font-size: 12px;
+  margin: 5px 0;
+  color: inherit;
+}
+.bar-pool-field .bar-game-hint {
+  color: #fff4d5;
+}
+.bar-game-warning,
+.bar-game-error {
+  font-size: 13px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #f8dfad;
+  margin: 0;
+}
+.bar-game-reply {
+  text-align: center;
+  font-size: 13px;
+  color: #6f604a;
+  margin: 0;
+}
+.bar-game-result__art,
+.bar-game-invite-art {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 3/2;
+  object-fit: cover;
+  border-radius: 14px;
+}
+.bar-game-result {
+  overflow-y: auto;
+}
+.bar-games-lobby {
+  width: 100%;
+  min-width: 0;
+}
+.bar-games-lobby > .segmented-tabs {
+  margin-bottom: 10px;
+}
+.bar-new-lobby {
+  padding: 10px 0;
+}
+.bar-new-lobby h3 {
+  margin-bottom: 4px;
+}
+.bar-new-lobby p {
+  font-size: 14px;
+  line-height: 1.45;
+}
+.bar-game-lobby-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.bar-game-lobby-heading h2 {
+  font-size: 18px;
+}
+.bar-game-search {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid #b1b7b4;
+  margin: 8px 0;
+  font: inherit;
+}
+.bar-game-player-list > div,
+.bar-game-pending {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bar-game-invite-toast {
+  position: fixed;
+  left: 50%;
+  bottom: calc(env(safe-area-inset-bottom) + 18px);
+  transform: translateX(-50%);
+  z-index: 2200;
+  width: min(350px, calc(100vw - 24px));
+  box-sizing: border-box;
+  padding: 14px;
+  border-radius: 18px;
+  background: #fff9ec;
+  box-shadow: 0 8px 30px #0004;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+.bar-game-invite-toast p {
+  width: 100%;
+  margin: 0;
+  font-size: 14px;
+}
+.bar-game-invite-toast .btn {
+  min-width: 100px;
+}
+@media (max-height: 720px) {
+  .bar-darts-field {
+    min-height: 350px;
+  }
+  .bar-dartboard {
+    max-width: 290px;
+  }
+  .bar-darts-throw {
+    height: 100px;
+  }
+  .bar-darts-throw svg {
+    height: 78px;
+  }
+  .bar-pool-field > svg {
+    max-height: 55dvh;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-game-screen * {
+    scroll-behavior: auto;
+  }
+}
+
+.modal-card.bar-game-help {
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+}
+.bar-game-help .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(28, 36, 38, 0.97);
+  border-radius: 12px;
+  padding: 8px;
+  margin-top: -8px;
+}
+
+/* Reuse the card HUD; only scope its name/notice helpers to the new fields. */
+.bar-game-menu .durak-player-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+.bar-game-menu .durak-player-label .durak-player-name {
+  flex: 0 1 auto;
+  width: auto;
+  min-width: 0;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+.bar-game-menu .durak-player-count {
+  flex: none;
+  font: 800 11px var(--font-sans);
+  white-space: nowrap;
+}
+.bar-game-menu .durak-turn-notice {
+  align-self: center;
+  width: max-content;
+  max-width: 100%;
+  box-sizing: border-box;
+  line-height: 1.3;
+  text-shadow: none;
+}
+
+.bar-game-screen--playing {
+  background: #164c3c url('/bar/cards/table-v1.webp') center top/cover;
+  color: white;
+}
+.bar-game-screen--playing .bar-game-reply {
+  color: #d8e2d9;
+}
+.bar-game-menu .durak-turn-notice > span {
+  white-space: normal;
+}
+
+.bar-game-screen--playing[data-game='darts'] {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  width: 100%;
+  max-width: none;
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  gap: 8px;
+  background: #382416 url('/bar/games/darts-background-v1.webp') center center/cover;
+}
+.bar-game-screen--playing[data-game='darts'] > .bar-game-menu,
+.bar-game-screen--playing[data-game='darts'] > .bar-game-header {
+  width: 100%;
+  max-width: 430px;
+  align-self: center;
+  flex: none;
+}
+.bar-game-field--darts > .bar-darts-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) 110px;
+  justify-items: center;
+  gap: 4px;
+}
+.bar-game-field--darts .bar-dartboard {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  max-width: none;
+}
+.bar-game-field--darts .bar-darts-throw {
+  height: 110px;
+}
+.bar-game-field--darts .bar-darts-throw svg {
+  height: 85px;
+}
+
+/* Reserve the complete menu slot so wrapping feedback never moves the target. */
+.bar-game-screen--playing[data-game='darts'] > .bar-game-menu {
+  height: 98px;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+.bar-game-screen--playing[data-game='darts'] .durak-turn-notice {
+  height: 44px;
+  min-height: 44px;
+  overflow: hidden;
+}
+.bar-game-field--darts .bar-dartboard {
+  overflow: visible;
+}
+.bar-dart-flight {
+  pointer-events: none;
+  animation: bar-dart-flight 700ms linear both;
+  filter: drop-shadow(2px 4px 2px #0008);
+}
+@keyframes bar-dart-flight {
+  0% {
+    transform: translate(var(--dart-x), var(--dart-y)) scale(2.1);
+  }
+  65% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(0, 0) rotate(152deg) scale(0.85);
+  }
+}
+.bar-dart-impact {
+  transform-origin: 0 0;
+  animation: bar-dart-impact 350ms ease-out both;
+}
+@keyframes bar-dart-impact {
+  0% {
+    transform: rotate(12deg);
+  }
+  30% {
+    transform: rotate(-9deg);
+  }
+  60% {
+    transform: rotate(5deg);
+  }
+  100% {
+    transform: rotate(0);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-dart-flight {
+    animation-name: none;
+    transform: scale(0.85);
+  }
+  .bar-dart-impact {
+    animation: none;
+  }
+}
+
+.bar-game-screen--playing[data-game='billiards'] {
+  background: #382416 url('/bar/games/billiards-floor-v1.webp') center/cover fixed;
+}
+.bar-game-field--billiards {
+  background: none;
+  box-shadow: none;
+  border-radius: 0;
+}
+.bar-pool-field {
+  padding: 4px 0 0;
+}
+.bar-pool-field > svg {
+  overflow: hidden;
+}
+.bar-pool-power {
+  margin: 14px 8px 0;
+  padding: 12px 16px;
+  border: 1px solid #b9946266;
+  border-radius: 18px;
+  background: #28180fe6;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.bar-pool-power > span {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #e3d5bd;
+}
+.bar-pool-power strong {
+  color: #edc477;
+  font-variant-numeric: tabular-nums;
+}
+.bar-pool-power input {
+  appearance: none;
+  width: 100%;
+  height: 32px;
+  flex: none;
+  background: transparent;
+  margin: 0;
+}
+.bar-pool-power input::-webkit-slider-runnable-track {
+  height: 8px;
+  border-radius: 8px;
+  background: linear-gradient(90deg, #708f69, #dbb765 65%, #b5593e);
+  border: 1px solid #f5ddb333;
+}
+.bar-pool-power input::-webkit-slider-thumb {
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  margin-top: -9px;
+  border-radius: 50%;
+  border: 3px solid #e8d2a6;
+  background: #77532e;
+  box-shadow: 0 2px 6px #0008;
+}
+.bar-pool-power input:disabled {
+  opacity: 0.4;
+}
+.bar-pool-stroke {
+  animation: bar-pool-stroke 1300ms ease-in-out both;
+}
+@keyframes bar-pool-stroke {
+  0% {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  40% {
+    transform: translateX(-0.06px);
+    opacity: 1;
+  }
+  61.54%,
+  85% {
+    transform: translateX(var(--cue-contact));
+    opacity: 1;
+  }
+  100% {
+    transform: translateX(var(--cue-contact));
+    opacity: 0;
+  }
+}
+.bar-pool-impact-ring {
+  animation: bar-pool-impact-ring 300ms ease-out both;
+  transform-origin: 0 0;
+}
+.bar-pool-impact-flash {
+  animation: bar-pool-impact-flash 180ms ease-out both;
+}
+@keyframes bar-pool-impact-ring {
+  from {
+    transform: scale(0.65);
+    opacity: 0.8;
+  }
+  to {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+@keyframes bar-pool-impact-flash {
+  from {
+    opacity: 0.7;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-pool-stroke {
+    animation: none;
+  }
+}
+.bar-game-screen--playing[data-game='billiards'] > .bar-game-menu {
+  height: 98px;
+  overflow: hidden;
+  justify-content: flex-start;
+}
+.bar-game-screen--playing[data-game='billiards'] .durak-turn-notice {
+  height: 44px;
+  min-height: 44px;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bar-pool-impact-ring,
+  .bar-pool-impact-flash {
+    animation: none;
+    opacity: 0.3;
+  }
+}
+
+.bar-pool-group {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid #f3ddb7;
+  background: radial-gradient(circle at 30% 25%, #eebd71, #a95e30 65%, #61351e);
+  box-shadow: 0 1px 2px #0008;
+}
+.bar-pool-group--striped {
+  background: linear-gradient(to bottom, #f4ead4 0 28%, #b66f34 28% 72%, #f4ead4 72%);
+}
+
+.bar-pool-ball-sink {
+  transform-origin: 0 0;
+  animation: bar-pool-ball-sink 350ms ease-in both;
+  pointer-events: none;
+}
+@keyframes bar-pool-ball-sink {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0);
+    opacity: 1;
+  }
+  65% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(var(--sink-x), var(--sink-y)) scale(0.08) rotate(65deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-pool-ball-sink {
+    animation-name: bar-pool-ball-fade;
+  }
+  @keyframes bar-pool-ball-fade {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
+
+/* Fixed compact rows avoid grid stretching inside the reserved menu slot. */
+.bar-game-menu {
+  grid-template-rows: 46px 44px;
+  gap: 8px;
+  align-content: start;
+}
+.bar-game-menu .durak-menu__row {
+  height: 44px;
+  box-sizing: border-box;
+  padding: 4px;
+}
+.bar-game-menu .durak-menu__identity .user-avatar {
+  width: 30px !important;
+  height: 30px !important;
+}
+.bar-game-menu .durak-menu__identity {
+  gap: 5px;
+}
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+}
+.bar-game-menu .durak-player-label .durak-player-name,
+.bar-game-menu .durak-player-count {
+  font-size: 10px;
+}
+
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 68px minmax(0, 1fr);
+}
+.bar-game-menu .game-scoreboard__metric--timer {
+  box-sizing: border-box;
+  height: 36px;
+  padding: 2px 14px;
+  gap: 2px;
+}
+.bar-game-menu [role='timer'] .game-scoreboard__label {
+  font-size: 8px;
+  line-height: 1;
+}
+.bar-game-menu [role='timer'] .game-scoreboard__value {
+  font-size: 22px;
+  line-height: 1;
+}
+.bar-pool-group-slot {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  pointer-events: none;
+}
+.bar-pool-group-slot--self {
+  left: 3px;
+}
+.bar-pool-group-slot--opponent {
+  right: 3px;
+}
+.bar-pool-group {
+  display: block;
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  background: #d9b06f;
+  border: 1px solid #fff3d7;
+  box-shadow: none;
+}
+.bar-pool-group--striped {
+  background: linear-gradient(to bottom, #fff8e8 0 32%, #bd8949 32% 68%, #fff8e8 68%);
+}
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+}
+.bar-game-menu .game-scoreboard__metric:not(.game-scoreboard__metric--timer) {
+  padding-inline: 2px;
+}
+.bar-game-menu .durak-menu__identity {
+  gap: 3px;
+}
+.bar-pool-controls {
+  --pool-control-height: 80px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 14px 8px 0;
+}
+.bar-pool-controls .bar-pool-power {
+  box-sizing: border-box;
+  height: var(--pool-control-height);
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+.bar-pool-power--pull input {
+  cursor: grab;
+}
+.bar-pool-power--pull input:active {
+  cursor: grabbing;
+}
+.bar-pool-spin-button {
+  flex: none;
+  width: var(--pool-control-height);
+  height: var(--pool-control-height);
+  padding: 18px;
+  border: 1px solid #b9946266;
+  border-radius: 50%;
+  background: #28180fe6;
+  cursor: pointer;
+}
+.bar-pool-spin-button:disabled {
+  opacity: 0.45;
+}
+.bar-pool-spin-ball,
+.bar-pool-spin-target {
+  position: relative;
+  display: block;
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 25%, #fffef7, #eee6cf 58%, #aaa38e);
+}
+.bar-pool-spin-ball {
+  width: 100%;
+  height: 100%;
+}
+.bar-pool-spin-dot {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #9b302b;
+  border: 1px solid #fff5dd;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.bar-pool-spin-target {
+  width: min(240px, 70vw);
+  aspect-ratio: 1;
+  margin: 20px auto;
+  border: 2px solid #ae9c7c;
+  padding: 0;
+  touch-action: none;
+  cursor: crosshair;
+}
+.bar-pool-spin-target .bar-pool-spin-dot {
+  width: 15px;
+  height: 15px;
+}
+.bar-pool-spin-cross::before,
+.bar-pool-spin-cross::after {
+  content: '';
+  position: absolute;
+  background: #675b4933;
+  pointer-events: none;
+}
+.bar-pool-spin-cross::before {
+  width: 1px;
+  height: 80%;
+  left: 50%;
+  top: 10%;
+}
+.bar-pool-spin-cross::after {
+  height: 1px;
+  width: 80%;
+  top: 50%;
+  left: 10%;
+}
+
+.bar-pool-power--pull input::-webkit-slider-runnable-track {
+  background: linear-gradient(270deg, #708f69, #dbb765 65%, #b5593e);
+}
+.bar-pool-power--pull input::-moz-range-track {
+  height: 8px;
+  border-radius: 8px;
+  background: linear-gradient(270deg, #708f69, #dbb765 65%, #b5593e);
+}
+
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+}
+.bar-game-menu .game-scoreboard__metric--timer {
+  padding-inline: 2px;
+}
+.bar-game-menu .game-scoreboard__metric.bar-game-player--self {
+  padding-right: 12px;
+}
+.bar-game-menu .game-scoreboard__metric.bar-game-player--opponent {
+  padding-left: 12px;
+}
+.bar-game-player--self .bar-pool-group-slot {
+  left: auto;
+  right: 1px;
+}
+.bar-game-player--opponent .bar-pool-group-slot {
+  right: auto;
+  left: 1px;
+}
+.bar-pool-group {
+  background: #fff;
+  border-color: #fff;
+}
+.bar-pool-group--striped {
+  background: linear-gradient(to bottom, #fff 0 32%, #65472f 32% 68%, #fff 68%);
+}
+.bar-pool-spin-button {
+  padding: 10px;
+}

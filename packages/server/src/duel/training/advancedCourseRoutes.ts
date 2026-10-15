@@ -5,7 +5,7 @@ import { z } from 'zod';
 import {
   ADVANCED_TRAINING_SCENARIOS,
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
-  GAME_CORE_VERSION,
+  GAME_CORE_VERSION, isShotCoreVersionCompatible,
   STICK_NEUTRAL,
   classifyMarksmanshipShot,
   createRng,
@@ -218,7 +218,7 @@ export const advancedTrainingCourseRoutes: FastifyPluginAsync<{
         : null;
       const canReuseFreshRun =
         active?.exercise_key === exerciseKey &&
-        active.game_core_version === GAME_CORE_VERSION &&
+        isShotCoreVersionCompatible(active.game_core_version) &&
         active.stage === 'practice' &&
         active.situation_index === 0 &&
         active.successes === 0 &&
@@ -305,7 +305,7 @@ export const advancedTrainingCourseRoutes: FastifyPluginAsync<{
       );
       if (replay.rows[0]?.evaluation.response) return replay.rows[0].evaluation.response;
       if (run.state !== 'active') throw new AppError('advanced_training_run_closed', 'run is closed', 409);
-      if (run.game_core_version !== GAME_CORE_VERSION) throw new AppError('advanced_training_game_core_version_mismatch', 'run version mismatch', 409);
+      if (!isShotCoreVersionCompatible(run.game_core_version)) throw new AppError('advanced_training_game_core_version_mismatch', 'run version mismatch', 409);
       const count = await client.query<{ count: number }>(
         `select count(*)::int as count from advanced_training_shot where run_id = $1`,
         [run.id],
