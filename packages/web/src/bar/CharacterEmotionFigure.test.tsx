@@ -2,6 +2,15 @@ import {act,fireEvent,render} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {CharacterEmotionFigure} from './CharacterEmotionFigure.js';
 afterEach(()=>{vi.unstubAllGlobals();});
+it.each(['grigory','arsenich','oleg','igor','timofey'])('renders the complete %s handshake without clipping the arm to the face mask',character=>{
+ const loaders:Array<{src:string;onload:(()=>void)|null}>=[];
+ vi.stubGlobal('Image',class{src='';onload=null;onerror=null;constructor(){loaders.push(this);}});
+ const view=render(<CharacterEmotionFigure character={character} emotion="greeting" fallback="/bar/original.webp" style={{}} onFallbackError={()=>{}}/>);
+ expect(loaders[0]?.src).toBe(`/bar/greetings/${character}-v1.webp`);
+ act(()=>loaders[0]?.onload?.());
+ expect(view.container.querySelector('img[data-current]')?.getAttribute('src')).toBe(`/bar/greetings/${character}-v1.webp`);
+ expect(view.container.querySelector('svg')).toBeNull();
+});
 it('waits for the replacement image and ignores stale loads',()=>{
  const loaders:Array<{src:string;onload:(()=>void)|null;onerror:(()=>void)|null}>=[];
  vi.stubGlobal('Image',class{src='';onload=null;onerror=null;constructor(){loaders.push(this);}});

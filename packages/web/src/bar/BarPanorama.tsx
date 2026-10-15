@@ -1,3 +1,5 @@
+import {useAuthStore} from '../auth/authStore.js';
+import {claimDailyGreeting,hasDailyGreeting,localDay,nextLocalMidnight} from './dailyGreeting.js';
 import {emotionFromSnapshot,canGreet,preloadEmotions,prepareGreeting,entryEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,6 +14,22 @@ import { BarConversation } from './BarConversation.js';
 import { barCharacters, fetchConversation, sendPhysicalIncident, type BarCharacter } from './conversationApi.js';
 export function BarPanorama() {
   const navigate = useNavigate();
+  const account=useAuthStore(state=>state.user?.id)??'preview';
+  const [day,setDay]=useState(localDay);
+  const [visible,setVisible]=useState(()=>document.visibilityState!=='hidden');
+  useEffect(()=>{
+    let midnight:ReturnType<typeof setTimeout>;
+    const refresh=()=>{
+      setDay(localDay());
+      setVisible(document.visibilityState!=='hidden');
+      clearTimeout(midnight);
+      midnight=setTimeout(refresh,Math.max(1,nextLocalMidnight()-Date.now()));
+    };
+    refresh();
+    window.addEventListener('focus',refresh);
+    document.addEventListener('visibilitychange',refresh);
+    return()=>{clearTimeout(midnight);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
+  },[]);
   const [layout, setLayout] = useState(createDefaultBarLayout);
   const [slot, setSlot] = useState(() => sessionStorage.getItem('bar-active-slot') || 'bar-8');
   const [opponent, setOpponent] = useState<ComputerOpponentId | null>(null);
@@ -45,17 +63,17 @@ export function BarPanorama() {
   const selectedCharacter = layout.slots.find((s) => s.id === slot)?.occupantId;
   useEffect(() => {
     setGreeting(null);
-    if (!selectedCharacter || !barCharacters.includes(selectedCharacter as BarCharacter)) return;
+    if (!visible || !selectedCharacter || !barCharacters.includes(selectedCharacter as BarCharacter)) return;
     let cancelled = false;
     let timer:ReturnType<typeof setTimeout>|undefined;
     const character = selectedCharacter as BarCharacter;
     void fetchConversation(character)
       .then(async (data) => {
-        const greetingReady=canGreet(data)&&await prepareGreeting(character);
+        const greetingReady=!hasDailyGreeting(account,character)&&canGreet(data)&&await prepareGreeting(character);
         if (!cancelled) {
           if(!activeConversation.current&&data.revision>=(moodRevision.current[character]??-1)){
             setEmotions(previous=>({...previous,[character]:entryEmotion(data)}));
-            if(greetingReady){timer=setTimeout(()=>{if(activeConversation.current || (moodRevision.current[character]??-1)>data.revision)return;setGreeting(character);timer=setTimeout(()=>setGreeting(current=>current===character?null:current),2200);},650);}
+            if(greetingReady){timer=setTimeout(()=>{if(activeConversation.current || (moodRevision.current[character]??-1)>data.revision||!claimDailyGreeting(account,character))return;setGreeting(character);timer=setTimeout(()=>setGreeting(current=>current===character?null:current),2200);},650);}
           }
           if(data.revision>=(moodRevision.current[character]??-1))setStarted((previous) => ({ ...previous, [character]: data.turns.length > 0 }));
         }
@@ -66,7 +84,7 @@ export function BarPanorama() {
     return () => {
       cancelled = true;clearTimeout(timer);
     };
-  }, [selectedCharacter]);
+  }, [selectedCharacter,account,day,visible]);
   useEffect(() => {
     let cancelled = false;
     setError(false);
