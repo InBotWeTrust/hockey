@@ -56,7 +56,7 @@ it('uses character art and reply plus repeat/back, while online only acknowledge
   view.runtime.reason = 'played';
   const { rerender } = render(<GameResult view={view} replay={() => {}} back={() => {}} />);
   expect(screen.getByRole('button', { name: 'Повторить' })).toBeInTheDocument();
-  expect(screen.getByRole('img')).toHaveAttribute('src', '/bar/games/darts-character-win-v1.webp');
+  expect(screen.getByRole('img')).toHaveAttribute('src', '/bar/games/darts-character-win-v2.webp');
   rerender(<GameResult view={{ ...view, character: null }} replay={() => {}} back={() => {}} />);
   expect(screen.queryByRole('button', { name: 'Повторить' })).not.toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Понятно' })).toBeInTheDocument();

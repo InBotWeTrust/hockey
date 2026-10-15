@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { BarGameId, BarGameLobby, GameParticipant } from '@hockey/game-core';
+import type { BarGameId, BarGameLobby, BarGameSnapshot, GameParticipant } from '@hockey/game-core';
 import { OnlineDurakLobby } from '../cards/OnlineDurakLobby.js';
 import { SegmentedTabs } from '../../components/SegmentedTabs.js';
-import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { ChevronRight, Search } from 'lucide-react';
+import { UserAvatar } from '../../chat/components/UserAvatar.js';
+import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
-import { gameArt, gameNames, gameCharacters, characterNames, gameCopy } from './content.js';
-import { gameClose, GameHelp } from './GameModals.js';
+import { gameNames } from './content.js';
 import './games.css';
 export function BarGamesLobby({
   initial = 'cards',
@@ -39,20 +40,22 @@ export function BarGamesLobby({
 }
 export function NewGameLobby({ kind }: { kind: BarGameId }) {
   const navigate = useNavigate();
-  const [state, setState] = useState<BarGameLobby | null>(null),
-    [mode, setMode] = useState<'computer' | 'online'>('computer'),
-    [tab, setTab] = useState<'find' | 'challenge'>('find'),
-    [q, setQ] = useState(''),
-    [players, setPlayers] = useState<GameParticipant[]>([]),
-    [error, setError] = useState<string | null>(null),
-    [busy, setBusy] = useState(false),
-    [invite, setInvite] = useState(false),
-    [help, setHelp] = useState(false);
+  const userId = useAuthStore((s) => s.user?.id);
+  const [state, setState] = useState<BarGameLobby | null>(null);
+  const [activeMatch, setActiveMatch] = useState<BarGameSnapshot | null>(null);
+  const previousLobby = useRef<BarGameLobby | null>(null);
+  const [tab, setTab] = useState<'find' | 'challenge'>('find');
+  const [q, setQ] = useState('');
+  const [players, setPlayers] = useState<GameParticipant[]>([]);
+  const [selected, setSelected] = useState<GameParticipant | null>(null);
+  const [loadingPlayers, setLoadingPlayers] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
   const pending = useRef(false),
     generation = useRef(0);
-  const startId = useRef(crypto.randomUUID());
-  const character = gameCharacters[kind];
   const open = (id: string) => navigate(`/bar/games/match/${id}`);
+  const invites = state?.invites.filter((i) => i.kind === kind && i.status === 'pending') ?? [];
+  const searchActive = !!state?.searching;
   useEffect(() => {
     const token = ++generation.current;
     let reading = false;
@@ -62,9 +65,15 @@ export function NewGameLobby({ kind }: { kind: BarGameId }) {
       try {
         const s = await gameApi.lobby();
         if (token !== generation.current) return;
+        const previous = previousLobby.current;
+        previousLobby.current = s;
         setState(s);
-        if (s.matchId) open(s.matchId);
-        if (s.searching) setMode('online');
+        if (
+          s.matchId &&
+          s.matchId !== previous?.matchId &&
+          (previous?.searching || previous?.invites.some((i) => i.status === 'pending'))
+        )
+          open(s.matchId);
       } catch {
         if (token === generation.current) setError('Не удалось обновить лобби. Пробуем снова…');
       } finally {
@@ -72,16 +81,34 @@ export function NewGameLobby({ kind }: { kind: BarGameId }) {
       }
     };
     void refresh();
-    const t = setInterval(() => void refresh(), 2000);
+    const timer = setInterval(() => void refresh(), 2000);
     return () => {
       generation.current++;
-      clearInterval(t);
+      clearInterval(timer);
     };
   }, []);
   useEffect(() => {
-    if (mode !== 'online' || tab !== 'challenge') return;
+    setActiveMatch(null);
+    if (!state?.matchId) return;
     let alive = true;
-    const t = setTimeout(
+    void gameApi
+      .read(state.matchId)
+      .then((match) => {
+        if (alive) setActiveMatch(match);
+      })
+      .catch(() => {
+        if (alive) setError('Не удалось загрузить данные партии.');
+      });
+    return () => {
+      alive = false;
+    };
+  }, [state?.matchId]);
+  const opponent = activeMatch?.participants[activeMatch.player === 0 ? 1 : 0];
+  useEffect(() => {
+    if (tab !== 'challenge') return;
+    let alive = true;
+    setLoadingPlayers(true);
+    const timer = setTimeout(
       () =>
         void gameApi
           .players(q)
@@ -90,14 +117,17 @@ export function NewGameLobby({ kind }: { kind: BarGameId }) {
           })
           .catch(() => {
             if (alive) setError('Не удалось загрузить игроков.');
+          })
+          .finally(() => {
+            if (alive) setLoadingPlayers(false);
           }),
       200,
     );
     return () => {
       alive = false;
-      clearTimeout(t);
+      clearTimeout(timer);
     };
-  }, [mode, tab, q]);
+  }, [tab, q]);
   const run = async (task: () => Promise<unknown>) => {
     if (pending.current) return;
     pending.current = true;
@@ -114,170 +144,210 @@ export function NewGameLobby({ kind }: { kind: BarGameId }) {
     }
   };
   return (
-    <div className="bar-new-lobby">
-      <div className="bar-game-lobby-heading">
-        <h2>{gameNames[kind]}</h2>
-        <button className="icon-btn" aria-label="Правила игры" onClick={() => setHelp(true)}>
-          ?
-        </button>
-      </div>
-      <SegmentedTabs
-        items={[
-          { id: 'computer', label: 'С персонажем' },
-          { id: 'online', label: 'С игроком' },
-        ]}
-        activeTab={mode}
-        onChange={(id) => setMode(id as typeof mode)}
-        ariaLabel="Соперник"
-      />
-      {state?.matchId && (
-        <button className="btn btn--cta" onClick={() => open(state.matchId!)}>
-          Продолжить партию
-        </button>
-      )}
-      {mode === 'computer' ? (
-        <>
-          <img
-            className="bar-game-invite-art"
-            src={gameArt(kind, 'invite')}
-            alt={`${characterNames[character]} приглашает сыграть`}
-          />
-          <h3>{characterNames[character]}</h3>
-          <p>{gameCopy[kind].invite}</p>
+    <div className="online-durak-lobby online-durak-lobby--embedded bar-online-game-lobby">
+      <section className="bar-content">
+        {error && (
+          <p role="alert" className="bar-connection">
+            {error}
+          </p>
+        )}
+        <div className="section-label duel-section-title">Текущие партии</div>
+        {state?.matchId && (
           <button
-            className="btn btn--cta"
-            disabled={busy || !!state?.searching}
-            onClick={() => setInvite(true)}
+            className="glass online-durak-invite bar-game-active-match"
+            aria-label={`Продолжить партию · ${opponent?.displayName ?? 'Соперник'}`}
+            onClick={() => open(state.matchId!)}
           >
-            Играть
-          </button>
-        </>
-      ) : (
-        <>
-          <SegmentedTabs
-            items={[
-              { id: 'find', label: 'Найти соперника' },
-              { id: 'challenge', label: 'Вызвать игрока' },
-            ]}
-            activeTab={tab}
-            onChange={(id) => setTab(id as typeof tab)}
-            ariaLabel="Способ игры"
-          />
-          {tab === 'find' ? (
-            <>
-              <p>Бесплатная партия один на один.</p>
-              <button
-                className="btn btn--cta"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    const r = await gameApi.queue(kind, !!state?.searching);
-                    if (r.matchId) open(r.matchId);
-                  })
-                }
-              >
-                {state?.searching ? 'Отменить поиск' : 'Найти соперника'}
-              </button>
-              {state?.searching && <p role="status">Ищем соперника…</p>}
-            </>
-          ) : (
-            <>
-              <label>
-                Имя игрока
-                <input
-                  className="bar-game-search"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Начни вводить имя"
-                />
-              </label>
-              <div className="bar-game-player-list">
-                {players.map((p) => (
-                  <div key={p.userId}>
-                    <span>{p.displayName}</span>
-                    <button
-                      className="btn btn--ghost"
-                      disabled={busy}
-                      onClick={() => void run(() => gameApi.invite(kind, p.userId))}
-                    >
-                      Вызвать
-                    </button>
-                  </div>
-                ))}
+            <UserAvatar
+              avatarUrl={opponent?.avatarUrl ?? null}
+              name={opponent?.displayName ?? 'Соперник'}
+              size={42}
+            />
+            <div className="online-durak-invite__identity">
+              <div className="duel-card-opponent-name">
+                {opponent?.displayName ?? 'Загружаем соперника…'}
               </div>
-              {!players.length && <p>Доступных игроков пока нет.</p>}
-            </>
-          )}
-        </>
-      )}
-      {state?.invites
-        .filter((i) => i.kind === kind && i.status === 'pending')
-        .map((i) => (
-          <div className="bar-game-pending" key={i.id}>
-            <p>
-              {i.senderId === localUserId()
-                ? `Вызов отправлен: ${i.receiverName}`
-                : `${i.senderName} приглашает сыграть`}
-            </p>
-            <button
-              className="btn btn--ghost"
-              disabled={busy}
-              onClick={() =>
-                void run(() =>
-                  gameApi.respond(i.id, i.senderId === localUserId() ? 'cancel' : 'decline'),
-                )
-              }
-            >
-              {i.senderId === localUserId() ? 'Отменить' : 'Отклонить'}
-            </button>
-            {i.receiverId === localUserId() && (
-              <button
-                className="btn btn--cta"
-                disabled={busy}
-                onClick={() =>
-                  void run(async () => {
-                    const r = await gameApi.respond(i.id, 'accept');
-                    if (r.matchId) open(r.matchId);
-                  })
-                }
-              >
-                Принять
-              </button>
-            )}
+              <span className="bar-game-active-match__status">Партия идёт</span>
+            </div>
+            <ChevronRight size={20} aria-hidden="true" />
+          </button>
+        )}
+        {!state?.matchId && !invites.length && (
+          <div role="status" className="duel-empty-current">
+            {state ? 'Активных партий пока нет' : 'Загружаем партии…'}
           </div>
-        ))}
-      {error && <p role="alert">{error}</p>}
-      {invite && (
-        <AccessibleModal
-          title={`${gameNames[kind]} · ${characterNames[character]}`}
-          onRequestClose={() => setInvite(false)}
-          headerAction={gameClose(() => setInvite(false))}
-        >
-          <img
-            className="bar-game-invite-art"
-            src={gameArt(kind, 'invite')}
-            alt={characterNames[character]}
-          />
-          <p className="modal-copy">{gameCopy[kind].invite}</p>
-          <div className="modal-actions">
+        )}
+        {invites.map((i) => {
+          const outgoing = i.senderId === userId;
+          const name = outgoing ? i.receiverName : i.senderName;
+          return (
+            <div className="glass online-durak-invite" key={i.id}>
+              <UserAvatar avatarUrl={null} name={name} size={42} fontSize={16} />
+              <div className="online-durak-invite__identity">
+                <div className="duel-card-opponent-name">{name}</div>
+                <div className="duel-card-meta">{gameNames[kind]} · 2 игрока</div>
+                {outgoing && <span className="duel-card-status">Ждём ответ</span>}
+              </div>
+              <div className="online-durak-invite__actions">
+                {outgoing ? (
+                  <button
+                    className="btn btn--ghost"
+                    disabled={busy}
+                    onClick={() => void run(() => gameApi.respond(i.id, 'cancel'))}
+                  >
+                    Отменить
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      className="btn duel-invite-action duel-invite-action--decline"
+                      disabled={busy}
+                      onClick={() => void run(() => gameApi.respond(i.id, 'decline'))}
+                    >
+                      Отклонить
+                    </button>
+                    <button
+                      className="btn duel-invite-action duel-invite-action--accept"
+                      disabled={busy}
+                      onClick={() =>
+                        void run(async () => {
+                          const r = await gameApi.respond(i.id, 'accept');
+                          if (r.matchId) open(r.matchId);
+                        })
+                      }
+                    >
+                      Принять
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+        <SegmentedTabs
+          items={[
+            { id: 'find', label: 'Найти' },
+            { id: 'challenge', label: 'Вызвать' },
+          ]}
+          activeTab={tab}
+          onChange={(id) => setTab(id as typeof tab)}
+          ariaLabel="Способ встречи"
+        />
+        {tab === 'find' ? (
+          <section className="online-durak-search">
+            {searchActive && (
+              <p role="status" className="bar-empty">
+                Ищем соперника…
+                {state?.searching !== kind ? ` · ${gameNames[state!.searching!]}` : ''}
+              </p>
+            )}
             <button
               className="btn btn--cta"
-              disabled={busy}
+              disabled={
+                busy ||
+                !state ||
+                (!searchActive &&
+                  (!!state.matchId || !!state.invites.some((i) => i.status === 'pending')))
+              }
               onClick={() =>
                 void run(async () => {
-                  const s = await gameApi.start(character, startId.current);
-                  open(s.id);
+                  const r = await gameApi.queue(kind, searchActive);
+                  if (r.matchId) open(r.matchId);
                 })
               }
             >
-              Играть
+              {searchActive ? 'Отменить поиск' : 'Начать поиск'}
             </button>
-          </div>
-        </AccessibleModal>
-      )}
-      {help && <GameHelp kind={kind} close={() => setHelp(false)} />}
+          </section>
+        ) : (
+          <section className="online-durak-search">
+            {!q.trim() && (
+              <>
+                <div className="section-label duel-form-section-title">Быстрый выбор</div>
+                <div className="glass duel-quick-pick" style={{ borderRadius: 18, padding: 12 }}>
+                  <div
+                    className="no-scrollbar"
+                    style={{ display: 'flex', gap: 12, overflowX: 'auto' }}
+                  >
+                    {players.slice(0, 8).map((player) => (
+                      <button
+                        type="button"
+                        key={player.userId}
+                        className={`duel-quick-pick__opponent${selected?.userId === player.userId ? ' duel-quick-pick__opponent--active' : ''}`}
+                        onClick={() => setSelected(player)}
+                        aria-label={`Выбрать соперника ${player.displayName}`}
+                        aria-pressed={selected?.userId === player.userId}
+                      >
+                        <UserAvatar
+                          avatarUrl={player.avatarUrl}
+                          name={player.displayName}
+                          size={48}
+                        />
+                        <span className="duel-quick-pick__name">{player.displayName}</span>
+                      </button>
+                    ))}
+                    {!loadingPlayers && !players.length && (
+                      <span className="bar-empty">Нет игроков для быстрого выбора</span>
+                    )}
+                  </div>
+                </div>
+              </>
+            )}
+            <div className="section-label duel-form-section-title">Поиск</div>
+            <div className="glass-dock-field duel-opponent-search" style={{ minHeight: 48 }}>
+              <Search className="duel-opponent-search__icon" size={14} aria-hidden />
+              <input
+                className="duel-opponent-search__input"
+                aria-label="Имя игрока"
+                placeholder="Имя или фамилия"
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setSelected(null);
+                }}
+              />
+            </div>
+            {loadingPlayers && (
+              <p role="status" className="bar-empty">
+                Ищем игроков…
+              </p>
+            )}
+            {!loadingPlayers && !players.length && (
+              <p className="bar-empty">
+                {q.trim() ? 'Игроки не найдены' : 'Доступных игроков пока нет'}
+              </p>
+            )}
+            {q.trim() &&
+              players.map((player) => (
+                <button
+                  type="button"
+                  className="glass online-durak-player"
+                  key={player.userId}
+                  onClick={() => setSelected(player)}
+                  aria-label={`Выбрать соперника ${player.displayName}`}
+                  aria-pressed={selected?.userId === player.userId}
+                >
+                  <UserAvatar avatarUrl={player.avatarUrl} name={player.displayName} size={40} />
+                  <strong>{player.displayName}</strong>
+                </button>
+              ))}
+            <button
+              className="btn btn--cta"
+              disabled={
+                busy ||
+                !state ||
+                !selected ||
+                searchActive ||
+                !!state.matchId ||
+                !!state.invites.some((i) => i.status === 'pending')
+              }
+              onClick={() => selected && void run(() => gameApi.invite(kind, selected.userId))}
+            >
+              {selected ? `Вызвать: ${selected.displayName}` : 'Выберите соперника'}
+            </button>
+          </section>
+        )}
+      </section>
     </div>
   );
 }
-import { useAuthStore } from '../../auth/authStore.js';
-const localUserId = () => useAuthStore.getState().user?.id;

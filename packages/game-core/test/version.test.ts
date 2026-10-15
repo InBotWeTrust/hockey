@@ -7,18 +7,18 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for checkers animation timing', () => {
-    expect(GAME_CORE_VERSION).toBe(94);
+  it('is bumped for darts swipe calibration', () => {
+    expect(GAME_CORE_VERSION).toBe(95);
   });
 });
 
 describe('shot core compatibility', () => {
   it('preserves sessions from the bar-only releases', () => {
-    for (const version of [88, 89, 90, 91, 92, 93, 94])
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95])
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 95, NaN])
+    for (const version of [77, 87, 96, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });

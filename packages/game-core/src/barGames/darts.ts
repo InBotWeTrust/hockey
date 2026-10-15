@@ -39,7 +39,9 @@ export function score(p: Point): number {
   const n = sectors[Math.floor(a / (Math.PI / 10))]!;
   return n * (r >= 0.94 ? 2 : r >= 0.56 && r <= 0.63 ? 3 : 1);
 }
-export function aim(g: Gesture): Point {
+export const SWIPE_GAIN = 720;
+export const LEGACY_SWIPE_GAIN = 1280;
+export function aim(g: Gesture, gain = SWIPE_GAIN): Point {
   if (
     ![g.dx, g.dy, g.durationMs].every(Number.isFinite) ||
     g.durationMs < 40 ||
@@ -51,7 +53,7 @@ export function aim(g: Gesture): Point {
   if (g.dy >= -0.02) return { x: 2, y: 2 };
   return {
     x: Math.max(-2, Math.min(2, (g.dx / -g.dy) * 1.4)),
-    y: Math.max(-2, Math.min(2, 1.6 - (-g.dy / g.durationMs) * 1280)),
+    y: Math.max(-2, Math.min(2, 1.6 - (-g.dy / g.durationMs) * gain)),
   };
 }
 export function hit(g: Game, p: Point): Game {

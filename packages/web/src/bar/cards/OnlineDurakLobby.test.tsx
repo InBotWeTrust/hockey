@@ -118,7 +118,7 @@ it('keeps several search formats selected and sends all of them', async () => {
   expect(rooms.joinRoom).toHaveBeenCalledWith([2, 4, 6]);
 });
 
-it('offers Daria through the existing launch modal', async () => {
+it('offers Maria through the existing launch modal', async () => {
   vi.mocked(api.lobby).mockResolvedValue({ matchId: null, searching: false, invites: [] });
   render(
     <MemoryRouter>
@@ -126,8 +126,8 @@ it('offers Daria through the existing launch modal', async () => {
     </MemoryRouter>,
   );
   await act(async () => {});
-  fireEvent.click(screen.getByRole('button', { name: 'Сыграть с Дарьей' }));
-  expect(screen.getByRole('dialog')).toHaveTextContent('Дурак с Дарьей');
+  fireEvent.click(screen.getByRole('button', { name: 'Сыграть с Марией' }));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Дурак с Марией');
   expect(screen.getByRole('button', { name: 'Играть' })).toBeInTheDocument();
 });
 
@@ -157,7 +157,7 @@ it('offers quick selection and a clear empty search result', async () => {
 });
 
 it.each([
-  ['Дарьей', 'Дарья'],
+  ['Марией', 'Мария'],
 ])('opens the launch for %s with their own description', async (name, character) => {
   vi.mocked(api.lobby).mockResolvedValue({ matchId: null, searching: false, invites: [] });
   render(
@@ -170,7 +170,7 @@ it.each([
     'aria-selected',
     'true',
   );
-  const steps = character === 'Дарья' ? 0 : character === 'Григорий' ? 1 : 3;
+  const steps = character === 'Мария' ? 0 : character === 'Григорий' ? 1 : 3;
   for (let n = 0; n < steps; n++)
     fireEvent.click(screen.getByRole('button', { name: 'Следующий персонаж' }));
   fireEvent.click(screen.getByRole('button', { name: `Сыграть с ${name}` }));
@@ -193,13 +193,13 @@ it('separates character selection from online search and preserves the selected 
   expect(screen.getByRole('img', { name: 'Панорама бара «4-й период»' })).toBeInTheDocument();
   showOnline();
   expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Сыграть с Дарьей' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Сыграть с Марией' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Игра с персонажем' }));
-  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Марией' })).toBeInTheDocument();
   expect(screen.queryByText('Легко')).not.toBeInTheDocument();
 });
 
-it('keeps Daria as the only card opponent after horizontal or vertical swipes', async () => {
+it('keeps Maria as the only card opponent after horizontal or vertical swipes', async () => {
   vi.mocked(api.lobby).mockResolvedValue({ matchId: null, searching: false, invites: [] });
   render(
     <MemoryRouter>
@@ -210,10 +210,10 @@ it('keeps Daria as the only card opponent after horizontal or vertical swipes', 
   const carousel = screen.getByRole('region', { name: 'Выбор персонажа' });
   fireEvent.touchStart(carousel, { touches: [{ clientX: 250, clientY: 150 }] });
   fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 90, clientY: 160 }] });
-  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Марией' })).toBeInTheDocument();
   fireEvent.touchStart(carousel, { touches: [{ clientX: 200, clientY: 100 }] });
   fireEvent.touchEnd(carousel, { changedTouches: [{ clientX: 150, clientY: 300 }] });
-  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Марией' })).toBeInTheDocument();
 });
 
 it('moves one shared panorama between heroes and the online terminal', async () => {
@@ -232,7 +232,7 @@ it('moves one shared panorama between heroes and the online terminal', async () 
   expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Игра с персонажем' }));
   expect(main).toHaveAttribute('data-scene', '0');
-  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Сыграть с Марией' })).toBeInTheDocument();
 });
 
 it('opens online for a pending invitation and blocks a competing computer game', async () => {
@@ -244,7 +244,7 @@ it('opens online for a pending invitation and blocks a competing computer game',
   await act(async () => {});
   expect(screen.getByRole('tab', { name: /^Игра онлайн/ })).toHaveAttribute('aria-selected', 'true');
   fireEvent.click(screen.getByRole('tab', { name: 'Игра с персонажем' }));
-  expect(screen.getByRole('button', { name: 'Сыграть с Дарьей' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Сыграть с Марией' })).toBeDisabled();
 });
 
 it('embeds only card controls because game selection belongs to the shared lobby', async () => {

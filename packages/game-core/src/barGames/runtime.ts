@@ -10,7 +10,7 @@ export type BarGameAction =
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 3;
+export const ENGINE_VERSION = 4;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -18,7 +18,7 @@ export const DART_IMPACT_MS = 350;
 export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
-  return version === 1 || version === 2 || version === ENGINE_VERSION;
+  return version === 1 || version === 2 || version === 3 || version === ENGINE_VERSION;
 }
 function botPause(m: Runtime, continuingDarts = false): number {
   if (m.engineVersion === 1) return m.game.kind === 'checkers' ? 900 : 1800;
@@ -28,7 +28,9 @@ function botPause(m: Runtime, continuingDarts = false): number {
   return thinking - (m.game.kind === 'billiards' ? POOL_AIM_MS : 0);
 }
 export const CHARACTER_GAME = {
+  // Kept for snapshots of existing Maria darts matches. New launches use Daria.
   maria: 'darts',
+  daria: 'darts',
   veronika: 'billiards',
   arsenich: 'checkers',
 } as const;
@@ -126,7 +128,10 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     return n;
   }
   if (m.game.kind === 'darts' && action.type === 'dart') {
-    n.lastDart = darts.aim(action.gesture);
+    n.lastDart = darts.aim(
+      action.gesture,
+      n.engineVersion >= 4 ? darts.SWIPE_GAIN : darts.LEGACY_SWIPE_GAIN,
+    );
     n.game = darts.hit(m.game, n.lastDart);
     n.feedback = {
       type: 'dart',
@@ -251,7 +256,8 @@ export function advance(m: Runtime, now: number): Runtime {
           x: Math.sin(angle) * radius + x,
           y: -Math.cos(angle) * radius + (random(copy) - 0.5) * 0.15,
         };
-        const speed = (1.6 - point.y) / 1280;
+        const gain = n.engineVersion >= 4 ? darts.SWIPE_GAIN : darts.LEGACY_SWIPE_GAIN;
+        const speed = (1.6 - point.y) / gain;
         n = perform(
           copy,
           {

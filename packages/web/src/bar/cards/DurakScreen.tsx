@@ -31,7 +31,7 @@ export function DurakScreen({
   const params = useParams();
   const owner = useAuthStore(state => state.user?.id);
   const opponentId = computerOpponent(params.opponentId).id;
-  if(!initialGame&&!previewPlayer&&params.opponentId!=='daria') return <Navigate to={params.opponentId==='maria'?'/bar/games?game=darts':params.opponentId==='arsenich'?'/bar/games?game=checkers':'/bar/games?game=cards'} replace/>;
+  if(!initialGame&&!previewPlayer&&params.opponentId!=='maria') return <Navigate to={params.opponentId==='daria'?'/bar/games?game=darts':params.opponentId==='arsenich'?'/bar/games?game=checkers':'/bar/games?game=cards'} replace/>;
   const content = (
     <ComputerGame
       key={`${opponentId}:${owner ?? 'preview'}`}
