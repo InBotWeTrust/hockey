@@ -50,7 +50,11 @@ export function BarGameScreen() {
     }
   };
   return (
-    <main className="bar-game-screen bar-game-screen--playing" data-game={view?.kind} data-character={view?.character}>
+    <main
+      className="bar-game-screen bar-game-screen--playing"
+      data-game={view?.kind}
+      data-character={view?.character}
+    >
       {!view ? (
         <>
           <p role="status">Загружаем партию…</p>
@@ -208,7 +212,15 @@ export function GameTable({
             send={send}
           />
         ) : game.kind === 'checkers' ? (
-          <CheckersField game={game} disabled={!active} send={send} player={player} />
+          <CheckersField
+            game={game}
+            disabled={!active}
+            send={send}
+            player={player}
+            motion={m.checkersMove ?? null}
+            animationStart={m.animationStart}
+            now={now}
+          />
         ) : (
           <PoolField
             game={game}

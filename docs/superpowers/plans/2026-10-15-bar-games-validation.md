@@ -71,3 +71,14 @@ The HUD distinguishes actual motion from thinking. Thinking uses the character n
 Observed RED: core pacing tests reproduced 900ms thinking; card tests reproduced responses before 3 seconds; HUD regression reproduced generic motion text while thinking. Final local checks: 35 core bar/version tests, 135 web bar-game/card tests, 20 server bar/onboarding/bonus tests passed (13 DB-backed onboarding tests skipped without full integration environment). Root typecheck/lint/build passed; final web build verified separately. No new DB migration or resets are required. The earlier unrelated full-core bank failures remain outside this change.
 
 CUA browser acceptance used the ignored local preview at 360×780 and 430×932: visible face, full square board, 72% piece/cell ratio (26.125/36.289px at 360px), no document overflow at 780px, legal selection and move, visible thinking phase, then return to the player. A long selector wait hit the browser tool's per-action limit; subsequent state confirmed the completed bot move, while exact 3–5 second limits are covered by deterministic tests. This is not authenticated dev or physical-phone acceptance.
+
+
+## Checkers capture animation follow-up
+
+Authoritative snapshots now carry the original board and the complete move path. Bar engine 3 reserves 450ms per step before handing over the next turn; existing engines 1/2 preserve their 350ms timing. Core 94 remains shot-compatible with 88–93, with no DB migration or data reset.
+
+The client slides ordinary moves and adds a small lift/shadow for captures. Each victim stays until the corresponding landing. Multi-captures, immediate king promotion, flipped boards and delayed snapshots render from elapsed server time. Local partial-path selection animates immediately; acknowledged own paths do not replay earlier jumps. A rejected request restores the authoritative board. After the first local capture landing, switching to another piece is blocked until the chain completes. Reduced-motion mode uses a flat slide instead of the jump arc.
+
+Observed RED covered absent trajectory metadata, early victim removal, missing intermediate frames and abandoning a started chain. GREEN: 39 core bar/version tests, 143 web bar/card tests, 20 server bar/onboarding/bonus tests passed (13 DB-backed onboarding tests skipped). Root typecheck/lint/build passed; web typecheck/lint/build passed again after the final chain guard.
+
+CUA at 360×780 used an ignored local capture fixture. Actual clicks verified first victim still present during first jump; after first landing it was absent while the second victim remained during the second jump. Computed transform confirmed lift/scale, and a screenshot was saved locally. The fixture and screenshot are not release assets. Authenticated two-client and physical-phone acceptance remain separate. Earlier unrelated full-core bank failures remain as documented.

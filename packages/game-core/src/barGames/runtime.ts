@@ -10,14 +10,15 @@ export type BarGameAction =
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 2;
+export const ENGINE_VERSION = 3;
+export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
 export const DART_IMPACT_MS = 350;
 export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
-  return version === 1 || version === ENGINE_VERSION;
+  return version === 1 || version === 2 || version === ENGINE_VERSION;
 }
 function botPause(m: Runtime, continuingDarts = false): number {
   if (m.engineVersion === 1) return m.game.kind === 'checkers' ? 900 : 1800;
@@ -41,7 +42,22 @@ export interface BarGameFeedback {
   pocketed?: number[];
   foul?: boolean;
 }
+export interface CheckersMotion {
+  board: number[];
+  path: number[];
+  actor: darts.Player;
+  durationMs: number;
+}
+function checkersMotion(m: Runtime, path: number[]): CheckersMotion {
+  return {
+    board: [...(m.game.kind === 'checkers' ? m.game.board : [])],
+    path: [...path],
+    actor: m.game.turn,
+    durationMs: m.engineVersion >= 3 ? (path.length - 1) * CHECKERS_STEP_MS : 350,
+  };
+}
 export interface Runtime {
+  checkersMove?: CheckersMotion | null;
   feedback?: BarGameFeedback;
   engineVersion: number;
   game: BarGame;
@@ -97,6 +113,7 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     ...m,
     missed: [...m.missed],
     poolFrames: [],
+    checkersMove: null,
     lastDart: null,
     revision: m.revision + 1,
     animationStart: now,
@@ -126,7 +143,8 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
       actor: p,
       captured: m.game.board.filter(Boolean).length - n.game.board.filter(Boolean).length,
     };
-    duration = 350;
+    n.checkersMove = checkersMotion(m, action.path);
+    duration = n.checkersMove.durationMs;
   } else if (m.game.kind === 'billiards' && action.type === 'place') {
     n.game = pool.place(m.game, action.point);
     n.poolShot = null;
@@ -258,12 +276,15 @@ export function advance(m: Runtime, now: number): Runtime {
         };
         break;
       }
+      const checkersPath = n.game.kind === 'checkers' ? checkers.moves(n.game)[0]! : null;
+      const motion = checkersPath ? checkersMotion(n, checkersPath) : null;
+      const duration = motion?.durationMs ?? 0;
       const game =
         n.game.kind === 'darts'
           ? darts.timeout(n.game)
           : n.game.kind === 'billiards'
             ? pool.timeout(n.game)
-            : checkers.move(n.game, checkers.moves(n.game)[0]!);
+            : checkers.move(n.game, checkersPath!);
       const at = n.deadline;
       n = {
         ...n,
@@ -272,7 +293,8 @@ export function advance(m: Runtime, now: number): Runtime {
         revision: n.revision + 1,
         deadline: at + TURN_MS,
         animationStart: at,
-        animationUntil: at + (game.kind === 'checkers' ? 350 : 0),
+        animationUntil: at + duration,
+        checkersMove: motion,
         poolFrames: [],
         poolShot: null,
         poolAim: null,
@@ -282,7 +304,7 @@ export function advance(m: Runtime, now: number): Runtime {
       };
       if (n.computer && game.turn === 1 && (n.engineVersion === 1 || game.winner === null))
         n.animationUntil += n.engineVersion === 1 ? 900 : botPause(n);
-      n.deadline += game.kind === 'checkers' ? 350 : 0;
+      n.deadline += duration;
     } else break;
   }
   return n;

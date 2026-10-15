@@ -24,12 +24,12 @@ it('waits after a player move and timeout, and does not restart thinking on read
   const start = createMatch('checkers', 0, 0, true, 7);
   if (start.game.kind !== 'checkers') throw new Error('fixture');
   const moved = command(start, 0, { type: 'checkers', path: moves(start.game)[0]! }, 100);
-  const delay = moved.animationUntil - 100 - 350;
+  const delay = moved.animationUntil - 100 - 450;
   expect(delay).toBeGreaterThanOrEqual(3000);
   expect(delay).toBeLessThanOrEqual(5000);
   expect(advance(moved, moved.animationUntil - 1)).toBe(moved);
   const timeout = advance(start, start.deadline);
-  const timeoutDelay = timeout.animationUntil - start.deadline - 350;
+  const timeoutDelay = timeout.animationUntil - start.deadline - 450;
   expect(timeoutDelay).toBeGreaterThanOrEqual(3000);
   expect(timeoutDelay).toBeLessThanOrEqual(5000);
 });

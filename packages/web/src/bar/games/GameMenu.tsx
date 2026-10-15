@@ -68,7 +68,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
     : m.feedback.type === 'dart'
       ? DART_FLIGHT_MS + DART_IMPACT_MS
       : m.feedback.type === 'checkers' || (m.feedback.type === 'timeout' && g.kind === 'checkers')
-        ? 350
+        ? (m.checkersMove?.durationMs ?? 350)
         : m.feedback.type === 'shot'
           ? m.poolFrames.length
             ? POOL_STROKE_MS + ((m.poolFrames.length - 1) * 1000) / 60

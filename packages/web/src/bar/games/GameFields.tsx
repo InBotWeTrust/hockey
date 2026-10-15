@@ -3,6 +3,8 @@ import { gameClose } from './GameModals.js';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import {
   POOL_STROKE_MS,
+  CHECKERS_STEP_MS,
+  type CheckersMotion,
   type Runtime,
   DART_FLIGHT_MS,
   DART_IMPACT_MS,
@@ -11,6 +13,8 @@ import {
   barPool,
   type BarGameAction,
 } from '@hockey/game-core';
+import { checkersFrame } from './checkersMotion.js';
+import { MovingChecker } from './MovingChecker.js';
 type Send = (action: BarGameAction) => void;
 const numbers = [20, 1, 18, 4, 13, 6, 10, 15, 2, 17, 3, 19, 7, 16, 8, 11, 14, 9, 12, 5];
 const point = (r: number, a: number) => `${150 + r * Math.sin(a)},${150 - r * Math.cos(a)}`;
@@ -193,48 +197,99 @@ export function CheckersField({
   disabled,
   send,
   player = 0,
+  motion = null,
+  animationStart = 0,
+  now = 0,
 }: {
+  motion?: CheckersMotion | null;
+  animationStart?: number;
+  now?: number;
   game: barCheckers.Game;
   disabled: boolean;
   send: Send;
   player?: 0 | 1;
 }) {
   const [path, setPath] = useState<number[]>([]);
-  useEffect(() => setPath([]), [game.board.join(','), game.turn]);
+  const [local, setLocal] = useState<{
+    data: CheckersMotion;
+    startedAt: number;
+    origin: string;
+    fullPath: number[];
+    final: boolean;
+  } | null>(null);
+  const acceptedAt = useRef<number | null>(null);
+  const gameKey = game.board.join(',');
+  useEffect(() => setPath([]), [gameKey, game.turn]);
+  const matchesSubmission = !!(
+    local?.final &&
+    motion &&
+    motion.actor === player &&
+    motion.board.join(',') === local.origin &&
+    motion.path.join(',') === local.fullPath.join(',')
+  );
+  if (matchesSubmission && acceptedAt.current === null) acceptedAt.current = animationStart;
+  const accepted = matchesSubmission && acceptedAt.current === animationStart;
+  const localApplicable = !!local && (local.origin === gameKey || accepted);
+  const localActive = localApplicable && now < local!.startedAt + local!.data.durationMs;
+  const useLocal = localApplicable && (localActive || accepted || (local!.final && disabled));
+  const preview =
+    path.length > 1
+      ? checkersFrame(
+          {
+            board: game.board,
+            path,
+            actor: game.turn,
+            durationMs: 1,
+          },
+          game.white,
+          1,
+        ).board
+      : game.board;
+  const remoteActive = motion && now >= animationStart && now < animationStart + motion.durationMs;
+  const visual = useLocal
+    ? checkersFrame(local!.data, game.white, now - local!.startedAt)
+    : remoteActive && !accepted
+      ? checkersFrame(motion, game.white, now - animationStart)
+      : { board: preview, moving: null };
+  const motionId = `${useLocal ? local!.startedAt : animationStart}:${visual.moving?.step}`;
   const legal = barCheckers.moves(game);
   const available = legal.filter((m) => path.every((x, i) => x === m[i]));
   const destinations = available.map((m) => m[path.length]);
   const click = (i: number) => {
-    if (disabled) return;
+    if (disabled || visual.moving) return;
+    if (path.length > 1 && !destinations.includes(i)) return;
     if (!path.length || (!destinations.includes(i) && legal.some((m) => m[0] === i))) {
-      if (legal.some((m) => m[0] === i)) setPath([i]);
+      if (legal.some((m) => m[0] === i)) {
+        setPath([i]);
+        setLocal(null);
+      }
       return;
     }
     const next = [...path, i];
     const candidates = available.filter((m) => m[path.length] === i);
     if (!candidates.length) return;
-    if (candidates.some((m) => m.length === next.length)) {
+    const final = candidates.some((m) => m.length === next.length);
+    acceptedAt.current = null;
+    setLocal({
+      data: {
+        board: [...preview],
+        path: [path[path.length - 1]!, i],
+        actor: game.turn,
+        durationMs: CHECKERS_STEP_MS,
+      },
+      origin: gameKey,
+      fullPath: next,
+      startedAt: now,
+      final,
+    });
+    if (final) {
       send({ type: 'checkers', path: next });
       setPath([]);
     } else setPath(next);
   };
   // Keep the local player's pieces at the bottom, regardless of assigned white.
   const flipped = player !== game.white;
-  const board = [...game.board];
-  if (path.length > 1) {
-    let piece = board[path[0]!]!;
-    board[path[0]!] = 0;
-    for (let j = 1; j < path.length; j++) {
-      const a = path[j - 1]!,
-        b = path[j]!;
-      const dr = Math.sign((b >> 3) - (a >> 3)),
-        dc = Math.sign((b % 8) - (a % 8));
-      for (let r = (a >> 3) + dr, c = (a % 8) + dc; r !== b >> 3; r += dr, c += dc)
-        board[r * 8 + c] = 0;
-      if (b >> 3 === (game.turn === game.white ? 0 : 7)) piece = Math.sign(piece) * 2;
-    }
-    board[path[path.length - 1]!] = piece;
-  }
+  const board = visual.board;
   return (
     <div className="bar-checkers-surround">
       <div className="bar-checkers" role="group" aria-label="Шашечная доска">
@@ -248,7 +303,7 @@ export function CheckersField({
               className={`bar-checkers__cell ${(i + (i >> 3)) % 2 ? 'bar-checkers__cell--dark' : ''} ${path[path.length - 1] === i ? 'is-selected' : ''} ${path.length && destinations.includes(i) ? 'is-target' : ''}`}
               aria-label={`Клетка ${i + 1}`}
               aria-pressed={path[path.length - 1] === i}
-              disabled={disabled}
+              disabled={disabled || !!visual.moving}
               onClick={() => click(i)}
             >
               {p !== 0 && (
@@ -262,6 +317,14 @@ export function CheckersField({
             </button>
           );
         })}
+        {visual.moving && (
+          <MovingChecker
+            motion={visual.moving}
+            flipped={flipped}
+            id={motionId}
+            white={(visual.moving.piece > 0 ? 0 : 1) === game.white}
+          />
+        )}
       </div>
     </div>
   );
