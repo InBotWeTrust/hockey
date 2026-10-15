@@ -113,7 +113,6 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
                 size={30}
                 alt="Твой аватар"
               />
-              <PoolGroup view={view} player={player} />
               <CardPlayerName
                 name={view.participants[player]!.displayName}
                 count={view.ready ? undefined : count(view, player)}
@@ -134,12 +133,17 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
             aria-label="Осталось времени"
             role="timer"
           >
+            <span className="bar-pool-group-slot bar-pool-group-slot--self">
+              <PoolGroup view={view} player={player} />
+            </span>
             <FittedMenuLabel>Время</FittedMenuLabel>
             <strong className="game-scoreboard__value">{seconds ?? '—'}</strong>
+            <span className="bar-pool-group-slot bar-pool-group-slot--opponent">
+              <PoolGroup view={view} player={other} />
+            </span>
           </div>
           <div className="game-scoreboard__metric">
             <div className="durak-menu__identity durak-menu__identity--opponent">
-              <PoolGroup view={view} player={other} />
               <CardPlayerName
                 name={view.participants[other]!.displayName}
                 count={view.ready ? undefined : count(view, other)}

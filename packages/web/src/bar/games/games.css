@@ -651,7 +651,9 @@
   width: 30px !important;
   height: 30px !important;
 }
-.bar-game-menu .durak-menu__identity { gap: 5px; }
+.bar-game-menu .durak-menu__identity {
+  gap: 5px;
+}
 .bar-game-menu .durak-menu__row {
   grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
 }
@@ -659,3 +661,51 @@
 .bar-game-menu .durak-player-count {
   font-size: 10px;
 }
+
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 68px minmax(0, 1fr);
+}
+.bar-game-menu .game-scoreboard__metric--timer {
+  box-sizing: border-box;
+  height: 36px;
+  padding: 2px 14px;
+  gap: 2px;
+}
+.bar-game-menu [role='timer'] .game-scoreboard__label {
+  font-size: 8px;
+  line-height: 1;
+}
+.bar-game-menu [role='timer'] .game-scoreboard__value {
+  font-size: 22px;
+  line-height: 1;
+}
+.bar-pool-group-slot {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  pointer-events: none;
+}
+.bar-pool-group-slot--self {
+  left: 3px;
+}
+.bar-pool-group-slot--opponent {
+  right: 3px;
+}
+.bar-pool-group {
+  display: block;
+  width: 11px;
+  height: 11px;
+  box-sizing: border-box;
+  background: #d9b06f;
+  border: 1px solid #fff3d7;
+  box-shadow: none;
+}
+.bar-pool-group--striped {
+  background: linear-gradient(to bottom, #fff8e8 0 32%, #bd8949 32% 68%, #fff8e8 68%);
+}
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 64px minmax(0, 1fr);
+}
+.bar-game-menu .game-scoreboard__metric:not(.game-scoreboard__metric--timer) { padding-inline: 2px; }
+.bar-game-menu .durak-menu__identity { gap: 3px; }
