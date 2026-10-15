@@ -105,7 +105,10 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
     <section className="durak-menu game-scoreboard-stack bar-game-menu" aria-label="Меню игры">
       <div className="game-scoreboard game-scoreboard--stable-surface">
         <div className="game-scoreboard__row durak-menu__row">
-          <div className="game-scoreboard__metric">
+          <div className="game-scoreboard__metric bar-game-player--self">
+            <span className="bar-pool-group-slot bar-pool-group-slot--self">
+              <PoolGroup view={view} player={player} />
+            </span>
             <div className="durak-menu__identity">
               <UserAvatar
                 avatarUrl={view.participants[player]!.avatarUrl}
@@ -133,16 +136,13 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
             aria-label="Осталось времени"
             role="timer"
           >
-            <span className="bar-pool-group-slot bar-pool-group-slot--self">
-              <PoolGroup view={view} player={player} />
-            </span>
             <FittedMenuLabel>Время</FittedMenuLabel>
             <strong className="game-scoreboard__value">{seconds ?? '—'}</strong>
+          </div>
+          <div className="game-scoreboard__metric bar-game-player--opponent">
             <span className="bar-pool-group-slot bar-pool-group-slot--opponent">
               <PoolGroup view={view} player={other} />
             </span>
-          </div>
-          <div className="game-scoreboard__metric">
             <div className="durak-menu__identity durak-menu__identity--opponent">
               <CardPlayerName
                 name={view.participants[other]!.displayName}

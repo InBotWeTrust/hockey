@@ -123,12 +123,17 @@ it('starts pool counters at zero and counts pocketed group balls with compact gr
     '(2)',
     '(1)',
   ]);
-  expect(screen.getByRole('img', { name: 'Сплошные шары' })).toBeInTheDocument();
-  expect(screen.getByRole('img', { name: 'Полосатые шары' })).toBeInTheDocument();
-  expect(screen.getByRole('timer')).toContainElement(
+  expect(container.querySelector('.bar-game-player--self')).toContainElement(
     screen.getByRole('img', { name: 'Сплошные шары' }),
   );
-  expect(screen.getByRole('timer')).toContainElement(
+  expect(container.querySelector('.bar-game-player--opponent')).toContainElement(
+    screen.getByRole('img', { name: 'Полосатые шары' }),
+  );
+  expect(screen.getByRole('img', { name: 'Полосатые шары' })).toBeInTheDocument();
+  expect(screen.getByRole('timer')).not.toContainElement(
+    screen.getByRole('img', { name: 'Сплошные шары' }),
+  );
+  expect(screen.getByRole('timer')).not.toContainElement(
     screen.getByRole('img', { name: 'Полосатые шары' }),
   );
 });

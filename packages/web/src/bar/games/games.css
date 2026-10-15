@@ -808,3 +808,34 @@
   border-radius: 8px;
   background: linear-gradient(270deg, #708f69, #dbb765 65%, #b5593e);
 }
+
+.bar-game-menu .durak-menu__row {
+  grid-template-columns: minmax(0, 1fr) 44px minmax(0, 1fr);
+}
+.bar-game-menu .game-scoreboard__metric--timer {
+  padding-inline: 2px;
+}
+.bar-game-menu .game-scoreboard__metric.bar-game-player--self {
+  padding-right: 12px;
+}
+.bar-game-menu .game-scoreboard__metric.bar-game-player--opponent {
+  padding-left: 12px;
+}
+.bar-game-player--self .bar-pool-group-slot {
+  left: auto;
+  right: 1px;
+}
+.bar-game-player--opponent .bar-pool-group-slot {
+  right: auto;
+  left: 1px;
+}
+.bar-pool-group {
+  background: #fff;
+  border-color: #fff;
+}
+.bar-pool-group--striped {
+  background: linear-gradient(to bottom, #fff 0 32%, #65472f 32% 68%, #fff 68%);
+}
+.bar-pool-spin-button {
+  padding: 10px;
+}
