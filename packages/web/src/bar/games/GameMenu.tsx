@@ -1,5 +1,10 @@
 import { formatRussianCount } from '../../lib/russianPlural.js';
-import { DART_FLIGHT_MS, type BarGameSnapshot } from '@hockey/game-core';
+import {
+  DART_FLIGHT_MS,
+  DART_IMPACT_MS,
+  POOL_STROKE_MS,
+  type BarGameSnapshot,
+} from '@hockey/game-core';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { FittedNotice } from '../../game/FittedNotice.js';
 import { CardPlayerName, FittedMenuLabel } from '../cards/FittedMenuLabel.js';
@@ -58,29 +63,44 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
   const { runtime: m, player } = view,
     g = m.game,
     other = player === 0 ? 1 : 0;
-  const animating = now < m.animationUntil;
+  const motionDuration = !m.feedback
+    ? 0
+    : m.feedback.type === 'dart'
+      ? DART_FLIGHT_MS + DART_IMPACT_MS
+      : m.feedback.type === 'checkers' || (m.feedback.type === 'timeout' && g.kind === 'checkers')
+        ? 350
+        : m.feedback.type === 'shot'
+          ? m.poolFrames.length
+            ? POOL_STROKE_MS + ((m.poolFrames.length - 1) * 1000) / 60
+            : Math.max(0, m.animationUntil - m.animationStart)
+          : 0;
+  const motionUntil = m.animationStart + motionDuration;
+  const animating = now < motionUntil;
+  const thinking = m.computer && g.turn === other && g.winner === null && !animating && !view.ready;
   const poolShotPending = g.kind === 'billiards' && m.feedback?.type === 'shot' && animating;
   const seconds =
     (g.winner !== null && !poolShotPending) || view.ready
       ? null
-      : Math.max(0, Math.ceil((m.deadline - Math.max(now, m.animationUntil)) / 1000));
+      : Math.max(0, Math.ceil((m.deadline - Math.max(now, motionUntil)) / 1000));
   let turn = poolShotPending
     ? 'Ход выполняется…'
     : g.winner !== null
       ? 'Партия завершена'
       : view.ready
         ? 'Ожидаем начала'
-        : animating
-          ? 'Ход выполняется…'
-          : g.turn === player
-            ? 'Твой ход'
-            : 'Ход соперника';
+        : thinking
+          ? `${view.participants[other]!.displayName} думает…`
+          : animating
+            ? 'Ход выполняется…'
+            : g.turn === player
+              ? 'Твой ход'
+              : 'Ход соперника';
   if (g.kind === 'darts' && g.winner === null) turn += ` · Осталось дротиков: ${g.dartsLeft}`;
   const dartFeedback = g.kind === 'darts' && m.feedback?.type === 'dart';
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
     (dartFeedback && (sinceContact < 0 || sinceContact >= 2000)) ||
-    (g.kind === 'billiards' && (animating || now >= m.animationUntil + 2000))
+    (g.kind === 'billiards' && (animating || now >= motionUntil + 2000))
       ? ''
       : actionResult(view);
   const poolHint =

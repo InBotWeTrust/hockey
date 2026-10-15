@@ -50,7 +50,7 @@ export function BarGameScreen() {
     }
   };
   return (
-    <main className="bar-game-screen bar-game-screen--playing" data-game={view?.kind}>
+    <main className="bar-game-screen bar-game-screen--playing" data-game={view?.kind} data-character={view?.character}>
       {!view ? (
         <>
           <p role="status">Загружаем партию…</p>

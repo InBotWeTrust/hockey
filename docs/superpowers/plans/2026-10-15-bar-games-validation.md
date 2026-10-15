@@ -58,3 +58,16 @@ The persisted-session release gate is resolved: versions 88–92 share unchanged
 Observed RED: two new compatibility tests failed before the helper existed. GREEN: 31 core bar/version tests, 131 web bar-game/card tests, 11 server route/service/DTO tests, 13 onboarding/bonus tests (13 unrelated DB-backed onboarding tests skipped), and 5 real PostgreSQL integration tests passed. The latter used a disposable PostgreSQL 16 container and unique schema, including repeat migration 222 and concurrent admission. Root typecheck, lint and build passed. Full core bank baseline failures remain as documented above.
 
 User authorized deployment to dev and will perform real-client/phone acceptance there. Production is excluded. Deployment evidence will be reported separately after Actions completes.
+
+
+## Checkers scene and character pacing follow-up
+
+Generated `checkers-arsenich-table-v1.webp` from the approved Arsenich and bar references, plus `checkers-board-wood-v1.webp` as an orthographic material/frame. The exact 8×8 grid and legal hit targets remain code-rendered. Pieces occupy 72% of each cell. Only NPC checkers use the Arsenich scene; online games keep a character-free background. Original generated PNGs remain under the image tool output directory; repository WebP assets total about 537 KiB.
+
+New bar matches use engine version 2 with seeded random 3–5 second thinking before each new character turn; Veronika's visible aiming is included in that interval. Maria keeps 1.8-second gaps between subsequent darts, excluding flight/impact. Existing engine-1 matches retain their original timing and random stream. Core version 93 is bar-only; hockey shot compatibility explicitly includes 88–92. Daria's first response in cards also waits 3–5 seconds, preserving quicker follow-up actions.
+
+The HUD distinguishes actual motion from thinking. Thinking uses the character name and does not freeze the timer. Pool results remain hidden until the balls stop, then can be read during the opponent's pause.
+
+Observed RED: core pacing tests reproduced 900ms thinking; card tests reproduced responses before 3 seconds; HUD regression reproduced generic motion text while thinking. Final local checks: 35 core bar/version tests, 135 web bar-game/card tests, 20 server bar/onboarding/bonus tests passed (13 DB-backed onboarding tests skipped without full integration environment). Root typecheck/lint/build passed; final web build verified separately. No new DB migration or resets are required. The earlier unrelated full-core bank failures remain outside this change.
+
+CUA browser acceptance used the ignored local preview at 360×780 and 430×932: visible face, full square board, 72% piece/cell ratio (26.125/36.289px at 360px), no document overflow at 780px, legal selection and move, visible thinking phase, then return to the player. A long selector wait hit the browser tool's per-action limit; subsequent state confirmed the completed bot move, while exact 3–5 second limits are covered by deterministic tests. This is not authenticated dev or physical-phone acceptance.
