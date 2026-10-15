@@ -275,6 +275,66 @@ const colors = [
   '#8d3731',
   '#151a1d',
 ];
+function PoolBall({ ball }: { ball: barPool.Ball }) {
+  const previousPocketed = useRef(ball.pocketed);
+  const [falling, setFalling] = useState<barPool.Ball | null>(null);
+  useEffect(() => {
+    const newlyPocketed = ball.pocketed && !previousPocketed.current;
+    previousPocketed.current = ball.pocketed;
+    if (!newlyPocketed) {
+      if (!ball.pocketed) setFalling(null);
+      return;
+    }
+    setFalling(ball);
+    const timer = setTimeout(() => setFalling(null), 350);
+    return () => clearTimeout(timer);
+  }, [ball.pocketed]);
+  if (ball.pocketed && !falling) return null;
+  const position = falling ?? ball;
+  const pocket = barPool.POCKETS.reduce((best, p) =>
+    Math.hypot(position.x - p.x, position.y - p.y) <
+    Math.hypot(position.x - best.x, position.y - best.y)
+      ? p
+      : best,
+  );
+  const b = { ...position, x: 0, y: 0 };
+  return (
+    <g transform={`translate(${position.x} ${position.y})`}>
+      <g
+        className={falling ? 'bar-pool-ball-sink' : undefined}
+        style={
+          {
+            '--sink-x': `${pocket.x - position.x}px`,
+            '--sink-y': `${pocket.y - position.y}px`,
+          } as CSSProperties
+        }
+      >
+        <circle cx={b.x + 0.003} cy={b.y + 0.006} r={barPool.R} fill="#001b17" opacity=".45" />
+        <circle
+          cx={b.x}
+          cy={b.y}
+          r={barPool.R}
+          fill={b.id === 0 || b.id > 8 ? '#eee9d5' : colors[b.id]}
+        />
+        {b.id > 8 && (
+          <path
+            d={`M${b.x - barPool.R * 0.94} ${b.y - 0.01} Q${b.x} ${b.y - 0.02} ${b.x + barPool.R * 0.94} ${b.y - 0.01} L${b.x + barPool.R * 0.94} ${b.y + 0.01} Q${b.x} ${b.y + 0.02} ${b.x - barPool.R * 0.94} ${b.y + 0.01} Z`}
+            fill={colors[b.id - 8]}
+          />
+        )}
+        <circle cx={b.x} cy={b.y} r={barPool.R} fill="url(#ball-shine)" />
+        {b.id > 0 && (
+          <>
+            <circle cx={b.x} cy={b.y} r=".011" fill="#f9f3de" />
+            <text x={b.x} y={b.y + 0.005} fontSize=".014" textAnchor="middle" fill="#172421">
+              {b.id}
+            </text>
+          </>
+        )}
+      </g>
+    </g>
+  );
+}
 export function PoolField({
   game,
   balls,
@@ -446,40 +506,9 @@ export function PoolField({
             )}
           </g>
         )}
-        {balls
-          .filter((b) => !b.pocketed)
-          .map((b) => (
-            <g key={b.id}>
-              <circle
-                cx={b.x + 0.003}
-                cy={b.y + 0.006}
-                r={barPool.R}
-                fill="#001b17"
-                opacity=".45"
-              />
-              <circle
-                cx={b.x}
-                cy={b.y}
-                r={barPool.R}
-                fill={b.id === 0 || b.id > 8 ? '#eee9d5' : colors[b.id]}
-              />
-              {b.id > 8 && (
-                <path
-                  d={`M${b.x - barPool.R * 0.94} ${b.y - 0.01} Q${b.x} ${b.y - 0.02} ${b.x + barPool.R * 0.94} ${b.y - 0.01} L${b.x + barPool.R * 0.94} ${b.y + 0.01} Q${b.x} ${b.y + 0.02} ${b.x - barPool.R * 0.94} ${b.y + 0.01} Z`}
-                  fill={colors[b.id - 8]}
-                />
-              )}
-              <circle cx={b.x} cy={b.y} r={barPool.R} fill="url(#ball-shine)" />
-              {b.id > 0 && (
-                <>
-                  <circle cx={b.x} cy={b.y} r=".011" fill="#f9f3de" />
-                  <text x={b.x} y={b.y + 0.005} fontSize=".014" textAnchor="middle" fill="#172421">
-                    {b.id}
-                  </text>
-                </>
-              )}
-            </g>
-          ))}
+        {balls.map((ball) => (
+          <PoolBall key={ball.id} ball={ball} />
+        ))}
         {shot &&
           now >= animationStart + POOL_STROKE_MS &&
           now < animationStart + POOL_STROKE_MS + 300 && (

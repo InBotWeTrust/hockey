@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import {
   barCheckers,
@@ -143,4 +143,22 @@ it('pulls the whole fixed-length cue back as power increases', () => {
   const high = Number(body?.getAttribute('transform')?.match(/translate\(([^ ]+)/)?.[1]);
   expect(low - high).toBeGreaterThan(0.15);
   expect(body?.innerHTML).toBe(shape);
+});
+it('animates a newly pocketed ball, but does not replay old pocketed balls', () => {
+  vi.useFakeTimers();
+  try {
+    const game = barPool.create(0);
+    const balls = game.balls.map((b) => (b.id === 1 ? { ...b, x: 0.025, y: 0.025 } : b));
+    const props = { game, disabled: true, send: vi.fn() };
+    const { container, rerender } = render(<PoolField {...props} balls={balls} />);
+    const pocketed = balls.map((b) => (b.id === 1 ? { ...b, pocketed: true } : b));
+    rerender(<PoolField {...props} balls={pocketed} />);
+    expect(container.querySelector('.bar-pool-ball-sink')).not.toBeNull();
+    act(() => vi.advanceTimersByTime(350));
+    expect(container.querySelector('.bar-pool-ball-sink')).toBeNull();
+    rerender(<PoolField {...props} balls={pocketed} />);
+    expect(container.querySelector('.bar-pool-ball-sink')).toBeNull();
+  } finally {
+    vi.useRealTimers();
+  }
 });

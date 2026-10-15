@@ -603,3 +603,35 @@
 .bar-pool-group--striped {
   background: linear-gradient(to bottom, #f4ead4 0 28%, #b66f34 28% 72%, #f4ead4 72%);
 }
+
+.bar-pool-ball-sink {
+  transform-origin: 0 0;
+  animation: bar-pool-ball-sink 350ms ease-in both;
+  pointer-events: none;
+}
+@keyframes bar-pool-ball-sink {
+  0% {
+    transform: translate(0, 0) scale(1) rotate(0);
+    opacity: 1;
+  }
+  65% {
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(var(--sink-x), var(--sink-y)) scale(0.08) rotate(65deg);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bar-pool-ball-sink {
+    animation-name: bar-pool-ball-fade;
+  }
+  @keyframes bar-pool-ball-fade {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+}
