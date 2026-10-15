@@ -136,12 +136,13 @@ export function DartsField({
                   : undefined
               }
             >
-              <path d="M0 0L2 -26L-2 -26Z" fill="#d1d7d3" />
-              <path
-                d="M0 -24L-7 -37L0 -34L7 -37Z"
-                fill="#c9b15c"
-                stroke="#3a3d35"
-                strokeWidth="1"
+              <image
+                href="/bar/games/dart-embedded-v1.webp"
+                x="-5.1"
+                y="0"
+                width="10.2"
+                height="44"
+                transform="rotate(180)"
               />
             </g>
           </g>
@@ -160,8 +161,13 @@ export function DartsField({
                 } as CSSProperties
               }
             >
-              <path d="M0 0L3 32L-3 32Z" fill="#f0f4ef" stroke="#56675e" />
-              <path d="M0 28L-10 48L0 42L10 48Z" fill="#edc65f" stroke="#443321" />
+              <image
+                href="/bar/games/dart-flight-v1.webp"
+                x="-6.1"
+                y="0"
+                width="12.2"
+                height="48"
+              />
             </g>
           </g>
         )}
@@ -172,9 +178,7 @@ export function DartsField({
         style={{ opacity: flying ? 0 : 1 }}
       >
         <svg viewBox="0 0 100 150" aria-hidden="true">
-          <path d="M50 5L46 70L54 70Z" fill="#d7dedb" />
-          <rect x="44" y="65" width="12" height="35" rx="4" fill="#85918c" />
-          <path d="M50 95L25 135L50 124L75 135Z" fill="#ba9a51" stroke="#3b3328" strokeWidth="2" />
+          <image href="/bar/games/dart-flight-v1.webp" x="32.2" y="5" width="35.6" height="140" />
         </svg>
       </div>
     </div>
