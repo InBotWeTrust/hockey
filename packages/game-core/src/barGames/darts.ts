@@ -77,3 +77,27 @@ export function hit(g: Game, p: Point): Game {
 export function timeout(g: Game): Game {
   return { ...g, turn: g.turn === 0 ? 1 : 0, dartsLeft: 3, hits: [], lastScore: 0 };
 }
+
+// Prefer wide singles for finishes; otherwise leave a single-sector checkout.
+export function botTarget(remaining: number): Point {
+  const targets = sectors.flatMap((value, index) => [
+    { value, radius: 0.4, index },
+    { value: value * 2, radius: 0.97, index },
+    { value: value * 3, radius: 0.595, index },
+  ]);
+  const candidates = [
+    ...targets.filter((t) => t.radius === 0.4),
+    { value: 50, radius: 0, index: 0 },
+    { value: 25, radius: 0.065, index: 0 },
+    ...targets.filter((t) => t.radius !== 0.4),
+  ];
+  const target =
+    remaining > 60
+      ? targets.find((t) => t.value === 60)!
+      : (candidates.find((t) => t.value === remaining) ??
+        candidates
+          .filter((t) => t.value < remaining && remaining - t.value <= 20)
+          .sort((a, b) => b.value - a.value)[0]!);
+  const angle = (target.index * Math.PI) / 10;
+  return { x: Math.sin(angle) * target.radius, y: -Math.cos(angle) * target.radius };
+}

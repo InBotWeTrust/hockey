@@ -20,7 +20,7 @@ export function DartsAimControl({
         -1.1,
         Math.min(
           1.1,
-          base.current.x + Math.sin(seconds * 3.3) * 0.075 + Math.sin(seconds * 5.7 + 0.6) * 0.028,
+          base.current.x + Math.sin(seconds * 4.2) * 0.115 + Math.sin(seconds * 7.1 + 0.6) * 0.045,
         ),
       ),
       y: Math.max(
@@ -28,8 +28,8 @@ export function DartsAimControl({
         Math.min(
           1.1,
           base.current.y +
-            Math.sin(seconds * 2.5 + 1) * 0.065 +
-            Math.sin(seconds * 4.9 + 2.1) * 0.025,
+            Math.sin(seconds * 3.3 + 1) * 0.10 +
+            Math.sin(seconds * 6.2 + 2.1) * 0.04,
         ),
       ),
     };

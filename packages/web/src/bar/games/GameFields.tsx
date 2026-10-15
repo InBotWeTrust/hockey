@@ -414,19 +414,36 @@ function PoolBall({ ball }: { ball: barPool.Ball }) {
           cx={b.x}
           cy={b.y}
           r={barPool.R}
-          fill={b.id === 0 || b.id > 8 ? '#eee9d5' : colors[b.id]}
+          fill={b.id === 0 || b.id > 8 ? '#fffdf2' : colors[b.id]}
+          stroke="#0a211d"
+          strokeWidth=".0015"
         />
         {b.id > 8 && (
           <path
-            d={`M${b.x - barPool.R * 0.94} ${b.y - 0.01} Q${b.x} ${b.y - 0.02} ${b.x + barPool.R * 0.94} ${b.y - 0.01} L${b.x + barPool.R * 0.94} ${b.y + 0.01} Q${b.x} ${b.y + 0.02} ${b.x - barPool.R * 0.94} ${b.y + 0.01} Z`}
+            d={`M${b.x - barPool.R * 0.94} ${b.y - 0.008} Q${b.x} ${b.y - 0.016} ${b.x + barPool.R * 0.94} ${b.y - 0.008} L${b.x + barPool.R * 0.94} ${b.y + 0.008} Q${b.x} ${b.y + 0.016} ${b.x - barPool.R * 0.94} ${b.y + 0.008} Z`}
             fill={colors[b.id - 8]}
           />
         )}
         <circle cx={b.x} cy={b.y} r={barPool.R} fill="url(#ball-shine)" />
         {b.id > 0 && (
           <>
-            <circle cx={b.x} cy={b.y} r=".011" fill="#f9f3de" />
-            <text x={b.x} y={b.y + 0.005} fontSize=".014" textAnchor="middle" fill="#172421">
+            <circle
+              cx={b.x}
+              cy={b.y}
+              r=".0155"
+              fill="#fffef7"
+              stroke="#222b27"
+              strokeWidth=".0007"
+            />
+            <text
+              x={b.x}
+              y={b.y + 0.0075}
+              fontSize=".022"
+              fontWeight="800"
+              fontFamily="Arial, sans-serif"
+              textAnchor="middle"
+              fill="#101613"
+            >
               {b.id}
             </text>
           </>
