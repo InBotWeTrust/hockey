@@ -97,9 +97,10 @@ export function DartsAimControl({
         role="button"
         aria-label="Зажми дротик, наведи и отпусти"
         aria-disabled={disabled}
+        data-holding={holding}
         style={{
           position: 'absolute',
-          bottom: 'calc(env(safe-area-inset-bottom) + 14px)',
+          bottom: 'var(--darts-rest-bottom, calc(env(safe-area-inset-bottom) + 14px))',
           left: '50%',
           transform: 'translateX(-50%)',
           width: 100,

@@ -53,7 +53,10 @@ export function DartsField({
     Math.hypot(lastDart.x, lastDart.y) <= 1 &&
     elapsed >= DART_FLIGHT_MS &&
     elapsed < DART_FLIGHT_MS + DART_IMPACT_MS;
-  const hits = dartHits ?? (game.hits.length ? game.hits : lastDart ? [lastDart] : []);
+  const showingLastImpact = !!lastDart && elapsed < DART_FLIGHT_MS + DART_IMPACT_MS;
+  const hits = game.hits.length || showingLastImpact
+    ? (dartHits ?? (game.hits.length ? game.hits : lastDart ? [lastDart] : []))
+    : [];
   const visiblePoint = (p: barDarts.Point) => ({
     x: Math.max(-1.25, Math.min(1.25, p.x)),
     y: Math.max(-1.25, Math.min(1.25, p.y)),
@@ -216,7 +219,7 @@ export function DartsField({
         />
       )}
       <div
-        className="bar-darts-throw"
+        className={`bar-darts-throw${!disabled && !flying ? ' bar-darts-throw--idle' : ''}`}
         aria-label="Область броска"
         style={{ opacity: flying ? 0 : 1 }}
       >
