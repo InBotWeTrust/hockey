@@ -343,6 +343,7 @@
   white-space: nowrap;
 }
 .bar-game-menu .durak-turn-notice {
+  margin-top: 0;
   align-self: center;
   width: max-content;
   max-width: 100%;
