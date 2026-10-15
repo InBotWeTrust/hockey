@@ -1,3 +1,5 @@
+import { useChatStore } from '../chat/chatStore.js';
+import { chatKeys } from '../lib/queryKeys.js';
 import type { AchievementDto } from '../api/achievements.js';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -298,6 +300,21 @@ describe('SectionsScreen', () => {
     vi.restoreAllMocks();
     useDailyStore.setState({ data: null, loading: false, error: null, inFlight: false });
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
+  });
+
+  it('updates district badges from the shared navigation caches',async()=>{
+    mockSectionsApi({achievementsUnclaimedCount:2});
+    const client=renderSections();
+    expect(await screen.findByLabelText('Задания и челленджи: 2')).toHaveTextContent('2');
+    await act(async()=>{
+      client.setQueryData(chatKeys.unread(),{'chat-a':3,'chat-b':7});
+      client.setQueryData(['amateur-duel','events'],{events:[{status:'invited',me:{side:'opponent',state:'invited'}}]});
+      client.setQueryData(['tournaments','classic','active'],{games:[{state:'available'},{state:'closed'}]});
+    });
+    expect(await screen.findByLabelText('Непрочитанные: 2')).toHaveTextContent('2');
+    expect(await screen.findByLabelText('Дуэли и турниры: 2')).toHaveTextContent('2');
+    await act(async()=>{client.setQueryData(chatKeys.unread(),{});useChatStore.getState().setUnread({});});
+    await waitFor(()=>expect(screen.queryByLabelText('Непрочитанные: 2')).toBeNull());
   });
 
   it('shows an unfinished challenge result once and acknowledges it', async () => {

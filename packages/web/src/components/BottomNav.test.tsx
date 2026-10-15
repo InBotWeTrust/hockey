@@ -738,7 +738,7 @@ describe('BottomNav remembered navigation', () => {
 
   it('opens the last remembered profile route from another tab', () => {
     sessionStorage.setItem('hockey.nav.lastProfileRoute', '/profile/settings');
-    renderBottomNav('/sections');
+    renderBottomNav('/bar');
 
     fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
 
@@ -796,4 +796,11 @@ describe('BottomNav remembered navigation', () => {
 
     expect(await screen.findByLabelText('События администратора: 5')).toHaveTextContent('5');
   });
+});
+
+it('hides global navigation on the district map only',()=>{
+ const user={id:'test',displayName:'Player'};
+ expect(isBottomNavVisible('/sections',user)).toBe(false);
+ expect(isBottomNavVisible('/profile',user)).toBe(true);
+ expect(isBottomNavVisible('/chat',user)).toBe(true);
 });

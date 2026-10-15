@@ -1,20 +1,21 @@
 import {useEffect,useLayoutEffect,useRef,useState} from 'react';
-import {ChevronRight,Snowflake,Goal} from 'lucide-react';
+import {ChevronRight,Snowflake,Goal,User} from 'lucide-react';
 import './city-map.css';
 import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
-type Props={owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;onNavigate:(path:string)=>void};
+type Props={owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
 const places=[
- {id:'yard',name:'Дворовый каток',x:13,y:57,w:20,h:18},
- {id:'shop',name:'Магазин',x:19,y:40,w:8,h:13,thumb:[16.8,33.8]},
- {id:'bank',name:'Банк',x:28,y:39,w:8,h:14,thumb:[26.2,33.8]},
- {id:'tasks',name:'Задания',x:30,y:60,w:9,h:14},
- {id:'stadium',name:'Стадион «Центральный»',x:41,y:43,w:15,h:18},
- {id:'gym',name:'Спортзал',x:45,y:25,w:11,h:12},
- {id:'bar',name:'Бар "4-й период"',x:50,y:55,w:11,h:15},
- {id:'fame',name:'Зал славы',x:61,y:33,w:14,h:19},
- {id:'bonus',name:'Бонусные игры',x:64,y:55,w:13,h:19},
- {id:'pro',name:'Арена Ультимейт',x:87,y:31,w:24,h:36},
+ {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
+ {id:'shop',name:'Магазин',x:25.6,y:39,w:7.5,h:12,thumb:[22.5,31]},
+ {id:'tasks',name:'Задания',x:27,y:58.5,w:8,h:13,thumb:[24.8,59]},
+ {id:'bank',name:'Банк',x:36.2,y:36.5,w:8,h:16,thumb:[34.7,28]},
+ {id:'stadium',name:'Стадион «Центральный»',x:44.8,y:51,w:14,h:20,thumb:[43.9,52.6]},
+ {id:'gym',name:'Спортзал',x:52.5,y:37,w:9.5,h:14,thumb:[54,28.9]},
+ {id:'bar',name:'Бар "4-й период"',x:59.4,y:60,w:10.5,h:17,thumb:[60.3,62.6]},
+ {id:'chat',name:'Телефонная будка',x:30.1,y:62,w:2.6,h:8.5,thumb:[27.9,70]},
+ {id:'fame',name:'Зал славы',x:64.5,y:36,w:9,h:17,thumb:[66.2,26.1]},
+ {id:'bonus',name:'Бонусные игры',x:72.3,y:59,w:8,h:17,thumb:[75.8,62.9]},
+ {id:'pro',name:'Арена Ультимейт',x:87,y:42,w:25,h:34,thumb:[92,37]},
 ];
 export function CityMap(props:Props){
  const {owner,level,daily,training,tasks,bonus,onNavigate}=props;
@@ -30,11 +31,21 @@ export function CityMap(props:Props){
  const currentPlace=useRef(selected);currentPlace.current=selected;
  const place=places.find(p=>p.id===selected)!;
  const image=useCityImage();
- const select=(id:string)=>{setSelected(id);try{sessionStorage.setItem(storageKey,id);}catch{/* Optional selection persistence. */}clearTimeout(timer.current);setFlash(null);if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)timer.current=setTimeout(()=>setFlash(id),280);};
+ const targetLeft=(p:typeof places[number])=>{const el=viewport.current,w=world.current;if(!el||!w)return null;return Math.max(0,Math.min(Math.max(0,w.clientWidth-el.clientWidth),w.clientWidth*p.x/100-el.clientWidth/2));};
+ const center=(p:typeof places[number],behavior:ScrollBehavior)=>{const left=targetLeft(p);if(left!==null)viewport.current?.scrollTo?.({left,behavior});const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior});};
+ const select=(id:string)=>{if(id===selected)center(place,window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth');setSelected(id);try{sessionStorage.setItem(storageKey,id);}catch{/* Optional selection persistence. */}clearTimeout(timer.current);setFlash(null);if(!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)timer.current=setTimeout(()=>setFlash(id),280);};
  useEffect(()=>()=>clearTimeout(timer.current),[]);
- useLayoutEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w)return;const behavior=positioned.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto';el.scrollTo?.({left:w.clientWidth*place.x/100-el.clientWidth/2,behavior});const active=dock.current?.querySelector<HTMLElement>('[aria-pressed="true"]');if(active&&dock.current)dock.current.scrollTo?.({left:active.offsetLeft-dock.current.offsetLeft-dock.current.clientWidth/2+23,behavior});positioned.current=true;},[place]);
+ useLayoutEffect(()=>{center(place,positioned.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'smooth':'auto');positioned.current=true;},[place]);
  useEffect(()=>{const el=viewport.current,w=world.current;if(!el||!w||typeof ResizeObserver==='undefined')return;let width=el.clientWidth,height=el.clientHeight;const observer=new ResizeObserver(()=>{if(width===el.clientWidth&&height===el.clientHeight)return;width=el.clientWidth;height=el.clientHeight;const current=places.find(p=>p.id===currentPlace.current)!;el.scrollTo?.({left:w.clientWidth*current.x/100-width/2,behavior:'auto'});});observer.observe(el);return()=>observer.disconnect();},[]);
 
+ const openBuilding=(p:typeof places[number])=>{
+  if(p.id==='chat'){onNavigate('/chat');return;}
+  const left=targetLeft(p);
+  if(p.id!==selected||left===null||Math.abs((viewport.current?.scrollLeft??0)-left)>4){select(p.id);return;}
+  const routes:Record<string,string>={yard:'/?view=training&from=sections',stadium:'/?view=amateur&from=sections',shop:'/inventory',bank:'/inventory?tab=bank',tasks:'/achievements',bar:'/bar',bonus:'/bonus-games',chat:'/chat'};
+  const path=p.id===dailyId?'/daily':routes[p.id];
+  if(path)onNavigate(path);
+ };
  let description='';const actions:{label:string;path:string;kind?:string}[]=[];
  if(selected==='yard'){description=level==='beginner'?`${daily} · Тренировка: ${training}`:'Открытая тренировка и упражнения';actions.push({label:'Тренировка',path:'/?view=training&from=sections',kind:'training'});}
  if(selected==='stadium'){description=level==='amateur'?daily:'Дуэли и турниры';actions.push({label:'Дуэли и турниры',path:'/?view=amateur&from=sections'});}
@@ -42,11 +53,17 @@ export function CityMap(props:Props){
  if(selected==='shop'){description='Инвентарь и валюта';actions.push({label:'Войти в магазин',path:'/inventory'});}
  if(selected==='bank'){description='Валюта и пополнение';actions.push({label:'Открыть банк',path:'/inventory?tab=bank'});}
  if(selected==='bar'){description='Трансляции, игры и общение';actions.push({label:'Войти в бар',path:'/bar'});}
+ if(selected==='chat'){description='Сообщения и общение';actions.push({label:'Открыть чат',path:'/chat'});}
  if(selected==='bonus'){description=bonus;actions.push({label:'Выбрать игру',path:'/bonus-games'});}
  if(selected==='gym')description='Физическая подготовка · в разработке';
  if(selected==='fame')description='Лучшие игроки и результаты · в разработке';
  if(selected==='pro')description=level==='professional'?`${daily} · Игры самого высокого уровня · в разработке`:'Игры самого высокого уровня · в разработке';
  if(selected===dailyId)actions.push({label:'Ежедневная игра',path:'/daily',kind:'daily'});
+ const badge=(id:string)=>{
+  const count=id==='chat'?props.chatCount:id==='stadium'?props.gameCount:id==='tasks'?props.taskCount:id==='bar'?props.barCount:0;
+  const label=id==='chat'?'Непрочитанные':id==='stadium'?'Дуэли и турниры':id==='tasks'?'Задания и челленджи':'Приглашения в бар';
+  return (count??0)>0?<small className="district-badge" aria-label={`${label}: ${count}`}>{count!>99?'99+':count}</small>:null;
+ };
  return <section className="district" aria-label="Хоккейный район">
   <div ref={viewport} className="district-viewport" tabIndex={0} aria-label="Карта района"
    onPointerDown={e=>{if(!e.isPrimary||e.button!==0)return;blockUntil.current=0;drag.current={x:e.clientX,y:e.clientY,left:e.currentTarget.scrollLeft,type:e.pointerType,moved:false};e.currentTarget.scrollTo?.({left:e.currentTarget.scrollLeft,behavior:'instant' as ScrollBehavior});}}
@@ -55,11 +72,11 @@ export function CityMap(props:Props){
    onPointerCancel={()=>{blockUntil.current=performance.now()+500;drag.current=null;}}
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
    <div ref={world} className="district-world"><CityBackground image={image}/>
-    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>select(p.id)}/>)}
+    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>openBuilding(p)}/>)}
    </div>
   </div>
   <section className="district-panel" aria-label="Выбранное место"><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>onNavigate(a.path)}>{a.kind==='training'?<Snowflake/>:a.kind==='daily'?<Goal/>:<ChevronRight/>}</button>)}</div></div>
-   <nav className="district-dock" ref={dock} aria-label="Места района">{places.map(p=><button key={p.id} aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>select(p.id)}><span style={{backgroundImage:`url(${image})`,backgroundPosition:`${p.thumb?.[0]??p.x}% ${p.thumb?.[1]??p.y}%`}}/></button>)}</nav>
+   <nav className="district-dock" ref={dock} aria-label="Места района"><button aria-label="Открыть профиль" title="Мой профиль" onClick={()=>onNavigate('/profile')}><span className="district-profile">{props.avatarUrl?<img src={props.avatarUrl} alt=""/>:<User aria-hidden="true"/>}</span></button>{places.map(p=><button key={p.id} aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>select(p.id)}><span style={{backgroundImage:`url(${image})`,backgroundPosition:`${p.thumb?.[0]??p.x}% ${p.thumb?.[1]??p.y}%`}}/>{badge(p.id)}</button>)}</nav>
   </section>
  </section>;
 }

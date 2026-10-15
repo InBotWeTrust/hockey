@@ -1,13 +1,18 @@
 import {useEffect, useState} from 'react';
-export type CityTimeOfDay = 'morning' | 'day' | 'night';
+export type CityTimeOfDay = 'morning' | 'day' | 'sunset' | 'night';
 export function cityTimeOfDay(date: Date): CityTimeOfDay {
  const hour = date.getHours();
- return hour >= 5 && hour < 10 ? 'morning' : hour >= 10 && hour < 18 ? 'day' : 'night';
+ if (hour >= 6 && hour < 10) return 'morning';
+ if (hour >= 10 && hour < 18) return 'day';
+ return hour >= 18 && hour < 21 ? 'sunset' : 'night';
 }
+// One approved panorama is temporarily shared by every lighting phase.
+const approvedImage = ['/maps/city-approved-4096-c22b8b605dce.webp', '/maps/city-approved-6144-019d2f29903d.webp'] as const;
 const images = {
- morning: ['/maps/city-morning-4096-56b2c885b9ae.webp', '/maps/city-morning-6144-dfc7356e2dc8.webp'],
- day: ['/maps/city-day-4096-18066a8cc004.webp', '/maps/city-day-6144-dc849d1f8624.webp'],
- night: ['/maps/city-4096-ff03b6a9e3f4.webp', '/maps/city-6144-950ff27a3699.webp'],
+ morning: approvedImage,
+ day: approvedImage,
+ sunset: approvedImage,
+ night: approvedImage,
 } as const;
 export function cityImage(date: Date, pixelRatio: number): string {
  return images[cityTimeOfDay(date)][pixelRatio > 1.5 ? 1 : 0];
