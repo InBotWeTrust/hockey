@@ -10,7 +10,7 @@ export type BarGameAction =
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 5;
+export const ENGINE_VERSION = 6;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -19,7 +19,7 @@ export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
   return (
-    version === 1 || version === 2 || version === 3 || version === 4 || version === ENGINE_VERSION
+    version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === ENGINE_VERSION
   );
 }
 function botPause(m: Runtime, continuingDarts = false): number {
@@ -159,7 +159,7 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     n.feedback = { type: 'place', actor: p };
     return n;
   } else if (m.game.kind === 'billiards' && action.type === 'shot') {
-    const sim = pool.shoot(m.game, action);
+    const sim = pool.shoot(m.game, action, m.engineVersion >= 6 ? 'responsive' : 'classic');
     n.poolAim = null;
     const cue = m.game.balls.find((b) => b.id === 0)!;
     n.poolShot = { ...action, cue: { x: cue.x, y: cue.y } };
