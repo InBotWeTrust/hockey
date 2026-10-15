@@ -850,6 +850,10 @@
 }
 
 
+.bar-game-screen--playing[data-game='checkers'] {
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+}
 /* A clear opponent area keeps Arsenich visible above the separately drawn board. */
 .bar-game-screen--playing[data-game='checkers'][data-character='arsenich'] {
   background: linear-gradient(to bottom, transparent 720px, #472c1c 830px),
@@ -872,7 +876,10 @@
   margin-top: auto;
 }
 .bar-game-screen--playing[data-game='checkers'] > .bar-game-header {
-  order: 1;
+  flex: none;
+}
+.bar-game-screen--playing[data-game='checkers'] > .bar-game-header h1 {
+  display: none;
 }
 
 
