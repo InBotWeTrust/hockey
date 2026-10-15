@@ -590,3 +590,16 @@
     opacity: 0.3;
   }
 }
+
+.bar-pool-group {
+  flex: none;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 1px solid #f3ddb7;
+  background: radial-gradient(circle at 30% 25%, #eebd71, #a95e30 65%, #61351e);
+  box-shadow: 0 1px 2px #0008;
+}
+.bar-pool-group--striped {
+  background: linear-gradient(to bottom, #f4ead4 0 28%, #b66f34 28% 72%, #f4ead4 72%);
+}

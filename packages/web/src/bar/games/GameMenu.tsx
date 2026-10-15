@@ -9,10 +9,23 @@ function count(view: BarGameSnapshot, player: 0 | 1): number | undefined {
   if (g.kind === 'darts') return g.scores[player];
   if (g.kind === 'checkers') return g.board.filter((p) => p && (p > 0 ? 0 : 1) === player).length;
   const group = g.groups[player];
-  if (!group) return undefined;
+  if (!group) return 0;
   return g.balls.filter(
-    (b) => !b.pocketed && b.id !== 0 && b.id !== 8 && (b.id < 8 ? 'solids' : 'stripes') === group,
+    (b) => b.pocketed && b.id !== 0 && b.id !== 8 && (b.id < 8 ? 'solids' : 'stripes') === group,
   ).length;
+}
+function PoolGroup({ view, player }: { view: BarGameSnapshot; player: 0 | 1 }) {
+  const g = view.runtime.game;
+  if (g.kind !== 'billiards' || !g.groups[player] || view.ready) return null;
+  const striped = g.groups[player] === 'stripes';
+  return (
+    <span
+      className={`bar-pool-group${striped ? ' bar-pool-group--striped' : ''}`}
+      role="img"
+      aria-label={striped ? 'Полосатые шары' : 'Сплошные шары'}
+      title={striped ? 'Полосатые' : 'Сплошные'}
+    />
+  );
 }
 function actionResult(view: BarGameSnapshot): string {
   const f = view.runtime.feedback;
@@ -104,6 +117,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
                 size={28}
                 alt="Твой аватар"
               />
+              <PoolGroup view={view} player={player} />
               <CardPlayerName
                 name={view.participants[player]!.displayName}
                 count={view.ready ? undefined : count(view, player)}
@@ -129,6 +143,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
           </div>
           <div className="game-scoreboard__metric">
             <div className="durak-menu__identity durak-menu__identity--opponent">
+              <PoolGroup view={view} player={other} />
               <CardPlayerName
                 name={view.participants[other]!.displayName}
                 count={view.ready ? undefined : count(view, other)}

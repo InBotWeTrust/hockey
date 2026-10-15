@@ -99,3 +99,30 @@ it('keeps pool instructions in the menu notice and removes field hints', () => {
   rerender(<GameTable view={v} now={0} disabled={false} send={() => {}} />);
   expect(screen.getByRole('status')).toHaveTextContent(/^Следующий пропуск — поражение$/);
 });
+it('starts pool counters at zero and counts pocketed group balls with compact group markers', () => {
+  const v = view();
+  v.kind = 'billiards';
+  v.runtime = createMatch('billiards', 0, 0, false, 1);
+  const { container, rerender } = render(
+    <GameTable view={v} now={0} disabled={false} send={() => {}} />,
+  );
+  expect([...container.querySelectorAll('.durak-player-count')].map((n) => n.textContent)).toEqual([
+    '(0)',
+    '(0)',
+  ]);
+  expect(screen.queryByRole('img', { name: 'Сплошные шары' })).toBeNull();
+  if (v.runtime.game.kind === 'billiards') {
+    v.runtime.game.groups = ['solids', 'stripes'];
+    v.runtime.game.balls = v.runtime.game.balls.map((b) => ({
+      ...b,
+      pocketed: [1, 2, 9, 0, 8].includes(b.id),
+    }));
+  }
+  rerender(<GameTable view={v} now={0} disabled={false} send={() => {}} />);
+  expect([...container.querySelectorAll('.durak-player-count')].map((n) => n.textContent)).toEqual([
+    '(2)',
+    '(1)',
+  ]);
+  expect(screen.getByRole('img', { name: 'Сплошные шары' })).toBeInTheDocument();
+  expect(screen.getByRole('img', { name: 'Полосатые шары' })).toBeInTheDocument();
+});
