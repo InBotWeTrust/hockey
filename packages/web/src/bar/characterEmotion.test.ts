@@ -70,3 +70,9 @@ it('preloads Daria’s distinct greeting smile while preserving her conversation
   expect(emotionAsset('daria','joy')).toBe('/bar/emotions/daria/joy-v1.webp');
  }finally{vi.unstubAllGlobals();}
 });
+
+it('loads the revised low-hand interest pose for Timofey without changing other emotions',()=>{
+ expect(emotionAsset('timofey','interest')).toBe('/bar/emotions/timofey/interest-v2.webp');
+ expect(emotionAsset('timofey','neutral')).toBe('/bar/emotions/timofey/neutral-v1.webp');
+ expect(emotionAsset('timofey','joy')).toBe('/bar/emotions/timofey/joy-v1.webp');
+});
