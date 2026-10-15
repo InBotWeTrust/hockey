@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
-import { GAME_CORE_VERSION, OPEN_WINDOW_BANK_VERSION, OBSERVATION_BANK_VERSION,
+import { GAME_CORE_VERSION, isShotCoreVersionCompatible, OPEN_WINDOW_BANK_VERSION, OBSERVATION_BANK_VERSION,
   getDailyPeriodSpeedPreset, evaluateOpenWindowDecision, getOpenWindowScene,
   getObservationScene, scanOpenWindows, type ObservationInput, type ObservationStepKey,
   type OpenWindowStepKey } from '@hockey/game-core';
@@ -128,7 +128,7 @@ async function lockedRun(client: PoolClient, userId: string, runId: string,
   if (run.state !== 'active' && !allowClosed) {
     throw new AppError('open_window_run_closed', 'run is closed', 409);
   }
-  if (run.game_core_version !== GAME_CORE_VERSION ||
+  if (!isShotCoreVersionCompatible(run.game_core_version) ||
     run.bank_version !== bankVersionFor(stepKey)) {
     throw new AppError('open_window_version_changed', 'Restart this lesson', 409);
   }
@@ -192,7 +192,7 @@ export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
           `select * from open_window_training_run where user_id = $1 and state = 'active' for update`,
           [req.user.id]);
         const existing = active.rows[0];
-        if (existing?.step_key === stepKey && existing.game_core_version === GAME_CORE_VERSION &&
+        if (existing?.step_key === stepKey && isShotCoreVersionCompatible(existing.game_core_version) &&
           existing.bank_version === bankVersionFor(stepKey)) {
           const scene = isObservationStep(stepKey)
             ? getObservationScene(stepKey, existing.scene_variant)
@@ -241,7 +241,7 @@ export const openWindowCourseRoutes: FastifyPluginAsync = async (app) => {
         [query.data.run_id, req.user.id, stepKey]);
       const run = rows[0];
       if (!run) throw new AppError('not_found', 'run not found', 404);
-      if (run.game_core_version !== GAME_CORE_VERSION ||
+      if (!isShotCoreVersionCompatible(run.game_core_version) ||
         run.bank_version !== bankVersionFor(stepKey)) {
         throw new AppError('open_window_version_changed', 'Restart this lesson', 409);
       }

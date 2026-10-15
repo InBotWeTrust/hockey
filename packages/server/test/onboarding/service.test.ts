@@ -25,7 +25,7 @@ const MIGRATIONS_DIR = path.resolve(__dirname, '../../db/migrations');
 const MEDIA_SECRET = 'onboarding-media-secret';
 
 describe('onboarding tutorial shot service', () => {
-  it('resolves the story shot against a goal fixed at center', async () => {
+  it.each([88, GAME_CORE_VERSION])('resolves a saved core-%s story shot against a goal fixed at center', async (coreVersion) => {
     const seed = 'a'.repeat(64);
     const speeds = { shooterFrequency: 0.8, goalieFrequency: 0.65, goalFrequency: 0.55 };
     const offsets = getSessionPhaseOffsets(seed);
@@ -56,7 +56,7 @@ describe('onboarding tutorial shot service', () => {
         versionId: randomUUID(),
         tutorialState: {
           seed,
-          gameCoreVersion: GAME_CORE_VERSION,
+          gameCoreVersion: coreVersion,
           nextShotIndex: 1,
           result: null,
           stepId: randomUUID(),

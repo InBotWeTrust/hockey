@@ -49,3 +49,12 @@ Shared optional shot/aim spin coordinates are validated within the unit disk; th
 Local verification: core spin/follow/draw/cushion/determinism/input tests, runtime spin transport, server schema tests, web selection/cancel/release tests; web/server typecheck, lint and web build. Browser at 360px: modal selection, actual 77% leftward pull/release, zero reset, both control surfaces measured 80px. Two authenticated real clients and physical-phone acceptance remain outstanding; dev/production were not deployed.
 
 Release gate: GAME_CORE_VERSION is bumped per core instructions (this feature branch has never been deployed). Before releasing the complete branch, explicitly resolve compatibility of already persisted version-pinned onboarding/training sessions with the final core version. The local bar preview does not exercise those flows.
+
+
+## Authorized dev release preflight (2026-10-15)
+
+The persisted-session release gate is resolved: versions 88–92 share unchanged hockey shot simulation, so a narrowly gated compatibility helper preserves existing onboarding, training and bonus attempts. Bank/scoring version guards remain intact; no data reset or backfill is needed. Other core versions remain rejected except the pre-existing bonus legacy support.
+
+Observed RED: two new compatibility tests failed before the helper existed. GREEN: 31 core bar/version tests, 131 web bar-game/card tests, 11 server route/service/DTO tests, 13 onboarding/bonus tests (13 unrelated DB-backed onboarding tests skipped), and 5 real PostgreSQL integration tests passed. The latter used a disposable PostgreSQL 16 container and unique schema, including repeat migration 222 and concurrent admission. Root typecheck, lint and build passed. Full core bank baseline failures remain as documented above.
+
+User authorized deployment to dev and will perform real-client/phone acceptance there. Production is excluded. Deployment evidence will be reported separately after Actions completes.

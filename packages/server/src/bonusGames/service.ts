@@ -8,7 +8,7 @@ import { createSkiAttemptSampler, resolveSkiCourtShot } from '@hockey/game-core'
 import { assertVersionedBeachEnvironment, resolveVersionedBeachShot } from './beachShot.js';
 import { randomUUID } from 'node:crypto';
 import {
-  GAME_CORE_VERSION,
+  GAME_CORE_VERSION, isShotCoreVersionCompatible,
   createWindSchedule, beachWindMotion, beachCleanupRules, sampleBeachPuddles, type BeachCleanupEvent,
   GOAL_OPENING,
   PUCK_START,
@@ -121,7 +121,7 @@ const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73,
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
-    version === GAME_CORE_VERSION ||
+    isShotCoreVersionCompatible(version) ||
     LEGACY_BONUS_GAME_CORE_VERSIONS.some((legacy) => version === legacy)
   );
 }

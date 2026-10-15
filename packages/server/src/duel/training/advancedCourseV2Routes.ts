@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
-import { ADVANCED_TRAINING_V2_SCENARIOS, GAME_CORE_VERSION,
+import { ADVANCED_TRAINING_V2_SCENARIOS, GAME_CORE_VERSION, isShotCoreVersionCompatible,
   evaluateAdvancedTrainingEpisodeShot, getAdvancedTrainingEpisode,
   validateAdvancedTrainingEpisode, type AdvancedTrainingEpisodeProfile,
   getAdvancedTrainingContinuousSeed,
@@ -106,7 +106,7 @@ function scenarioForRun(run: AdvancedTrainingV2Run) {
 }
 
 export function assertAdvancedTrainingV2RunVersion(run: AdvancedTrainingV2Run): void {
-  if (run.game_core_version !== GAME_CORE_VERSION || run.bank_version !== EPISODE_BANK_VERSION) {
+  if (!isShotCoreVersionCompatible(run.game_core_version) || run.bank_version !== EPISODE_BANK_VERSION) {
     throw new AppError('advanced_training_version_changed', 'Training rules changed. Restart the exercise.', 409);
   }
 }
@@ -165,7 +165,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         `select * from advanced_training_v2_run where user_id = $1 and state = 'active' for update`, [req.user.id]);
       const existing = active.rows[0];
       if (existing?.exercise_key === exerciseKey &&
-        existing.game_core_version === GAME_CORE_VERSION &&
+        isShotCoreVersionCompatible(existing.game_core_version) &&
         existing.bank_version === EPISODE_BANK_VERSION) {
         return { state: advancedTrainingV2State(existing), restarted_due_to_version: false };
       }
@@ -182,7 +182,7 @@ export const advancedTrainingV2Routes: FastifyPluginAsync<{ trainingSeedSecret: 
         [runId, req.user.id, exerciseKey, seed, GAME_CORE_VERSION, EPISODE_BANK_VERSION]);
       return { state: advancedTrainingV2State(inserted.rows[0]!),
         restarted_due_to_version: existing?.exercise_key === exerciseKey &&
-          (existing.game_core_version !== GAME_CORE_VERSION ||
+          (!isShotCoreVersionCompatible(existing.game_core_version) ||
             existing.bank_version !== EPISODE_BANK_VERSION) };
     });
   });

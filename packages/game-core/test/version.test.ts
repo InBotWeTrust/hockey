@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { GAME_CORE_VERSION } from '../src/version.js';
+import { GAME_CORE_VERSION, isShotCoreVersionCompatible } from '../src/version.js';
 
 describe('GAME_CORE_VERSION', () => {
   it('is a positive integer', () => {
@@ -9,5 +9,14 @@ describe('GAME_CORE_VERSION', () => {
 
   it('is bumped for pool spin physics', () => {
     expect(GAME_CORE_VERSION).toBe(92);
+  });
+});
+
+describe('shot core compatibility', () => {
+  it('preserves sessions from the bar-only releases', () => {
+    for (const version of [88, 89, 90, 91, 92]) expect(isShotCoreVersionCompatible(version)).toBe(true);
+  });
+  it('rejects other physics versions', () => {
+    for (const version of [77, 87, 93, NaN]) expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });
