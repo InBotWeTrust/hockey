@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import type { BarGameInvite } from '@hockey/game-core';
 import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
-import { gameNames } from './content.js';
+import { UserAvatar } from '../../chat/components/UserAvatar.js';
 export function GameInvites() {
   const user = useAuthStore((s) => s.user?.id);
   const navigate = useNavigate();
@@ -55,17 +55,73 @@ export function GameInvites() {
   };
   if (!invite) return null;
   return (
-    <aside className="bar-game-invite-toast" aria-label="Приглашение в игру">
-      <p>
-        {invite.senderName}: {gameNames[invite.kind]}
-      </p>
-      {error && <p role="alert">{error}</p>}
-      <button className="btn btn--ghost" disabled={busy} onClick={() => void respond('decline')}>
-        Отклонить
-      </button>
-      <button className="btn btn--cta" disabled={busy} onClick={() => void respond('accept')}>
-        Играть
-      </button>
-    </aside>
+    <div
+      role="status"
+      aria-live="polite"
+      style={{
+        position: 'fixed',
+        top: 'calc(var(--app-safe-top) + 10px)',
+        left: '50%',
+        transform: 'translateX(-50%)',
+        width: 'min(402px, calc(100vw - 24px))',
+        zIndex: 700,
+        pointerEvents: 'auto',
+      }}
+    >
+      <div
+        className="glass"
+        style={{
+          borderRadius: 22,
+          padding: 12,
+          display: 'grid',
+          gap: 10,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
+          <UserAvatar
+            avatarUrl={invite.senderAvatarUrl ?? null}
+            name={invite.senderName}
+            size={42}
+            fontSize={16}
+          />
+          <div style={{ minWidth: 0 }}>
+            <div
+              style={{
+                color: 'var(--ink)',
+                fontSize: 14,
+                fontWeight: 950,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {invite.senderName}
+            </div>
+            <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 760, marginTop: 2 }}>
+              Приглашает сыграть в {invite.kind === 'billiards' ? 'бильярд' : invite.kind === 'darts' ? 'дартс' : 'шашки'}
+            </div>
+          </div>
+        </div>
+        {error && <p role="alert">{error}</p>}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => void respond('decline')}
+            style={{ minHeight: 38, fontSize: 12, background: '#dc2626', color: '#fff' }}
+          >
+            Отклонить
+          </button>
+          <button
+            className="btn"
+            disabled={busy}
+            onClick={() => void respond('accept')}
+            style={{ minHeight: 38, fontSize: 12, background: '#16a34a', color: '#fff' }}
+          >
+            Принять
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

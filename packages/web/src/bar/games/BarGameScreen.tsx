@@ -1,12 +1,10 @@
 import { POOL_STROKE_MS } from '@hockey/game-core';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { HelpCircle, LogOut } from 'lucide-react';
 import type { BarGameSnapshot, BarGameAction } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { GameMenu } from './GameMenu.js';
 import { gameApi } from './api.js';
-import { gameNames } from './content.js';
 import { GameHelp, GameResult, gameClose } from './GameModals.js';
 import { DartsField, CheckersField, PoolField } from './GameFields.js';
 import { useGameMatch } from './useGameMatch.js';
@@ -68,27 +66,9 @@ export function BarGameScreen() {
         </>
       ) : (
         <>
-          {view.kind !== 'billiards' && (
-            <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
-          )}
-          <header className="bar-game-header">
-            <button
-              className="icon-btn"
-              aria-label="Выйти из партии"
-              onClick={() =>
-                view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)
-              }
-            >
-              <LogOut size={19} />
-            </button>
-            {view.kind === 'billiards' && <h1>{gameNames[view.kind]}</h1>}
-            <button className="icon-btn" aria-label="Правила игры" onClick={() => setHelp(true)}>
-              <HelpCircle size={20} />
-            </button>
-          </header>
-          {view.kind === 'billiards' && (
-            <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
-          )}
+          <GameTable view={view} now={match.now} disabled={match.busy} send={match.send}
+            onExit={() => view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)}
+            onRules={() => setHelp(true)} />
           {match.error && (
             <div className="bar-game-error" role="alert">
               {match.error}
@@ -100,28 +80,6 @@ export function BarGameScreen() {
             </div>
           )}
           {replayError && <p role="alert">{replayError}</p>}
-          {view.ready && !view.ready.cancelled && (
-            <AccessibleModal
-              title="Готов к игре?"
-              onRequestClose={() => setExit(true)}
-              headerAction={gameClose(() => setExit(true))}
-            >
-              <p className="modal-copy">
-                {view.ready.startsAt
-                  ? `Начинаем через ${Math.max(0, Math.ceil((view.ready.startsAt - match.now) / 1000))}…`
-                  : `Подтверди готовность. Осталось ${Math.max(0, Math.ceil((view.ready.expiresAt - match.now) / 1000))} сек.`}
-              </p>
-              <div className="modal-actions">
-                <button
-                  className="btn btn--cta"
-                  disabled={match.busy || view.ready.players.includes(view.player)}
-                  onClick={() => match.send({ type: 'ready' })}
-                >
-                  {view.ready.players.includes(view.player) ? 'Ждём соперника' : 'Готов'}
-                </button>
-              </div>
-            </AccessibleModal>
-          )}
           {view.ready?.cancelled && (
             <AccessibleModal
               title="Партия не началась"
@@ -174,11 +132,15 @@ export function GameTable({
   now,
   disabled,
   send,
+  onExit,
+  onRules,
 }: {
   view: BarGameSnapshot;
   now: number;
   disabled: boolean;
-  send: (a: BarGameAction) => void;
+  send: (a: BarGameAction | { type: 'ready' }) => void;
+  onExit?: (() => void) | undefined;
+  onRules?: (() => void) | undefined;
 }) {
   const { runtime: m, player } = view;
   const game = m.game;
@@ -207,7 +169,7 @@ export function GameTable({
   }
   return (
     <>
-      <GameMenu view={view} now={now} />
+      <GameMenu view={view} now={now} onExit={onExit} onRules={onRules} />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
         {game.kind === 'darts' ? (
           <DartsField
@@ -241,7 +203,17 @@ export function GameTable({
             animationStart={m.animationStart}
             now={now}
             opponent={game.turn !== player}
+            pregame={!!view.ready}
           />
+        )}
+        {view.ready && !view.ready.cancelled && view.ready.startsAt === null && (
+          <div className="bar-game-ready-actions durak-ready-actions">
+            <button className="btn btn--cta"
+              disabled={disabled || view.ready.players.includes(player)}
+              onClick={() => send({ type: 'ready' })}>
+              {view.ready.players.includes(player) ? 'Вы готовы' : 'Готов'}
+            </button>
+          </div>
         )}
       </div>
     </>

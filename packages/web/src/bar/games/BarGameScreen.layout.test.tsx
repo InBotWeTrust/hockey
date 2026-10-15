@@ -24,19 +24,15 @@ vi.mock('./useGameMatch.js', () => ({
     send: vi.fn(),
   }),
 }));
-it('places checkers exit and rules after the board without a title', () => {
+it('places checkers controls in the notice row without a title', () => {
   scenario.kind = 'checkers';
   render(
     <MemoryRouter>
       <BarGameScreen />
     </MemoryRouter>,
   );
-  const board = screen.getByRole('group', { name: 'Шашечная доска' });
   for (const name of ['Выйти из партии', 'Правила игры']) {
-    expect(
-      board.compareDocumentPosition(screen.getByRole('button', { name })) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(screen.getByRole('button', { name }).closest('.bar-game-notice-row')).not.toBeNull();
   }
   expect(screen.queryByRole('heading', { name: 'Шашки' })).not.toBeInTheDocument();
 });
@@ -52,6 +48,6 @@ it('removes the darts title and renders controls outside its throwing area', () 
   for (const name of ['Выйти из партии', 'Правила игры']) {
     const button = screen.getByRole('button', { name });
     expect(button.closest('.bar-darts-field')).toBeNull();
-    expect(button.closest('.bar-game-header')).not.toBeNull();
+    expect(button.closest('.bar-game-notice-row')).not.toBeNull();
   }
 });
