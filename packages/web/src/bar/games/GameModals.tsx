@@ -40,7 +40,7 @@ export function GameResult({
   const title = outcome === 'draw' ? 'Ничья' : outcome === 'win' ? 'Победа' : 'Поражение';
   const reason =
     view.runtime.reason === 'inactivity'
-      ? 'Партия завершена после двух пропусков подряд.'
+      ? 'Партия завершена после двух пропусков хода подряд.'
       : view.runtime.reason === 'surrender'
         ? 'Один из участников сдался.'
         : null;
@@ -60,7 +60,7 @@ export function GameResult({
       <p className="modal-copy">
         {view.character
           ? reason
-            ? '«Заглядывай, когда будет время на партию.»'
+            ? '«Заглядывай, когда будет больше времени на игру.»'
             : gameCopy[view.kind][outcome]
           : outcome === 'draw'
             ? 'Партия закончилась вничью.'
