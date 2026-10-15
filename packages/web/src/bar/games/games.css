@@ -458,7 +458,7 @@
 }
 
 .bar-game-screen--playing[data-game='billiards'] {
-  background: #382416 url('/bar/games/darts-background-v1.webp') center/cover fixed;
+  background: #382416 url('/bar/games/billiards-floor-v1.webp') center/cover fixed;
 }
 .bar-game-field--billiards {
   background: none;
