@@ -35,10 +35,10 @@ it('restores both scrollers instantly and animates a new selection without obser
  }finally{HTMLElement.prototype.scrollTo=original;globalThis.ResizeObserver=previous;}
 });
 
-it('orders the dock as yard, shop, tasks, bank and stadium',()=>{
+it('orders the phone circle between tasks and bank',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
  const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(Array.from(dock.querySelectorAll('button')).slice(1,6).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Банк','Выбрать Стадион «Центральный»']);
+ expect(Array.from(dock.querySelectorAll('button')).slice(1,7).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Телефонная будка','Выбрать Банк','Выбрать Стадион «Центральный»']);
 });
 
 function mapGeometry(){
