@@ -65,6 +65,9 @@ export function BarGameScreen() {
         </>
       ) : (
         <>
+          {view.kind === 'checkers' && (
+            <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
+          )}
           <header className="bar-game-header">
             <button
               className="icon-btn"
@@ -75,12 +78,14 @@ export function BarGameScreen() {
             >
               <LogOut size={19} />
             </button>
-            <h1>{gameNames[view.kind]}</h1>
+            {view.kind !== 'checkers' && <h1>{gameNames[view.kind]}</h1>}
             <button className="icon-btn" aria-label="Правила игры" onClick={() => setHelp(true)}>
               <HelpCircle size={20} />
             </button>
           </header>
-          <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
+          {view.kind !== 'checkers' && (
+            <GameTable view={view} now={match.now} disabled={match.busy} send={match.send} />
+          )}
           {match.error && (
             <div className="bar-game-error" role="alert">
               {match.error}
