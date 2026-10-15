@@ -117,6 +117,8 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     duration = 350;
   } else if (m.game.kind === 'billiards' && action.type === 'place') {
     n.game = pool.place(m.game, action.point);
+    n.poolShot = null;
+    n.poolAim = null;
     n.feedback = { type: 'place', actor: p };
     return n;
   } else if (m.game.kind === 'billiards' && action.type === 'shot') {
@@ -256,6 +258,8 @@ export function advance(m: Runtime, now: number): Runtime {
         animationUntil:
           at + (game.kind === 'checkers' ? 350 : 0) + (n.computer && game.turn === 1 ? 900 : 0),
         poolFrames: [],
+        poolShot: null,
+        poolAim: null,
         lastDart: null,
         feedback: { type: 'timeout', actor: p },
         reason: game.winner !== null ? 'played' : null,

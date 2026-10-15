@@ -216,7 +216,7 @@ export function GameTable({
             disabled={!active}
             send={send}
             aim={m.poolAim}
-            shot={m.poolShot}
+            shot={m.feedback?.type === 'shot' ? m.poolShot : null}
             animationStart={m.animationStart}
             now={now}
             opponent={game.turn !== player}

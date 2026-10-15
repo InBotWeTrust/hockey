@@ -158,3 +158,14 @@ it.each([
     expect(screen.getByRole('status')).toHaveTextContent(result);
   },
 );
+it('does not replay stale stroke metadata after cue-ball placement', () => {
+  const v = view();
+  v.kind = 'billiards';
+  v.runtime = createMatch('billiards', 0, 0, false, 1);
+  v.runtime.animationStart = 100;
+  v.runtime.animationUntil = 100;
+  v.runtime.feedback = { type: 'place', actor: 0 };
+  v.runtime.poolShot = { angle: 1, power: 0.5, cue: { x: 0.5, y: 1.5 } };
+  const { container } = render(<GameTable view={v} now={100} disabled={false} send={() => {}} />);
+  expect(container.querySelector('.bar-pool-stroke')).toBeNull();
+});

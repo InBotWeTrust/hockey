@@ -106,3 +106,21 @@ it('preserves spin in shared aim and the authoritative shot animation', () => {
     command(m, 0, { type: 'aim', angle: 0, power: 0.5, spin: { x: 1, y: 1 } }, 100),
   ).toThrow();
 });
+it('clears the previous pool stroke when placing the cue after an opponent foul or timing out', () => {
+  const initial = createMatch('billiards', 1, 0, true, 1);
+  const foul = command(initial, 1, { type: 'shot', angle: 0, power: 0.2 }, initial.animationUntil);
+  expect(foul.feedback?.foul).toBe(true);
+  expect(foul.game.turn).toBe(0);
+  expect(foul.poolShot).toBeTruthy();
+  const placed = command(
+    foul,
+    0,
+    { type: 'place', point: { x: 0.5, y: 1.5 } },
+    foul.animationUntil,
+  );
+  expect(placed.poolShot).toBeNull();
+  expect(placed.poolAim).toBeNull();
+  expect(placed.poolFrames).toHaveLength(0);
+  const missed = advance(foul, foul.deadline);
+  expect(missed.poolShot).toBeNull();
+});
