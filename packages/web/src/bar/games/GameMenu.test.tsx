@@ -83,3 +83,19 @@ it('shows the dart result for two seconds after contact, then only the next acti
   rerender(<GameTable view={v} now={2700} disabled={false} send={() => {}} />);
   expect(screen.getByRole('status')).toHaveTextContent(/^Твой ход · Осталось дротиков: 1$/);
 });
+it('keeps pool instructions in the menu notice and removes field hints', () => {
+  const v = view();
+  v.kind = 'billiards';
+  v.runtime = createMatch('billiards', 0, 0, false, 1);
+  const { container, rerender } = render(
+    <GameTable view={v} now={0} disabled={false} send={() => {}} />,
+  );
+  expect(screen.getByRole('status')).toHaveTextContent('Вращай прицел');
+  expect(container.querySelector('.bar-game-hint')).toBeNull();
+  if (v.runtime.game.kind === 'billiards') v.runtime.game.ballInHand = true;
+  rerender(<GameTable view={v} now={0} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent('Выбери место для битка');
+  v.runtime.missed[0] = 1;
+  rerender(<GameTable view={v} now={0} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent(/^Следующий пропуск — поражение$/);
+});

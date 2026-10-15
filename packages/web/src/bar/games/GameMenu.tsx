@@ -66,15 +66,26 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
   const dartFeedback = g.kind === 'darts' && m.feedback?.type === 'dart';
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
-    dartFeedback && (sinceContact < 0 || sinceContact >= 2000) ? '' : actionResult(view);
+    (dartFeedback && (sinceContact < 0 || sinceContact >= 2000)) ||
+    (g.kind === 'billiards' && now >= m.animationUntil + 2000)
+      ? ''
+      : actionResult(view);
+  const poolHint =
+    g.kind === 'billiards' && g.winner === null && !view.ready && !animating && g.turn === player
+      ? g.ballInHand
+        ? 'Выбери место для битка'
+        : 'Вращай прицел · Оттяни силу и отпусти'
+      : '';
   const feedback =
     m.missed[player] > 0 && g.winner === null
-      ? 'Ход пропущен. Следующий пропуск подряд — поражение.'
+      ? 'Следующий пропуск — поражение'
       : result
         ? dartFeedback
           ? result
           : `${result} · ${turn}`
-        : turn;
+        : poolHint
+          ? `${turn} · ${poolHint}`
+          : turn;
   const tone =
     m.missed[player] > 0 || m.feedback?.bust || m.feedback?.foul
       ? 'danger'

@@ -559,13 +559,6 @@ export function PoolField({
           }}
         />
       </label>
-      <p className="bar-game-hint">
-        {game.ballInHand
-          ? 'Выбери место для битка'
-          : opponent
-            ? 'Соперник готовит удар'
-            : 'Вращай прицел пальцем · Оттяни силу и отпусти'}
-      </p>
     </div>
   );
 }
