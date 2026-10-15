@@ -38,7 +38,7 @@ it('restores both scrollers instantly and animates a new selection without obser
 it('orders the dock as yard, shop, tasks, bank and stadium',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
  const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(Array.from(dock.querySelectorAll('button')).slice(0,5).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Банк','Выбрать Стадион «Центральный»']);
+ expect(Array.from(dock.querySelectorAll('button')).slice(1,6).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Банк','Выбрать Стадион «Центральный»']);
 });
 
 function mapGeometry(){
@@ -82,4 +82,32 @@ it('does not open a centered building after a swipe',()=>{
  pointer('pointerdown',200);pointer('pointermove',170);pointer('pointerup',170);
  fireEvent.click(screen.getByRole('button',{name:'На карте: Дворовый каток'}),{detail:1});
  expect(base.onNavigate).not.toHaveBeenCalled();
+});
+
+it('puts profile first and opens it directly',()=>{
+ sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
+ const dock=screen.getByRole('navigation',{name:'Места района'});
+ expect(dock.querySelector('button')).toHaveAttribute('aria-label','Открыть профиль');
+ fireEvent.click(screen.getByRole('button',{name:'Открыть профиль'}));
+ expect(base.onNavigate).toHaveBeenCalledWith('/profile');
+});
+it('opens chat directly from the phone booth while its circle only selects',()=>{
+ sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
+ mapGeometry();
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Телефонная будка'}));
+ expect(base.onNavigate).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'На карте: Телефонная будка'}));
+ expect(base.onNavigate).toHaveBeenCalledWith('/chat');
+});
+
+it('shows live counters on their circles and removes zero badges',()=>{
+ sessionStorage.clear();const view=render(<CityMap {...base} level="beginner" avatarUrl="/avatar.webp" chatCount={120} gameCount={3} taskCount={2} barCount={1}/>);
+ expect(screen.getByLabelText('Непрочитанные: 120')).toHaveTextContent('99+');
+ expect(screen.getByLabelText('Дуэли и турниры: 3')).toHaveTextContent('3');
+ expect(screen.getByLabelText('Задания и челленджи: 2')).toHaveTextContent('2');
+ expect(screen.getByLabelText('Приглашения в бар: 1')).toHaveTextContent('1');
+ expect(screen.getByRole('button',{name:'Открыть профиль'}).querySelector('img')).toHaveAttribute('src','/avatar.webp');
+ view.rerender(<CityMap {...base} level="beginner" chatCount={0} gameCount={0} taskCount={0} barCount={0}/>);
+ expect(screen.queryByLabelText('Непрочитанные: 120')).toBeNull();
+ expect(document.querySelector('.district-badge')).toBeNull();
 });

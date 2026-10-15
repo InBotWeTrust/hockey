@@ -1,3 +1,4 @@
+import { useNavigationActivity } from './useNavigationActivity.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
@@ -6,8 +7,6 @@ import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-reac
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAdminAttention } from '../admin/api.js';
-import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
-import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
 import {
   countClaimableWeeklyChallenges,
   fetchWeeklyChallenge,
@@ -15,9 +14,6 @@ import {
 } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
-import { fetchChatList, fetchUnreadCounts, type ChatDTO } from '../chat/api.js';
-import { useChatStore } from '../chat/chatStore.js';
-import { chatKeys } from '../lib/queryKeys.js';
 
 export const NAV_HEIGHT = 68;
 
@@ -32,18 +28,6 @@ const DEFAULT_CHAT_ROUTE = '/chat';
 const DEFAULT_PROFILE_ROUTE = '/profile';
 export const ADMIN_NAV_HOME_EVENT = 'hockey:admin-nav-home';
 
-function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
-  if (match.status === 'invited') {
-    return match.me.side === 'opponent' && match.me.state === 'invited';
-  }
-  if (match.status === 'ready_check') {
-    return match.me.state !== 'ready' || match.opponent.state === 'ready';
-  }
-  if (match.status === 'active') {
-    return match.me.state === 'accepted' || match.me.state === 'period_active';
-  }
-  return false;
-}
 
 function routeFromLocation(location: ReturnType<typeof useLocation>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -121,6 +105,8 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
   const { pathname } = normalizeNavLocation(location);
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
   return (
+    pathname !== '/sections' &&
+    pathname !== '/sections/' &&
     pathname !== '/login' &&
     pathname !== '/prices' &&
     pathname !== '/terms' &&
@@ -149,39 +135,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
     readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
   );
 
-  const liveUnread = useChatStore((s) => s.unreadByChat);
-  // Observe the list cache without adding another list request. The list can
-  // refresh independently of the unread endpoint (e.g. after reconnect).
-  const { data: chatList } = useQuery<ChatDTO[]>({
-    queryKey: chatKeys.list(),
-    queryFn: fetchChatList,
-    enabled: false,
-  });
-  const effectiveUnread = { ...liveUnread };
-  for (const chat of chatList ?? []) {
-    effectiveUnread[chat.id] = Math.max(chat.unreadCount, liveUnread[chat.id] ?? 0);
-  }
-  const totalUnread = Object.values(effectiveUnread).filter((count) => count > 0).length;
-  const setUnread = useChatStore((s) => s.setUnread);
-
-  const { data: unreadMap } = useQuery<Record<string, number>>({
-    queryKey: chatKeys.unread(),
-    queryFn: fetchUnreadCounts,
-    enabled: Boolean(user) && !isDemo,
-    refetchInterval: 30_000,
-  });
-  const { data: amateurEvents } = useQuery({
-    queryKey: ['amateur-duel', 'events'],
-    queryFn: fetchAmateurEvents,
-    enabled: Boolean(user) && !isDemo,
-    refetchInterval: 15_000,
-  });
-  const { data: classicTournamentGames } = useQuery({
-    queryKey: ['tournaments', 'classic', 'active'],
-    queryFn: fetchActiveClassicTournamentGames,
-    enabled: Boolean(user) && !isDemo,
-    refetchInterval: 30_000,
-  });
+  const { totalUnread, gameActionCount } = useNavigationActivity(Boolean(user) && !isDemo);
   const { data: weeklyChallenge } = useQuery({
     queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
@@ -212,9 +166,6 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
         user?.competitionLevel === undefined),
   });
 
-  useEffect(() => {
-    if (unreadMap) setUnread(unreadMap);
-  }, [unreadMap, setUnread]);
 
   useEffect(() => {
     if (!refreshedUser) return;
@@ -253,6 +204,8 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
     }
   }, [isDemo, location]);
 
+  const cardInviteCount = useCardInvites(s => s.incoming.length);
+
   // Hide nav inside a chat room — composer takes the nav's spot.
   if (!preview && !isBottomNavVisible(location, user)) {
     return null;
@@ -266,11 +219,6 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
   const showAdmin = !isDemo && user?.role === 'admin';
   const navCount = showAdmin ? 5 : 4;
   const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
-  const gameActionCount =
-    (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
-    (classicTournamentGames?.games ?? []).filter(
-      (game) => game.state !== 'closed' && String(game.state) !== 'completed',
-    ).length;
   const competitionLevel = user?.competitionLevel ?? refreshedUser?.competitionLevel;
   const weeklyChallengesAvailable =
     competitionLevel === 'amateur' || competitionLevel === 'professional';
@@ -280,7 +228,6 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
         ...(weeklyChallenge?.pendingRewards ?? []),
       ])
     : 0;
-  const cardInviteCount = useCardInvites(s => s.incoming.length);
   const sectionActionCount = cardInviteCount + weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);

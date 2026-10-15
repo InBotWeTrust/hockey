@@ -1,3 +1,5 @@
+import { useNavigationActivity } from '../components/useNavigationActivity.js';
+import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { CityMap } from '../city/CityMap.js';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -81,7 +83,10 @@ export function SectionsScreen(): JSX.Element {
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
-  const userId = useAuthStore((state) => state.user?.id);
+  const user = useAuthStore((state) => state.user);
+  const userId = user?.id;
+  const { totalUnread, gameActionCount } = useNavigationActivity(Boolean(user));
+  const cardInviteCount = useCardInvites(state => state.incoming.length);
   const [storedBonusProgress] = useState(() => readStoredBonusProgress(userId));
   const weeklyChallenge = useQuery({
     queryKey: weeklyChallengeKeys.current,
@@ -262,7 +267,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} onNavigate={navigate}/>
+      <CityMap key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount} onNavigate={navigate}/>
 
       {activeCongratulation !== null && (
         <RegularSeasonPodiumModal
