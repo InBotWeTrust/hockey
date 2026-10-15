@@ -54,7 +54,7 @@ it('performs deterministic legal computer turns and never pauses on read', () =>
   expect(advance(m, 10000)).toEqual(advance(m, 10000));
   const n = advance(m, 10000);
   expect(n.game.turn).toBe(0);
-  expect(n.deadline).toBeLessThan(50000);
+  expect(n.deadline).toBe(n.animationUntil + 40000);
 });
 it('publishes action feedback with actual dart scoring and bust without changing the rules', () => {
   let m = createMatch('darts', 0, 0, false, 1);
@@ -71,11 +71,12 @@ it('publishes action feedback with actual dart scoring and bust without changing
 
 it('spaces Maria darts and retains all hits for the final flight', () => {
   const m = createMatch('darts', 1, 0, true, 20);
-  const first = advance(m, 1800);
+  const first = advance(m, m.animationUntil);
   expect(first.revision).toBe(1);
-  expect(first.animationUntil).toBe(4650);
-  expect(advance(first, 4649).revision).toBe(1);
-  const third = advance(first, 7500);
+  expect(first.animationUntil - first.animationStart).toBe(2850);
+  expect(advance(first, first.animationUntil - 1).revision).toBe(1);
+  const second = advance(first, first.animationUntil);
+  const third = advance(second, second.animationUntil);
   expect(third.dartHits).toHaveLength(3);
 });
 it('shares aim without resetting the clock or inactivity and previews the bot shot before motion', () => {

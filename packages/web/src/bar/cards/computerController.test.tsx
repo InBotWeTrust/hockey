@@ -56,7 +56,7 @@ it('timeout accepts the card; restart closes the old cheating window and clears 
     expect(result.current.challengeCheat?.()).toBe(false);
   });
   act(() => result.current.restart(fixture()));
-  act(() => vi.advanceTimersByTime(2000));
+  act(() => vi.advanceTimersByTime(3000));
   act(() => {
     expect(result.current.challengeCheat?.()).toBe(true);
   });

@@ -20,13 +20,13 @@ it('expires player action at 40 seconds once and cleans timers on unmount', () =
   unmount();
   expect(vi.getTimerCount()).toBe(0);
 });
-it('Maria responds after two to three seconds while player timer is stopped', () => {
+it('Maria responds after three to five seconds while player timer is stopped', () => {
   vi.useFakeTimers();
   vi.spyOn(Math, 'random').mockReturnValue(0);
   const g = { ...createGame(() => 0.4), attacker: 1 as const };
   const { result, unmount } = renderHook(() => useDurakGame(g));
   expect(result.current.remainingSeconds).toBeNull();
-  act(() => vi.advanceTimersByTime(1999));
+  act(() => vi.advanceTimersByTime(2999));
   expect(result.current.game.revision).toBe(0);
   act(() => vi.advanceTimersByTime(1));
   expect(result.current.game.revision).toBe(1);
@@ -51,7 +51,7 @@ it('keeps the initial Maria delay under React StrictMode', () => {
   const { result, unmount } = renderHook(() => useDurakGame(g), { wrapper: StrictMode });
   act(() => vi.advanceTimersByTime(1000));
   expect(result.current.game.revision).toBe(0);
-  act(() => vi.advanceTimersByTime(1000));
+  act(() => vi.advanceTimersByTime(2000));
   expect(result.current.game.revision).toBe(1);
   unmount();
 });
@@ -134,5 +134,18 @@ it.each(['maria', 'grigory', 'arsenich', 'daria'] as const)('resolves the last u
   expect(result.current.game.phase).toBe('taking');
   act(() => vi.advanceTimersByTime(3000));
   expect(result.current.game.result).toBe(0);
+  unmount();
+});
+
+
+it.each([0, 0.9999])('Daria thinks for 3–5 seconds with random fraction %s', (fraction) => {
+  vi.useFakeTimers();
+  vi.spyOn(Math, 'random').mockReturnValue(fraction);
+  const g = { ...createGame(() => 0.4), attacker: 1 as const };
+  const { result, unmount } = renderHook(() => useDurakGame(g, 'daria'));
+  act(() => vi.advanceTimersByTime(2999));
+  expect(result.current.game.revision).toBe(0);
+  act(() => vi.advanceTimersByTime(2001));
+  expect(result.current.game.revision).toBe(1);
   unmount();
 });

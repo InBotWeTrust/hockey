@@ -10,12 +10,22 @@ export type BarGameAction =
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 1;
+export const ENGINE_VERSION = 2;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
 export const DART_IMPACT_MS = 350;
 export const POOL_STROKE_MS = 800;
-const botPause = (kind: BarGameId) => (kind === 'checkers' ? 900 : 1800);
+const POOL_AIM_MS = 1200;
+function supportedVersion(version: number): boolean {
+  return version === 1 || version === ENGINE_VERSION;
+}
+function botPause(m: Runtime, continuingDarts = false): number {
+  if (m.engineVersion === 1) return m.game.kind === 'checkers' ? 900 : 1800;
+  if (continuingDarts) return 1800;
+  const thinking = 3000 + Math.floor(random(m) * 2001);
+  // Visible aiming is part of Veronika's total thinking time before the stroke.
+  return thinking - (m.game.kind === 'billiards' ? POOL_AIM_MS : 0);
+}
 export const CHARACTER_GAME = {
   maria: 'darts',
   veronika: 'billiards',
@@ -56,7 +66,7 @@ export function createMatch(
   computer: boolean,
   seed: number,
 ): Runtime {
-  return {
+  const match: Runtime = {
     engineVersion: ENGINE_VERSION,
     game:
       kind === 'darts'
@@ -65,7 +75,7 @@ export function createMatch(
           ? checkers.create(starter)
           : pool.create(starter),
     deadline: now + TURN_MS,
-    animationUntil: now + (computer && starter === 1 ? botPause(kind) : 0),
+    animationUntil: now,
     missed: [0, 0],
     computer,
     seed,
@@ -75,6 +85,8 @@ export function createMatch(
     animationStart: now,
     revision: 0,
   };
+  if (computer && starter === 1) match.animationUntil += botPause(match);
+  return match;
 }
 function random(m: Runtime): number {
   m.seed = (Math.imul(1664525, m.seed) + 1013904223) >>> 0;
@@ -137,7 +149,12 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     duration = sim.durationMs + POOL_STROKE_MS;
   } else throw new Error('Wrong game action');
   if (manual) n.missed[p] = 0;
-  n.animationUntil = now + duration + (n.computer && n.game.turn === 1 ? botPause(n.game.kind) : 0);
+  n.animationUntil =
+    now +
+    duration +
+    (n.computer && n.game.turn === 1 && (n.engineVersion === 1 || n.game.winner === null)
+      ? botPause(n, n.game.kind === 'darts' && n.game.turn === p)
+      : 0);
   n.deadline =
     n.game.turn !== p || m.game.kind !== 'darts' ? now + duration + TURN_MS : m.deadline + duration;
   if (n.game.winner !== null) n.reason = 'played';
@@ -149,7 +166,7 @@ export function command(
   action: BarGameAction,
   now: number,
 ): Runtime {
-  if (m.engineVersion !== ENGINE_VERSION || m.game.winner !== null)
+  if (!supportedVersion(m.engineVersion) || m.game.winner !== null)
     throw new Error('Inactive game');
   if (action.type === 'surrender')
     return {
@@ -180,7 +197,7 @@ export function command(
   return perform(m, action, now, true);
 }
 export function advance(m: Runtime, now: number): Runtime {
-  if (m.engineVersion !== ENGINE_VERSION) throw new Error('Unsupported game version');
+  if (!supportedVersion(m.engineVersion)) throw new Error('Unsupported game version');
   let n = m;
   for (let i = 0; i < 64 && n.game.winner === null; i++) {
     if (n.computer && n.game.turn === 1) {
@@ -199,7 +216,7 @@ export function advance(m: Runtime, now: number): Runtime {
             poolAim: { ...b.shot, actor: 1 },
             poolShot: null,
             poolFrames: [],
-            animationUntil: at + 1800,
+            animationUntil: at + (n.engineVersion === 1 ? 1800 : POOL_AIM_MS),
             revision: n.revision + 1,
           };
         }
@@ -255,8 +272,7 @@ export function advance(m: Runtime, now: number): Runtime {
         revision: n.revision + 1,
         deadline: at + TURN_MS,
         animationStart: at,
-        animationUntil:
-          at + (game.kind === 'checkers' ? 350 : 0) + (n.computer && game.turn === 1 ? 900 : 0),
+        animationUntil: at + (game.kind === 'checkers' ? 350 : 0),
         poolFrames: [],
         poolShot: null,
         poolAim: null,
@@ -264,6 +280,8 @@ export function advance(m: Runtime, now: number): Runtime {
         feedback: { type: 'timeout', actor: p },
         reason: game.winner !== null ? 'played' : null,
       };
+      if (n.computer && game.turn === 1 && (n.engineVersion === 1 || game.winner === null))
+        n.animationUntil += n.engineVersion === 1 ? 900 : botPause(n);
       n.deadline += game.kind === 'checkers' ? 350 : 0;
     } else break;
   }

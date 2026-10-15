@@ -70,7 +70,7 @@ export function useDurakGame(
       : bot
         ? followup
           ? (800 + Math.random() * 400) * pace
-          : (2000 + Math.random() * 1000) * pace
+          : 3000 + Math.random() * 2000
         : turnDuration(game);
     const deadline = previous?.game === game ? previous.deadline : Date.now() + delay;
     schedule.current = { game, actor, deadline };

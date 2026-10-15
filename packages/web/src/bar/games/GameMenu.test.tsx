@@ -169,3 +169,32 @@ it('does not replay stale stroke metadata after cue-ball placement', () => {
   const { container } = render(<GameTable view={v} now={100} disabled={false} send={() => {}} />);
   expect(container.querySelector('.bar-pool-stroke')).toBeNull();
 });
+
+
+it('shows thinking after board motion without freezing the character clock', () => {
+  const v = view();
+  v.kind = 'checkers';
+  v.character = 'arsenich';
+  v.participants[1] = { userId: 'arsenich', displayName: 'Арсенич', avatarUrl: null };
+  v.runtime = createMatch('checkers', 1, 0, true, 12);
+  render(<GameTable view={v} now={1000} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent('Арсенич думает…');
+  expect(screen.getByRole('timer')).toHaveTextContent('39');
+});
+
+
+it('reveals the pool result after motion while the character is still thinking', () => {
+  const v = view();
+  v.kind = 'billiards';
+  v.runtime = createMatch('billiards', 0, 0, true, 12);
+  v.runtime.game.turn = 1;
+  v.runtime.feedback = { type: 'shot', actor: 0, pocketed: [1], foul: false };
+  const balls = v.runtime.game.kind === 'billiards' ? v.runtime.game.balls : [];
+  v.runtime.poolFrames = Array.from({ length: 61 }, () => balls);
+  v.runtime.animationUntil = 5000;
+  const { rerender } = render(<GameTable view={v} now={1000} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent(/^Ход выполняется…$/);
+  rerender(<GameTable view={v} now={2000} disabled={false} send={() => {}} />);
+  expect(screen.getByRole('status')).toHaveTextContent('Ты: 1 шар');
+  expect(screen.getByRole('status')).toHaveTextContent('думает…');
+});
