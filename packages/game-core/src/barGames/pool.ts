@@ -26,6 +26,7 @@ export interface Game {
 export interface Shot {
   angle: number;
   power: number;
+  spin?: Point | undefined;
 }
 export interface Events {
   firstContact: number | null;
@@ -128,9 +129,16 @@ export function resolve(g: Game, e: Events): Game {
     lastFoul: foul,
   };
 }
+export function validSpin(spin: Point | undefined): boolean {
+  return (
+    spin === undefined ||
+    (Number.isFinite(spin.x) && Number.isFinite(spin.y) && Math.hypot(spin.x, spin.y) <= 1)
+  );
+}
 export function shoot(g: Game, s: Shot): Simulation {
   if (
     g.winner !== null ||
+    !validSpin(s.spin) ||
     ![s.angle, s.power].every(Number.isFinite) ||
     Math.abs(s.angle) > Math.PI * 4 ||
     s.power < 0.03 ||
@@ -147,6 +155,17 @@ export function shoot(g: Game, s: Shot): Simulation {
   const events: Events = { firstContact: null, pocketed: [], railAfter: false, scratch: false };
   const frames: Ball[][] = [balls.map((b) => ({ ...b }))];
   const dt = 1 / 240;
+  // Contact offset is local to the cue: x is side spin, negative y is follow.
+  // Spin decays on the cloth; longitudinal spin transfers only at first ball contact.
+  let sideSpin = (s.spin?.x ?? 0) * s.power * 0.65;
+  let longitudinalSpin = -(s.spin?.y ?? 0) * s.power * 1.1;
+  const railSpin = (v: Point, nx: number, ny: number) => {
+    const transfer =
+      Math.min(Math.hypot(v.x, v.y) * 0.35, Math.abs(sideSpin)) * Math.sign(sideSpin);
+    v.x += ny * transfer;
+    v.y -= nx * transfer;
+    sideSpin *= 0.55;
+  };
   let ticks = 0;
   for (; ticks < 240 * 12; ticks++) {
     for (let i = 0; i < balls.length; i++) {
@@ -167,21 +186,25 @@ export function shoot(g: Game, s: Shot): Simulation {
       if (b.x < R) {
         b.x = R;
         v.x = Math.abs(v.x) * 0.85;
+        if (b.id === 0) railSpin(v, 1, 0);
         rail = true;
       }
       if (b.x > 1 - R) {
         b.x = 1 - R;
         v.x = -Math.abs(v.x) * 0.85;
+        if (b.id === 0) railSpin(v, -1, 0);
         rail = true;
       }
       if (b.y < R) {
         b.y = R;
         v.y = Math.abs(v.y) * 0.85;
+        if (b.id === 0) railSpin(v, 0, 1);
         rail = true;
       }
       if (b.y > 2 - R) {
         b.y = 2 - R;
         v.y = -Math.abs(v.y) * 0.85;
+        if (b.id === 0) railSpin(v, 0, -1);
         rail = true;
       }
       if (rail && events.firstContact !== null) events.railAfter = true;
@@ -206,14 +229,22 @@ export function shoot(g: Game, s: Shot): Simulation {
         b.x += nx * overlap;
         b.y += ny * overlap;
         if (relative <= 0) continue;
-        if (events.firstContact === null && (a.id === 0 || b.id === 0))
-          events.firstContact = a.id === 0 ? b.id : a.id;
+        const firstCueContact = events.firstContact === null && (a.id === 0 || b.id === 0);
+        if (firstCueContact) events.firstContact = a.id === 0 ? b.id : a.id;
         const impulse = relative * 0.98;
         va.x -= impulse * nx;
         va.y -= impulse * ny;
         vb.x += impulse * nx;
         vb.y += impulse * ny;
+        if (firstCueContact && longitudinalSpin !== 0) {
+          const vc = a.id === 0 ? va : vb;
+          vc.x += Math.cos(s.angle) * longitudinalSpin;
+          vc.y += Math.sin(s.angle) * longitudinalSpin;
+          longitudinalSpin = 0;
+        }
       }
+    sideSpin *= Math.exp(-0.7 * dt);
+    longitudinalSpin *= Math.exp(-0.7 * dt);
     let moving = false;
     for (let i = 0; i < balls.length; i++) {
       const b = balls[i]!,

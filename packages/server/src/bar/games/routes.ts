@@ -3,6 +3,11 @@ import { z } from 'zod';
 import * as service from './service.js';
 const id = z.object({ id: z.string().uuid() });
 const kind = z.enum(['darts', 'billiards', 'checkers']);
+const spin = z
+  .object({ x: z.number().finite(), y: z.number().finite() })
+  .strict()
+  .refine((p) => Math.hypot(p.x, p.y) <= 1)
+  .optional();
 const point = z.object({ x: z.number().finite(), y: z.number().finite() }).strict();
 export const gameAction = z.discriminatedUnion('type', [
   z
@@ -33,6 +38,7 @@ export const gameAction = z.discriminatedUnion('type', [
         .min(-Math.PI * 4)
         .max(Math.PI * 4),
       power: z.number().min(0.03).max(1),
+      spin,
     })
     .strict(),
   z
@@ -44,6 +50,7 @@ export const gameAction = z.discriminatedUnion('type', [
         .min(-Math.PI * 4)
         .max(Math.PI * 4),
       power: z.number().min(0.03).max(1),
+      spin,
     })
     .strict(),
   z.object({ type: z.literal('surrender') }).strict(),

@@ -39,3 +39,13 @@ Reused the existing Durak HUD components/styles: player/avatar on the left, cloc
 Darts now uses one full-screen bar background. Its SVG board is a separate transparent layer beneath the HUD/feedback; the inset background, rounded frame and field shadow were removed. At 360×780 the rendered scene occupies exactly the viewport, document scroll height is 780, the field background is `none`, shadow is `none`, and corner radius is zero. Timer and menu centres both measured x=180.
 
 Follow-up verification: 20 core bar-game tests, 3 server service tests, 29 web/card regressions, root typecheck/lint and final web build passed. Dedicated HUD tests cover avatars, timer warning colours, feedback placement and bust text. Local browser verified both the updated menu and a real dart gesture. Existing known full-suite baseline gaps remain as described above.
+
+## Pool pullback and spin follow-up
+
+The bottom power control starts at zero on the right, increases with leftward drag, fires on release and returns to zero. Cancel/Escape/lost pointer capture do not fire and publish resting aim to the opponent. Keyboard arrows choose power; Enter fires. A brown cue-ball button matches the 80px power-control height and opens the standard accessible modal with a bounded two-dimensional contact point, centre reset, keyboard controls and close action. Turn timing continues while it is open.
+
+Shared optional shot/aim spin coordinates are validated within the unit disk; the UI limits contact to 85% radius. The deterministic fixed-step arcade model applies decaying longitudinal spin on first object-ball contact and side-spin tangential transfer at cushions. Omitted/centre spin preserves ordinary shots. Bots can continue using centre shots. The selected spin travels through authoritative aim and shot snapshots; no DB migration is required.
+
+Local verification: core spin/follow/draw/cushion/determinism/input tests, runtime spin transport, server schema tests, web selection/cancel/release tests; web/server typecheck, lint and web build. Browser at 360px: modal selection, actual 77% leftward pull/release, zero reset, both control surfaces measured 80px. Two authenticated real clients and physical-phone acceptance remain outstanding; dev/production were not deployed.
+
+Release gate: GAME_CORE_VERSION is bumped per core instructions (this feature branch has never been deployed). Before releasing the complete branch, explicitly resolve compatibility of already persisted version-pinned onboarding/training sessions with the final core version. The local bar preview does not exercise those flows.

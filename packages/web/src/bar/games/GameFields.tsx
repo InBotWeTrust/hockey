@@ -1,3 +1,5 @@
+import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { gameClose } from './GameModals.js';
 import { useEffect, useRef, useState, type CSSProperties, type PointerEvent } from 'react';
 import {
   POOL_STROKE_MS,
@@ -335,6 +337,82 @@ function PoolBall({ ball }: { ball: barPool.Ball }) {
     </g>
   );
 }
+function PoolSpinPicker({
+  spin,
+  change,
+  close,
+}: {
+  spin: barDarts.Point;
+  change: (p: barDarts.Point) => void;
+  close: () => void;
+}) {
+  const clamp = (x: number, y: number) => {
+    const scale = Math.max(1, Math.hypot(x, y) / 0.85);
+    change({ x: x / scale, y: y / scale });
+  };
+  const pick = (e: PointerEvent<HTMLButtonElement>) => {
+    const r = e.currentTarget.getBoundingClientRect();
+    clamp(
+      (e.clientX - r.left - r.width / 2) / (r.width / 2),
+      (e.clientY - r.top - r.height / 2) / (r.height / 2),
+    );
+  };
+  return (
+    <AccessibleModal
+      title="Точка удара"
+      onRequestClose={close}
+      headerAction={gameClose(close)}
+      cardClassName="bar-pool-spin-modal"
+    >
+      <p className="modal-copy" id="pool-spin-help">
+        Выше центра — накат, ниже — оттяжка. По бокам — боковое вращение.
+      </p>
+      <button
+        className="bar-pool-spin-target"
+        aria-label="Точка удара по битку"
+        aria-describedby="pool-spin-help"
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId);
+          pick(e);
+        }}
+        onPointerMove={(e) => {
+          if (e.buttons) pick(e);
+        }}
+        onKeyDown={(e) => {
+          const delta: Record<string, barDarts.Point> = {
+            ArrowLeft: { x: -0.1, y: 0 },
+            ArrowRight: { x: 0.1, y: 0 },
+            ArrowUp: { x: 0, y: -0.1 },
+            ArrowDown: { x: 0, y: 0.1 },
+          };
+          const d = delta[e.key];
+          if (d) {
+            e.preventDefault();
+            clamp(spin.x + d.x, spin.y + d.y);
+          }
+          if (e.key === 'Home') {
+            e.preventDefault();
+            change({ x: 0, y: 0 });
+          }
+        }}
+      >
+        <span className="bar-pool-spin-cross" />
+        <span
+          className="bar-pool-spin-dot"
+          style={{ left: `${50 + spin.x * 50}%`, top: `${50 + spin.y * 50}%` }}
+        />
+      </button>
+      <div className="modal-actions">
+        <button className="btn btn--ghost" onClick={() => change({ x: 0, y: 0 })}>
+          В центр
+        </button>
+        <button className="modal-primary btn--cta" onClick={close}>
+          Готово
+        </button>
+      </div>
+    </AccessibleModal>
+  );
+}
 export function PoolField({
   game,
   balls,
@@ -357,16 +435,33 @@ export function PoolField({
   send: Send;
 }) {
   const [angle, setAngle] = useState(-Math.PI / 2),
-    [power, setPower] = useState(0.45);
+    [power, setPower] = useState(0);
+  const [spin, setSpin] = useState<barDarts.Point>({ x: 0, y: 0 });
+  const [spinOpen, setSpinOpen] = useState(false);
+  const powerValue = useRef(0);
+  const powerDrag = useRef<{ x: number; width: number; id: number } | null>(null);
+  const updatePower = (value: number) => {
+    powerValue.current = value;
+    setPower(value);
+  };
+  useEffect(() => {
+    if (disabled || game.ballInHand) {
+      setSpinOpen(false);
+      powerDrag.current = null;
+      updatePower(0);
+    }
+  }, [disabled, game.ballInHand]);
   const svg = useRef<SVGSVGElement>(null);
   const fired = useRef(false);
   useEffect(() => {
     setAngle(-Math.PI / 2 + Math.sin(game.balls[0]!.x * 71 + game.turn * 13) * 0.15);
     fired.current = false;
+    powerValue.current = 0;
+    setPower(0);
   }, [game.balls.map((b) => `${b.x}:${b.y}:${b.pocketed}`).join(','), game.turn, game.ballInHand]);
   useEffect(() => {
     if (!disabled && !game.ballInHand && aim?.actor !== game.turn)
-      send({ type: 'aim', angle, power });
+      send({ type: 'aim', angle, power: Math.max(0.03, power), spin });
   }, [disabled, game.ballInHand, game.turn, aim?.actor]);
   const strokeClock = useRef({ start: animationStart, delay: Math.max(0, now - animationStart) });
   if (strokeClock.current.start !== animationStart)
@@ -380,6 +475,11 @@ export function PoolField({
       ? (remoteAim?.angle ?? -Math.PI / 2)
       : angle;
   const displayPower = stroking ? shot.power : opponent ? (remoteAim?.power ?? 0.45) : power;
+  const visibleSpin = stroking
+    ? (shot.spin ?? { x: 0, y: 0 })
+    : opponent
+      ? (remoteAim?.spin ?? { x: 0, y: 0 })
+      : spin;
   const cuePull = 0.045 + displayPower * 0.16;
   const dragging = useRef(false);
   const published = useRef(0);
@@ -399,7 +499,7 @@ export function PoolField({
     setAngle(nextAngle);
     if (performance.now() - published.current > 300) {
       published.current = performance.now();
-      send({ type: 'aim', angle: nextAngle, power });
+      send({ type: 'aim', angle: nextAngle, power: Math.max(0.03, power), spin });
     }
   };
   let length = 0.5,
@@ -433,10 +533,18 @@ export function PoolField({
           x: cue.x + Math.cos(displayAngle) * Math.min(length, 0.55),
           y: cue.y + Math.sin(displayAngle) * Math.min(length, 0.55),
         };
+  const cancelPullback = () => {
+    powerDrag.current = null;
+    updatePower(0);
+    if (!disabled && !game.ballInHand) send({ type: 'aim', angle, power: 0.03, spin });
+  };
   const fire = () => {
-    if (disabled || angle === null || fired.current) return;
+    const releasedPower = powerValue.current;
+    updatePower(0);
+    if (disabled || angle === null || fired.current || releasedPower < 0.03) return;
     fired.current = true;
-    send({ type: 'shot', angle, power });
+    send({ type: 'shot', angle, power: releasedPower, spin });
+    setSpin({ x: 0, y: 0 });
   };
   return (
     <div className="bar-pool-field">
@@ -456,7 +564,8 @@ export function PoolField({
         }}
         onPointerUp={() => {
           dragging.current = false;
-          if (!disabled && !game.ballInHand) send({ type: 'aim', angle, power });
+          if (!disabled && !game.ballInHand)
+            send({ type: 'aim', angle, power: Math.max(0.03, power), spin });
         }}
         onPointerCancel={() => {
           dragging.current = false;
@@ -576,37 +685,92 @@ export function PoolField({
           </g>
         )}
       </svg>
-      <label className="bar-pool-power">
-        <span>
-          Сила удара <strong>{Math.round(displayPower * 100)}%</strong>
-        </span>
-        <input
-          type="range"
-          aria-label="Сила удара"
-          min="3"
-          max="100"
-          value={Math.round(power * 100)}
-          disabled={disabled || game.ballInHand}
-          onPointerDown={() => {
-            fired.current = false;
-          }}
-          onChange={(e) => {
-            const nextPower = Number(e.target.value) / 100;
-            setPower(nextPower);
-            if (performance.now() - published.current > 300) {
-              published.current = performance.now();
-              send({ type: 'aim', angle, power: nextPower });
-            }
-          }}
-          onPointerUp={fire}
-          onKeyUp={(e) => {
-            if (e.key.startsWith('Arrow')) {
+      <div className="bar-pool-controls">
+        <label className="bar-pool-power bar-pool-power--pull">
+          <span>
+            Оттяни и отпусти <strong>{Math.round(displayPower * 100)}%</strong>
+          </span>
+          <input
+            type="range"
+            dir="rtl"
+            aria-label="Сила удара"
+            min="0"
+            max="100"
+            value={Math.round(power * 100)}
+            disabled={disabled || game.ballInHand}
+            onPointerDown={(e) => {
+              if (disabled || game.ballInHand) return;
+              e.preventDefault();
+              e.currentTarget.focus();
+              e.currentTarget.setPointerCapture(e.pointerId);
+              powerDrag.current = {
+                x: e.clientX,
+                width: e.currentTarget.getBoundingClientRect().width,
+                id: e.pointerId,
+              };
               fired.current = false;
+              updatePower(0);
+              send({ type: 'aim', angle, power: 0.03, spin });
+            }}
+            onPointerMove={(e) => {
+              const drag = powerDrag.current;
+              if (!drag || drag.id !== e.pointerId || disabled) return;
+              const value = Math.max(
+                0,
+                Math.min(1, (drag.x - e.clientX) / Math.max(1, drag.width)),
+              );
+              updatePower(value);
+              if (performance.now() - published.current > 300) {
+                published.current = performance.now();
+                send({ type: 'aim', angle, power: Math.max(0.03, value), spin });
+              }
+            }}
+            onPointerUp={(e) => {
+              if (powerDrag.current?.id !== e.pointerId) return;
+              powerDrag.current = null;
               fire();
-            }
+            }}
+            onPointerCancel={cancelPullback}
+            onLostPointerCapture={() => {
+              if (powerDrag.current) cancelPullback();
+            }}
+            onChange={(e) => {
+              fired.current = false;
+              updatePower(Number(e.target.value) / 100);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                fire();
+              }
+              if (e.key === 'Escape') cancelPullback();
+            }}
+          />
+        </label>
+        <button
+          className="bar-pool-spin-button"
+          aria-label="Выбрать точку удара"
+          disabled={disabled || game.ballInHand}
+          onClick={() => setSpinOpen(true)}
+        >
+          <span className="bar-pool-spin-ball">
+            <span
+              className="bar-pool-spin-dot"
+              style={{ left: `${50 + visibleSpin.x * 50}%`, top: `${50 + visibleSpin.y * 50}%` }}
+            />
+          </span>
+        </button>
+      </div>
+      {spinOpen && (
+        <PoolSpinPicker
+          spin={spin}
+          change={(point) => {
+            setSpin(point);
+            send({ type: 'aim', angle, power: Math.max(0.03, power), spin: point });
           }}
+          close={() => setSpinOpen(false)}
         />
-      </label>
+      )}
     </div>
   );
 }

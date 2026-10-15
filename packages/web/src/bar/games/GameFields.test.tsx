@@ -162,3 +162,29 @@ it('animates a newly pocketed ball, but does not replay old pocketed balls', () 
     vi.useRealTimers();
   }
 });
+it('starts pullback at zero, cancels without firing and sends selected spin with the shot', () => {
+  const game = barPool.create(0),
+    send = vi.fn();
+  render(<PoolField game={game} balls={game.balls} disabled={false} send={send} />);
+  const slider = screen.getByRole('slider', { name: 'Сила удара' });
+  expect(slider).toHaveValue('0');
+  expect(slider).toHaveAttribute('dir', 'rtl');
+  fireEvent.change(slider, { target: { value: '70' } });
+  fireEvent.pointerCancel(slider);
+  expect(send).toHaveBeenLastCalledWith(
+    expect.objectContaining({ type: 'aim', power: 0.03, spin: { x: 0, y: 0 } }),
+  );
+  expect(slider).toHaveValue('0');
+  expect(send.mock.calls.filter(([a]) => a.type === 'shot')).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Выбрать точку удара' }));
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Точка удара по битку' }), {
+    key: 'ArrowUp',
+  });
+  fireEvent.click(screen.getByRole('button', { name: 'Готово' }));
+  fireEvent.change(slider, { target: { value: '70' } });
+  fireEvent.keyDown(slider, { key: 'Enter' });
+  expect(send).toHaveBeenCalledWith(
+    expect.objectContaining({ type: 'shot', power: 0.7, spin: { x: 0, y: -0.1 } }),
+  );
+  expect(slider).toHaveValue('0');
+});

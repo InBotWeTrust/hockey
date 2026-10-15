@@ -53,3 +53,16 @@ it('accepts finite bounded shared aim and rejects excessive power', () => {
   expect(gameAction.safeParse({ type: 'aim', angle: Infinity, power: 0.5 }).success).toBe(false);
   expect(gameAction.safeParse({ type: 'aim', angle: 1, power: 2 }).success).toBe(false);
 });
+it('validates spin coordinates on shared aim and shots', () => {
+  for (const type of ['aim', 'shot']) {
+    expect(
+      gameAction.safeParse({ type, angle: 0, power: 0.5, spin: { x: 0.3, y: -0.4 } }).success,
+    ).toBe(true);
+    expect(gameAction.safeParse({ type, angle: 0, power: 0.5, spin: { x: 1, y: 1 } }).success).toBe(
+      false,
+    );
+    expect(
+      gameAction.safeParse({ type, angle: 0, power: 0.5, spin: { x: Infinity, y: 0 } }).success,
+    ).toBe(false);
+  }
+});

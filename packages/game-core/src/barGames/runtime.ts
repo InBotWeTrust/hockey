@@ -7,8 +7,8 @@ export type BarGameAction =
   | { type: 'dart'; gesture: darts.Gesture }
   | { type: 'checkers'; path: number[] }
   | { type: 'place'; point: darts.Point }
-  | { type: 'shot'; angle: number; power: number }
-  | { type: 'aim'; angle: number; power: number }
+  | ({ type: 'shot' } & pool.Shot)
+  | ({ type: 'aim' } & pool.Shot)
   | { type: 'surrender' };
 export const ENGINE_VERSION = 1;
 export const TURN_MS = 40000;
@@ -43,8 +43,8 @@ export interface Runtime {
   reason: 'played' | 'surrender' | 'inactivity' | null;
   lastDart: darts.Point | null;
   dartHits?: darts.Point[];
-  poolAim?: { angle: number; power: number; actor: darts.Player } | null;
-  poolShot?: { angle: number; power: number; cue: darts.Point } | null;
+  poolAim?: (pool.Shot & { actor: darts.Player }) | null;
+  poolShot?: (pool.Shot & { cue: darts.Point }) | null;
   poolFrames: pool.Ball[][];
   animationStart: number;
   revision: number;
@@ -123,7 +123,7 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
     const sim = pool.shoot(m.game, action);
     n.poolAim = null;
     const cue = m.game.balls.find((b) => b.id === 0)!;
-    n.poolShot = { angle: action.angle, power: action.power, cue: { x: cue.x, y: cue.y } };
+    n.poolShot = { ...action, cue: { x: cue.x, y: cue.y } };
     n.game = sim.game;
     n.poolFrames = sim.frames;
     n.feedback = {
@@ -164,13 +164,14 @@ export function command(
       m.game.ballInHand ||
       !Number.isFinite(action.angle) ||
       !Number.isFinite(action.power) ||
+      !pool.validSpin(action.spin) ||
       action.power < 0.03 ||
       action.power > 1
     )
       throw new Error('Invalid aim');
     return {
       ...m,
-      poolAim: { angle: action.angle, power: action.power, actor: player },
+      poolAim: { ...action, actor: player },
       revision: m.revision + 1,
     };
   }
@@ -187,12 +188,7 @@ export function advance(m: Runtime, now: number): Runtime {
         n = perform(n, { type: 'checkers', path: checkers.bot(n.game) }, at, false);
       else if (n.game.kind === 'billiards') {
         if (n.poolAim?.actor === 1) {
-          n = perform(
-            n,
-            { type: 'shot', angle: n.poolAim.angle, power: n.poolAim.power },
-            at,
-            false,
-          );
+          n = perform(n, { ...n.poolAim, type: 'shot' }, at, false);
         } else {
           const b = pool.bot(n.game);
           if (b.placement) n = perform(n, { type: 'place', point: b.placement }, at, false);

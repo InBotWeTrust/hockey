@@ -7,7 +7,7 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for dart animation timing', () => {
-    expect(GAME_CORE_VERSION).toBe(91);
+  it('is bumped for pool spin physics', () => {
+    expect(GAME_CORE_VERSION).toBe(92);
   });
 });

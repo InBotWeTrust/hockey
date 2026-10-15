@@ -95,3 +95,14 @@ it('shares aim without resetting the clock or inactivity and previews the bot sh
   expect(shot.poolShot).toBeDefined();
   expect(shot.poolFrames.length).toBeGreaterThan(0);
 });
+it('preserves spin in shared aim and the authoritative shot animation', () => {
+  const m = createMatch('billiards', 0, 0, false, 1);
+  const spin = { x: 0.2, y: -0.5 };
+  const aim = command(m, 0, { type: 'aim', angle: -1, power: 0.5, spin }, 100);
+  expect(aim.poolAim?.spin).toEqual(spin);
+  const shot = command(aim, 0, { type: 'shot', angle: -1, power: 0.5, spin }, 200);
+  expect(shot.poolShot?.spin).toEqual(spin);
+  expect(() =>
+    command(m, 0, { type: 'aim', angle: 0, power: 0.5, spin: { x: 1, y: 1 } }, 100),
+  ).toThrow();
+});
