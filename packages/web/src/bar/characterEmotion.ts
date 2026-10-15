@@ -26,8 +26,13 @@ export function preloadEmotions(character:BarCharacter){
  for(const emotion of emotions){const path=emotionAsset(character,emotion);if(path){const image=new Image();image.src=path;}}
 }
 
+export function greetingSourceAsset(character:string):string|null{
+ if(character==='daria')return '/bar/emotions/daria/greeting-smile-v1.webp';
+ return emotionAsset(character,handshakeCharacters.includes(character)?'greeting':'joy');
+}
+
 export function prepareGreeting(character:BarCharacter):Promise<boolean>{
- const path=emotionAsset(character,handshakeCharacters.includes(character)?'greeting':'joy');
+ const path=greetingSourceAsset(character);
  if(!path)return Promise.resolve(false);
  return new Promise(resolve=>{const image=new Image();image.onload=()=>resolve(true);image.onerror=()=>resolve(false);image.src=path;});
 }
