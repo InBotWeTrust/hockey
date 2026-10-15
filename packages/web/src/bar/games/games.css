@@ -816,18 +816,18 @@
   padding-inline: 2px;
 }
 .bar-game-menu .game-scoreboard__metric.bar-game-player--self {
-  padding-right: 12px;
+  padding-right: 18px;
 }
 .bar-game-menu .game-scoreboard__metric.bar-game-player--opponent {
-  padding-left: 12px;
+  padding-left: 18px;
 }
 .bar-game-player--self .bar-pool-group-slot {
   left: auto;
-  right: 1px;
+  right: 7px;
 }
 .bar-game-player--opponent .bar-pool-group-slot {
   right: auto;
-  left: 1px;
+  left: 7px;
 }
 .bar-pool-group {
   background: #fff;
