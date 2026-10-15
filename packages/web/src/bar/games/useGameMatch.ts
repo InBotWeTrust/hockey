@@ -82,7 +82,7 @@ export function useGameMatch(id: string | undefined) {
         } catch {
           /* Polling retries. */
         }
-      } else setError('Ход пока не подтверждён. Повтори отправку — он не выполнится дважды.');
+      } else setError('Не удалось подтвердить ход. Отправь ещё раз – он не выполнится дважды.');
     } finally {
       if (token === generation.current) {
         sending.current = false;

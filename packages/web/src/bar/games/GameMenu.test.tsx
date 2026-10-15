@@ -97,7 +97,7 @@ it('keeps pool instructions in the menu notice and removes field hints', () => {
   expect(screen.getByRole('status')).toHaveTextContent('Выбери место для битка');
   v.runtime.missed[0] = 1;
   rerender(<GameTable view={v} now={0} disabled={false} send={() => {}} />);
-  expect(screen.getByRole('status')).toHaveTextContent(/^Следующий пропуск — поражение$/);
+  expect(screen.getByRole('status')).toHaveTextContent(/^Следующий пропуск – поражение$/);
 });
 it('starts pool counters at zero and counts pocketed group balls with compact group markers', () => {
   const v = view();

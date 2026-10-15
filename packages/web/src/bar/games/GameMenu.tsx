@@ -34,22 +34,24 @@ function actionResult(view: BarGameSnapshot): string {
   switch (f.type) {
     case 'dart':
       return f.bust
-        ? 'Перебор — дротик не засчитан'
+        ? 'Перебор – дротик не засчитан'
         : f.points === 0
           ? 'Промах'
           : `${actor}: ${formatRussianCount(f.points ?? 0, 'очко', 'очка', 'очков')}`;
     case 'shot':
       return f.foul
-        ? 'Фол — биток с руки'
+        ? 'Фол – биток можно поставить заново'
         : f.pocketed?.length
-          ? `${actor}: забито шаров — ${f.pocketed.length}`
+          ? `${actor}: ${formatRussianCount(f.pocketed.length, 'шар', 'шара', 'шаров')}`
           : 'Шар не забит';
     case 'checkers':
-      return f.captured ? `${actor}: взято шашек — ${f.captured}` : 'Ход выполнен';
+      return f.captured
+        ? `${actor}: ${formatRussianCount(f.captured, 'шашка', 'шашки', 'шашек')}`
+        : 'Ход выполнен';
     case 'place':
       return 'Биток установлен';
     case 'timeout':
-      return 'Время вышло — выполнено автодействие';
+      return 'Время на ход вышло';
   }
 }
 export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) {
@@ -87,7 +89,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
       : '';
   const feedback =
     m.missed[player] > 0 && g.winner === null
-      ? 'Следующий пропуск — поражение'
+      ? 'Следующий пропуск – поражение'
       : result
         ? dartFeedback
           ? result
@@ -137,7 +139,7 @@ export function GameMenu({ view, now }: { view: BarGameSnapshot; now: number }) 
             role="timer"
           >
             <FittedMenuLabel>Время</FittedMenuLabel>
-            <strong className="game-scoreboard__value">{seconds ?? '—'}</strong>
+            <strong className="game-scoreboard__value">{seconds ?? '–'}</strong>
           </div>
           <div className="game-scoreboard__metric bar-game-player--opponent">
             <span className="bar-pool-group-slot bar-pool-group-slot--opponent">

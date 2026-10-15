@@ -365,7 +365,7 @@ function PoolSpinPicker({
       cardClassName="bar-pool-spin-modal"
     >
       <p className="modal-copy" id="pool-spin-help">
-        Выше центра — накат, ниже — оттяжка. По бокам — боковое вращение.
+        Выше центра – накат, ниже – оттяжка. По бокам – боковое вращение.
       </p>
       <button
         className="bar-pool-spin-target"
