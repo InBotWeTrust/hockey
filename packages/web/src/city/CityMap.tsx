@@ -5,16 +5,16 @@ import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
 type Props={owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;onNavigate:(path:string)=>void};
 const places=[
- {id:'yard',name:'Дворовый каток',x:13,y:57,w:20,h:18},
- {id:'shop',name:'Магазин',x:19,y:40,w:8,h:13,thumb:[16.8,33.8]},
- {id:'bank',name:'Банк',x:28,y:39,w:8,h:14,thumb:[26.2,33.8]},
- {id:'tasks',name:'Задания',x:30,y:60,w:9,h:14},
- {id:'stadium',name:'Стадион «Центральный»',x:41,y:43,w:15,h:18},
- {id:'gym',name:'Спортзал',x:45,y:25,w:11,h:12},
- {id:'bar',name:'Бар "4-й период"',x:50,y:55,w:11,h:15},
- {id:'fame',name:'Зал славы',x:61,y:33,w:14,h:19},
- {id:'bonus',name:'Бонусные игры',x:64,y:55,w:13,h:19},
- {id:'pro',name:'Арена Ультимейт',x:87,y:31,w:24,h:36},
+ {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
+ {id:'shop',name:'Магазин',x:25.6,y:39,w:7.5,h:12,thumb:[22.5,31]},
+ {id:'tasks',name:'Задания',x:27,y:58.5,w:8,h:13,thumb:[24.8,59]},
+ {id:'bank',name:'Банк',x:36.2,y:36.5,w:8,h:16,thumb:[34.7,28]},
+ {id:'stadium',name:'Стадион «Центральный»',x:44.8,y:51,w:14,h:20,thumb:[43.9,52.6]},
+ {id:'gym',name:'Спортзал',x:52.5,y:37,w:9.5,h:14,thumb:[54,28.9]},
+ {id:'bar',name:'Бар "4-й период"',x:59.4,y:60,w:10.5,h:17,thumb:[60.3,62.6]},
+ {id:'fame',name:'Зал славы',x:64.5,y:36,w:9,h:17,thumb:[66.2,26.1]},
+ {id:'bonus',name:'Бонусные игры',x:72.3,y:59,w:8,h:17,thumb:[75.8,62.9]},
+ {id:'pro',name:'Арена Ультимейт',x:87,y:42,w:25,h:34,thumb:[92,37]},
 ];
 export function CityMap(props:Props){
  const {owner,level,daily,training,tasks,bonus,onNavigate}=props;

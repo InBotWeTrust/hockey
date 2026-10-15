@@ -1,7 +1,7 @@
 import {describe,it,expect} from 'vitest';
 import {cityTimeOfDay} from './lighting.js';
 describe('device-local city lighting',()=>{
- for(const [hour,minute,expected] of [[4,59,'night'],[5,0,'morning'],[9,59,'morning'],[10,0,'day'],[17,59,'day'],[18,0,'night'],[23,59,'night']] as const){
+ for(const [hour,minute,expected] of [[5,59,'night'],[6,0,'morning'],[9,59,'morning'],[10,0,'day'],[17,59,'day'],[18,0,'sunset'],[20,59,'sunset'],[21,0,'night'],[23,59,'night']] as const){
   it(`${hour}:${minute} is ${expected}`,()=>expect(cityTimeOfDay(new Date(2026,9,15,hour,minute))).toBe(expected));
  }
 });
@@ -38,6 +38,19 @@ it('switches at 10 and reconciles local time on foreground return',async()=>{
  const {result}=renderHook(()=>useCityImage());
  await act(async()=>{vi.advanceTimersByTime(1000);});
  expect(result.current).toContain('city-day-');
- await act(async()=>{vi.setSystemTime(new Date(2026,9,16,5));document.dispatchEvent(new Event('visibilitychange'));});
+ await act(async()=>{vi.setSystemTime(new Date(2026,9,16,6));document.dispatchEvent(new Event('visibilitychange'));});
+ expect(result.current).toContain('city-morning-');
+});
+
+it('loads sunset at 18, night at 21 and morning at 6 without remounting',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(new Date(2026,9,15,17,59,59));
+ vi.stubGlobal('Image',class{src='';decode(){return Promise.resolve();}});
+ const {result}=renderHook(()=>useCityImage());
+ expect(result.current).toContain('city-day-');
+ await act(async()=>{vi.advanceTimersByTime(1000);});
+ expect(result.current).toContain('city-sunset-');
+ await act(async()=>{vi.setSystemTime(new Date(2026,9,15,21));window.dispatchEvent(new Event('pageshow'));});
+ expect(result.current).toContain('city-night-');
+ await act(async()=>{vi.setSystemTime(new Date(2026,9,16,6));window.dispatchEvent(new Event('focus'));});
  expect(result.current).toContain('city-morning-');
 });
