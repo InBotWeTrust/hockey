@@ -1,16 +1,18 @@
 import * as darts from './darts.js';
 import * as checkers from './checkers.js';
 import * as pool from './pool.js';
-export type BarGameId = 'darts' | 'billiards' | 'checkers';
-export type BarGame = darts.Game | checkers.Game | pool.Game;
+import * as ochko from './ochko.js';
+export type BarGameId = 'darts' | 'billiards' | 'checkers' | 'ochko';
+export type BarGame = darts.Game | checkers.Game | pool.Game | ochko.OchkoView;
 export type BarGameAction =
   | { type: 'dart'; gesture: darts.Gesture }
   | { type: 'checkers'; path: number[] }
   | { type: 'place'; point: darts.Point }
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
+  | { type: 'ochko-hit' | 'ochko-stand' }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 6;
+export const ENGINE_VERSION = 7;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -19,7 +21,7 @@ export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
   return (
-    version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === ENGINE_VERSION
+    version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === 6 || version === ENGINE_VERSION
   );
 }
 function botPause(m: Runtime, continuingDarts = false): number {
@@ -35,6 +37,7 @@ export const CHARACTER_GAME = {
   daria: 'darts',
   veronika: 'billiards',
   arsenich: 'checkers',
+  grigory: 'ochko',
 } as const;
 export type GameCharacter = keyof typeof CHARACTER_GAME;
 export interface BarGameFeedback {
@@ -64,6 +67,7 @@ export interface Runtime {
   checkersMove?: CheckersMotion | null;
   feedback?: BarGameFeedback;
   engineVersion: number;
+  botAt?: number;
   game: BarGame;
   deadline: number;
   animationUntil: number;
@@ -89,7 +93,9 @@ export function createMatch(
   const match: Runtime = {
     engineVersion: ENGINE_VERSION,
     game:
-      kind === 'darts'
+      kind === 'ochko'
+        ? ochko.createOchko(seed, now)
+        : kind === 'darts'
         ? darts.create(starter)
         : kind === 'checkers'
           ? checkers.create(starter)
@@ -105,6 +111,12 @@ export function createMatch(
     animationStart: now,
     revision: 0,
   };
+  if (kind === 'ochko') {
+    match.animationUntil = now + ochko.OCHKO_DEAL_MS * 2;
+    match.botAt = match.animationUntil + 3000 + Math.floor(random(match) * 2001);
+    match.deadline = Math.min(...(match.game as ochko.OchkoView).deadlines);
+    return match;
+  }
   if (computer && starter === 1) match.animationUntil += botPause(match);
   return match;
 }
@@ -200,6 +212,11 @@ export function command(
       reason: 'surrender',
       revision: m.revision + 1,
     };
+  if (m.game.kind === 'ochko') {
+    if(action.type !== 'ochko-hit' && action.type !== 'ochko-stand') throw new Error('Wrong game action');
+    const game = ochko.actOchko(privateOchko(m.game), player, action.type === 'ochko-hit' ? 'hit' : 'stand', now);
+    return ochkoRuntime(m, game, now);
+  }
   if (m.game.turn !== player || now >= m.deadline || now < m.animationUntil)
     throw new Error('Not your turn');
   if (action.type === 'aim') {
@@ -223,6 +240,18 @@ export function command(
 }
 export function advance(m: Runtime, now: number): Runtime {
   if (!supportedVersion(m.engineVersion)) throw new Error('Unsupported game version');
+  if (m.game.kind === 'ochko') {
+    let n=m, g=privateOchko(m.game);
+    for(let i=0;i<36 && n.computer && !g.done[1] && g.winner===null && (n.botAt??0)<=now;i++) {
+      const at=Math.max(n.botAt??g.dealUntil[1],g.dealUntil[1]);
+      g=ochko.advanceOchko(g,at);
+      if(g.done[1]||g.winner!==null)break;
+      g=ochko.actOchko(g,1,g.scores[1]<17?'hit':'stand',at);
+      n={...n,botAt:g.dealUntil[1]+3000+Math.floor(random({...n})*2001)};
+    }
+    g=ochko.advanceOchko(g,now);
+    return g===m.game && n===m ? m : ochkoRuntime(n,g,now);
+  }
   let n = m;
   for (let i = 0; i < 64 && n.game.winner === null; i++) {
     if (n.computer && n.game.turn === 1) {
@@ -245,7 +274,7 @@ export function advance(m: Runtime, now: number): Runtime {
             revision: n.revision + 1,
           };
         }
-      } else {
+      } else if (n.game.kind === 'darts') {
         const copy = { ...n };
         const target = Math.min(n.game.scores[1], 60);
         const x = (random(copy) - 0.5) * 0.18;
@@ -298,7 +327,7 @@ export function advance(m: Runtime, now: number): Runtime {
           ? darts.timeout(n.game)
           : n.game.kind === 'billiards'
             ? pool.timeout(n.game)
-            : checkers.move(n.game, checkersPath!);
+            : n.game.kind === 'checkers' ? checkers.move(n.game, checkersPath!) : n.game;
       const at = n.deadline;
       n = {
         ...n,
@@ -371,3 +400,18 @@ export interface BarGameLobby {
   invites: BarGameInvite[];
   serverNow: number;
 }
+
+function privateOchko(game: ochko.OchkoView): ochko.OchkoState {
+  if(!('deck' in game) || !Array.isArray(game.deck)) throw new Error('Private ochko state required');
+  return game as ochko.OchkoState;
+}
+function ochkoRuntime(m: Runtime, game: ochko.OchkoState, now:number): Runtime {
+  const due=game.deadlines.filter((_,p)=>!game.done[p]);
+  if(m.computer&&!game.done[1])due.push(m.botAt??now);
+  return {...m,game,revision:m.revision+1,deadline:due.length?Math.min(...due):now,
+    animationUntil:Math.max(...game.dealUntil),reason:game.winner!==null?'played':m.reason};
+}
+export function publicRuntime(m:Runtime, player:darts.Player):Runtime {
+  return m.game.kind==='ochko' ? {...m,seed:0,game:ochko.ochkoView(privateOchko(m.game),player)} : m;
+}
+export * as barOchko from './ochko.js';
