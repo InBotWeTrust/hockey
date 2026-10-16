@@ -243,6 +243,9 @@ function transactionCategory(reason: string): TransactionCategory {
 }
 
 export function transactionTitle(reason: string, metadata: Record<string, unknown>): string {
+  if (reason === 'bar_ochko_stake') return 'Ставка в Очке';
+  if (reason === 'bar_ochko_payout') return 'Выигрыш в Очке';
+  if (reason === 'bar_ochko_refund') return 'Возврат ставки в Очке';
   if (reason === 'inventory_purchase' && metadata.payment_currency === 'stars')
     return 'Покупка за звёзды';
   const title = stringMetadata(metadata, 'title');

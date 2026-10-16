@@ -46,7 +46,7 @@ it('blocks a pool shot until the player has aimed, shows a power slider', () => 
 });
 it('shows accurate game rules and the close control in its header', () => {
   render(<GameHelp kind="darts" close={() => {}} />);
-  expect(screen.getByRole('dialog')).toHaveTextContent('301');
+  expect(screen.getByRole('dialog')).toHaveTextContent('501');
   expect(screen.getByRole('dialog')).toHaveTextContent('40 секунд');
   expect(screen.getByRole('button', { name: 'Закрыть' }).closest('.modal-header')).not.toBeNull();
 });

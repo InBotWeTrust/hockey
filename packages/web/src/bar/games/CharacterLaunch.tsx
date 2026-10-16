@@ -5,6 +5,7 @@ import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { gameApi } from './api.js';
 import { gameArt, gameCopy, gameNames, characterNames } from './content.js';
 import { gameClose } from './GameModals.js';
+import { OchkoStake } from './OchkoStake.js';
 import { BarGamesLobby } from './BarGamesLobby.js';
 export function CharacterLaunch({
   character,
@@ -36,7 +37,7 @@ export function CharacterLaunch({
   };
   return (
     <AccessibleModal
-      title={`${gameNames[kind]} с ${{ maria: 'Марией', daria: 'Дарьей', veronika: 'Вероникой', arsenich: 'Арсеничем' }[character]}`}
+      title={`${gameNames[kind]} с ${{ maria: 'Марией', daria: 'Дарьей', veronika: 'Вероникой', arsenich: 'Арсеничем', grigory: 'Григорием', oleg: 'Олегом' }[character]}`}
       onRequestClose={close}
       cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
       headerAction={gameClose(close)}
@@ -47,12 +48,22 @@ export function CharacterLaunch({
         alt={characterNames[character]}
       />
       <p className="modal-copy bonus-game-preview-modal__story">{gameCopy[kind].invite}</p>
-      {error && <p role="alert">{error}</p>}
-      <div className="modal-actions">
-        <button className="modal-primary btn btn--cta" onClick={() => void start()} disabled={busy}>
-          Играть
-        </button>
-      </div>
+      {character === 'grigory' ? (
+        <OchkoStake onStarted={(r) => navigate(`/bar/games/match/${r.id}`)} />
+      ) : (
+        <>
+          {error && <p role="alert">{error}</p>}
+          <div className="modal-actions">
+            <button
+              className="modal-primary btn btn--cta"
+              onClick={() => void start()}
+              disabled={busy}
+            >
+              Играть
+            </button>
+          </div>
+        </>
+      )}
     </AccessibleModal>
   );
 }
@@ -60,7 +71,13 @@ export function BarGamesPage() {
   const [params] = useSearchParams();
   const value = params.get('game');
   const initial =
-    value === 'darts' || value === 'checkers' || value === 'billiards' ? value : 'cards';
+    value === 'armwrestling' ||
+    value === 'ochko' ||
+    value === 'darts' ||
+    value === 'checkers' ||
+    value === 'billiards'
+      ? value
+      : 'cards';
   const navigate = useNavigate();
   return (
     <main className="bar-game-screen">

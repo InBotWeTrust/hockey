@@ -135,7 +135,7 @@ export function validSpin(spin: Point | undefined): boolean {
     (Number.isFinite(spin.x) && Number.isFinite(spin.y) && Math.hypot(spin.x, spin.y) <= 1)
   );
 }
-export function shoot(g: Game, s: Shot, pace: 'classic' | 'responsive' = 'responsive'): Simulation {
+export function shoot(g: Game, s: Shot, pace: 'classic' | 'responsive' = 'responsive', recordFrames = true): Simulation {
   if (
     g.winner !== null ||
     !validSpin(s.spin) ||
@@ -156,7 +156,7 @@ export function shoot(g: Game, s: Shot, pace: 'classic' | 'responsive' = 'respon
     y: b.id === 0 ? Math.sin(s.angle) * s.power * speedScale : 0,
   }));
   const events: Events = { firstContact: null, pocketed: [], railAfter: false, scratch: false };
-  const frames: Ball[][] = [balls.map((b) => ({ ...b }))];
+  const frames: Ball[][] = recordFrames ? [balls.map((b) => ({ ...b }))] : [];
   const dt = 1 / 240;
   // Contact offset is local to the cue: x is side spin, negative y is follow.
   // Spin decays on the cloth; longitudinal spin transfers only at first ball contact.
@@ -264,10 +264,10 @@ export function shoot(g: Game, s: Shot, pace: 'classic' | 'responsive' = 'respon
         v.y = 0;
       }
     }
-    if (ticks % 4 === 0) frames.push(balls.map((b) => ({ ...b })));
+    if (recordFrames && ticks % 4 === 0) frames.push(balls.map((b) => ({ ...b })));
     if (!moving) break;
   }
-  frames.push(balls.map((b) => ({ ...b })));
+  if (recordFrames) frames.push(balls.map((b) => ({ ...b })));
   // Resolve against the pre-shot board so pocketing one's last ball and the eight together loses.
   const result = resolve(g, events);
   result.balls = balls.map((b) => ({ ...b }));
@@ -277,7 +277,7 @@ export function shoot(g: Game, s: Shot, pace: 'classic' | 'responsive' = 'respon
 export function timeout(g: Game): Game {
   return { ...g, turn: g.turn === 0 ? 1 : 0, ballInHand: true, lastFoul: true };
 }
-export function bot(g: Game): { placement: Point | null; shot: Shot } {
+function legacyBot(g: Game): { placement: Point | null; shot: Shot } {
   let state = g;
   let placement: Point | null = null;
   if (g.ballInHand) {
@@ -313,4 +313,58 @@ export function bot(g: Game): { placement: Point | null; shot: Shot } {
     }
   if (g.break) best = { angle: -Math.PI / 2, power: 1 };
   return { placement, shot: best };
+}
+
+function clearPath(g: Game, a: Point, b: Point, ignored: number[]): boolean {
+  const dx=b.x-a.x,dy=b.y-a.y,length=dx*dx+dy*dy;
+  return g.balls.every(ball=>{
+    if(ball.pocketed||ignored.includes(ball.id))return true;
+    const t=Math.max(0,Math.min(1,((ball.x-a.x)*dx+(ball.y-a.y)*dy)/(length||1)));
+    return Math.hypot(ball.x-a.x-t*dx,ball.y-a.y-t*dy)>2*R+.002;
+  });
+}
+export function bot(g: Game, smart = true): {placement: Point|null; shot: Shot} {
+  const fallback=legacyBot(g);
+  if(!smart||g.break)return fallback;
+  const state=fallback.placement?place(g,fallback.placement):g;
+  const cue=state.balls.find(b=>b.id===0)!;
+  const own=state.groups[state.turn];
+  let targets=state.balls.filter(b=>!b.pocketed&&b.id>0&&b.id!==8&&(!own||group(b.id)===own));
+  if(own&&!targets.length)targets=state.balls.filter(b=>!b.pocketed&&b.id===8);
+  const pots:{shot:Shot;cost:number}[]=[];
+  const safeties:{shot:Shot;cost:number}[]=[];
+  for(const ball of targets){
+    const distance=Math.hypot(ball.x-cue.x,ball.y-cue.y);
+    if(clearPath(state,cue,ball,[0,ball.id]))safeties.push({shot:{angle:Math.atan2(ball.y-cue.y,ball.x-cue.x),power:Math.min(.65,.25+distance*.18)},cost:distance});
+    // Mirror the target across each cushion as a fallback when a straight route is blocked.
+    for(const image of [{x:2*R-ball.x,y:ball.y},{x:2*(1-R)-ball.x,y:ball.y},{x:ball.x,y:2*R-ball.y},{x:ball.x,y:2*(2-R)-ball.y}]){
+      const travel=Math.hypot(image.x-cue.x,image.y-cue.y);
+      safeties.push({shot:{angle:Math.atan2(image.y-cue.y,image.x-cue.x),power:Math.min(.85,.3+travel*.2)},cost:travel+1});
+    }
+    for(const pocket of POCKETS){
+      const d=Math.hypot(pocket.x-ball.x,pocket.y-ball.y);
+      if(d<1e-6||!clearPath(state,ball,pocket,[0,ball.id]))continue;
+      const ux=(pocket.x-ball.x)/d,uy=(pocket.y-ball.y)/d;
+      const ghost={x:ball.x-ux*2*R,y:ball.y-uy*2*R};
+      if(ghost.x<R||ghost.x>1-R||ghost.y<R||ghost.y>2-R||!clearPath(state,cue,ghost,[0,ball.id]))continue;
+      const travel=Math.hypot(ghost.x-cue.x,ghost.y-cue.y);
+      const alignment=((ghost.x-cue.x)*ux+(ghost.y-cue.y)*uy)/(travel||1);
+      if(alignment<.18)continue;
+      pots.push({shot:{angle:Math.atan2(ghost.y-cue.y,ghost.x-cue.x),power:Math.max(.15,Math.min(.9,(d+travel)*.28+.15))},cost:d+travel+(1-alignment)*1.5});
+    }
+  }
+  let best=fallback.shot,bestValue=-Infinity;
+  const evaluate=(shot:Shot)=>{
+    const sim=shoot(state,shot,'responsive',false);
+    const legalPocket=(id:number)=>id>0&&id!==8&&(!own||group(id)===own);
+    const value=sim.game.winner===state.turn?10000:sim.game.winner!==null?-10000:
+      (sim.game.lastFoul?-1000:5)+(sim.scratch?-1000:0)+sim.pocketed.filter(legalPocket).length*100-
+      sim.pocketed.filter(id=>id>0&&id!==8&&!legalPocket(id)).length*10+(sim.game.turn===state.turn?2:0)-shot.power;
+    if(value>bestValue){bestValue=value;best=shot;}
+  };
+  // Bound work per decision: 12 pot simulations, then at most 6 safety simulations.
+  for(const candidate of pots.sort((a,b)=>a.cost-b.cost).slice(0,4))
+    for(const factor of [.8,1,1.2])evaluate({...candidate.shot,power:Math.min(1,candidate.shot.power*factor)});
+  if(bestValue<90)for(const candidate of safeties.sort((a,b)=>a.cost-b.cost).slice(0,6))evaluate(candidate.shot);
+  return {placement:fallback.placement,shot:best};
 }

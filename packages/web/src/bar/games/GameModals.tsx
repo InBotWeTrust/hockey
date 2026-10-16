@@ -1,4 +1,4 @@
-import { X } from 'lucide-react';
+import { Star, X } from 'lucide-react';
 import type { BarGameId, BarGameSnapshot } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { gameArt, gameCopy, gameNames, characterNames, rules, timerRules } from './content.js';
@@ -20,7 +20,7 @@ export function GameHelp({ kind, close }: { kind: BarGameId; close: () => void }
           {p}
         </p>
       ))}
-      <p className="modal-copy">{timerRules}</p>
+      {kind !== 'ochko' && kind !== 'armwrestling' && <p className="modal-copy">{timerRules}</p>}
     </AccessibleModal>
   );
 }
@@ -39,11 +39,15 @@ export function GameResult({
   const outcome = winner === 'draw' ? 'draw' : winner === view.player ? 'win' : 'loss';
   const title = outcome === 'draw' ? 'Ничья' : outcome === 'win' ? 'Победа' : 'Поражение';
   const reason =
-    view.runtime.reason === 'inactivity'
-      ? 'Партия завершена после двух пропусков хода подряд.'
-      : view.runtime.reason === 'surrender'
-        ? 'Один из участников сдался.'
-        : null;
+    view.runtime.reason === 'technical'
+      ? 'Партию пришлось завершить. Ставка возвращена.'
+      : view.runtime.reason === 'inactivity'
+        ? view.kind === 'armwrestling'
+          ? 'Схватка завершена после 10 секунд бездействия.'
+          : 'Партия завершена после двух пропусков хода подряд.'
+        : view.runtime.reason === 'surrender'
+          ? 'Один из участников сдался.'
+          : null;
   return (
     <AccessibleModal
       title={title}
@@ -72,6 +76,12 @@ export function GameResult({
               ? 'Ты выиграл эту партию.'
               : 'Соперник выиграл эту партию.'}
       </p>
+      {outcome !== 'draw' && view.stake && view.stake.payout !== null && (
+        <div className="bar-ochko-earned" data-loss={view.stake.payout < view.stake.amount} aria-label="Изменение баланса звёзд">
+          <Star size={24} fill="currentColor" aria-hidden="true" />
+          <strong>{view.stake.payout > view.stake.amount ? '+' : view.stake.payout < view.stake.amount ? '−' : ''}{Math.abs(view.stake.payout - view.stake.amount)}</strong>
+        </div>
+      )}
       <div className="modal-actions">
         {view.character ? (
           <>

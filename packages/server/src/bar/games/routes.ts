@@ -2,8 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import * as service from './service.js';
 const id = z.object({ id: z.string().uuid() });
-const kind = z.enum(['darts', 'billiards', 'checkers']);
-export const computerCharacter = z.enum(['daria', 'veronika', 'arsenich']);
+const kind = z.enum(['darts', 'billiards', 'checkers', 'ochko', 'armwrestling']);
+export const computerCharacter = z.enum(['daria', 'veronika', 'arsenich', 'oleg']);
 const spin = z
   .object({ x: z.number().finite(), y: z.number().finite() })
   .strict()
@@ -54,11 +54,38 @@ export const gameAction = z.discriminatedUnion('type', [
       spin,
     })
     .strict(),
+  z
+    .object({
+      type: z.literal('arm-input'),
+      seq: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+      supportHeld: z.boolean(),
+      support: z.number().finite().min(0).max(1),
+      pressing: z.boolean(),
+      wrist: z.enum(['straight', 'inside', 'outside']),
+    })
+    .strict(),
+  z.object({ type: z.literal('ochko-hit'), seq: z.number().int().positive() }).strict(),
+  z.object({ type: z.literal('ochko-stand'), seq: z.number().int().positive() }).strict(),
   z.object({ type: z.literal('surrender') }).strict(),
   z.object({ type: z.literal('ready') }).strict(),
 ]);
 export const barGameRoutes: FastifyPluginAsync = async (app) => {
   const auth = { preHandler: [app.authenticate] };
+  app.post('/bar/games/ochko/offer', auth, (req) => service.proposeOchkoStake(app.pg, req.user.id));
+  app.post('/bar/games/ochko/start', auth, (req) =>
+    service.startOchkoStake(
+      app.pg,
+      req.user.id,
+      z
+        .object({
+          requestId: z.string().uuid(),
+          offerId: z.string().uuid(),
+          stars: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+        })
+        .strict()
+        .parse(req.body),
+    ),
+  );
   app.get('/bar/games/lobby', auth, (req) => service.gameLobby(app.pg, req.user.id));
   app.get('/bar/games/players', auth, (req) =>
     service.searchGamePlayers(

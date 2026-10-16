@@ -1,25 +1,39 @@
 import * as darts from './darts.js';
 import * as checkers from './checkers.js';
 import * as pool from './pool.js';
-export type BarGameId = 'darts' | 'billiards' | 'checkers';
-export type BarGame = darts.Game | checkers.Game | pool.Game;
+import * as ochko from './ochko.js';
+import * as arm from './armwrestling.js';
+export type BarGameId = 'darts' | 'billiards' | 'checkers' | 'ochko' | 'armwrestling';
+export type BarGame = darts.Game | checkers.Game | pool.Game | ochko.OchkoView | arm.ArmState;
 export type BarGameAction =
   | { type: 'dart'; gesture: darts.Gesture }
   | { type: 'checkers'; path: number[] }
   | { type: 'place'; point: darts.Point }
   | ({ type: 'shot' } & pool.Shot)
   | ({ type: 'aim' } & pool.Shot)
+  | { type: 'ochko-hit' | 'ochko-stand'; seq: number }
+  | ({ type: 'arm-input' } & arm.ArmInput)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 6;
+export const ENGINE_VERSION = 10;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
 export const DART_IMPACT_MS = 350;
+export const DART_SPIN_MS = 1200;
 export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
   return (
-    version === 1 || version === 2 || version === 3 || version === 4 || version === 5 || version === ENGINE_VERSION
+    version === 1 ||
+    version === 2 ||
+    version === 3 ||
+    version === 4 ||
+    version === 5 ||
+    version === 6 ||
+    version === 7 ||
+    version === 8 ||
+    version === 9 ||
+    version === ENGINE_VERSION
   );
 }
 function botPause(m: Runtime, continuingDarts = false): number {
@@ -35,6 +49,8 @@ export const CHARACTER_GAME = {
   daria: 'darts',
   veronika: 'billiards',
   arsenich: 'checkers',
+  grigory: 'ochko',
+  oleg: 'armwrestling',
 } as const;
 export type GameCharacter = keyof typeof CHARACTER_GAME;
 export interface BarGameFeedback {
@@ -64,15 +80,17 @@ export interface Runtime {
   checkersMove?: CheckersMotion | null;
   feedback?: BarGameFeedback;
   engineVersion: number;
+  botAt?: number;
   game: BarGame;
   deadline: number;
   animationUntil: number;
   missed: [number, number];
   computer: boolean;
   seed: number;
-  reason: 'played' | 'surrender' | 'inactivity' | null;
+  reason: 'played' | 'surrender' | 'inactivity' | 'technical' | null;
   lastDart: darts.Point | null;
   dartHits?: darts.Point[];
+  dartRotation?: {from: number; to: number; start: number; until: number};
   poolAim?: (pool.Shot & { actor: darts.Player }) | null;
   poolShot?: (pool.Shot & { cue: darts.Point }) | null;
   poolFrames: pool.Ball[][];
@@ -89,11 +107,15 @@ export function createMatch(
   const match: Runtime = {
     engineVersion: ENGINE_VERSION,
     game:
-      kind === 'darts'
-        ? darts.create(starter)
-        : kind === 'checkers'
-          ? checkers.create(starter)
-          : pool.create(starter),
+      kind === 'armwrestling'
+        ? arm.createArmwrestling(now, seed)
+        : kind === 'ochko'
+          ? ochko.createOchko(seed, now)
+          : kind === 'darts'
+            ? darts.create(starter)
+            : kind === 'checkers'
+              ? checkers.create(starter)
+              : pool.create(starter),
     deadline: now + TURN_MS,
     animationUntil: now,
     missed: [0, 0],
@@ -105,8 +127,26 @@ export function createMatch(
     animationStart: now,
     revision: 0,
   };
+  if (kind === 'armwrestling') {
+    match.deadline = now;
+    match.botAt = now;
+    return match;
+  }
+  if (kind === 'ochko') {
+    match.animationUntil = now + ochko.OCHKO_DEAL_MS * 2;
+    match.botAt = match.animationUntil + 3000 + Math.floor(random(match) * 2001);
+    match.deadline = Math.min(...(match.game as ochko.OchkoView).deadlines);
+    return match;
+  }
   if (computer && starter === 1) match.animationUntil += botPause(match);
   return match;
+}
+function spinDartboard(m: Runtime, start: number): void {
+  if (m.game.kind !== 'darts') return;
+  const from = m.game.boardAngle ?? 0;
+  const to = from + 378 + Math.floor(random(m) * 325);
+  m.game = {...m.game, boardAngle: to};
+  m.dartRotation = {from,to,start,until:start+DART_SPIN_MS};
 }
 function random(m: Runtime): number {
   m.seed = (Math.imul(1664525, m.seed) + 1013904223) >>> 0;
@@ -134,15 +174,19 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
       action.gesture,
       n.engineVersion >= 4 ? darts.SWIPE_GAIN : darts.LEGACY_SWIPE_GAIN,
     );
-    n.game = darts.hit(m.game, n.lastDart);
+    n.game = darts.hit(m.game, n.lastDart, n.engineVersion >= 9);
     n.feedback = {
       type: 'dart',
       actor: p,
       points: n.game.lastScore,
-      bust: n.game.lastScore > m.game.scores[p],
+      bust: n.engineVersion >= 9 ? !!n.game.lastBust : n.game.lastScore > m.game.scores[p],
     };
     n.dartHits = [...m.game.hits, n.lastDart];
     duration = DART_FLIGHT_MS + DART_IMPACT_MS;
+    if (n.engineVersion >= 9 && n.game.turn !== p && n.game.winner === null) {
+      spinDartboard(n, now + duration);
+      duration += DART_SPIN_MS;
+    }
   } else if (m.game.kind === 'checkers' && action.type === 'checkers') {
     n.game = checkers.move(m.game, action.path);
     n.feedback = {
@@ -200,6 +244,23 @@ export function command(
       reason: 'surrender',
       revision: m.revision + 1,
     };
+  if (m.game.kind === 'armwrestling') {
+    if (action.type !== 'arm-input') throw new Error('Wrong game action');
+    const game = arm.applyArmInput(m.game, player, action, now);
+    return game === m.game ? m : armRuntime(m, game, now);
+  }
+  if (m.game.kind === 'ochko') {
+    if (action.type !== 'ochko-hit' && action.type !== 'ochko-stand')
+      throw new Error('Wrong game action');
+    if (action.seq !== m.game.actionSeq[player] + 1) throw new Error('Stale hand command');
+    const game = ochko.actOchko(
+      privateOchko(m.game),
+      player,
+      action.type === 'ochko-hit' ? 'hit' : 'stand',
+      now,
+    );
+    return ochkoRuntime(m, game, now);
+  }
   if (m.game.turn !== player || now >= m.deadline || now < m.animationUntil)
     throw new Error('Not your turn');
   if (action.type === 'aim') {
@@ -223,6 +284,51 @@ export function command(
 }
 export function advance(m: Runtime, now: number): Runtime {
   if (!supportedVersion(m.engineVersion)) throw new Error('Unsupported game version');
+  if (m.game.winner !== null) return m;
+  if (m.game.kind === 'armwrestling') {
+    let n = m,
+      game = m.game;
+    while (n.computer && game.winner === null && (n.botAt ?? game.startedAt) <= now) {
+      const at = n.botAt ?? game.startedAt;
+      const cycle = Math.floor((at - game.startedAt) / 2000);
+      const tactic = (Math.imul(game.seed + cycle, 1664525) + 1013904223) >>> 0;
+      const resting = game.stamina[1] < 0.22 || tactic % 7 === 0;
+      game = arm.applyArmInput(
+        game,
+        1,
+        {
+          seq: game.lastSeq[1] + 1,
+          supportHeld: true,
+          support: resting ? 0.2 : 0.65 + (tactic % 30) / 100,
+          pressing: !resting,
+          wrist: resting ? 'outside' : tactic % 3 === 0 ? 'inside' : 'straight',
+        },
+        at,
+      );
+      n = { ...n, botAt: at + 250 };
+    }
+    game = arm.advanceArmwrestling(game, now);
+    return armRuntime(n, game, now);
+  }
+  if (m.game.kind === 'ochko') {
+    let n = m,
+      g = privateOchko(m.game);
+    for (
+      let i = 0;
+      i < 36 && n.computer && !g.done[1] && g.winner === null && (n.botAt ?? 0) <= now;
+      i++
+    ) {
+      const at = Math.max(n.botAt ?? g.dealUntil[1], g.dealUntil[1]);
+      g = ochko.advanceOchko(g, at);
+      if (g.done[1] || g.winner !== null) break;
+      g = ochko.actOchko(g, 1, g.scores[1] < 17 ? 'hit' : 'stand', at);
+      const next = { ...n };
+      const pause = 3000 + Math.floor(random(next) * 2001);
+      n = { ...next, botAt: g.dealUntil[1] + pause };
+    }
+    g = ochko.advanceOchko(g, now);
+    return g === m.game && n === m ? m : ochkoRuntime(n, g, now);
+  }
   let n = m;
   for (let i = 0; i < 64 && n.game.winner === null; i++) {
     if (n.computer && n.game.turn === 1) {
@@ -234,7 +340,7 @@ export function advance(m: Runtime, now: number): Runtime {
         if (n.poolAim?.actor === 1) {
           n = perform(n, { ...n.poolAim, type: 'shot' }, at, false);
         } else {
-          const b = pool.bot(n.game);
+          const b = pool.bot(n.game, n.engineVersion >= 10);
           if (b.placement) n = perform(n, { type: 'place', point: b.placement }, at, false);
           n = {
             ...n,
@@ -245,7 +351,7 @@ export function advance(m: Runtime, now: number): Runtime {
             revision: n.revision + 1,
           };
         }
-      } else {
+      } else if (n.game.kind === 'darts') {
         const copy = { ...n };
         const target = Math.min(n.game.scores[1], 60);
         const x = (random(copy) - 0.5) * 0.18;
@@ -259,7 +365,7 @@ export function advance(m: Runtime, now: number): Runtime {
           y: -Math.cos(angle) * radius + (random(copy) - 0.5) * 0.15,
         };
         if (n.engineVersion >= 5) {
-          const targetPoint = darts.botTarget(n.game.scores[1]);
+          const targetPoint = darts.rotatePoint(darts.botTarget(n.game.scores[1], n.engineVersion >= 9), n.engineVersion >= 9 ? n.game.boardAngle ?? 0 : 0);
           const imprecise = random(copy) < 0.25;
           point.x = targetPoint.x + (random(copy) - 0.5) * (imprecise ? 0.2 : 0.028);
           point.y = targetPoint.y + (random(copy) - 0.5) * (imprecise ? 0.16 : 0.025);
@@ -298,7 +404,9 @@ export function advance(m: Runtime, now: number): Runtime {
           ? darts.timeout(n.game)
           : n.game.kind === 'billiards'
             ? pool.timeout(n.game)
-            : checkers.move(n.game, checkersPath!);
+            : n.game.kind === 'checkers'
+              ? checkers.move(n.game, checkersPath!)
+              : n.game;
       const at = n.deadline;
       n = {
         ...n,
@@ -316,6 +424,11 @@ export function advance(m: Runtime, now: number): Runtime {
         feedback: { type: 'timeout', actor: p },
         reason: game.winner !== null ? 'played' : null,
       };
+      if (n.engineVersion >= 9 && n.game.kind === 'darts' && n.game.winner === null) {
+        spinDartboard(n, at);
+        n.animationUntil += DART_SPIN_MS;
+        n.deadline += DART_SPIN_MS;
+      }
       if (n.computer && game.turn === 1 && (n.engineVersion === 1 || game.winner === null))
         n.animationUntil += n.engineVersion === 1 ? 900 : botPause(n);
       n.deadline += duration;
@@ -346,6 +459,7 @@ export interface BarGameSnapshot {
   runtime: Runtime;
   ready: GameReady | null;
   serverNow: number;
+  stake?: { amount: number; payout: number | null };
 }
 export interface BarGameCommand {
   requestId: string;
@@ -371,3 +485,40 @@ export interface BarGameLobby {
   invites: BarGameInvite[];
   serverNow: number;
 }
+
+function privateOchko(game: ochko.OchkoView): ochko.OchkoState {
+  if (!('deck' in game) || !Array.isArray(game.deck))
+    throw new Error('Private ochko state required');
+  return game as ochko.OchkoState;
+}
+function ochkoRuntime(m: Runtime, game: ochko.OchkoState, now: number): Runtime {
+  const due = game.deadlines.filter((_, p) => !game.done[p]);
+  if (m.computer && !game.done[1]) due.push(m.botAt ?? now);
+  return {
+    ...m,
+    game,
+    revision: m.revision + 1,
+    deadline: due.length ? Math.min(...due) : now,
+    animationUntil: Math.max(...game.dealUntil),
+    reason: game.winner !== null ? 'played' : m.reason,
+  };
+}
+export function publicRuntime(m: Runtime, player: darts.Player): Runtime {
+  return m.game.kind === 'ochko'
+    ? { ...m, seed: 0, game: ochko.ochkoView(privateOchko(m.game), player) }
+    : m;
+}
+export * as barOchko from './ochko.js';
+
+function armRuntime(m: Runtime, game: arm.ArmState, now: number): Runtime {
+  return {
+    ...m,
+    game,
+    deadline: now + 250,
+    animationUntil: game.winner !== null ? now + 500 : game.startedAt,
+    reason:
+      game.winner !== null ? (game.reason === 'inactivity' ? 'inactivity' : 'played') : m.reason,
+    revision: m.revision + 1,
+  };
+}
+export * as barArmwrestling from './armwrestling.js';

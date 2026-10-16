@@ -41,7 +41,7 @@ it('renders identity, safe actions and stable navigation', () => {
   );
   expect(screen.getByRole('heading', { name: 'Мария' })).toBeInTheDocument();
 });
-it('shows Veronika and enables conversation without unsupported card games', () => {
+it('shows Veronika with conversation and her assigned game', () => {
   render(
     <BarScene
       layout={createDefaultBarLayout()}
@@ -53,7 +53,7 @@ it('shows Veronika and enables conversation without unsupported card games', () 
   );
   expect(screen.getByRole('heading', { name: 'Вероника' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Разговор' })).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Игры' })).not.toBeInTheDocument();
+  expect(screen.getByRole('button', { name: 'Игры' })).toBeInTheDocument();
 });
 
 it('shows a silhouette and no interactions for an empty place', () => {

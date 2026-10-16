@@ -7,6 +7,9 @@ describe('inventory transaction history labels', () => {
   });
   it('gives every supported ledger reason a meaningful title', () => {
     const reasons = [
+      'bar_ochko_stake',
+      'bar_ochko_payout',
+      'bar_ochko_refund',
       'admin_adjustment',
       'purchase',
       'duel_stake_hold',

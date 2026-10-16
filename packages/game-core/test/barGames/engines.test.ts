@@ -14,9 +14,9 @@ describe('darts', () => {
   it('ignores only an overscoring dart, preserves earlier points and wins single-out', () => {
     let g = darts.create(0);
     g.scores = [50, 301];
-    g = darts.hit(g, { x: 0, y: -0.6 });
+    g = darts.hit(g, { x: 0, y: -0.6 }, false);
     expect(g.scores[0]).toBe(50);
-    g = darts.hit(g, { x: 0, y: 0 });
+    g = darts.hit(g, { x: 0, y: 0 }, false);
     expect(g.winner).toBe(0);
   });
   it('passes after three darts and maps normalized gestures without randomness', () => {

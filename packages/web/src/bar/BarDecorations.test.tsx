@@ -44,7 +44,7 @@ it('swipes across the service door without opening it', () => {
 it('opens each background game with its own character and ignores a swipe', () => {
   const action = vi.fn();
   render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={action}/>);
-  for (const [name, kind, character] of [['Играть в дартс с Дарьей','darts','daria'],['Играть в карты с Григорием','cards','grigory'],['Играть в карты с Марией','cards','maria'],['Играть в шашки с Арсеничем','checkers','arsenich'],['Играть в бильярд с Вероникой','billiards','veronika']] as const) {
+  for (const [name, kind, character] of [['Играть в дартс с Дарьей','darts','daria'],['Играть в очко с Григорием','ochko','grigory'],['Играть в карты с Марией','cards','maria'],['Играть в шашки с Арсеничем','checkers','arsenich'],['Играть в бильярд с Вероникой','billiards','veronika']] as const) {
     fireEvent.click(screen.getByRole('button', {name}));
     expect(action).toHaveBeenLastCalledWith(kind, character);
   }
@@ -82,4 +82,15 @@ it('highlights only the selected character object and never the hidden door',()=
  expect(view.container.querySelector('[data-bar-object-glow="igor"]')).not.toBeNull();
  view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
  expect(view.container.querySelector('[data-bar-object-glow]')).toBeNull();
+});
+it('opens armwrestling from Oleg bicep without triggering the character incident',()=>{
+ const action=vi.fn(),incident=vi.fn();
+ const {container}=render(<BarScene layout={createDefaultBarLayout()} activeSlotId={createDefaultBarLayout().slots.find(s=>s.occupantId==='oleg')!.id} onSelectSlot={vi.fn()} onAction={action} onPhysicalIncident={incident}/>);
+ const button=screen.getByRole('button',{name:'Играть в армрестлинг с Олегом'});
+ expect(container.querySelector('[data-bar-object-glow="oleg"]')).not.toBeNull();
+ fireEvent.pointerDown(button,{pointerId:1,clientX:150,clientY:200});
+ fireEvent.pointerUp(button,{pointerId:1,clientX:150,clientY:200});
+ fireEvent.click(button);
+ expect(action).toHaveBeenCalledWith('armwrestling','oleg');expect(incident).not.toHaveBeenCalled();
+ expect(container.querySelector('[data-bar-character="oleg"]')).not.toBeNull();
 });

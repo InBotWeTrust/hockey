@@ -3,7 +3,7 @@ import type { BarAction, BarOccupantId } from '@hockey/game-core';
 
 const objects = [
   {x:100,y:65,w:70,h:150,action:'darts',character:'daria',label:'Играть в дартс с Дарьей'},
-  {x:488,y:239,w:58,h:71,action:'cards',character:'grigory',label:'Играть в карты с Григорием'},
+  {x:488,y:239,w:58,h:71,action:'ochko',character:'grigory',label:'Играть в очко с Григорием'},
   {x:856,y:211,w:91,h:77,action:'cards',character:'maria',label:'Играть в карты с Марией'},
   {x:1540,y:260,w:70,h:73,action:'checkers',character:'arsenich',label:'Играть в шашки с Арсеничем'},
 ] as const;
