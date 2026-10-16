@@ -14,28 +14,34 @@ describe('device-local city lighting',()=>{
  });
 });
 
-it('uses the approved shared background for all four lighting phases',()=>{
+it('selects the matching distinct background for every phase and density',()=>{
  for(const dpr of [1,2,3]){
   const sources=[7,12,19,23].map(hour=>cityImage(new Date(2026,9,16,hour),dpr));
-  expect(new Set(sources).size).toBe(1);
-  expect(sources[0]).toContain('city-approved-');
+  expect(new Set(sources).size).toBe(4);
+  for(const [i,phase] of ['morning','day','sunset','night'].entries())expect(sources[i]).toContain(`city-${phase}-`);
  }
  expect(cityImage(new Date(),1)).toContain('4096-');
  expect(cityImage(new Date(),2)).toContain('6144-');
 });
 
-it('does not load the same panorama again when lighting phases change',async()=>{
+it('changes phases only after decode and avoids loading again within a phase',async()=>{
  vi.useFakeTimers();vi.setSystemTime(new Date(2026,9,16,5,59,59));
- const decode=vi.fn(()=>Promise.resolve());
+ const pending:(()=>void)[]=[];
+ const decode=vi.fn(()=>new Promise<void>(resolve=>pending.push(resolve)));
  vi.stubGlobal('Image',class{src='';decode=decode;});
  const {result,unmount}=renderHook(()=>useCityImage());
- const source=result.current;
- await act(async()=>{vi.advanceTimersByTime(1000);});
- for(const hour of [10,18,21]){
-  await act(async()=>{vi.setSystemTime(new Date(2026,9,16,hour));window.dispatchEvent(new Event('focus'));document.dispatchEvent(new Event('visibilitychange'));});
-  expect(result.current).toBe(source);
+ expect(result.current).toContain('city-night-');
+ act(()=>{vi.advanceTimersByTime(1000);});
+ expect(result.current).toContain('city-night-');
+ await act(async()=>pending[0]!());
+ expect(result.current).toContain('city-morning-');
+ for(const [i,hour,phase] of [[1,10,'day'],[2,18,'sunset'],[3,21,'night']] as const){
+  act(()=>{vi.setSystemTime(new Date(2026,9,16,hour));window.dispatchEvent(new Event('focus'));});
+  await act(async()=>pending[i]!());
+  expect(result.current).toContain(`city-${phase}-`);
+  act(()=>{vi.advanceTimersByTime(1000);document.dispatchEvent(new Event('visibilitychange'));});
+  expect(decode).toHaveBeenCalledTimes(i+1);
  }
- expect(decode).not.toHaveBeenCalled();
  unmount();expect(vi.getTimerCount()).toBe(0);
 });
 
