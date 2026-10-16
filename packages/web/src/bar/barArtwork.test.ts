@@ -9,8 +9,9 @@ it('has all versioned current backgrounds, outcomes, decorations and staff room 
   const stories: StreetStory[] = ['street', 'player-win', 'player-loss', 'oleg-blocked'];
   const paths = [
     ...phases.flatMap(phase => [...barParts.map(part => barInterior(part, phase)), ...stories.map(story => barStreet(story, phase))]),
-    '/bar/city-v3/staff-room-v1.webp',
+    '/bar/city-v3/director-office-portrait-v1.webp',
+    '/bar/city-v3/director-office-wide-v1.webp',
   ];
-  expect(new Set(paths).size).toBe(29);
+  expect(new Set(paths).size).toBe(30);
   for (const path of paths) expect(existsSync(resolve('public', path.slice(1))), path).toBe(true);
 });
