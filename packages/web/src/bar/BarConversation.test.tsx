@@ -208,3 +208,12 @@ it('does not revive old intervention controls after the daily reset',async()=>{
  expect(screen.getByRole('textbox')).toBeInTheDocument();
  expect(screen.queryByRole('button',{name:'Извиниться'})).not.toBeInTheDocument();
 });
+
+it('omits empty greetings and duplicate Oleg identity in his own conversation',async()=>{
+ vi.mocked(fetchConversation).mockResolvedValue({...snapshot,greeting:'',turns:[{id:'office',user:'',assistant:'Это кабинет директора.',createdAt:'now',speaker:'oleg',intervention:'staff-room'}]});
+ render(<BarConversation character="oleg" name="Олег" onClose={()=>{}} onUpdate={()=>{}}/>);
+ expect(await screen.findByText('Это кабинет директора.')).toBeInTheDocument();
+ expect(screen.getAllByLabelText('Сообщение Олег')).toHaveLength(1);
+ expect(screen.queryByRole('img',{name:'Олег'})).not.toBeInTheDocument();
+ expect(screen.queryByLabelText('Твоё сообщение')).not.toBeInTheDocument();
+});

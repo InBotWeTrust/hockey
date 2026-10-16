@@ -1,3 +1,4 @@
+import {GameEntryRoute} from './GameEntryRoute.js';
 import { useApplicationTheme } from './theme.js';
 import { BarAccessGate } from '../bar/BarAccessGate.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
@@ -161,6 +162,7 @@ const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js')
 const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
 const BarBroadcastsScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarBroadcastsScreen })));
 const BarScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarScreen })));
+const BarStaffRoom = lazy(() => import('../bar/BarStaffRoom.js').then(module => ({default: module.BarStaffRoom})));
 const BarMatchScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarMatchScreen })));
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
@@ -422,6 +424,7 @@ function AppExperience(): JSX.Element {
               <Route path="/bar/cards/computer/:opponentId" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/cards/maria" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/broadcasts" element={<PrivateRoute><BarAccessGate><BarBroadcastsScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/staff-room" element={<PrivateRoute><BarAccessGate><BarStaffRoom /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar" element={<PrivateRoute><BarAccessGate><BarScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/bar/:kind/:id" element={<PrivateRoute><BarAccessGate><BarMatchScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/login" element={<LoginScreen />} />
@@ -458,7 +461,7 @@ function AppExperience(): JSX.Element {
                 path="/"
                 element={
                   <PrivateRoute>
-                    <DailyScreen />
+                    <GameEntryRoute><DailyScreen /></GameEntryRoute>
                   </PrivateRoute>
                 }
               />

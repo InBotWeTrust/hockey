@@ -1,3 +1,4 @@
+import {staffRoomRoutes} from './bar/staffRoomRoutes.js';
 import Fastify from 'fastify';
 import { socialRoutes } from './social/routes.js';
 import { healthRoutes } from './routes/health.js';
@@ -268,6 +269,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(olegFightRoutes);
   await app.register(barLayoutRoutes);
+  await app.register(staffRoomRoutes);
   await app.register(conversationRoutes, {
     model: config.BAR_CONVERSATION_MODEL,
     closeRouterModel: config.BAR_CLOSEROUTER_MODEL,

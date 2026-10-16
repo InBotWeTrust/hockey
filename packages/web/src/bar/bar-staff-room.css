@@ -1,0 +1,21 @@
+.app-shell .bar-staff-room {position:fixed;inset:0;width:100%;height:100dvh;overflow:hidden;background:#22180f;}
+.app-shell .bar-staff-room__background, .app-shell .bar-staff-room__background > img {position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;object-position:center;}
+.bar-staff-room__back {position:absolute;left:16px;top:calc(env(safe-area-inset-top, 0px) + 16px);}
+
+.bar-staff-room__status {position:absolute;left:14px;right:14px;bottom:24px;padding:14px;border-radius:20px;background:var(--liquid-card-bg);color:var(--liquid-ink);}
+
+.bar-staff-room__header {position:absolute;top:calc(18px + var(--app-safe-top,0px));left:14px;right:14px;display:flex;align-items:center;gap:10px;}
+.bar-staff-room__header .catalog-header-back {width:38px;height:38px;min-width:38px;min-height:38px;padding:0;}
+.bar-staff-room__header h1 {margin:2px 0 0;font-size:25px;font-weight:950;line-height:1.04;}
+
+.bar-staff-room__elina {position:absolute;left:50%;bottom:calc(176px + env(safe-area-inset-bottom,0px));height:calc(100% - 252px - env(safe-area-inset-bottom,0px));width:min(92vw,55vh);transform:translateX(-50%);pointer-events:none;isolation:isolate;}
+.bar-staff-room__frame {position:absolute;inset:0;width:100%;height:100%;object-fit:contain;object-position:center bottom;opacity:0;mix-blend-mode:plus-lighter;transition:opacity 700ms ease-in-out;}
+.bar-staff-room__elina[data-pose="first"] .bar-staff-room__frame--1,
+.bar-staff-room__elina[data-pose="second"] .bar-staff-room__frame--2 {opacity:1;}
+@media (prefers-reduced-motion:reduce) {.bar-staff-room__frame {transition:none;}}
+
+.bar-staff-room .bar-staff-room__preview-dock {position:absolute;left:14px;right:14px;bottom:calc(12px + env(safe-area-inset-bottom,0px));width:auto;max-width:600px;margin:auto;transform:none;}
+
+.bar-staff-room__preview-dock .bar-identity__name {font-size:18px;}
+.bar-staff-room__preview-dock .bar-identity__role {font-size:12px;}
+.bar-staff-room__preview-dock .bar-identity__icon-actions .icon-btn {width:38px;height:38px;min-width:38px;}

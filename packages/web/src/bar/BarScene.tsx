@@ -1,5 +1,8 @@
+import {BarAvatarDock} from './BarAvatarDock.js';
+import { BarObjectGlow } from './BarObjectGlow.js';
+import { BarGameHotspots } from './BarGameHotspots.js';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, ChevronRight, Gamepad2, Newspaper, Tv, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   barActionsFor,
   isBarAssetPath,
@@ -8,6 +11,8 @@ import {
   type BarAction,
 } from '@hockey/game-core';
 import { CharacterEmotionFigure } from './CharacterEmotionFigure.js';
+import {barParts, barInterior} from './barArtwork.js';
+import {useBarLighting} from './barLighting.js';
 import type {CharacterExpression} from './characterEmotion.js';
 import { CharacterGesture } from './characterGesture.js';
 import { CharacterHitArea } from './CharacterHitArea.js';
@@ -36,7 +41,10 @@ export function BarScene({
   hideIdentity = false,
   onPhysicalIncident,
   characterEmotions = {},
+  onStaffRoom,
+  activityCounts = {},
 }: {
+  activityCounts?: Partial<Record<BarOccupantId, number>>;
   layout: BarLayout;
   activeSlotId: string;
   onSelectSlot: (id: string) => void;
@@ -49,8 +57,10 @@ export function BarScene({
   hideIdentity?: boolean;
   onPhysicalIncident?: (character: BarCharacter) => void;
   characterEmotions?:Partial<Record<BarCharacter,CharacterExpression>>;
+  onStaffRoom?: (slotId: string) => void;
 }) {
   const incident = useRef(onPhysicalIncident);
+  const lighting = useBarLighting('interior');
   incident.current = onPhysicalIncident;
   const target = useRef<BarCharacter | null>(null);
   const [gesture] = useState(() => new CharacterGesture(() => { if (target.current) incident.current?.(target.current); }));
@@ -64,13 +74,9 @@ export function BarScene({
   const [terminalOpen, setTerminalOpen] = useState(false);
   useEffect(()=>setTerminalOpen(false),[activeSlotId]);
   const [failedImages, setFailedImages] = useState<string[]>([]);
-  const [dockFocus, setDockFocus] = useState<string | null>(null);
-  const dockStart = useRef<{x:number;y:number;dragged:boolean}|null>(null);
-  const dock = useRef<HTMLElement>(null);
-  useEffect(() => {
-    dock.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'smooth'});
-  }, [activeSlotId]);
   const start = useRef<{ x: number; y: number } | null>(null);
+  const doorPointer = useRef<{x: number; y: number; moved: boolean} | null>(null);
+  const suppressDoorClick = useRef(false);
   const panel = useRef<HTMLElement>(null);
   const [panelHeight, setPanelHeight] = useState(190);
   useEffect(() => {
@@ -137,12 +143,13 @@ export function BarScene({
         }
       }}
     >
-      <div className="bar-space__track" aria-hidden="true">
-        {['west', 'middle', 'east'].map((part, i) => (
+      <div className="bar-space__track">
+        {lighting.previous && barParts.map((part, i) => <img key={`previous-${part}`} className={`bar-space__background bar-space__background--${part}`} src={barInterior(part, lighting.previous!)} alt="" draggable={false} style={{left: `${i * 40}%`}}/>)}
+        {barParts.map((part, i) => (
           <img
-            key={part}
-            className={`bar-space__background bar-space__background--${part}`}
-            src={`/bar/bar-${part}-v1.webp`}
+            key={`${part}-${lighting.phase}`}
+            className={`bar-space__background bar-space__background--${part}${lighting.previous ? ' bar-space__background--enter' : ''}`}
+            src={barInterior(part, lighting.phase)}
             alt=""
             draggable={false}
             style={{ left: `${i * 40}%` }}
@@ -150,6 +157,9 @@ export function BarScene({
         ))}
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
+          const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);
+          const figureScale = s.scale * (s.occupantId === 'broadcasts' || shrinkCharacter ? 0.9 : 1);
+          const figureTop = s.y + (shrinkCharacter ? s.scale * 10 * (1 - s.y / 100) : 0);
           return (
             <div key={s.id} className="bar-space__figure" style={{ left: `${i * 10}%` }}>
               {isUnfinished(s.occupantId) ? <CharacterSilhouette /> : isBarAssetPath(composition) && (
@@ -166,30 +176,40 @@ export function BarScene({
                   style={{
                     visibility: failedImages.includes(composition) ? 'hidden' : 'visible',
                     objectPosition: `${s.x}% ${s.y}%`,
-                    width: `${s.scale * 100}%`,
-                    height: `${s.scale * 100}%`,
+                    width: `${figureScale * 100}%`,
+                    height: `${figureScale * 100}%`,
                     left: `${s.x}%`,
-                    top: `${s.y}%`,
+                    top: `${figureTop}%`,
                     transform: `translate(-${s.x}%,-${s.y}%)`,
                   }}
                 />
               )}
 
               {onPhysicalIncident && !hideIdentity && s.id===activeSlotId && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
-                <CharacterHitArea character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${s.scale*100}%`,height:`${s.scale*100}%`,left:`${s.x}%`,top:`${s.y}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
+                <CharacterHitArea onGame={s.occupantId === 'oleg' ? () => onAction('armwrestling','oleg') : undefined} onSwipe={move} character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
             </div>
           );
         })}
+        {!hideIdentity && <BarObjectGlow character={slot.occupantId} />}
+        {!hideIdentity && <BarGameHotspots onAction={onAction} onSwipe={move} />}
+      {index === layout.slots.length - 1 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
+        onPointerDown={e => {e.stopPropagation(); suppressDoorClick.current = false; doorPointer.current = {x: e.clientX, y: e.clientY, moved: false}; e.currentTarget.setPointerCapture?.(e.pointerId);}}
+        onPointerMove={e => {e.stopPropagation(); const p = doorPointer.current; if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12) p.moved = true;}}
+        onPointerUp={e => {e.stopPropagation(); const p = doorPointer.current; doorPointer.current = null; if (!p) return; suppressDoorClick.current = p.moved || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12; const dx = e.clientX - p.x; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(e.clientY - p.y) * 1.3) move(dx < 0 ? 1 : -1);}}
+        onPointerCancel={() => {doorPointer.current = null; suppressDoorClick.current = true;}}
+        onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
+        onClick={() => {if (suppressDoorClick.current) {suppressDoorClick.current = false; return;} onStaffRoom(slot.id);}}/>}
+
       </div>
       {!hideIdentity && (slot.occupantId==='online'||slot.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={slot.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={()=>{if(slot.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
-      <header className="bar-space__header">
+      <header className="bar-space__header bonus-games-catalog__header">
         {onBack && (
-          <button className="icon-btn" aria-label="Назад" onClick={onBack}>
-            <ChevronLeft />
+          <button className="icon-btn catalog-header-back" aria-label="Назад" onClick={onBack}>
+            <ArrowLeft size={16} />
           </button>
         )}
-        <h1>Бар «4-й период»</h1>
+        <h1 className="bonus-games-catalog__title screen-title-on-arena">Бар «4-й период»</h1>
       </header>
       {notice && <div className="bar-space__notice">{notice}</div>}
       {preview && profile?.composition && failedImages.includes(profile.composition) && (
@@ -213,9 +233,13 @@ export function BarScene({
       >
         <ChevronRight />
       </button>
+      {!hideIdentity && slot.occupantId === 'online' && terminalOpen && <section className="bar-space__actions bar-space__actions--terminal" aria-label="Играть онлайн">
+        <div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div>
+        <BarGamesLobby embedded />
+      </section>}
       <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
-      <section ref={panel} className={`bar-space__actions${slot.occupantId === 'online' && terminalOpen ? ' bar-space__actions--terminal' : ''}`} aria-live="polite" hidden={hideIdentity}>
-        {slot.occupantId === 'online' && terminalOpen ? <><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div><BarGamesLobby embedded /></> : isUnfinished(slot.occupantId) ? (
+      <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity || terminalOpen}>
+        {isUnfinished(slot.occupantId) ? (
           <p className="bar-space__development">Персонаж в разработке</p>
         ) : profile ? (
           <BarIdentityPanel
@@ -236,37 +260,7 @@ export function BarScene({
           <h2>Свободное место</h2>
         )}
       </section>
-      {!hideIdentity && <nav ref={dock} className="bar-avatar-dock" aria-label="Места в баре"
-        onTouchStart={e=>e.stopPropagation()} onTouchEnd={e=>e.stopPropagation()}
-        onPointerDown={e=>{e.stopPropagation();dockStart.current={x:e.clientX,y:e.clientY,dragged:false};}}
-        onPointerMove={e=>{
-          e.stopPropagation();
-          const start=dockStart.current;
-          if(start && Math.hypot(e.clientX-start.x,e.clientY-start.y)>10) start.dragged=true;
-          const buttons=Array.from(e.currentTarget.querySelectorAll<HTMLButtonElement>('button[data-slot]'));
-          const closest=buttons.reduce<HTMLButtonElement|null>((best,button)=>{
-            const box=button.getBoundingClientRect(), old=best?.getBoundingClientRect();
-            return !old || Math.abs(e.clientX-(box.left+box.width/2))<Math.abs(e.clientX-(old.left+old.width/2))?button:best;
-          },null);
-          if(e.pointerType==='mouse'||start)setDockFocus(closest?.dataset.slot??null);
-        }}
-        onPointerUp={e=>{e.stopPropagation();setDockFocus(null);}}
-        onPointerCancel={()=>{dockStart.current=null;setDockFocus(null);}}
-        onPointerLeave={()=>setDockFocus(null)}>
-        {layout.slots.map((s,i)=>{
-          const p=s.occupantId?layout.profiles[s.occupantId]:null;
-          const focused=dockFocus===s.id;
-          return <button key={s.id} data-slot={s.id} className={`bar-avatar-dock__item${focused?' is-focused':''}`}
-            aria-label={p?.name??`Персонаж в разработке, страница ${i+1}`} aria-current={index===i?'page':undefined}
-            onFocus={()=>setDockFocus(s.id)} onBlur={()=>setDockFocus(null)}
-            onClick={()=>{const dragged=dockStart.current?.dragged;dockStart.current=null;if(!dragged)onSelectSlot(s.id);}}>
-            <span className="bar-avatar-dock__portrait" data-character={s.occupantId??undefined}>
-              {isBarAssetPath(p?.avatar??null)?<img src={p!.avatar!} alt="" draggable={false}/>:s.occupantId==='online'?<Gamepad2 size={20} strokeWidth={1.5}/>:s.occupantId==='broadcasts'?<Tv size={20} strokeWidth={1.5}/>:s.occupantId==='news'?<Newspaper/>:<span>{p?.name.slice(0,1)??'?'}</span>}
-            </span>
-            <span className="bar-avatar-dock__label">{p?.name??'В разработке'}</span>
-          </button>;
-        })}
-      </nav>}
+      {!hideIdentity && <BarAvatarDock layout={layout} activeSlotId={activeSlotId} activityCounts={activityCounts} onSelectSlot={onSelectSlot}/>}
       </div>
     </main>
   );

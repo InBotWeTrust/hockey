@@ -208,14 +208,14 @@ export function BarConversation({
           {loading && <p role="status">Загружаем разговор…</p>}
           {data && (
             <>
-              <p aria-label={`Сообщение ${name}`} className="glass bar-conversation__bubble">{data.greeting}</p>
+              {data.greeting.trim()&&<p aria-label={`Сообщение ${name}`} className="glass bar-conversation__bubble">{data.greeting}</p>}
               {data.turns.map((turn) => (
                 <div key={turn.id}>
                   {turn.user && <p aria-label="Твоё сообщение" className="glass-dark chat-bubble--own bar-conversation__bubble bar-conversation__bubble--user">
                     {turn.user}
                   </p>}
-                  <div className={turn.speaker==='oleg'&&turn.intervention?'bar-conversation__intervention':undefined}>
-                    {turn.speaker==='oleg'&&turn.intervention&&<div className="bar-conversation__speaker"><img src="/bar/cards/oleg-avatar-v2.webp" alt="Олег"/><strong>Олег</strong></div>}
+                  <div className={turn.speaker==='oleg'&&character!=='oleg'&&turn.intervention?'bar-conversation__intervention':undefined}>
+                    {turn.speaker==='oleg'&&character!=='oleg'&&turn.intervention&&<div className="bar-conversation__speaker"><img src="/bar/cards/oleg-avatar-v2.webp" alt="Олег"/><strong>Олег</strong></div>}
                     <p aria-label={`Сообщение ${turn.speaker==='oleg'?'Олег':name}`} className="glass bar-conversation__bubble">{turn.assistant}</p>
                   </div>
                 </div>

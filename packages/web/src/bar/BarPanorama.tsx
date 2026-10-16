@@ -1,8 +1,9 @@
+import { useBarActivity } from './barActivity.js';
 import {useAuthStore} from '../auth/authStore.js';
 import {claimDailyGreeting,hasDailyGreeting,localDay,nextLocalMidnight} from './dailyGreeting.js';
 import {emotionFromSnapshot,canGreet,preloadEmotions,prepareGreeting,entryEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { createDefaultBarLayout, type BarAction, type BarOccupantId } from '@hockey/game-core';
 import { CharacterLaunch } from './games/CharacterLaunch.js';
 import type { GameCharacter } from '@hockey/game-core';
@@ -14,6 +15,8 @@ import { BarConversation } from './BarConversation.js';
 import { barCharacters, fetchConversation, sendPhysicalIncident, type BarCharacter } from './conversationApi.js';
 export function BarPanorama() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const activityCounts = useBarActivity();
   const account=useAuthStore(state=>state.user?.id)??'preview';
   const [day,setDay]=useState(localDay);
   const [visible,setVisible]=useState(()=>document.visibilityState!=='hidden');
@@ -31,6 +34,7 @@ export function BarPanorama() {
     return()=>{clearTimeout(midnight);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
   },[]);
   const [layout, setLayout] = useState(createDefaultBarLayout);
+  const [layoutReady,setLayoutReady]=useState(false);
   const [slot, setSlot] = useState(() => sessionStorage.getItem('bar-active-slot') || 'bar-8');
   const [opponent, setOpponent] = useState<ComputerOpponentId | null>(null);
   const [error, setError] = useState(false);
@@ -53,6 +57,14 @@ export function BarPanorama() {
       if(snapshot.turns.some(turn=>turn.fightId))window.dispatchEvent(new Event('bar-access-changed'));
     }catch{setIncidentError(true);}finally{incidentSending.current=false;}
   };
+  useEffect(()=>{
+    if(!layoutReady||!(location.state as {staffRoomWarning?:boolean}|null)?.staffRoomWarning)return;
+    const olegSlot=layout.slots.find(s=>s.occupantId==='oleg');
+    if(!olegSlot)return;
+    touched.current=true;setSlot(olegSlot.id);sessionStorage.setItem('bar-active-slot',olegSlot.id);
+    setConversation('oleg');setGreeting(null);setConversationVersion(v=>v+1);
+    navigate('/bar',{replace:true,state:null});
+  },[location.state,layout,layoutReady,navigate]);
   const activeConversation=useRef(conversation);activeConversation.current=conversation;
   const moodRevision=useRef<Partial<Record<BarCharacter,number>>>({});
   const [emotions,setEmotions]=useState<Partial<Record<BarCharacter,CharacterEmotion>>>({});
@@ -117,6 +129,7 @@ export function BarPanorama() {
         );
         if (cancelled) return;
         setLayout(snapshot.layout);
+        setLayoutReady(true);
         setSlot((current) =>
           !touched.current
             ? snapshot.layout.defaultSlotId
@@ -142,8 +155,9 @@ export function BarPanorama() {
   };
   return (
     <>
-      <BarScene
+      <BarScene activityCounts={activityCounts}
         layout={layout}
+        onStaffRoom={(id) => {sessionStorage.setItem('bar-staff-return-slot', id); sessionStorage.setItem('bar-active-slot', id); navigate('/bar/staff-room');}}
         characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
         hideIdentity={conversation !== null}
         activeSlotId={slot}

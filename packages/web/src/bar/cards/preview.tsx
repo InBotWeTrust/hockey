@@ -1,3 +1,4 @@
+import {installStaffRoomPreview} from '../previewStaffRoom.js';
 import { installBarLayoutPreview } from '../previewLayout.js';
 import { installConversationPreview } from '../previewConversation.js';
 import { BarAdmin } from '../../admin/BarAdmin.js';
@@ -18,6 +19,7 @@ import { OnlineDurakLobby } from './OnlineDurakLobby.js';
 import { OnlineDurakScreen } from './OnlineDurakScreen.js';
 import { DurakScreen } from './DurakScreen.js';
 import { BarScreen, BarBroadcastsScreen } from '../BarScreen.js';
+import {BarStaffRoom} from '../BarStaffRoom.js';
 import '../../app/global.css';
 import '../../app/design-system.css';
 import '../../app/liquid-glass.css';
@@ -118,6 +120,7 @@ if (invitationDemo || computerDemo || readinessDemo) {
 installRoomPreview();
 installBarLayoutPreview();
 installConversationPreview();
+installStaffRoomPreview();
 function PreviewChrome() {
   const route = useLocation();
   return invitationDemo ? (
@@ -212,6 +215,7 @@ createRoot(document.getElementById('root')!).render(
                   </div>
                 }
               />
+              <Route path="/bar/staff-room" element={<BarStaffRoom />} />
               <Route path="/bar/broadcasts" element={<BarBroadcastsScreen />} />
               <Route path="*" element={<BarScreen />} />
             </Routes>

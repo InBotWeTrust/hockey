@@ -1,7 +1,9 @@
 import { FightModal } from '../components/duel/fight/FightModal.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import {cityTimeOfDay} from '../city/lighting.js';
+import {barStreet} from './barArtwork.js';
 import type { FightHeldInput } from '@hockey/game-core';
 import { FightView } from '../game/fight/FightView.js';
 import {
@@ -20,6 +22,8 @@ export function OlegFightPanel({
   id: string;
   onDone: (access: BarAccess) => void;
 }) {
+  const lighting = useRef({id, phase: cityTimeOfDay(new Date())});
+  if (lighting.current.id !== id) lighting.current = {id, phase: cityTimeOfDay(new Date())};
   const [data, setData] = useState<OlegSnapshot | null>(null),
     [error, setError] = useState(''),
     [now, setNow] = useState(Date.now()),
@@ -166,7 +170,7 @@ export function OlegFightPanel({
       >
         {(data.outcome === 'win' || data.outcome === 'loss') && (
           <img
-            src={`/bar/fight/${data.outcome === 'win' ? 'player-win' : 'player-loss'}-v2.webp`}
+            src={barStreet(data.outcome === 'win' ? 'player-win' : 'player-loss', lighting.current.phase)}
             alt={
               data.outcome === 'win'
                 ? 'Олег сидит у стены бара после драки'
@@ -192,7 +196,7 @@ export function OlegFightPanel({
     );
   return (
     <FightModal>
-    <div className="bar-oleg-fight">
+    <div className="bar-oleg-fight" style={{'--bar-fight-street': `url("${barStreet('street', lighting.current.phase)}")`} as CSSProperties}>
       <FightView
         state={data.state}
         player={0}

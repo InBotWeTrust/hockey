@@ -1,3 +1,6 @@
+import {gameDockStatus,type GameDockStatus} from '../city/gameDockStatus.js';
+import {CityGamePanel} from '../city/CityGamePanel.js';
+import {isActionableDuelEvent} from '../components/useNavigationActivity.js';
 import { finishAmateurDuelPeriod } from '../api/amateurDuel.js';
 import { EnduranceTimer, enduranceTimerTone } from '../components/EnduranceTimer.js';
 import { marathonWindowEndAtShot, marathonWindowRemainingMs } from '../components/duel/marathonClock.js';
@@ -206,7 +209,11 @@ type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
-interface ArenaEntry {
+export interface ArenaEntry {
+  dockTimer?:string;
+  dockState?: 'ready'|'active'|'break'|'done'|'blocked';
+  attention?: boolean;
+  deadlineAt?: number | undefined;
   id: string;
   kind: ArenaEntryKind;
   eyebrow: string;
@@ -1031,12 +1038,18 @@ function TournamentGameContextCard({
   );
 }
 
-function GameHub({
+export function GameHub({
+  presentation = 'arena',
+  onDockStatusChange,
+  openRequest=0,
   onOpenDailyPlay,
   onOpenTraining,
   onOpenTrainingPlay,
   onOpenAmateurMatch,
 }: {
+  presentation?: 'arena'|'city';
+  onDockStatusChange?:(status:GameDockStatus)=>void;
+  openRequest?:number;
   onOpenDailyPlay: (options?: PlayOpenOptions) => void;
   onOpenTraining: () => void;
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
@@ -1049,6 +1062,7 @@ function GameHub({
     queryFn: () => apiFetch<ProfileData>('/me'),
   });
   const data = useDailyStore((s) => s.data)!;
+  const panelOwner = useAuthStore((s)=>s.user?.id??'anonymous');
   const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
   const amateurAccess = deriveAmateurAccess({
     competitionLevel,
@@ -1096,12 +1110,14 @@ function GameHub({
     queryKey: ['amateur-duel', 'events'],
     queryFn: fetchAmateurEvents,
     enabled: data.lifetime_total_goals >= amateurUnlockGoalsRequired,
-    refetchInterval: 30_000,
+    refetchInterval: presentation==='city'?false:30_000,
+    refetchOnMount: presentation==='city'?false:true,
   });
   const classicTournamentGames = useQuery({
     queryKey: ['tournaments', 'classic', 'active'],
     queryFn: fetchActiveClassicTournamentGames,
-    refetchInterval: 30_000,
+    refetchInterval: presentation==='city'?false:30_000,
+    refetchOnMount: presentation==='city'?false:true,
   });
   const amateurEventItems = amateurEvents.data?.events ?? [];
   const duelStatsCurrentMatch = duelStatsMatch
@@ -1121,6 +1137,7 @@ function GameHub({
 
   useEffect(() => {
     if (
+      presentation !== 'city' &&
       data.state !== 'period_active' &&
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
@@ -1133,6 +1150,7 @@ function GameHub({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [
+    presentation,
     activeDuelEvents.length,
     classicTournamentGames.data?.games?.length,
     data.state,
@@ -1366,6 +1384,8 @@ function GameHub({
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
+    dockTimer: isDailyInProgress?dailyHubScoreboard.timer:formatHms(nextDayRemaining),
+    dockState: data.state==='closed'?'done':isDailyLockedByTraining?'blocked':data.state==='period_active'?'active':data.state==='break_active'?'break':'ready',
     kind: 'daily',
     eyebrow: 'Ежедневная игра',
     title: dailyEventTitle,
@@ -1401,6 +1421,8 @@ function GameHub({
   };
   const trainingArenaEntry: ArenaEntry = {
     id: 'training',
+    dockTimer: trainingData?formatHms(Math.max(0,timestampMs(trainingData.next_day_starts_at)-now)):'',
+    dockState: trainingData?.state==='closed'?'done':!trainingData||trainingData.gameplay_lock?.blocked?'blocked':trainingData.state==='active'?'active':'ready',
     kind: 'training',
     eyebrow: 'Тренировка',
     title: 'Тренировка',
@@ -1420,6 +1442,9 @@ function GameHub({
       (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
+      attention: isActionableDuelEvent(event),
+      dockState: event.me.state==='period_active'?'active':event.me.state==='break_active'?'break':isActionableDuelEvent(event)?'ready':'blocked',
+      deadlineAt: timestampMs(event.status==='ready_check'||event.status==='invited'?event.ready_expires_at:timestampMs(event.starts_at)>now?event.starts_at:event.me.state==='period_active'?event.period_ends_at:event.me.state==='break_active'?event.break_ends_at:event.ends_at)||undefined,
       kind: 'duel',
       eyebrow: 'Активная дуэль',
       eyebrowStatus: duelOutcomeText(event),
@@ -1517,6 +1542,9 @@ function GameHub({
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          attention: !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
+          dockState: waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
+          deadlineAt: timestampMs(isReady?game.readiness_ends_at:isBreak?game.break_ends_at:isActive?game.closes_at:game.starts_at),
           kind: 'duel',
           eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
           title: game.tournament_title,
@@ -1631,6 +1659,9 @@ function GameHub({
         : 0;
       return {
         id: `classic-${game.tournament_id}`,
+        attention: !completed,
+        dockState: completed?'done':locked?'blocked':isBreak?'break':game.state==='period_active'?'active':'ready',
+        deadlineAt: timestampMs(isBreak?game.break_ends_at:game.closes_at),
         kind: 'classic',
         eyebrow: `Турнир · ${game.tournament_day}-й тур`,
         title: game.tournament_title,
@@ -1723,6 +1754,8 @@ function GameHub({
     dailyArenaEntry,
     trainingArenaEntry,
   ];
+  const dockStatus=gameDockStatus(arenaEntries);
+  useEffect(()=>{onDockStatusChange?.({label:dockStatus.label,urgent:dockStatus.urgent});},[onDockStatusChange,dockStatus.label,dockStatus.urgent]);
   const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
   const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
 
@@ -1762,19 +1795,10 @@ function GameHub({
     [activeCubeEntryId, arenaEntries],
   );
 
+  const Container=presentation==='arena'?'main':'div';
   return (
-    <main
-      className="screen"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        width: '100%',
-        height: '100dvh',
-        padding: 0,
-        overflow: 'hidden',
-        background: '#06111d',
-      }}
-    >
+    <Container className={presentation==='arena'?'screen':undefined} style={presentation==='arena'?{position:'fixed',inset:0,width:'100%',height:'100dvh',padding:0,overflow:'hidden',background:'#06111d'}:{display:'contents'}}>
+      {presentation==='city'?<CityGamePanel key={panelOwner} storageKey={`city-game-panel-expanded-v1:${panelOwner}`} openRequest={openRequest} entries={arenaEntries} activeIndex={activeCubeIndex} onActiveIndexChange={handleArenaActiveIndexChange} renderFace={entry=><ArenaCubeFace entry={entry}/>} renderActions={entry=><ArenaCubeActions entry={entry}/>}/>:<>
       <section
         aria-label="Игровая арена"
         style={{
@@ -1796,6 +1820,7 @@ function GameHub({
           backgroundImage={arenaCourtImage(profileQuery.data?.competitionLevel)}
         />
       </section>
+      </>}
 
       {modeInfoModal && (
         <ModeInfoModal
@@ -1825,7 +1850,7 @@ function GameHub({
           onClose={() => setRecoveryTarget(null)}
         />
       )}
-    </main>
+    </Container>
   );
 }
 
@@ -1995,14 +2020,22 @@ function ArenaVideoCube({
             })}
           </div>
           <ArenaCubeFace entry={activeEntry} />
-          {activeEntry.secondaryActions !== undefined ? (
-            activeEntry.secondaryActions
-          ) : activeEntry.disabled ? null : (
+          <ArenaCubeActions entry={activeEntry}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ArenaCubeActions({entry}:{entry:ArenaEntry}):JSX.Element{
+ return <>{entry.secondaryActions !== undefined ? (
+            entry.secondaryActions
+          ) : entry.disabled ? null : (
             <button
               type="button"
               className="btn btn--cta"
-              disabled={activeEntry.disabled}
-              onClick={activeEntry.onEnter}
+              disabled={entry.disabled}
+              onClick={entry.onEnter}
               style={{
                 position: 'relative',
                 zIndex: 3,
@@ -2014,10 +2047,10 @@ function ArenaVideoCube({
                 boxSizing: 'border-box',
                 justifyContent: 'center',
                 fontSize:
-                  activeEntry.ctaLabel === 'Сократить восстановление'
+                  entry.ctaLabel === 'Сократить восстановление'
                     ? 'clamp(11px, 1.4vh, 12px)'
                     : 'clamp(12px, 1.65vh, 14px)',
-                fontWeight: activeEntry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
+                fontWeight: entry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
                 letterSpacing: '0.06em',
                 lineHeight: 1,
                 background: 'var(--liquid-inset-bg)',
@@ -2027,13 +2060,9 @@ function ArenaVideoCube({
                   '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
               }}
             >
-              {activeEntry.ctaLabel}
+              {entry.ctaLabel}
             </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+          )}</>;
 }
 
 function ArenaTableauNavButton({
@@ -2077,7 +2106,7 @@ function ArenaTableauNavButton({
   );
 }
 
-function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
+export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
   const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
 
   return (
@@ -2103,7 +2132,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           minHeight: 0,
           height: '100%',
           display: 'grid',
-          gridTemplateRows: 'auto auto auto auto',
+          gridAutoRows: 'auto',
           alignContent: 'space-evenly',
           justifyItems: 'center',
           gap: 'clamp(4px, 0.7vh, 6px)',
@@ -2215,7 +2244,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             {entry.title}
           </div>
         )}
-        <div
+        {entry.subtitle&&<div
           className={entry.compactSubtitle ? 'arena-cube-subtitle--compact' : undefined}
           style={{
             maxWidth: entry.compactSubtitle ? 'min(84%, 300px)' : 'min(72%, 280px)',
@@ -2238,7 +2267,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           ) : (
             entry.subtitle
           )}
-        </div>
+        </div>}
         <div
           style={{
             display: 'flex',
@@ -2277,7 +2306,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
   );
 }
 
-function DailyHubScoreboard({
+export function DailyHubScoreboard({
   activePeriod,
   align = 'center',
   ariaLabel,

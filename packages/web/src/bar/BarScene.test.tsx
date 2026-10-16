@@ -18,6 +18,7 @@ it('opens terminal controls only on request and can close them',()=>{
  expect(screen.queryByText('Начать поиск')).not.toBeInTheDocument();
  fireEvent.click(screen.getByRole('button',{name:'Открыть терминал'}));
  expect(screen.getByRole('button',{name:'Закрыть терминал'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Закрыть терминал'}).closest('section')?.parentElement?.classList.contains('bar-space')).toBe(true);
  fireEvent.click(screen.getByRole('button',{name:'Закрыть терминал'}));
  expect(screen.queryByText('Начать поиск')).not.toBeInTheDocument();
 });

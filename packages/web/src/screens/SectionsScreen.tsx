@@ -1,9 +1,12 @@
+import type {GameDockStatus} from '../city/gameDockStatus.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
+import { fetchAdminAttention } from '../admin/api.js';
 import { CityMap } from '../city/CityMap.js';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
+const CityGameHub=lazy(()=>import('./DailyScreen.js').then(module=>({default:module.GameHub})));
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Check } from 'lucide-react';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { apiFetch } from '../api/apiFetch.js';
@@ -75,6 +78,9 @@ function numberText(value: number): string {
 
 export function SectionsScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams]=useSearchParams();
+  const [gameStatus,setGameStatus]=useState<GameDockStatus>({label:null,urgent:false});
+  const [gameOpenRequest,setGameOpenRequest]=useState(0);
   const queryClient = useQueryClient();
   const dailyData = useDailyStore((s) => s.data);
   const refreshDaily = useDailyStore((s) => s.refresh);
@@ -110,6 +116,14 @@ export function SectionsScreen(): JSX.Element {
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  });
+  const isAdmin = (profileQuery.data?.role ?? user?.role) === 'admin';
+  const adminAttention = useQuery({
+    queryKey: ['admin', 'attention'],
+    queryFn: fetchAdminAttention,
+    enabled: Boolean(user) && isAdmin,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const failureQuery = useQuery({
     queryKey: ['weekly-challenge', 'failure', 'pending'],
@@ -263,11 +277,18 @@ export function SectionsScreen(): JSX.Element {
     <main
       className="screen sections-city-screen"
       style={{
+        position: 'relative',
         padding: 'calc(18px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
       }}
     >
-      <CityMap key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount} onNavigate={navigate}/>
+      <CityMap isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
+        onOpenDailyPlay={()=>navigate('/?view=daily')}
+        onOpenTraining={()=>navigate('/?view=training')}
+        onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
+        onOpenAmateurMatch={id=>navigate(`/?view=amateur&match=${encodeURIComponent(id)}&play=1`)}
+      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount} onNavigate={navigate}/>
+
 
       {activeCongratulation !== null && (
         <RegularSeasonPodiumModal
