@@ -3,6 +3,7 @@ import type { Pool, PoolClient } from 'pg';
 import {
   CHARACTER_GAME,
   createMatch,
+  publicRuntime,
   command,
   type BarGameId,
   type GameCharacter,
@@ -12,10 +13,21 @@ import {
   type BarGameInvite,
 } from '@hockey/game-core';
 import { cardTransaction, assertFree } from '../durakService.js';
+import { createPrivateOchko } from './ochkoDeck.js';
+import { chooseStake } from './ochkoEconomy.js';
 import { AppError } from '../../plugins/errors.js';
 import { reconcile, persist, type MatchRow } from './admission.js';
-const names = { maria: 'Мария', daria: 'Дарья', veronika: 'Вероника', arsenich: 'Арсенич' };
+const names = {
+  maria: 'Мария',
+  daria: 'Дарья',
+  veronika: 'Вероника',
+  arsenich: 'Арсенич',
+  grigory: 'Григорий',
+  oleg: 'Олег',
+};
 const portraits = {
+  grigory: '/bar/cards/grigory-avatar-v1.webp',
+  oleg: '/bar/emotions/oleg/neutral-v1.webp',
   maria: '/bar/cards/avatar-v2.webp',
   daria: '/bar/cards/daria-avatar-v2.webp',
   veronika: '/bar/cards/veronika-avatar-v1.webp',
@@ -24,7 +36,13 @@ const portraits = {
 const tx = cardTransaction;
 const conflict = () =>
   new AppError('bar_game_changed', 'Состояние партии изменилось. Обновляем поле.', 409);
-async function load(c: PoolClient, user: string, id: string, now: number) {
+async function load(
+  c: PoolClient,
+  user: string,
+  id: string,
+  now: number,
+  beforeReconcile?: (row: MatchRow) => void,
+) {
   const { rows } = await c.query<MatchRow>(
     'select * from bar_game_matches where id=$1 for update',
     [id],
@@ -32,6 +50,7 @@ async function load(c: PoolClient, user: string, id: string, now: number) {
   const r = rows[0];
   if (!r || (r.player_a !== user && r.player_b !== user))
     throw new AppError('not_found', 'Партия не найдена.', 404);
+  beforeReconcile?.(r);
   return reconcile(c, r, now);
 }
 async function view(
@@ -52,6 +71,16 @@ async function view(
       avatarUrl: p?.avatar_url ?? null,
     };
   };
+  const runtime = publicRuntime(r.data.runtime, user === r.player_a ? 0 : 1);
+  if (r.data.ready && runtime.game.kind === 'ochko')
+    runtime.game = {
+      ...runtime.game,
+      hands: runtime.game.hands.map((hand) => hand.map(() => -1)) as [number[], number[]],
+      scores: [-1, -1],
+      winner: null,
+      golden: [false, false],
+      done: [false, false],
+    };
   return {
     id: r.id,
     kind: r.kind,
@@ -67,7 +96,8 @@ async function view(
             avatarUrl: portraits[r.character!],
           },
     ],
-    runtime: r.data.runtime,
+    runtime,
+    ...(r.data.stake ? { stake: r.data.stake } : {}),
     ready: r.data.ready,
     serverNow: now,
   };
@@ -111,6 +141,7 @@ async function create(
     },
     ended_at: null,
   };
+  if (kind === 'ochko' && character) row.data.runtime.game = createPrivateOchko(now);
   await c.query(
     'insert into bar_game_matches(id,kind,player_a,player_b,character,data) values($1,$2,$3,$4,$5,$6)',
     [id, kind, a, b, character, JSON.stringify(row.data)],
@@ -159,7 +190,10 @@ export const readGame = (pool: Pool, user: string, id: string) =>
   tx(pool, async (c, now) => view(c, await load(c, user, id, now), user, now));
 export const actGame = (pool: Pool, user: string, id: string, input: BarGameCommand) =>
   tx(pool, async (c, now) => {
-    const row = await load(c, user, id, now);
+    let storedRevision = -1;
+    const row = await load(c, user, id, now, (r) => {
+      storedRevision = r.data.runtime.revision;
+    });
     const payload = JSON.stringify(input);
     const receipt = await c.query<{ user_id: string; payload: string }>(
       'select * from bar_game_commands where match_id=$1 and request_id=$2',
@@ -169,8 +203,26 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
       if (receipt.rows[0].user_id !== user || receipt.rows[0].payload !== payload) throw conflict();
       return view(c, row, user, now);
     }
-    if (input.revision !== row.data.runtime.revision || row.ended_at) throw conflict();
+    if (
+      (input.revision !==
+        (row.kind === 'armwrestling' ? storedRevision : row.data.runtime.revision) &&
+        !(
+          (row.kind === 'ochko' &&
+            (input.action.type === 'ochko-hit' || input.action.type === 'ochko-stand')) ||
+          (row.kind === 'armwrestling' && (input.action.type === 'arm-input' || (input.action.type === 'surrender'&&input.revision<=storedRevision)))
+        )) ||
+      row.ended_at
+    )
+      throw conflict();
     const player = user === row.player_a ? 0 : 1;
+    if (row.kind === 'armwrestling' && (input.action.type === 'arm-input' || (input.action.type === 'surrender'&&input.revision<=storedRevision))) {
+      const rate = row.data.inputRate ?? [[], []];
+      rate[player] = rate[player].filter((at) => at > now - 1000);
+      if (rate[player].length >= 12)
+        throw new AppError('bar_input_rate', 'Слишком частые движения. Попробуй ещё раз.', 429);
+      rate[player].push(now);
+      row.data.inputRate = rate;
+    }
     if (input.action.type === 'ready') {
       const ready = row.data.ready;
       if (!ready || ready.cancelled || ready.startsAt !== null) throw conflict();
@@ -179,11 +231,20 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
       row.data.runtime.revision++;
     } else {
       if (row.data.ready && input.action.type !== 'surrender') throw conflict();
-      try {
-        row.data.runtime = command(row.data.runtime, player, input.action, now);
-      } catch {
-        throw conflict();
-      }
+      if (input.action.type === 'surrender' && row.data.ready) {
+        row.data.ready = null;
+        row.data.runtime = {
+          ...row.data.runtime,
+          game: { ...row.data.runtime.game, winner: player === 0 ? 1 : 0 },
+          reason: 'surrender',
+          revision: row.data.runtime.revision + 1,
+        };
+      } else
+        try {
+          row.data.runtime = command(row.data.runtime, player, input.action, now);
+        } catch {
+          throw conflict();
+        }
     }
     await persist(c, row, now);
     await c.query(
@@ -193,6 +254,10 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
     return view(c, row, user, now);
   });
 async function prune(c: PoolClient, now: number) {
+  await c.query(
+    'delete from bar_ochko_offers where expires_at<=$1 and not exists(select 1 from bar_game_stakes where offer_id=bar_ochko_offers.id)',
+    [new Date(now)],
+  );
   await c.query('delete from bar_game_queue where expires_at<=$1', [new Date(now)]);
   await c.query(
     "update bar_game_invites set status='expired' where status='pending' and expires_at<=$1",
@@ -376,9 +441,82 @@ export const localCards = (pool: Pool, user: string, id: string, leave = false) 
 export const tickGames = (pool: Pool) =>
   tx(pool, async (c, now) => {
     const { rows } = await c.query<MatchRow>(
-      `select * from bar_game_matches where ended_at is null and (case when data->'ready' is not null and data->'ready'<>'null'::jsonb then coalesce((data->'ready'->>'startsAt')::bigint,(data->'ready'->>'expiresAt')::bigint) when (data->'runtime'->>'computer')::boolean and (data->'runtime'->'game'->>'turn')::int=1 then (data->'runtime'->>'animationUntil')::bigint else (data->'runtime'->>'deadline')::bigint end)<=$1 order by created_at limit 100`,
+      `select * from bar_game_matches where ended_at is null and (case when data->'ready' is not null and data->'ready'<>'null'::jsonb then coalesce((data->'ready'->>'startsAt')::bigint,(data->'ready'->>'expiresAt')::bigint) when kind in ('ochko','armwrestling') then (data->'runtime'->>'deadline')::bigint when (data->'runtime'->>'computer')::boolean and (data->'runtime'->'game'->>'turn')::int=1 then (data->'runtime'->>'animationUntil')::bigint else (data->'runtime'->>'deadline')::bigint end)<=$1 order by created_at limit 100`,
       [now],
     );
     for (const row of rows) await reconcile(c, row, now);
     await prune(c, now);
+  });
+
+export const proposeOchkoStake = (pool: Pool, user: string) =>
+  tx(pool, async (c, now) => {
+    const { rows } = await c.query<{ xp: number }>('select xp from users where id=$1', [user]);
+    const balance = Number(rows[0]?.xp ?? 0),
+      stars = chooseStake(balance, randomInt(1000000) / 1000000),
+      offerId = randomUUID(),
+      expiresAt = now + 300000;
+    await c.query('insert into bar_ochko_offers(id,user_id,amount,expires_at)values($1,$2,$3,$4)', [
+      offerId,
+      user,
+      stars,
+      new Date(expiresAt),
+    ]);
+    return { offerId, stars, balance, expiresAt };
+  });
+export const startOchkoStake = (
+  pool: Pool,
+  user: string,
+  input: { requestId: string; offerId: string; stars: number },
+) =>
+  tx(pool, async (c, now) => {
+    if (!Number.isSafeInteger(input.stars) || input.stars < 1)
+      throw new AppError('bar_invalid_stake', 'Укажи целое число звёзд.', 400);
+    const prior = await c.query<MatchRow>('select * from bar_game_matches where id=$1', [
+      input.requestId,
+    ]);
+    if (prior.rows[0]) {
+      const row = prior.rows[0];
+      if (
+        row.player_a !== user ||
+        row.character !== 'grigory' ||
+        row.data.stake?.amount !== input.stars ||
+        row.data.stakeOfferId !== input.offerId
+      )
+        throw conflict();
+      await reconcile(c, row, now);
+      return view(c, row, user, now);
+    }
+    const offer = await c.query(
+      'select id from bar_ochko_offers where id=$1 and user_id=$2 and expires_at>$3 and not exists(select 1 from bar_game_stakes where offer_id=bar_ochko_offers.id) for update',
+      [input.offerId, user, new Date(now)],
+    );
+    if (!offer.rows[0])
+      throw new AppError('bar_offer_expired', 'Предложение устарело. Попроси новую ставку.', 409);
+    const wallet = await c.query<{ xp: number }>('select xp from users where id=$1 for update', [
+      user,
+    ]);
+    const balance = Number(wallet.rows[0]?.xp ?? 0);
+    if (input.stars > balance)
+      throw new AppError('bar_insufficient_stars', 'Не хватает звёзд. Измени ставку.', 409);
+    if (balance + input.stars > 2147483647)
+      throw new AppError(
+        'bar_star_capacity',
+        'Для такой ставки на балансе не хватит места под выигрыш. Укажи меньше.',
+        409,
+      );
+    const row = await create(c, user, null, 'ochko', 'grigory', now, input.requestId);
+    const debit = await c.query('update users set xp=xp-$2 where id=$1 and xp >= $2 returning xp', [
+      user,
+      input.stars,
+    ]);
+    if (!debit.rows[0])
+      throw new AppError('bar_insufficient_stars', 'Не хватает звёзд. Измени ставку.', 409);
+    await c.query(
+      'insert into bar_game_stakes(match_id,user_id,offer_id,amount)values($1,$2,$3,$4)',
+      [row.id, user, input.offerId, input.stars],
+    );
+    row.data.stake = { amount: input.stars, payout: null };
+    row.data.stakeOfferId = input.offerId;
+    await persist(c, row, now);
+    return view(c, row, user, now);
   });

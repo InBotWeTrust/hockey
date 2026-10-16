@@ -136,13 +136,13 @@ it('restores the selected character and keeps conversation controls available', 
   expect(screen.getByRole('button', { name: 'Разговор' })).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Игры' })).toBeInTheDocument();
 });
-it('opens the assigned darts game from Maria instead of cards', async () => {
+it('opens the existing card game with Maria', async () => {
   const data = fixture(); data.layout.defaultSlotId='bar-3';
   vi.mocked(fetchBarLayout).mockResolvedValue(data);
   render(<MemoryRouter><BarPanorama /></MemoryRouter>);
   await screen.findByRole('heading',{name:'Мария'});
   fireEvent.click(screen.getByRole('button',{name:'Игры'}));
-  expect(screen.getByRole('dialog')).toHaveTextContent('Дартс · Мария');
+  expect(screen.getByRole('dialog')).toHaveTextContent('Дурак с Марией');
   expect(screen.getByRole('button',{name:'Играть'})).toBeInTheDocument();
 });
 

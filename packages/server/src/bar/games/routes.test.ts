@@ -71,3 +71,19 @@ it('starts new darts matches with Daria while retaining Maria only in stored mat
   expect(computerCharacter.safeParse('daria').success).toBe(true);
   expect(computerCharacter.safeParse('maria').success).toBe(false);
 });
+
+it('accepts bounded arm input and Oleg, but never offers Grigory for free', () => {
+  expect(computerCharacter.safeParse('oleg').success).toBe(true);
+  expect(computerCharacter.safeParse('grigory').success).toBe(false);
+  const input = {
+    type: 'arm-input',
+    seq: 1,
+    supportHeld: true,
+    support: 0.5,
+    pressing: true,
+    wrist: 'inside',
+  };
+  expect(gameAction.safeParse(input).success).toBe(true);
+  expect(gameAction.safeParse({ ...input, support: 2 }).success).toBe(false);
+  expect(gameAction.safeParse({ ...input, seq: 0 }).success).toBe(false);
+});

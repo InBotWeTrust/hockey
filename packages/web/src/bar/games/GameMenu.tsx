@@ -14,6 +14,8 @@ function count(view: BarGameSnapshot, player: 0 | 1): number | undefined {
   const g = view.runtime.game;
   if (g.kind === 'darts') return g.scores[player];
   if (g.kind === 'checkers') return g.board.filter((p) => p && (p > 0 ? 0 : 1) === player).length;
+  if (g.kind === 'armwrestling') return Math.round(g.stamina[player] * 100);
+  if (g.kind === 'ochko') return g.scores[player] < 0 ? undefined : g.scores[player];
   const group = g.groups[player];
   if (!group) return 0;
   return g.balls.filter(
@@ -60,7 +62,21 @@ function actionResult(view: BarGameSnapshot): string {
       return 'Время на ход вышло';
   }
 }
-export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view: BarGameSnapshot; now: number; onExit?: (() => void) | undefined; onRules?: (() => void) | undefined; notice?: string | null | undefined; onRetry?: (() => void) | undefined }) {
+export function GameMenu({
+  view,
+  now,
+  onExit,
+  onRules,
+  notice,
+  onRetry,
+}: {
+  view: BarGameSnapshot;
+  now: number;
+  onExit?: (() => void) | undefined;
+  onRules?: (() => void) | undefined;
+  notice?: string | null | undefined;
+  onRetry?: (() => void) | undefined;
+}) {
   const { runtime: m, player } = view,
     g = m.game,
     other = player === 0 ? 1 : 0;
@@ -80,9 +96,20 @@ export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view
   const thinking = m.computer && g.turn === other && g.winner === null && !animating && !view.ready;
   const poolShotPending = g.kind === 'billiards' && m.feedback?.type === 'shot' && animating;
   const seconds =
-    (g.winner !== null && !poolShotPending) || view.ready
+    (g.winner !== null && !poolShotPending) || view.ready || (g.kind === 'ochko' && g.done[player])
       ? null
-      : Math.max(0, Math.ceil((m.deadline - Math.max(now, motionUntil)) / 1000));
+      : Math.max(
+          0,
+          Math.ceil(
+            ((g.kind === 'ochko'
+              ? g.deadlines[player]
+              : g.kind === 'armwrestling'
+                ? g.endsAt
+                : m.deadline) -
+              Math.max(now, motionUntil, g.kind === 'ochko' ? g.dealUntil[player] : 0)) /
+              1000,
+          ),
+        );
   let turn = poolShotPending
     ? 'Ход выполняется…'
     : g.winner !== null
@@ -90,7 +117,9 @@ export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view
       : view.ready
         ? view.ready.startsAt !== null
           ? `Начинаем через ${Math.max(0, Math.ceil((view.ready.startsAt - now) / 1000))}…`
-          : view.ready.players.includes(other) ? 'Соперник готов' : 'Ждём соперника'
+          : view.ready.players.includes(other)
+            ? 'Соперник готов'
+            : 'Ждём соперника'
         : thinking
           ? `${view.participants[other]!.displayName} думает…`
           : animating
@@ -98,7 +127,14 @@ export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view
             : g.turn === player
               ? 'Твой ход'
               : 'Ход соперника';
-  if (g.kind === 'darts' && g.winner === null && !view.ready) turn += ` · Осталось дротиков: ${g.dartsLeft}`;
+  if (g.kind === 'armwrestling' && !view.ready && g.winner === null)
+    turn = g.warning[player]
+      ? 'Вернись к управлению, иначе поражение'
+      : 'Держи опору и дави правой рукой';
+  if (g.kind === 'ochko' && !view.ready && g.winner === null)
+    turn = g.done[player] ? 'Ждём соперника' : 'Бери карту или выбирай «Хватит»';
+  if (g.kind === 'darts' && g.winner === null && !view.ready)
+    turn += ` · Осталось дротиков: ${g.dartsLeft}`;
   const dartFeedback = g.kind === 'darts' && m.feedback?.type === 'dart';
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
@@ -124,9 +160,9 @@ export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view
           : turn;
   const tone = poolShotPending
     ? 'warning'
-    : m.missed[player] > 0 || m.feedback?.bust || m.feedback?.foul
+    : m.missed[player] > 0 || (g.kind==='armwrestling'&&g.warning[player]) || m.feedback?.bust || m.feedback?.foul
       ? 'danger'
-      : g.turn !== player || animating
+      : (g.kind !== 'ochko' && g.kind !== 'armwrestling' && g.turn !== player) || animating
         ? 'warning'
         : 'success';
   return (
@@ -188,18 +224,30 @@ export function GameMenu({ view, now, onExit, onRules, notice, onRetry }: { view
         </div>
       </div>
       <div className="bar-game-notice-row">
-        {onExit && <button className="icon-btn" aria-label="Выйти из партии" onClick={onExit}><LogOut size={18} /></button>}
-      <FittedNotice
-        fit
-        maxLines={2}
-        role={notice ? 'alert' : 'status'}
-        data-tone={notice ? 'warning' : tone}
-        className="duel-fatigue-notice initial-training-feedback-notice--scoreboard durak-turn-notice"
-      >
-        {notice ?? feedback}
-        {notice && onRetry && <button className="bar-game-notice-retry" onClick={onRetry}>Повторить отправку</button>}
-      </FittedNotice>
-        {onRules && <button className="icon-btn" aria-label="Правила игры" onClick={onRules}><HelpCircle size={20} /></button>}
+        {onExit && (
+          <button className="icon-btn" aria-label="Выйти из партии" onClick={onExit}>
+            <LogOut size={18} />
+          </button>
+        )}
+        <FittedNotice
+          fit
+          maxLines={2}
+          role={notice ? 'alert' : 'status'}
+          data-tone={notice ? 'warning' : tone}
+          className="duel-fatigue-notice initial-training-feedback-notice--scoreboard durak-turn-notice"
+        >
+          {notice ?? feedback}
+          {notice && onRetry && (
+            <button className="bar-game-notice-retry" onClick={onRetry}>
+              Повторить отправку
+            </button>
+          )}
+        </FittedNotice>
+        {onRules && (
+          <button className="icon-btn" aria-label="Правила игры" onClick={onRules}>
+            <HelpCircle size={20} />
+          </button>
+        )}
       </div>
     </section>
   );

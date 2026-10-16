@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BarGameAction, BarGameCommand, BarGameSnapshot } from '@hockey/game-core';
 import { ApiError } from '../../api/apiFetch.js';
+import { queryClient } from '../../app/queryClient.js';
 import { gameApi } from './api.js';
 export function mergeGameSnapshot(current: BarGameSnapshot | null, next: BarGameSnapshot) {
   return current && current.id === next.id && current.runtime.revision > next.runtime.revision
@@ -11,8 +12,13 @@ export function useGameMatch(id: string | undefined) {
   const [view, setView] = useState<BarGameSnapshot | null>(null),
     [error, setError] = useState<string | null>(null),
     [readError, setReadError] = useState<string | null>(null),
+    [armBlocked, setArmBlocked] = useState(false),
     [busy, setBusy] = useState(false),
     [now, setNow] = useState(Date.now());
+  const armAbort = useRef<AbortController | null>(null);
+  const armSending = useRef(false),
+    armQueued = useRef<Extract<BarGameAction, { type: 'arm-input' }> | null>(null);
+  const seenStakes = useRef(new Set<string>());
   const recovering = useRef(false);
   const queued = useRef<BarGameAction | null>(null);
   const current = useRef(view);
@@ -27,6 +33,14 @@ export function useGameMatch(id: string | undefined) {
       offset.current = next.serverNow - Date.now();
       setNow(Date.now() + offset.current);
       current.current = mergeGameSnapshot(current.current, next);
+      if (current.current === next && next.stake) {
+        const key = `${next.id}:${next.stake.amount}:${next.stake.payout}`;
+        if (!seenStakes.current.has(key)) {
+          seenStakes.current.add(key);
+          void queryClient.invalidateQueries({ queryKey: ['profile'] });
+          void queryClient.invalidateQueries({ queryKey: ['inventory'] });
+        }
+      }
       setView((v) => mergeGameSnapshot(v, next));
     },
     [id],
@@ -35,6 +49,11 @@ export function useGameMatch(id: string | undefined) {
     const token = ++generation.current;
     pending.current = null;
     queued.current = null;
+    armAbort.current?.abort();
+    armAbort.current = null;
+    armSending.current = false;
+    armQueued.current = null;
+    setArmBlocked(false);
     sending.current = false;
     setBusy(false);
     setError(null);
@@ -50,10 +69,15 @@ export function useGameMatch(id: string | undefined) {
         if (token === generation.current) {
           apply(next);
           setReadError(null);
-          if (recovering.current) { recovering.current = false; setError(null); }
+          setArmBlocked(false);
+          if (recovering.current) {
+            recovering.current = false;
+            setError(null);
+          }
         }
       } catch {
-        if (token === generation.current) setReadError('Не удалось обновить партию. Пробуем снова…');
+        if (token === generation.current)
+          setReadError('Не удалось обновить партию. Пробуем снова…');
       } finally {
         reading = false;
       }
@@ -64,6 +88,8 @@ export function useGameMatch(id: string | undefined) {
     document.addEventListener('visibilitychange', refresh);
     return () => {
       generation.current++;
+      armAbort.current?.abort();
+      armQueued.current = null;
       clearInterval(timer);
       clearInterval(clock);
       document.removeEventListener('visibilitychange', refresh);
@@ -92,7 +118,10 @@ export function useGameMatch(id: string | undefined) {
           if (token !== generation.current) return;
           apply(next);
           setReadError(null);
-          if (recovering.current) { recovering.current = false; setError(null); }
+          if (recovering.current) {
+            recovering.current = false;
+            setError(null);
+          }
         } catch {
           /* Polling retries. */
         }
@@ -109,7 +138,58 @@ export function useGameMatch(id: string | undefined) {
       }
     }
   };
+  const deliverArm = async (action: Extract<BarGameAction, { type: 'arm-input' }>) => {
+    if (!id || current.current?.kind !== 'armwrestling') return;
+    if (armSending.current) {
+      armQueued.current = action;
+      return;
+    }
+    const token = generation.current;
+    armSending.current = true;
+    const controller = new AbortController();
+    armAbort.current = controller;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      const next = await Promise.race([
+        gameApi.command(
+          id,
+          { requestId: crypto.randomUUID(), revision: current.current.runtime.revision, action },
+          controller.signal,
+        ),
+        new Promise<BarGameSnapshot>((_, reject) => {
+          timeout = setTimeout(() => {
+            controller.abort();
+            reject(new Error('Arm input timed out'));
+          }, 1000);
+        }),
+      ]);
+      if (token !== generation.current) return;
+      apply(next);
+      setArmBlocked(false);
+      setError(null);
+    } catch {
+      if (token === generation.current) {
+        armQueued.current = null;
+        recovering.current = true;
+        setArmBlocked(true);
+        setError('Связь прервалась. Отпусти руки и попробуй снова.');
+      }
+    } finally {
+      clearTimeout(timeout);
+      if (token === generation.current) {
+        armAbort.current = null;
+        armSending.current = false;
+        const next = armQueued.current;
+        armQueued.current = null;
+        if (next) void deliverArm(next);
+      }
+    }
+  };
   const send = (action: BarGameAction | { type: 'ready' }) => {
+    if (action.type === 'arm-input') {
+      void deliverArm(action);
+      return;
+    }
     if (pending.current) {
       if (
         pending.current.action.type === 'aim' &&
@@ -129,6 +209,7 @@ export function useGameMatch(id: string | undefined) {
   };
   return {
     view,
+    armBlocked,
     error: error ?? readError,
     busy,
     now,

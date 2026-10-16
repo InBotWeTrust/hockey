@@ -20,11 +20,14 @@ export function BarGamesLobby({
   return (
     <section className="bar-games-lobby">
       <SegmentedTabs
+        scrollable
         items={[
           { id: 'cards', label: 'Карты' },
           { id: 'darts', label: 'Дартс' },
           { id: 'billiards', label: 'Бильярд' },
           { id: 'checkers', label: 'Шашки' },
+          { id: 'ochko', label: 'Очко' },
+          { id: 'armwrestling', label: 'Армрестлинг' },
         ]}
         activeTab={kind}
         onChange={(id) => setKind(id as typeof kind)}

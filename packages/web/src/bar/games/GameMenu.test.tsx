@@ -198,3 +198,10 @@ it('reveals the pool result after motion while the character is still thinking',
   expect(screen.getByRole('status')).toHaveTextContent('Ты: 1 шар');
   expect(screen.getByRole('status')).toHaveTextContent('думает…');
 });
+it('shows the simultaneous arm inactivity warning as danger in the shared notice',()=>{
+ const v=view();v.kind='armwrestling';v.runtime=createMatch('armwrestling',0,0,false,1);
+ if(v.runtime.game.kind==='armwrestling')v.runtime.game.warning=[true,false];
+ render(<GameTable view={v} now={5000} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Вернись к управлению, иначе поражение');
+ expect(screen.getByRole('status')).toHaveAttribute('data-tone','danger');
+});

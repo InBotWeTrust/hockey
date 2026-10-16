@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import { createPrivateOchko } from './ochkoDeck.js';
 import {
   advance,
   createMatch,
@@ -7,11 +8,15 @@ import {
   type BarGameId,
   type GameCharacter,
 } from '@hockey/game-core';
+import { settleOchko } from './ochkoEconomy.js';
 import { AppError } from '../../plugins/errors.js';
 export interface MatchData {
   runtime: Runtime;
   ready: GameReady | null;
   starter: 0 | 1;
+  stake?: { amount: number; payout: number | null };
+  stakeOfferId?: string;
+  inputRate?: [number[], number[]];
 }
 export interface MatchRow {
   id: string;
@@ -23,7 +28,8 @@ export interface MatchRow {
   ended_at: Date | null;
 }
 export async function persist(client: PoolClient, row: MatchRow, now: number) {
-  const ended = row.data.runtime.game.winner !== null || row.data.ready?.cancelled;
+  const ended = row.data.ready ? row.data.ready.cancelled : row.data.runtime.game.winner !== null;
+  if (ended) await settleOchko(client, row, now);
   await client.query('update bar_game_matches set data=$2,ended_at=$3 where id=$1', [
     row.id,
     JSON.stringify(row.data),
@@ -38,6 +44,7 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
     if (ready.startsAt !== null && now >= ready.startsAt) {
       const prior = row.data.runtime;
       row.data.runtime = createMatch(row.kind, row.data.starter, ready.startsAt, false, prior.seed);
+      if (row.kind === 'ochko') row.data.runtime.game = createPrivateOchko(ready.startsAt);
       row.data.runtime.revision = prior.revision + 1;
       row.data.ready = null;
     } else if (ready.startsAt === null && now >= ready.expiresAt) {
@@ -47,7 +54,24 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
     } else return row;
   }
   const before = row.data.runtime;
-  row.data.runtime = advance(before, now);
+  try {
+    row.data.runtime = advance(before, now);
+  } catch (error) {
+    if (
+      row.kind !== 'ochko' ||
+      !row.data.stake ||
+      !(error instanceof Error) ||
+      error.message !== 'Unsupported game version'
+    )
+      throw error;
+    row.data.runtime = {
+      ...before,
+      game: { ...before.game, winner: 'draw' },
+      reason: 'technical',
+      animationUntil: now,
+      revision: before.revision + 1,
+    };
+  }
   if (row.data.runtime !== before || ready) await persist(client, row, now);
   return row;
 }

@@ -3,6 +3,9 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import type { BarGameSnapshot, BarGameAction } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
+import { ArmwrestlingField } from './ArmwrestlingField.js';
+import { OchkoField } from './OchkoField.js';
+import { CharacterLaunch } from './CharacterLaunch.js';
 import { GameMenu } from './GameMenu.js';
 import { gameApi } from './api.js';
 import { GameHelp, GameResult, gameClose } from './GameModals.js';
@@ -17,6 +20,7 @@ export function BarGameScreen() {
     [exit, setExit] = useState(false),
     [replaying, setReplaying] = useState(false),
     [replayError, setReplayError] = useState<string | null>(null);
+  const [stakeOpen, setStakeOpen] = useState(false);
   const [replayRequest, setReplayRequest] = useState(() => crypto.randomUUID());
   const back = () => navigate('/bar', { replace: true });
   const view = match.view;
@@ -37,6 +41,10 @@ export function BarGameScreen() {
   }, [view?.runtime.game.winner, view?.ready?.cancelled]);
   const replay = async () => {
     if (!view?.character || replaying) return;
+    if (view.character === 'grigory') {
+      setStakeOpen(true);
+      return;
+    }
     setReplaying(true);
     setReplayError(null);
     try {
@@ -66,10 +74,18 @@ export function BarGameScreen() {
         </>
       ) : (
         <>
-          <GameTable view={view} now={match.now} disabled={match.busy} send={match.send}
-            onExit={() => view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)}
-            onRules={() => setHelp(true)} notice={match.error ?? replayError}
-            onRetry={match.uncertain ? match.retry : undefined} />
+          <GameTable
+            view={view}
+            now={match.now}
+            disabled={match.busy || match.armBlocked || help || exit}
+            send={match.send}
+            onExit={() =>
+              view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)
+            }
+            onRules={() => setHelp(true)}
+            notice={match.error ?? replayError}
+            onRetry={match.uncertain ? match.retry : undefined}
+          />
           {view.ready?.cancelled && (
             <AccessibleModal
               title="Партия не началась"
@@ -84,9 +100,13 @@ export function BarGameScreen() {
               </div>
             </AccessibleModal>
           )}
-          {view.runtime.game.winner !== null && match.now >= view.runtime.animationUntil && (
-            <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
-          )}
+          {!view.ready &&
+            !stakeOpen &&
+            view.runtime.game.winner !== null &&
+            match.now >= view.runtime.animationUntil && (
+              <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
+            )}
+          {stakeOpen && <CharacterLaunch character="grigory" close={() => setStakeOpen(false)} />}
           {help && <GameHelp kind={view.kind} close={() => setHelp(false)} />}
           {exit && (
             <AccessibleModal
@@ -163,7 +183,14 @@ export function GameTable({
   }
   return (
     <>
-      <GameMenu view={view} now={now} onExit={onExit} onRules={onRules} notice={notice} onRetry={onRetry} />
+      <GameMenu
+        view={view}
+        now={now}
+        onExit={onExit}
+        onRules={onRules}
+        notice={notice}
+        onRetry={onRetry}
+      />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
         {game.kind === 'darts' ? (
           <DartsField
@@ -186,6 +213,25 @@ export function GameTable({
             animationStart={m.animationStart}
             now={now}
           />
+        ) : game.kind === 'armwrestling' ? (
+          <ArmwrestlingField
+            character={view.character === 'oleg'}
+            game={game}
+            player={player}
+            now={now}
+            disabled={disabled || !!view.ready}
+            pregame={!!view.ready}
+            send={send}
+          />
+        ) : game.kind === 'ochko' ? (
+          <OchkoField
+            pregame={!!view.ready}
+            game={game}
+            player={player}
+            now={now}
+            disabled={disabled || !!view.ready}
+            send={send}
+          />
         ) : (
           <PoolField
             game={game}
@@ -202,9 +248,11 @@ export function GameTable({
         )}
         {view.ready && !view.ready.cancelled && view.ready.startsAt === null && (
           <div className="bar-game-ready-actions durak-ready-actions">
-            <button className="btn btn--cta"
+            <button
+              className="btn btn--cta"
               disabled={disabled || view.ready.players.includes(player)}
-              onClick={() => send({ type: 'ready' })}>
+              onClick={() => send({ type: 'ready' })}
+            >
               {view.ready.players.includes(player) ? 'Вы готовы' : 'Готов'}
             </button>
           </div>

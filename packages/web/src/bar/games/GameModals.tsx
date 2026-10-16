@@ -1,3 +1,4 @@
+import { formatRussianCount } from '../../lib/russianPlural.js';
 import { X } from 'lucide-react';
 import type { BarGameId, BarGameSnapshot } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
@@ -20,7 +21,7 @@ export function GameHelp({ kind, close }: { kind: BarGameId; close: () => void }
           {p}
         </p>
       ))}
-      <p className="modal-copy">{timerRules}</p>
+      {kind !== 'ochko' && kind !== 'armwrestling' && <p className="modal-copy">{timerRules}</p>}
     </AccessibleModal>
   );
 }
@@ -39,11 +40,15 @@ export function GameResult({
   const outcome = winner === 'draw' ? 'draw' : winner === view.player ? 'win' : 'loss';
   const title = outcome === 'draw' ? 'Ничья' : outcome === 'win' ? 'Победа' : 'Поражение';
   const reason =
-    view.runtime.reason === 'inactivity'
-      ? 'Партия завершена после двух пропусков хода подряд.'
-      : view.runtime.reason === 'surrender'
-        ? 'Один из участников сдался.'
-        : null;
+    view.runtime.reason === 'technical'
+      ? 'Партию пришлось завершить. Ставка возвращена.'
+      : view.runtime.reason === 'inactivity'
+        ? view.kind === 'armwrestling'
+          ? 'Схватка завершена после 10 секунд бездействия.'
+          : 'Партия завершена после двух пропусков хода подряд.'
+        : view.runtime.reason === 'surrender'
+          ? 'Один из участников сдался.'
+          : null;
   return (
     <AccessibleModal
       title={title}
@@ -60,6 +65,12 @@ export function GameResult({
         )}
         alt={`${title}: ${view.character ? characterNames[view.character] : gameNames[view.kind]}`}
       />
+      {view.stake && (
+        <p className="modal-copy">
+          Ставка: {formatRussianCount(view.stake.amount, 'звезда', 'звезды', 'звёзд')} · Возврат:{' '}
+          {formatRussianCount(view.stake.payout ?? 0, 'звезда', 'звезды', 'звёзд')}
+        </p>
+      )}
       {reason && <p className="modal-copy">{reason}</p>}
       <p className="modal-copy">
         {view.character
