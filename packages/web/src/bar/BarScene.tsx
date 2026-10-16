@@ -1,3 +1,4 @@
+import { BarGameHotspots } from './BarGameHotspots.js';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight, Gamepad2, Newspaper, Tv, X } from 'lucide-react';
 import {
@@ -8,6 +9,8 @@ import {
   type BarAction,
 } from '@hockey/game-core';
 import { CharacterEmotionFigure } from './CharacterEmotionFigure.js';
+import {barParts, barInterior} from './barArtwork.js';
+import {useBarLighting} from './barLighting.js';
 import type {CharacterExpression} from './characterEmotion.js';
 import { CharacterGesture } from './characterGesture.js';
 import { CharacterHitArea } from './CharacterHitArea.js';
@@ -36,7 +39,10 @@ export function BarScene({
   hideIdentity = false,
   onPhysicalIncident,
   characterEmotions = {},
+  onStaffRoom,
+  activityCounts = {},
 }: {
+  activityCounts?: Partial<Record<BarOccupantId, number>>;
   layout: BarLayout;
   activeSlotId: string;
   onSelectSlot: (id: string) => void;
@@ -49,8 +55,10 @@ export function BarScene({
   hideIdentity?: boolean;
   onPhysicalIncident?: (character: BarCharacter) => void;
   characterEmotions?:Partial<Record<BarCharacter,CharacterExpression>>;
+  onStaffRoom?: (slotId: string) => void;
 }) {
   const incident = useRef(onPhysicalIncident);
+  const lighting = useBarLighting('interior');
   incident.current = onPhysicalIncident;
   const target = useRef<BarCharacter | null>(null);
   const [gesture] = useState(() => new CharacterGesture(() => { if (target.current) incident.current?.(target.current); }));
@@ -71,6 +79,8 @@ export function BarScene({
     dock.current?.querySelector('[aria-current="page"]')?.scrollIntoView?.({block:'nearest',inline:'nearest',behavior:'smooth'});
   }, [activeSlotId]);
   const start = useRef<{ x: number; y: number } | null>(null);
+  const doorPointer = useRef<{x: number; y: number; moved: boolean} | null>(null);
+  const suppressDoorClick = useRef(false);
   const panel = useRef<HTMLElement>(null);
   const [panelHeight, setPanelHeight] = useState(190);
   useEffect(() => {
@@ -137,12 +147,13 @@ export function BarScene({
         }
       }}
     >
-      <div className="bar-space__track" aria-hidden="true">
-        {['west', 'middle', 'east'].map((part, i) => (
+      <div className="bar-space__track">
+        {lighting.previous && barParts.map((part, i) => <img key={`previous-${part}`} className={`bar-space__background bar-space__background--${part}`} src={barInterior(part, lighting.previous!)} alt="" draggable={false} style={{left: `${i * 40}%`}}/>)}
+        {barParts.map((part, i) => (
           <img
-            key={part}
-            className={`bar-space__background bar-space__background--${part}`}
-            src={`/bar/bar-${part}-v1.webp`}
+            key={`${part}-${lighting.phase}`}
+            className={`bar-space__background bar-space__background--${part}${lighting.previous ? ' bar-space__background--enter' : ''}`}
+            src={barInterior(part, lighting.phase)}
             alt=""
             draggable={false}
             style={{ left: `${i * 40}%` }}
@@ -150,6 +161,9 @@ export function BarScene({
         ))}
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
+          const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);
+          const figureScale = s.scale * (s.occupantId === 'broadcasts' || shrinkCharacter ? 0.9 : 1);
+          const figureTop = s.y + (shrinkCharacter ? s.scale * 10 * (1 - s.y / 100) : 0);
           return (
             <div key={s.id} className="bar-space__figure" style={{ left: `${i * 10}%` }}>
               {isUnfinished(s.occupantId) ? <CharacterSilhouette /> : isBarAssetPath(composition) && (
@@ -166,21 +180,30 @@ export function BarScene({
                   style={{
                     visibility: failedImages.includes(composition) ? 'hidden' : 'visible',
                     objectPosition: `${s.x}% ${s.y}%`,
-                    width: `${s.scale * 100}%`,
-                    height: `${s.scale * 100}%`,
+                    width: `${figureScale * 100}%`,
+                    height: `${figureScale * 100}%`,
                     left: `${s.x}%`,
-                    top: `${s.y}%`,
+                    top: `${figureTop}%`,
                     transform: `translate(-${s.x}%,-${s.y}%)`,
                   }}
                 />
               )}
 
               {onPhysicalIncident && !hideIdentity && s.id===activeSlotId && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
-                <CharacterHitArea character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${s.scale*100}%`,height:`${s.scale*100}%`,left:`${s.x}%`,top:`${s.y}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
+                <CharacterHitArea character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
             </div>
           );
         })}
+        {!hideIdentity && <BarGameHotspots onAction={onAction} onSwipe={move} />}
+      {index === layout.slots.length - 1 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
+        onPointerDown={e => {e.stopPropagation(); suppressDoorClick.current = false; doorPointer.current = {x: e.clientX, y: e.clientY, moved: false}; e.currentTarget.setPointerCapture?.(e.pointerId);}}
+        onPointerMove={e => {e.stopPropagation(); const p = doorPointer.current; if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12) p.moved = true;}}
+        onPointerUp={e => {e.stopPropagation(); const p = doorPointer.current; doorPointer.current = null; if (!p) return; suppressDoorClick.current = p.moved || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12; const dx = e.clientX - p.x; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(e.clientY - p.y) * 1.3) move(dx < 0 ? 1 : -1);}}
+        onPointerCancel={() => {doorPointer.current = null; suppressDoorClick.current = true;}}
+        onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
+        onClick={() => {if (suppressDoorClick.current) {suppressDoorClick.current = false; return;} onStaffRoom(slot.id);}}/>}
+
       </div>
       {!hideIdentity && (slot.occupantId==='online'||slot.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={slot.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={()=>{if(slot.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
       <header className="bar-space__header">
@@ -263,6 +286,7 @@ export function BarScene({
             <span className="bar-avatar-dock__portrait" data-character={s.occupantId??undefined}>
               {isBarAssetPath(p?.avatar??null)?<img src={p!.avatar!} alt="" draggable={false}/>:s.occupantId==='online'?<Gamepad2 size={20} strokeWidth={1.5}/>:s.occupantId==='broadcasts'?<Tv size={20} strokeWidth={1.5}/>:s.occupantId==='news'?<Newspaper/>:<span>{p?.name.slice(0,1)??'?'}</span>}
             </span>
+            {s.occupantId && (activityCounts[s.occupantId] ?? 0) > 0 && <small className="bar-avatar-dock__badge" aria-label={`Ожидающие игры: ${activityCounts[s.occupantId]}`}>{activityCounts[s.occupantId]! > 99 ? '99+' : activityCounts[s.occupantId]}</small>}
             <span className="bar-avatar-dock__label">{p?.name??'В разработке'}</span>
           </button>;
         })}

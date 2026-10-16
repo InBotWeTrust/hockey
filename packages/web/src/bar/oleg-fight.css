@@ -11,7 +11,7 @@
   flex-direction: column;
 }
 .bar-oleg-fight .fight-stage {
-  background: url('/bar/fight/street-v2.webp') center center/cover no-repeat;
+  background: var(--bar-fight-street) center center/cover no-repeat;
 }
 .bar-oleg-status {
   display: flex;

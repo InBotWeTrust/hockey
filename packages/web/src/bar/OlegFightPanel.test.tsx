@@ -24,6 +24,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(fetchOlegFight).mockImplementation(async (id) => snapshot(id));
 });
+it('freezes street lighting through the result across a day phase boundary', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 16, 20, 59, 59));
+  const view = render(<OlegFightPanel id="one" onDone={() => {}}/>);
+  try {
+    await act(async () => {});
+    expect(document.querySelector('.bar-oleg-fight')).toHaveStyle('--bar-fight-street: url("/bar/city-v3/street-sunset-v3.webp")');
+    vi.mocked(fetchOlegFight).mockResolvedValue({...snapshot('one'), outcome: 'win'});
+    await act(async () => {await vi.advanceTimersByTimeAsync(2000);});
+    expect(screen.getByRole('img', {name: 'Олег сидит у стены бара после драки'})).toHaveAttribute('src', '/bar/city-v3/player-win-sunset-v3.webp');
+  } finally {view.unmount(); vi.useRealTimers();}
+});
 it('isolates queued commands and errors when the fight ID changes', async () => {
   let fail!: (error: Error) => void;
   vi.mocked(commandOlegFight)

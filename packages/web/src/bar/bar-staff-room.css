@@ -1,0 +1,3 @@
+.app-shell .bar-staff-room {position:fixed;inset:0;width:100%;height:100dvh;overflow:hidden;background:#22180f;}
+.app-shell .bar-staff-room > img {position:absolute;inset:0;width:100%;height:100%;max-width:none;object-fit:cover;object-position:center;}
+.bar-staff-room__back {position:absolute;left:16px;top:calc(env(safe-area-inset-top, 0px) + 16px);}
