@@ -70,3 +70,7 @@ it('adds daily and training to the neutral total and removes completed games',()
  view.rerender(<CityGamePanel entries={[{...daily,dockState:'done'},{...training,dockState:'done'}]} activeIndex={0} onActiveIndexChange={change}/>);
  expect(screen.queryByRole('button',{name:/Игры требуют действия/})).not.toBeInTheDocument();
 });
+it('does not repeat the training title in the collapsed summary',()=>{
+ render(<CityGamePanel entries={[{...entries[0]!,kind:'training',title:'Тренировка',eyebrow:'Тренировка'}]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Развернуть игры'}).textContent).toBe('Тренировка');
+});
