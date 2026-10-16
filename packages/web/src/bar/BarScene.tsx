@@ -1,6 +1,7 @@
+import { BarObjectGlow } from './BarObjectGlow.js';
 import { BarGameHotspots } from './BarGameHotspots.js';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { ChevronLeft, ChevronRight, Gamepad2, Newspaper, Tv, X } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Gamepad2, Newspaper, Tv, X } from 'lucide-react';
 import {
   barActionsFor,
   isBarAssetPath,
@@ -195,6 +196,7 @@ export function BarScene({
             </div>
           );
         })}
+        {!hideIdentity && <BarObjectGlow character={slot.occupantId} />}
         {!hideIdentity && <BarGameHotspots onAction={onAction} onSwipe={move} />}
       {index === layout.slots.length - 1 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
         onPointerDown={e => {e.stopPropagation(); suppressDoorClick.current = false; doorPointer.current = {x: e.clientX, y: e.clientY, moved: false}; e.currentTarget.setPointerCapture?.(e.pointerId);}}
@@ -206,13 +208,13 @@ export function BarScene({
 
       </div>
       {!hideIdentity && (slot.occupantId==='online'||slot.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={slot.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={()=>{if(slot.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
-      <header className="bar-space__header">
+      <header className="bar-space__header bonus-games-catalog__header">
         {onBack && (
-          <button className="icon-btn" aria-label="Назад" onClick={onBack}>
-            <ChevronLeft />
+          <button className="icon-btn catalog-header-back" aria-label="Назад" onClick={onBack}>
+            <ArrowLeft size={16} />
           </button>
         )}
-        <h1>Бар «4-й период»</h1>
+        <h1 className="bonus-games-catalog__title screen-title-on-arena">Бар «4-й период»</h1>
       </header>
       {notice && <div className="bar-space__notice">{notice}</div>}
       {preview && profile?.composition && failedImages.includes(profile.composition) && (
@@ -236,9 +238,13 @@ export function BarScene({
       >
         <ChevronRight />
       </button>
+      {!hideIdentity && slot.occupantId === 'online' && terminalOpen && <section className="bar-space__actions bar-space__actions--terminal" aria-label="Играть онлайн">
+        <div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div>
+        <BarGamesLobby embedded />
+      </section>}
       <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
-      <section ref={panel} className={`bar-space__actions${slot.occupantId === 'online' && terminalOpen ? ' bar-space__actions--terminal' : ''}`} aria-live="polite" hidden={hideIdentity}>
-        {slot.occupantId === 'online' && terminalOpen ? <><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div><BarGamesLobby embedded /></> : isUnfinished(slot.occupantId) ? (
+      <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity || terminalOpen}>
+        {isUnfinished(slot.occupantId) ? (
           <p className="bar-space__development">Персонаж в разработке</p>
         ) : profile ? (
           <BarIdentityPanel

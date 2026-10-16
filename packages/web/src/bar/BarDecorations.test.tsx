@@ -72,3 +72,14 @@ it('shows activity badges on online and character circles and removes zero count
  view.rerender(<BarScene {...props} activityCounts={{online:0}}/>);
  expect(view.container.querySelector('.bar-avatar-dock__badge')).toBeNull();
 });
+
+it('highlights only the selected character object and never the hidden door',()=>{
+ const props={layout:createDefaultBarLayout(),onSelectSlot:vi.fn(),onAction:vi.fn()};
+ const view=render(<BarScene {...props} activeSlotId="bar-1"/>);
+ expect(view.container.querySelector('[data-bar-object-glow="daria"]')).not.toBeNull();
+ expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(1);
+ view.rerender(<BarScene {...props} activeSlotId="bar-9"/>);
+ expect(view.container.querySelector('[data-bar-object-glow="igor"]')).not.toBeNull();
+ view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
+ expect(view.container.querySelector('[data-bar-object-glow]')).toBeNull();
+});
