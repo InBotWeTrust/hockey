@@ -5,11 +5,14 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { X } from 'lucide-react';
 import { BarReopeningCountdown } from './BarReopeningCountdown.js';
 import { OlegFightPanel } from './OlegFightPanel.js';
+import {useBarLighting} from './barLighting.js';
+import {barStreet} from './barArtwork.js';
 export function BarAccessGate({ children }: { children: ReactNode }) {
   const [access, setAccess] = useState<BarAccess | null>(null),
     [error, setError] = useState(false),
     [retry, setRetry] = useState(0);
   const [fightId, setFightId] = useState<string|null>(null);
+  const lighting = useBarLighting('blocked', !!access?.blockedUntil && !fightId);
   const acknowledged = useRef(new Set<string>());
   const navigate = useNavigate();
   useEffect(() => {
@@ -61,7 +64,7 @@ export function BarAccessGate({ children }: { children: ReactNode }) {
     const leave=()=>navigate('/sections', {replace:true});
     return <AccessibleModal title="«4-й период» закрыт для тебя" ariaLabel="Бар закрыт" onClose={leave}
       cardClassName="bar-oleg-result" headerAction={<button className="icon-btn" aria-label="Закрыть" onClick={leave}><X size={18}/></button>}>
-      <img src="/bar/fight/oleg-blocked-v2.webp" alt="Олег стоит у входа и не пускает в бар"/>
+      <img src={barStreet('oleg-blocked', lighting.phase)} alt="Олег стоит у входа и не пускает в бар"/>
       <p>Олег сегодня тебя больше не пустит.</p>
       <BarReopeningCountdown until={access.blockedUntil} onExpire={()=>window.dispatchEvent(new Event('bar-access-changed'))}/>
       <div className="modal-actions"><button className="btn btn--cta" onClick={leave}>Понятно</button></div>

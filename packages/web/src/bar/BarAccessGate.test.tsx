@@ -3,6 +3,7 @@ import { render, screen,fireEvent,act } from '@testing-library/react';
 import { MemoryRouter,useLocation } from 'react-router-dom';
 import { BarAccessGate } from './BarAccessGate.js';
 import { fetchBarAccess } from './olegFightApi.js';
+import {cityTimeOfDay} from '../city/lighting.js';
 vi.mock('./OlegFightPanel.js',()=>({OlegFightPanel:({onDone}:{onDone:(access:{blockedUntil:string|null;fightId:string|null})=>void})=><div>Fight result fixture<button onClick={()=>onDone({blockedUntil:'2026-10-12T00:00:00Z',fightId:null})}>Close loss</button></div>}));
 vi.mock('./olegFightApi.js', () => ({ fetchBarAccess: vi.fn() }));
 beforeEach(() => {
@@ -77,7 +78,7 @@ it('shows a blocked re-entry in a modal with Oleg at the entrance',async()=>{
  vi.mocked(fetchBarAccess).mockResolvedValue({blockedUntil:'2026-10-12T00:00:00Z',fightId:null});
  render(<MemoryRouter><BarAccessGate><p>Private bar contents</p></BarAccessGate></MemoryRouter>);
  expect(await screen.findByRole('dialog',{name:'Бар закрыт'})).toBeInTheDocument();
- expect(screen.getByRole('img',{name:'Олег стоит у входа и не пускает в бар'})).toHaveAttribute('src','/bar/fight/oleg-blocked-v2.webp');
+ expect(screen.getByRole('img',{name:'Олег стоит у входа и не пускает в бар'})).toHaveAttribute('src',`/bar/city-v3/oleg-blocked-${cityTimeOfDay(new Date())}-v3.webp`);
 });
 
 it('checks access at countdown zero and waits for server confirmation before entering',async()=>{
