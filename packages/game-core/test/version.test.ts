@@ -8,7 +8,7 @@ describe('GAME_CORE_VERSION', () => {
   });
 
   it('is bumped for ochko rules', () => {
-    expect(GAME_CORE_VERSION).toBe(98);
+    expect(GAME_CORE_VERSION).toBe(99);
   });
 });
 
@@ -18,7 +18,7 @@ describe('shot core compatibility', () => {
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 99, NaN])
+    for (const version of [77, 87, 100, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });

@@ -20,7 +20,7 @@ describe('bar layout', () => {
   });
   it('only offers available actions', () => {
     expect(barActionsFor('maria')).toEqual(['cards']);
-    expect(barActionsFor('oleg')).toEqual([]);
+    expect(barActionsFor('oleg')).toEqual(['armwrestling']);
     expect(barActionsFor('online')).toEqual(['online']);
     expect(barActionsFor('broadcasts')).toEqual(['broadcasts']);
   });
@@ -87,3 +87,4 @@ it('upgrades shipped Timofey and TV while preserving custom edits and placement'
  const custom=upgradeBarLayout(layout);
  expect(custom.profiles.timofey.role).toBe('Custom role');expect(custom.profiles.timofey.description).toBe('Custom copy');expect(custom.profiles.timofey.composition).toBe('/bar/custom.png');
 });
+it('offers Grigory his own ochko game',()=>{expect(barActionsFor('grigory')).toEqual(['ochko']);});

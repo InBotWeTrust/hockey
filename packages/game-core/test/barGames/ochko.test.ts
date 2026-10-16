@@ -11,3 +11,12 @@ describe('ochko',()=>{
  it('stands at 21, on bust, and on expiry without stealing another player time',()=>{const g=game([id(10),id(6)],[id(8),id(9)],[id(6,1)]);expect(actOchko(g,0,'hit',0).done).toEqual([true,true]);expect(advanceOchko(game([id(6),id(7)],[id(8),id(9)]),39999).done).toEqual([false,false]);expect(advanceOchko(game([id(6),id(7)],[id(8),id(9)]),40000).done).toEqual([true,true]);const twentyOne=game([id(10),id(9)],[id(8),id(9)],[id(11)]);expect(actOchko(twentyOne,0,'hit',0).done[0]).toBe(true);});
  it('rejects hit after stand and makes surrender terminal',()=>{const g=actOchko(game([id(6),id(7)],[id(8),id(9)]),0,'stand',0);expect(()=>actOchko(g,0,'hit',1)).toThrow();expect(actOchko(g,0,'surrender',1).winner).toBe(1);});
 });
+
+it('accepts an explicit private shuffle and rejects incomplete or duplicated decks',async()=>{
+ const {createOchkoFromDeck}=await import('../../src/barGames/ochko.js');
+ const deck=Array.from({length:36},(_,i)=>i);
+ const g=createOchkoFromDeck(deck,0);
+ expect(g.hands).toEqual([[35,34],[33,32]]);
+ expect(deck).toHaveLength(36);
+ expect(()=>createOchkoFromDeck([0,0],0)).toThrow();
+});
