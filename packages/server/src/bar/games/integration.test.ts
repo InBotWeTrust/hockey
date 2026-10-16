@@ -16,6 +16,7 @@ import {
   startOchkoStake,
 } from './service.js';
 import { barOchko } from '@hockey/game-core';
+import {settleOchko} from './ochkoEconomy.js';
 import * as ochkoDeck from './ochkoDeck.js';
 import { joinCardRoom } from '../durakRooms.js';
 const url = process.env.BAR_GAMES_TEST_DATABASE_URL ?? process.env.TEST_DATABASE_URL;
@@ -32,6 +33,8 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     await pool.query(
       "create table users(id uuid primary key,display_name text,avatar_url text,last_seen_at timestamptz,xp int not null default 100,experience int default 0,coins int default 0,account_kind text default 'player',blocked_at timestamptz)",
     );
+    await pool.query(`create table user_currency_account(user_id uuid primary key references users(id), balance int not null default 0, reserved_balance int not null default 0);
+      create table currency_ledger(id bigserial primary key,user_id uuid not null references users(id),reason text not null,available_delta int not null,reserved_delta int not null,balance_after int not null,reserved_after int not null,metadata jsonb not null default '{}',created_at timestamptz not null default now());`);
     for (const file of [
       '196_online_durak.sql',
       '197_durak_tables.sql',
@@ -39,12 +42,13 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       '223_bar_games_daria.sql',
       '224_bar_ochko.sql',
       '225_bar_armwrestling.sql',
+      '226_bar_ochko_history.sql',
     ])
       await pool.query(
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
       );
     // Reapply current migrations to prove their idempotence without restoring old constraints.
-    for (const file of ['224_bar_ochko.sql', '225_bar_armwrestling.sql'])
+    for (const file of ['224_bar_ochko.sql', '225_bar_armwrestling.sql', '226_bar_ochko_history.sql'])
       await pool.query(
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
       );
@@ -69,8 +73,58 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     );
     await pool.query('update users set xp=100');
     await pool.query(
-      'truncate bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
+      'truncate currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
     );
+  });
+  it('schedules character arm matches and replays three seconds ahead', async () => {
+    const before=Date.now();
+    const match=await startComputer(pool,a,'oleg',randomUUID());
+    expect(match.runtime.game.kind).toBe('armwrestling');
+    if(match.runtime.game.kind!=='armwrestling')throw Error('Expected arm');
+    expect(match.runtime.game.startedAt).toBeGreaterThanOrEqual(before+3000);
+    expect(match.runtime.game.endsAt-match.runtime.game.startedAt).toBe(60000);
+    const clock=vi.spyOn(Date,'now').mockReturnValue(match.runtime.game.startedAt-1);
+    try {
+      const waiting=await readGame(pool,a,match.id);
+      if(waiting.runtime.game.kind!=='armwrestling')throw Error('Expected arm');
+      expect(waiting.runtime.game.progress).toBe(0);
+      expect(waiting.runtime.game.stamina).toEqual([1,1]);
+      await actGame(pool,a,match.id,{requestId:randomUUID(),revision:waiting.runtime.revision,action:{type:'surrender'}});
+      const replay=await startComputer(pool,a,'oleg',randomUUID(),match.id);
+      if(replay.runtime.game.kind!=='armwrestling')throw Error('Expected arm');
+      expect(replay.runtime.game.startedAt).toBe(Date.now()+3000);
+    }finally{clock.mockRestore();}
+  });
+  it('shares one rotated 501 board between online participants and retries', async () => {
+    await queueGame(pool,a,'darts');await queueGame(pool,b,'darts');
+    const id=(await gameLobby(pool,a)).matchId!;
+    for(const user of [a,b]){
+      const view=await readGame(pool,user,id);
+      await actGame(pool,user,id,{requestId:randomUUID(),revision:view.runtime.revision,action:{type:'ready'}});
+    }
+    const stored=(await pool.query('select data from bar_game_matches where id=$1',[id])).rows[0].data;
+    let time=stored.ready.startsAt+1;
+    const clock=vi.spyOn(Date,'now').mockImplementation(()=>time);
+    try {
+      let view=await readGame(pool,a,id);
+      if(view.runtime.game.kind!=='darts')throw Error('Expected darts');
+      expect(view.runtime.game.scores).toEqual([501,501]);
+      const actor=view.runtime.game.turn===view.player?a:b;
+      for(let i=0;i<3;i++){
+        view=await readGame(pool,actor,id);
+        const input={requestId:randomUUID(),revision:view.runtime.revision,action:{type:'dart' as const,gesture:{dx:0,dy:-.5,durationMs:400}}};
+        const thrown=await actGame(pool,actor,id,input);
+        if(i===2){
+          const retry=await actGame(pool,actor,id,input);
+          const opponent=await readGame(pool,actor===a?b:a,id);
+          expect(thrown.runtime.dartRotation).toBeDefined();
+          expect(retry.runtime.dartRotation).toEqual(thrown.runtime.dartRotation);
+          expect(opponent.runtime.dartRotation).toEqual(thrown.runtime.dartRotation);
+          expect(opponent.runtime.game).toEqual(thrown.runtime.game);
+        }
+        time=thrown.runtime.animationUntil+1;
+      }
+    }finally{clock.mockRestore();}
   });
   it('persists a character game and applies concurrent retries only once', async () => {
     const view = await startComputer(pool, a, 'daria', randomUUID());
@@ -207,6 +261,10 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       startOchkoStake(pool, a, input),
     ]);
     expect(one.id).toBe(two.id);
+    const debits = await pool.query("select reason,metadata from currency_ledger where metadata->>'bar_game_match_id'=$1",[one.id]);
+    expect(debits.rows).toHaveLength(1);
+    expect(debits.rows[0]).toMatchObject({reason:'bar_ochko_stake',metadata:{stars:-50}});
+
     expect(Number((await pool.query('select xp from users where id=$1', [a])).rows[0].xp)).toBe(50);
     expect('deck' in one.runtime.game).toBe(false);
     expect(one.runtime.seed).toBe(0);
@@ -240,6 +298,23 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     expect(
       (await pool.query('select * from bar_game_stakes where match_id=$1', [one.id])).rows,
     ).toHaveLength(1);
+  });
+  it.each([[0,40,'bar_ochko_payout'],['draw',20,'bar_ochko_refund'],[1,0,null]] as const)('records settlement %s in the bank exactly once', async(winner,payout,reason)=>{
+    const offer=await proposeOchkoStake(pool,a);
+    const match=await startOchkoStake(pool,a,{requestId:randomUUID(),offerId:offer.offerId,stars:20});
+    const row=(await pool.query('select * from bar_game_matches where id=$1',[match.id])).rows[0];
+    row.data.runtime.game.winner=winner;
+    const client=await pool.connect();
+    try {
+      await client.query('begin');
+      await settleOchko(client,row,Date.now());
+      await settleOchko(client,row,Date.now());
+      await client.query('commit');
+    }catch(e){await client.query('rollback');throw e;}finally{client.release();}
+    const entries=(await pool.query("select reason,metadata from currency_ledger where metadata->>'bar_game_match_id'=$1 order by id",[match.id])).rows;
+    expect(entries).toHaveLength(payout?2:1);
+    expect(entries[0]).toMatchObject({reason:'bar_ochko_stake',metadata:{stars:-20}});
+    if(payout)expect(entries[1]).toMatchObject({reason,metadata:{stars:payout}});
   });
   it('rolls back match creation if a wager exceeds the new balance', async () => {
     const offer = await proposeOchkoStake(pool, a);

@@ -1,4 +1,5 @@
 import type { BarGameAction, barOchko } from '@hockey/game-core';
+import { useOchkoReveal } from './useResultReady.js';
 import { cardImage } from '../cards/DurakScreen.js';
 const suits = ['clubs', 'diamonds', 'hearts', 'spades'] as const;
 function Card({ id }: { id: number }) {
@@ -35,6 +36,7 @@ export function OchkoField({
   pregame?: boolean;
   send: (action: BarGameAction) => void;
 }) {
+  const revealed = useOchkoReveal(game.winner !== null, now, Math.max(...game.dealUntil));
   const other = player === 0 ? 1 : 0,
     blocked =
       pregame ||
@@ -44,17 +46,13 @@ export function OchkoField({
       now < game.dealUntil[player];
   return (
     <div className="bar-ochko-field">
-      <div className="bar-ochko-hand" aria-label="Карты соперника">
+      <div
+        className={`bar-ochko-hand${revealed ? ' bar-ochko-hand--revealed' : ''}`}
+        aria-label="Карты соперника"
+      >
         {game.hands[other].map((id, i) => (
-          <Card key={i} id={id} />
+          <Card key={i} id={game.winner !== null && !revealed ? -1 : id} />
         ))}
-      </div>
-      <div className="bar-ochko-total">
-        {pregame
-          ? ''
-          : game.winner !== null
-            ? `${game.scores[other]} : ${game.scores[player]}`
-            : `У тебя ${game.scores[player]}`}
       </div>
       <div className="bar-ochko-hand" aria-label="Твои карты">
         {game.hands[player].map((id, i) => (

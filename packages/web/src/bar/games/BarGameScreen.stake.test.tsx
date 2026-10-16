@@ -2,7 +2,9 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createMatch, type BarGameSnapshot } from '@hockey/game-core';
+import type * as ResultReadyModule from './useResultReady.js';
 import { BarGameScreen } from './BarGameScreen.js';
+vi.mock('./useResultReady.js', async (importOriginal) => ({ ...await importOriginal<typeof ResultReadyModule>(), useResultReady: () => true }));
 const views = vi.hoisted(() => ({ get: null as null | ((id: string) => BarGameSnapshot) }));
 vi.mock('./useGameMatch.js', () => ({
   useGameMatch: (id: string) => ({

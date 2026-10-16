@@ -1,3 +1,4 @@
+import { Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { BarGameSnapshot } from '@hockey/game-core';
 import { ApiError } from '../../api/apiFetch.js';
@@ -67,11 +68,16 @@ export function OchkoStake({ onStarted }: { onStarted: (view: BarGameSnapshot) =
       {offer && (
         <>
           <p className="modal-copy">
-            Григорий предлагает {formatRussianCount(offer.stars, 'звезду', 'звезды', 'звёзд')}. Твой
-            баланс: {formatRussianCount(offer.balance, 'звезда', 'звезды', 'звёзд')}.
+            Григорий предлагает{' '}
+            <span className="bar-ochko-star-value" aria-label={formatRussianCount(offer.stars, 'звезда', 'звезды', 'звёзд')}>
+              {offer.stars.toLocaleString('ru-RU')}<Star size={18} fill="currentColor" aria-hidden="true" />
+            </span>
+            <br />Твой баланс:{' '}
+            <span className="bar-ochko-star-value" aria-label={formatRussianCount(offer.balance, 'звезда', 'звезды', 'звёзд')}>
+              {offer.balance.toLocaleString('ru-RU')}<Star size={18} fill="currentColor" aria-hidden="true" />
+            </span>
           </p>
-          <label>
-            Твоя ставка
+          <div className="bar-ochko-stake-amount">
             <input
               aria-label="Ставка в звёздах"
               type="number"
@@ -83,7 +89,8 @@ export function OchkoStake({ onStarted }: { onStarted: (view: BarGameSnapshot) =
               disabled={busy || uncertain}
               onChange={(e) => setAmount(e.target.value)}
             />
-          </label>
+            <Star className="bar-ochko-stake-star" size={22} fill="currentColor" aria-hidden="true" />
+          </div>
           {!valid && <p className="modal-copy">Укажи целое число от 1 до {offer.balance}.</p>}
         </>
       )}

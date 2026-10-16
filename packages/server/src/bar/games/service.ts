@@ -14,7 +14,7 @@ import {
 } from '@hockey/game-core';
 import { cardTransaction, assertFree } from '../durakService.js';
 import { createPrivateOchko } from './ochkoDeck.js';
-import { chooseStake } from './ochkoEconomy.js';
+import { chooseStake, recordOchkoStars } from './ochkoEconomy.js';
 import { AppError } from '../../plugins/errors.js';
 import { reconcile, persist, type MatchRow } from './admission.js';
 const names = {
@@ -133,7 +133,7 @@ async function create(
     player_b: b,
     character,
     data: {
-      runtime: createMatch(kind, starter, now, character !== null, randomInt(0x100000000)),
+      runtime: createMatch(kind, starter, kind === 'armwrestling' && character ? now + 3000 : now, character !== null, randomInt(0x100000000)),
       starter,
       ready: character
         ? null
@@ -515,6 +515,7 @@ export const startOchkoStake = (
       'insert into bar_game_stakes(match_id,user_id,offer_id,amount)values($1,$2,$3,$4)',
       [row.id, user, input.offerId, input.stars],
     );
+    await recordOchkoStars(c, user, row.id, 'bar_ochko_stake', -input.stars, now);
     row.data.stake = { amount: input.stars, payout: null };
     row.data.stakeOfferId = input.offerId;
     await persist(c, row, now);

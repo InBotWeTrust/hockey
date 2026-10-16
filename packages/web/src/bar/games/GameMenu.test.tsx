@@ -205,3 +205,13 @@ it('shows the simultaneous arm inactivity warning as danger in the shared notice
  expect(screen.getByRole('status')).toHaveTextContent('Вернись к управлению, иначе поражение');
  expect(screen.getByRole('status')).toHaveAttribute('data-tone','danger');
 });
+it('uses the central timer for the three-second arm countdown', () => {
+ const v=view();v.kind='armwrestling';v.character='oleg';v.runtime=createMatch('armwrestling',0,3000,true,1);
+ const {rerender}=render(<GameTable view={v} now={0} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('timer')).toHaveTextContent('3');
+ expect(screen.getByRole('status')).toHaveTextContent('Приготовься к схватке');
+ expect(screen.getByRole('button',{name:'Давление и кисть'})).toBeDisabled();
+ rerender(<GameTable view={v} now={3000} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('timer')).toHaveTextContent('60');
+ expect(screen.getByRole('button',{name:'Давление и кисть'})).toBeEnabled();
+});

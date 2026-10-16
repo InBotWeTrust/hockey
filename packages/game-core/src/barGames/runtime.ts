@@ -14,11 +14,12 @@ export type BarGameAction =
   | { type: 'ochko-hit' | 'ochko-stand'; seq: number }
   | ({ type: 'arm-input' } & arm.ArmInput)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 8;
+export const ENGINE_VERSION = 10;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
 export const DART_IMPACT_MS = 350;
+export const DART_SPIN_MS = 1200;
 export const POOL_STROKE_MS = 800;
 const POOL_AIM_MS = 1200;
 function supportedVersion(version: number): boolean {
@@ -30,6 +31,8 @@ function supportedVersion(version: number): boolean {
     version === 5 ||
     version === 6 ||
     version === 7 ||
+    version === 8 ||
+    version === 9 ||
     version === ENGINE_VERSION
   );
 }
@@ -87,6 +90,7 @@ export interface Runtime {
   reason: 'played' | 'surrender' | 'inactivity' | 'technical' | null;
   lastDart: darts.Point | null;
   dartHits?: darts.Point[];
+  dartRotation?: {from: number; to: number; start: number; until: number};
   poolAim?: (pool.Shot & { actor: darts.Player }) | null;
   poolShot?: (pool.Shot & { cue: darts.Point }) | null;
   poolFrames: pool.Ball[][];
@@ -137,6 +141,13 @@ export function createMatch(
   if (computer && starter === 1) match.animationUntil += botPause(match);
   return match;
 }
+function spinDartboard(m: Runtime, start: number): void {
+  if (m.game.kind !== 'darts') return;
+  const from = m.game.boardAngle ?? 0;
+  const to = from + 378 + Math.floor(random(m) * 325);
+  m.game = {...m.game, boardAngle: to};
+  m.dartRotation = {from,to,start,until:start+DART_SPIN_MS};
+}
 function random(m: Runtime): number {
   m.seed = (Math.imul(1664525, m.seed) + 1013904223) >>> 0;
   return m.seed / 4294967296;
@@ -163,15 +174,19 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
       action.gesture,
       n.engineVersion >= 4 ? darts.SWIPE_GAIN : darts.LEGACY_SWIPE_GAIN,
     );
-    n.game = darts.hit(m.game, n.lastDart);
+    n.game = darts.hit(m.game, n.lastDart, n.engineVersion >= 9);
     n.feedback = {
       type: 'dart',
       actor: p,
       points: n.game.lastScore,
-      bust: n.game.lastScore > m.game.scores[p],
+      bust: n.engineVersion >= 9 ? !!n.game.lastBust : n.game.lastScore > m.game.scores[p],
     };
     n.dartHits = [...m.game.hits, n.lastDart];
     duration = DART_FLIGHT_MS + DART_IMPACT_MS;
+    if (n.engineVersion >= 9 && n.game.turn !== p && n.game.winner === null) {
+      spinDartboard(n, now + duration);
+      duration += DART_SPIN_MS;
+    }
   } else if (m.game.kind === 'checkers' && action.type === 'checkers') {
     n.game = checkers.move(m.game, action.path);
     n.feedback = {
@@ -325,7 +340,7 @@ export function advance(m: Runtime, now: number): Runtime {
         if (n.poolAim?.actor === 1) {
           n = perform(n, { ...n.poolAim, type: 'shot' }, at, false);
         } else {
-          const b = pool.bot(n.game);
+          const b = pool.bot(n.game, n.engineVersion >= 10);
           if (b.placement) n = perform(n, { type: 'place', point: b.placement }, at, false);
           n = {
             ...n,
@@ -350,7 +365,7 @@ export function advance(m: Runtime, now: number): Runtime {
           y: -Math.cos(angle) * radius + (random(copy) - 0.5) * 0.15,
         };
         if (n.engineVersion >= 5) {
-          const targetPoint = darts.botTarget(n.game.scores[1]);
+          const targetPoint = darts.rotatePoint(darts.botTarget(n.game.scores[1], n.engineVersion >= 9), n.engineVersion >= 9 ? n.game.boardAngle ?? 0 : 0);
           const imprecise = random(copy) < 0.25;
           point.x = targetPoint.x + (random(copy) - 0.5) * (imprecise ? 0.2 : 0.028);
           point.y = targetPoint.y + (random(copy) - 0.5) * (imprecise ? 0.16 : 0.025);
@@ -409,6 +424,11 @@ export function advance(m: Runtime, now: number): Runtime {
         feedback: { type: 'timeout', actor: p },
         reason: game.winner !== null ? 'played' : null,
       };
+      if (n.engineVersion >= 9 && n.game.kind === 'darts' && n.game.winner === null) {
+        spinDartboard(n, at);
+        n.animationUntil += DART_SPIN_MS;
+        n.deadline += DART_SPIN_MS;
+      }
       if (n.computer && game.turn === 1 && (n.engineVersion === 1 || game.winner === null))
         n.animationUntil += n.engineVersion === 1 ? 900 : botPause(n);
       n.deadline += duration;

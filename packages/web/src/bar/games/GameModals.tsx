@@ -1,5 +1,4 @@
-import { formatRussianCount } from '../../lib/russianPlural.js';
-import { X } from 'lucide-react';
+import { Star, X } from 'lucide-react';
 import type { BarGameId, BarGameSnapshot } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { gameArt, gameCopy, gameNames, characterNames, rules, timerRules } from './content.js';
@@ -65,12 +64,6 @@ export function GameResult({
         )}
         alt={`${title}: ${view.character ? characterNames[view.character] : gameNames[view.kind]}`}
       />
-      {view.stake && (
-        <p className="modal-copy">
-          Ставка: {formatRussianCount(view.stake.amount, 'звезда', 'звезды', 'звёзд')} · Возврат:{' '}
-          {formatRussianCount(view.stake.payout ?? 0, 'звезда', 'звезды', 'звёзд')}
-        </p>
-      )}
       {reason && <p className="modal-copy">{reason}</p>}
       <p className="modal-copy">
         {view.character
@@ -83,6 +76,12 @@ export function GameResult({
               ? 'Ты выиграл эту партию.'
               : 'Соперник выиграл эту партию.'}
       </p>
+      {outcome !== 'draw' && view.stake && view.stake.payout !== null && (
+        <div className="bar-ochko-earned" data-loss={view.stake.payout < view.stake.amount} aria-label="Изменение баланса звёзд">
+          <Star size={24} fill="currentColor" aria-hidden="true" />
+          <strong>{view.stake.payout > view.stake.amount ? '+' : view.stake.payout < view.stake.amount ? '−' : ''}{Math.abs(view.stake.payout - view.stake.amount)}</strong>
+        </div>
+      )}
       <div className="modal-actions">
         {view.character ? (
           <>

@@ -22,41 +22,28 @@ export function ArmwrestlingField({
 }) {
   const c = useArmControls({
     seq: game.lastSeq[player],
-    disabled: disabled || pregame || game.winner !== null,
+    disabled: disabled || pregame || game.winner !== null || now < game.startedAt,
     send,
   });
-  const other = player === 0 ? 1 : 0;
 
-  const pressing = c.input.pressing && !disabled;
+  const controlsDisabled = disabled || game.winner !== null || now < game.startedAt;
+  const pressing = c.input.pressing && !controlsDisabled;
   const wrist = { straight: 'Прямо', inside: 'Внутрь', outside: 'Наружу' }[c.input.wrist];
   return (
     <div className="bar-arm-field" data-pressing={pressing}>
-      <div className="bar-arm-stamina">
-        {([player, other] as const).map((p, i) => (
-          <label key={p}>
-            {i === 0 ? 'Твоя выносливость' : 'Соперник'}
-            <meter
-              role="meter"
-              min={0}
-              max={1}
-              value={game.stamina[p]}
-              aria-label={i === 0 ? 'Твоя выносливость' : 'Выносливость соперника'}
-            />
-          </label>
-        ))}
-      </div>
       <ArmScene
         progress={game.progress}
         player={player}
-        supportHeld={c.input.supportHeld}
+        supportHeld={c.input.supportHeld && !controlsDisabled}
         character={character}
+        stamina={game.stamina[player]}
       />
-      {!pregame && game.winner === null && (
+      {!pregame && (
         <div className="bar-arm-controls">
           <button
             className="bar-arm-support"
             aria-label="Опора свободной руки"
-            disabled={disabled}
+            disabled={controlsDisabled}
             {...c.supportHandlers}
             style={{ '--support': c.input.support } as CSSProperties}
           >
@@ -67,7 +54,7 @@ export function ArmwrestlingField({
           <button
             className="bar-arm-pressure"
             aria-label="Давление и кисть"
-            disabled={disabled}
+            disabled={controlsDisabled}
             {...c.pressureHandlers}
             data-held={pressing}
           >

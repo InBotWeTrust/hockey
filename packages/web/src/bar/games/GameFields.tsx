@@ -28,6 +28,7 @@ export function DartsField({
   game,
   lastDart,
   dartHits,
+  rotation,
   engineVersion = 4,
   animationStart = 0,
   now = Infinity,
@@ -37,12 +38,17 @@ export function DartsField({
   game: barDarts.Game;
   lastDart: barDarts.Point | null;
   dartHits?: barDarts.Point[] | undefined;
+  rotation?: Runtime['dartRotation'];
   engineVersion?: number;
   animationStart?: number;
   now?: number;
   disabled: boolean;
   send: Send;
 }) {
+  const spinning = !!rotation && now >= rotation.start && now < rotation.until;
+  const angle = rotation && now < rotation.until
+    ? rotation.from + (rotation.to - rotation.from) * Math.max(0, Math.min(1, (now-rotation.start)/(rotation.until-rotation.start)))
+    : game.boardAngle ?? 0;
   const elapsed = Math.max(0, now - animationStart);
   const flightClock = useRef({ start: animationStart, delay: elapsed });
   if (flightClock.current.start !== animationStart)
@@ -62,7 +68,7 @@ export function DartsField({
     y: Math.max(-1.25, Math.min(1.25, p.y)),
   });
   const landing = lastDart ? visiblePoint(lastDart) : null;
-  const visibleHits = (flying ? hits.slice(0, -1) : hits).map(visiblePoint);
+  const visibleHits = (spinning ? [] : flying ? hits.slice(0, -1) : hits).map(visiblePoint);
   const start = useRef<{ x: number; y: number; time: number; id: number } | null>(null);
   const release = (e: PointerEvent<HTMLDivElement>) => {
     const s = start.current;
@@ -102,6 +108,7 @@ export function DartsField({
             <stop offset="1" stopColor="#151c1b" />
           </radialGradient>
         </defs>
+        <g className="bar-dartboard-rotor" transform={`rotate(${angle} 150 150)`}>
         <circle cx="150" cy="150" r="140" fill="url(#dart-rim)" stroke="#b8aa82" strokeWidth="2" />
         {numbers.map((n, i) => (
           <g key={n}>
@@ -146,6 +153,7 @@ export function DartsField({
           stroke="#b8b294"
           strokeWidth=".7"
         />
+        </g>
         {impacting && landing && (
           <g
             key={animationStart}
@@ -211,7 +219,7 @@ export function DartsField({
       </svg>
       {engineVersion >= 4 && (
         <DartsAimControl
-          disabled={disabled || flying}
+          disabled={disabled || flying || spinning}
           throwAt={(p) => {
             const dy = (-(1.6 - p.y) / barDarts.SWIPE_GAIN) * 400;
             send({ type: 'dart', gesture: { dx: (p.x / 1.4) * -dy, dy, durationMs: 400 } });

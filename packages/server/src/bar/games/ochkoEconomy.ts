@@ -23,6 +23,26 @@ export async function settleOchko(c: PoolClient, row: MatchRow, now: number): Pr
   if (!rows[0]) return;
   const amount = Number(rows[0].amount),
     payout = ochkoPayout(amount, winner);
-  if (payout) await c.query('update users set xp=xp+$2 where id=$1', [rows[0].user_id, payout]);
+  if (payout) {
+    await c.query('update users set xp=xp+$2 where id=$1', [rows[0].user_id, payout]);
+    await recordOchkoStars(c, rows[0].user_id, row.id,
+      multiplier === 2 ? 'bar_ochko_payout' : 'bar_ochko_refund', payout, now);
+  }
   row.data.stake = { amount, payout };
+}
+
+export async function recordOchkoStars(
+  c: PoolClient, userId: string, matchId: string,
+  reason: 'bar_ochko_stake' | 'bar_ochko_payout' | 'bar_ochko_refund',
+  stars: number, now: number,
+): Promise<void> {
+  await c.query(
+    `insert into currency_ledger
+      (user_id,reason,available_delta,reserved_delta,balance_after,reserved_after,metadata,created_at)
+     values ($1,$2,0,0,
+       coalesce((select balance from user_currency_account where user_id=$1),0),
+       coalesce((select reserved_balance from user_currency_account where user_id=$1),0),
+       $3::jsonb,$4)`,
+    [userId,reason,JSON.stringify({stars,bar_game_match_id:matchId,game:'ochko'}),new Date(now)],
+  );
 }

@@ -10,6 +10,7 @@ import { GameMenu } from './GameMenu.js';
 import { gameApi } from './api.js';
 import { GameHelp, GameResult, gameClose } from './GameModals.js';
 import { DartsField, CheckersField, PoolField } from './GameFields.js';
+import { useResultReady } from './useResultReady.js';
 import { useGameMatch } from './useGameMatch.js';
 import './games.css';
 export function BarGameScreen() {
@@ -24,6 +25,13 @@ export function BarGameScreen() {
   const [replayRequest, setReplayRequest] = useState(() => crypto.randomUUID());
   const back = () => navigate('/bar', { replace: true });
   const view = match.view;
+  const resultReady = useResultReady(
+    id,
+    view?.kind,
+    view?.runtime.game.winner !== null && !!view,
+    match.now,
+    view?.runtime.animationUntil ?? 0,
+  );
   useEffect(() => {
     setHelp(false);
     setExit(false);
@@ -101,12 +109,9 @@ export function BarGameScreen() {
               </div>
             </AccessibleModal>
           )}
-          {!view.ready &&
-            !stakeOpen &&
-            view.runtime.game.winner !== null &&
-            match.now >= view.runtime.animationUntil && (
-              <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
-            )}
+          {!view.ready && !stakeOpen && view.runtime.game.winner !== null && resultReady && (
+            <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
+          )}
           {stakeOpen && <CharacterLaunch character="grigory" close={() => setStakeOpen(false)} />}
           {help && <GameHelp kind={view.kind} close={() => setHelp(false)} />}
           {exit && (
@@ -198,6 +203,7 @@ export function GameTable({
             game={game}
             lastDart={m.lastDart}
             dartHits={m.dartHits}
+            rotation={m.dartRotation}
             engineVersion={m.engineVersion}
             animationStart={m.animationStart}
             now={now}

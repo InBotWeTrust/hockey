@@ -1,71 +1,48 @@
-import { useId, useState } from 'react';
-export const armFrames = [
-  'arm-pose-left-pin',
-  'arm-pose-left-half',
-  'arm-coherent-neutral',
-  'arm-pose-right-half',
-  'arm-pose-right-pin',
-] as const;
-export function armFrame(progress: number, player: 0 | 1): number {
-  const p = progress * (player === 0 ? 1 : -1);
-  return p >= 0.999 ? 0 : p > 0.22 ? 1 : p <= -0.999 ? 4 : p < -0.22 ? 3 : 2;
-}
+import type { CSSProperties } from 'react';
 export function ArmScene({
   progress,
   player,
   supportHeld,
   character,
+  stamina = 1,
 }: {
   progress: number;
   player: 0 | 1;
   supportHeld: boolean;
   character: boolean;
+  stamina?: number;
 }) {
-  const mask = useId(),
-    soft = useId();
-  const [loaded, setLoaded] = useState<Set<number>>(() => new Set());
-  const desired = armFrame(progress, player),
-    current = loaded.has(desired) ? desired : 2;
+  const advantage = Math.max(-1, Math.min(1, progress * (player === 0 ? 1 : -1)));
+  const fatigue = 1 - Math.max(0, Math.min(1, stamina));
   return (
-    <svg
-      className="bar-arm-scene"
-      viewBox={character ? '0 0 1024 1536' : '0 500 1024 1036'}
-      preserveAspectRatio="xMidYMin slice"
-      role="img"
-      aria-label="Стол для армрестлинга"
-      data-direction={progress * (player === 0 ? 1 : -1) > 0 ? 'left' : 'right'}
-    >
-      <defs>
-        <filter id={soft}>
-          <feGaussianBlur stdDeviation="2" />
-        </filter>
-        <mask id={mask}>
-          <path
-            d="M 0 1015 L 175 1015 L 215 1130 L 140 1270 L 105 1536 L 0 1536 Z"
-            fill="white"
-            filter={`url(#${soft})`}
-          />
-        </mask>
-      </defs>
-      {armFrames.map((frame, index) => (
-        <image
-          key={frame}
-          className="bar-arm-pose"
-          href={`/bar/games/${frame}-v1.webp`}
-          width="1024"
-          height="1536"
-          opacity={index === current ? 1 : 0}
-          onLoad={() => setLoaded((old) => new Set([...old, index]))}
+    <div className="bar-arm-static-scene">
+      <svg
+        className="bar-arm-scene"
+        viewBox={character ? '0 0 1024 1536' : '0 500 1024 1036'}
+        preserveAspectRatio="xMidYMid slice"
+        role="img"
+        aria-label="Сцепленные правые руки, левые руки держат опоры"
+      >
+        <image href="/bar/games/arm-coherent-neutral-v2.webp" width="1024" height="1536" />
+        <circle
+          className="bar-arm-grip-pulse"
+          data-support-held={supportHeld}
+          style={{
+            '--grip-duration': `${1200 - fatigue * 900}ms`,
+            '--grip-opacity': .16 + fatigue * .29,
+            '--grip-scale': 1.01 + fatigue * .09,
+          } as CSSProperties}
+          cx="105" cy="1115" r="84"
+          fill="none" stroke="currentColor" strokeWidth="7"
         />
-      ))}
-      <image
-        className="bar-arm-support-sprite"
-        href="/bar/games/arm-coherent-loose-v1.webp"
-        width="1024"
-        height="1536"
-        mask={`url(#${mask})`}
-        opacity={supportHeld ? 0 : 1}
-      />
-    </svg>
+      </svg>
+      <div className="bar-arm-progress" role="meter" aria-label="Ход борьбы"
+        aria-valuemin={-1} aria-valuemax={1} aria-valuenow={advantage}
+        aria-valuetext={advantage > 0 ? 'Твоё преимущество' : advantage < 0 ? 'Преимущество соперника' : 'Равная борьба'}>
+        <span className="bar-arm-progress__rail" />
+        <span className="bar-arm-progress__center" />
+        <span className="bar-arm-progress__marker" data-arm-marker style={{left:`${50 - advantage * 45}%`}} />
+      </div>
+    </div>
   );
 }

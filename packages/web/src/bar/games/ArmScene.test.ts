@@ -1,9 +1,30 @@
-import { expect, it } from 'vitest';
-import { armFrame } from './ArmScene.js';
-it('uses left-side artwork for viewer progress and pins only at the end', () => {
-  expect(armFrame(0, 0)).toBe(2);
-  expect(armFrame(0.6, 0)).toBe(1);
-  expect(armFrame(1, 0)).toBe(0);
-  expect(armFrame(-1, 0)).toBe(4);
-  expect(armFrame(-1, 1)).toBe(0);
+import {createElement} from 'react';
+import {cleanup,render,screen} from '@testing-library/react';
+import {afterEach,expect,it} from 'vitest';
+import {ArmScene} from './ArmScene.js';
+afterEach(cleanup);
+it('keeps one scene and moves viewer advantage left',()=>{
+ const props={progress:0,player:0 as const,supportHeld:false,character:true};
+ const {container,rerender}=render(createElement(ArmScene,props));
+ const image=container.querySelector('image')!;
+ const source=image.getAttribute('href');
+ expect(container.querySelectorAll('image')).toHaveLength(1);
+ expect(screen.getByRole('meter',{name:'Ход борьбы'})).toHaveAttribute('aria-valuenow','0');
+ rerender(createElement(ArmScene,{...props,progress:1,supportHeld:true}));
+ expect(image.getAttribute('href')).toBe(source);
+ expect(container.querySelector('[data-arm-marker]')).toHaveStyle({left:'5%'});
+ expect(container.querySelector('[data-support-held]')).toHaveAttribute('data-support-held','true');
+ rerender(createElement(ArmScene,{...props,progress:1,player:1}));
+ expect(container.querySelector('[data-arm-marker]')).toHaveStyle({left:'95%'});
+});
+it('makes the pale grip pulse faster and stronger as stamina drains',()=>{
+ const props={progress:0,player:0 as const,supportHeld:true,character:true};
+ const {container,rerender}=render(createElement(ArmScene,{...props,stamina:1}));
+ const pulse=container.querySelector<SVGElement>('[data-support-held]')!;
+ const duration=parseFloat(pulse.style.getPropertyValue('--grip-duration'));
+ const opacity=parseFloat(pulse.style.getPropertyValue('--grip-opacity'));
+ rerender(createElement(ArmScene,{...props,stamina:0}));
+ expect(parseFloat(pulse.style.getPropertyValue('--grip-duration'))).toBeLessThan(duration);
+ expect(parseFloat(pulse.style.getPropertyValue('--grip-opacity'))).toBeGreaterThan(opacity);
+ expect(parseFloat(pulse.style.getPropertyValue('--grip-opacity'))).toBeLessThan(.5);
 });

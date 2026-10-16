@@ -9,23 +9,18 @@ Generated with the built-in image tool, then resized/compressed with Sharp. Sour
 - Grigory identity: approved bar/emotions/grigory/neutral-v1.webp, then corrected frontal invitation. All new result scenes require an upright frontal head and direct gaze. Player win means Grigory has lost: disappointed, no smile; player loss means Grigory happy; draw is neutral.
 - Oleg identity: approved bar/emotions/oleg/neutral-v1.webp and armwrestling invitation. Player win means Oleg disappointed; player loss means Oleg delighted; draw neutral/tired.
 - Online results: subject-only hockey pub card/armwrestling tables, no people, brighter victory, subdued defeat, balanced draw. No award is issued for online matches.
-- Arm scene: one coherent portrait 2:3 image with Oleg seated opposite, right elbow planted on table, clasped working hands, player forearm continuing out of lower right edge. Player left hand on left support handle; Oleg left hand on right handle connected to shoulder above tabletop. Pose edits keep background/body/support hands and change working arms toward left/right. Relaxed-hand edit changes only player support grip.
-- The rejected cutout assembly is not included. Final scene uses five coherent pose frames plus a masked relaxed-hand variant. Its current limitation is stepped pose interpolation (180 ms crossfade), not continuous skeletal animation. Viewer advantage moves left; defeat right.
+- Arm scene: one coherent portrait 2:3 image with Oleg seated opposite, right elbow planted on table, clasped working hands, player forearm continuing out of lower right edge. Player left hand on left support handle; Oleg left hand on right handle connected to shoulder above tabletop. The image remains static; the struggle is shown by a separate horizontal meter and support grip pulse.
+- One static coherent scene is used. The centered marker moves left for viewer advantage and right for opponent advantage. Only the support-grip pulse and marker move; result artwork remains separate.
 
 ## Asset budget and cache
 
-20 versioned WebP assets, approximately 1.6 MiB in total; active arm scene preloads approximately 316 KiB. Existing nginx image policy: public max-age=2592000, stale-while-revalidate=86400. New URLs have v1 suffix; no previously deployed asset URL is overwritten. Public images are loaded on demand rather than added to the PWA precache.
+Unused pose variants removed; the active arm scene loads only the neutral WebP (approximately 56 KiB). Existing nginx image policy: public max-age=2592000, stale-while-revalidate=86400. New URLs have v1 suffix; no previously deployed asset URL is overwritten. Public images are loaded on demand rather than added to the PWA precache.
 
 ## Asset inventory
 
 | File | Dimensions | KiB | Source PNG |
 | --- | --- | ---: | --- |
-| arm-coherent-loose-v1.webp | 640 x 960 | 51 | exec-f4367cc1-80a8-464d-8186-0ab0872ae3e8.png |
 | arm-coherent-neutral-v1.webp | 640 x 960 | 56 | exec-de025b57-7235-47c3-a09c-a433817edf81.png |
-| arm-pose-left-half-v1.webp | 640 x 960 | 53 | exec-e665c7ec-7ff2-4283-8153-18a4ed56c744.png |
-| arm-pose-left-pin-v1.webp | 640 x 960 | 50 | exec-e09058fc-6e07-43bb-b1b6-116b3ac5f3d8.png |
-| arm-pose-right-half-v1.webp | 640 x 960 | 53 | exec-0346dcd2-dcb0-42ff-b8c9-28bba9cc4c84.png |
-| arm-pose-right-pin-v1.webp | 640 x 960 | 53 | exec-6a241a5b-e413-49db-b2f5-7ae3dafee3a0.png |
 | armwrestling-character-draw-v1.webp | 960 x 640 | 54 | exec-da4da8bd-fb81-4f48-8a85-2d1c5e4cd557.png |
 | armwrestling-character-loss-v1.webp | 960 x 640 | 50 | exec-0b57111f-f73d-4aab-a991-6463440b4b22.png |
 | armwrestling-character-win-v1.webp | 960 x 640 | 51 | exec-99b0548a-9fcc-48ff-9ffc-c36582634b37.png |
@@ -59,3 +54,11 @@ Generated with the built-in image tool, then resized/compressed with Sharp. Sour
 - Arm input sequences are per player; stale global revision does not reject independent inputs. Surrender accepts older heartbeat revision but rejects a future revision.
 - Modal overlays release arm controls, without pausing the match clock. Network request timeout 1000 ms; server input TTL 750 ms.
 - Bot policies stay in the shared runtime to keep server and local preview behavior aligned.
+
+### Grigory table scene
+
+`ochko-grigory-table-v1.webp`: generated with built-in imagegen from ochko-invite-v1.webp, preserving the forward-facing character. Empty felt allows live cards; 768x1152 WebP, 84,570 bytes. Scoped to Grigory character matches; online keeps its existing table. Visually inspected in the local gameplay preview.
+
+### Bent player arm
+
+`arm-coherent-neutral-v2.webp`: imagegen edit of neutral v1, source exec-1eb1f4c6-f216-44c8-84eb-23d3477b74f6.png. Player elbow rests on the nearer red pad, visibly bent with a steeper forearm; static scene and other character details retained. Runtime uses the new versioned URL.
