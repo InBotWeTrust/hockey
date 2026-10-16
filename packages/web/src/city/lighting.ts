@@ -6,13 +6,11 @@ export function cityTimeOfDay(date: Date): CityTimeOfDay {
  if (hour >= 10 && hour < 18) return 'day';
  return hour >= 18 && hour < 21 ? 'sunset' : 'night';
 }
-// One approved panorama is temporarily shared by every lighting phase.
-const approvedImage = ['/maps/city-approved-4096-c22b8b605dce.webp', '/maps/city-approved-6144-019d2f29903d.webp'] as const;
 const images = {
- morning: approvedImage,
- day: approvedImage,
- sunset: approvedImage,
- night: approvedImage,
+ morning: ['/maps/city-morning-4096-6c51c36a5e7c.webp', '/maps/city-morning-6144-827e19348fd3.webp'],
+ day: ['/maps/city-day-4096-76504717105e.webp', '/maps/city-day-6144-dfce58fc1431.webp'],
+ sunset: ['/maps/city-sunset-4096-feaa739ef876.webp', '/maps/city-sunset-6144-ec5c4b307955.webp'],
+ night: ['/maps/city-night-4096-658017a820ba.webp', '/maps/city-night-6144-32a760b2628a.webp'],
 } as const;
 export function cityImage(date: Date, pixelRatio: number): string {
  return images[cityTimeOfDay(date)][pixelRatio > 1.5 ? 1 : 0];
