@@ -46,7 +46,7 @@ export interface BarLayoutSnapshot {
   layout: BarLayout;
 }
 export const barActionsFor = (id: BarOccupantId | null): BarAction[] =>
-  id === 'maria' ? ['cards']
+  id === 'maria' || id === 'grigory' ? ['cards']
     : id === 'daria' ? ['darts']
       : id === 'veronika' ? ['billiards']
         : id === 'arsenich' ? ['checkers']

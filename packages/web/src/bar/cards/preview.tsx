@@ -1,3 +1,4 @@
+import {installStaffRoomPreview} from '../previewStaffRoom.js';
 import { installBarLayoutPreview } from '../previewLayout.js';
 import { installConversationPreview } from '../previewConversation.js';
 import { BarAdmin } from '../../admin/BarAdmin.js';
@@ -119,6 +120,7 @@ if (invitationDemo || computerDemo || readinessDemo) {
 installRoomPreview();
 installBarLayoutPreview();
 installConversationPreview();
+installStaffRoomPreview();
 function PreviewChrome() {
   const route = useLocation();
   return invitationDemo ? (
