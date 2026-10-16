@@ -11,7 +11,9 @@ export function installStaffRoomPreview(){
   const url=new URL(typeof input==='string'?input:input instanceof URL?input.href:input.url,location.origin);
   const state=read();
   if(url.pathname.endsWith('/bar/staff-room')){
-   if(new URLSearchParams(location.search).get('office-preview')==='1')return Response.json({phase:'empty'});
+   const officePreview=new URLSearchParams(location.search).get('office-preview');
+   if(officePreview==='scene-1'||officePreview==='scene-2')return Response.json({phase:'scene'});
+   if(officePreview==='1')return Response.json({phase:'empty'});
    const body=JSON.parse(String(init?.body));
    if(state.outcome==='win')return Response.json({phase:'empty'});
    if(state.outcome==='loss')return Response.json({error:{code:'bar_closed',message:'На сегодня бар закрыт для тебя.'}},{status:403});
@@ -20,13 +22,13 @@ export function installStaffRoomPreview(){
     if(!state.warned&&(!state.entries[body.entryId]||Date.now()-state.entries[body.entryId]!<3000))return Response.json({error:{code:'staff_room_not_ready',message:'Дождись трёх секунд.'}},{status:409});
     state.warned=true;state.warningId=body.entryId;save(state);return Response.json({phase:'warning'});
    }
-   if(state.warned){state.fight=true;save(state);fight??=createFightState(DEFAULT_FIGHT_RULES,Date.now()+500);return Response.json({phase:'fight',fightId:'staff-room-demo-fight'});}
+   if(state.warned){state.fight=true;save(state);fight??=createFightState({...DEFAULT_FIGHT_RULES,initialHpByPlayer:[5,10],guardUnitsByPlayer:[3,5]},Date.now()+500);return Response.json({phase:'fight',fightId:'staff-room-demo-fight'});}
    state.entries[body.entryId]??=Date.now();save(state);return Response.json({phase:'scene',entryId:body.entryId});
   }
   if(url.pathname.endsWith('/bar/conversations/oleg')&&init?.method!=='POST'&&state.warned)return Response.json({greeting:'',revision:1,pending:false,turns:[{id:state.warningId,user:'',assistant:'Это кабинет директора. Без приглашения сюда не заходят. В следующий раз выведу тебя сам.',createdAt:new Date().toISOString(),speaker:'oleg',intervention:'staff-room',emotion:'displeasure'}]});
   if(url.pathname.includes('/bar/fights/staff-room-demo-fight')){
    if(url.pathname.endsWith('/acknowledge')){state.fight=false;save(state);return Response.json({blockedUntil:state.outcome==='loss'?new Date(Date.now()+3600000).toISOString():null,fightId:null});}
-   fight??=createFightState(DEFAULT_FIGHT_RULES,Date.now()+500);
+   fight??=createFightState({...DEFAULT_FIGHT_RULES,initialHpByPlayer:[5,10],guardUnitsByPlayer:[3,5]},Date.now()+500);
    const now=Date.now();let commands:FightCommand[]=[];
    if(init?.method==='POST'){
     const body=JSON.parse(String(init.body));
