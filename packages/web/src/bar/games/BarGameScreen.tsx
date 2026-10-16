@@ -28,6 +28,7 @@ export function BarGameScreen() {
     setHelp(false);
     setExit(false);
     setReplaying(false);
+    setStakeOpen(false);
     setReplayRequest(crypto.randomUUID());
   }, [id]);
   useEffect(() => {

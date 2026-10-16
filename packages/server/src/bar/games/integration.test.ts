@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  tickGames,
   startComputer,
   actGame,
   readGame,
@@ -155,6 +156,46 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       }),
     ).rejects.toMatchObject({ statusCode: 409 });
     expect((await readGame(pool, a, view.id)).runtime.game.winner).toBeNull();
+  });
+  it('finishes new character games through scheduled ticks without client reads', async () => {
+    const offer = await proposeOchkoStake(pool, a);
+    const paid = await startOchkoStake(pool, a, {
+      requestId: randomUUID(),
+      offerId: offer.offerId,
+      stars: 20,
+    });
+    const arm = await startComputer(pool, b, 'oleg', randomUUID());
+    const deadlines = await pool.query(
+      "select data->'runtime'->>'deadline' as deadline from bar_game_matches where id=any($1::uuid[])",
+      [[paid.id, arm.id]],
+    );
+    expect(
+      deadlines.rows.every((row) => Number.isFinite(Number(row.deadline)) && row.deadline !== null),
+    ).toBe(true);
+    const future = Date.now() + 70000;
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(future);
+    try {
+      await tickGames(pool);
+      const ended = await pool.query(
+        'select ended_at from bar_game_matches where id=any($1::uuid[])',
+        [[paid.id, arm.id]],
+      );
+      expect(ended.rows.every((row) => row.ended_at !== null)).toBe(true);
+      const stake = (
+        await pool.query('select payout from bar_game_stakes where match_id=$1', [paid.id])
+      ).rows[0];
+      expect(stake.payout).not.toBeNull();
+      const balance = Number(
+        (await pool.query('select xp from users where id=$1', [a])).rows[0].xp,
+      );
+      expect(balance).toBe(80 + Number(stake.payout));
+      await tickGames(pool);
+      expect(Number((await pool.query('select xp from users where id=$1', [a])).rows[0].xp)).toBe(
+        balance,
+      );
+    } finally {
+      clock.mockRestore();
+    }
   });
   it('creates a paid game once under concurrent retries and never pays twice', async () => {
     const offer = await proposeOchkoStake(pool, a),

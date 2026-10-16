@@ -5,9 +5,9 @@ Environment: isolated local feature/bar-ochko-armwrestling checkout, base origin
 | Check | Result |
 | --- | --- |
 | game-core barGames/layout/version | PASS, 72 tests |
-| web games/cards/BarScene/BarPanorama | PASS, 217 tests |
+| web games/cards/BarScene/BarPanorama | PASS, 218 tests |
 | server games routes/service/economy | PASS, 17 tests |
-| PostgreSQL isolated schema | PASS, 15 integration tests |
+| PostgreSQL isolated schema | PASS, 16 integration tests |
 | core build | PASS |
 | pnpm typecheck | PASS |
 | pnpm lint | PASS |
@@ -35,3 +35,5 @@ Integration execution loads the root test environment and verifies that BAR_GAME
 The broad web bar pass exposed two obsolete assertions already inconsistent with the base implementation (Maria assigned darts; Veronika had no games). Updated those assertions to the existing shipped assignments; production behavior was not changed to satisfy them.
 
 The arm scene uses five coherent poses with brief transitions, rather than arbitrary skeletal deformation. This is a visual limitation to review locally. Physical gesture sensitivity, real network behavior and two-client acceptance remain separate from these tests.
+
+Final review: paid replay modal persistence reproduced with a failing navigation regression, fixed by resetting its visibility on match-id change; regression and 218 targeted web tests pass. Scheduler finding declined: persisted runtimes already expose deadline; a direct tickGames integration test, without readGame reconciliation, proves both new games finish and paid settlement is applied once. All 16 isolated PostgreSQL tests pass. Root typecheck rerun passes.
