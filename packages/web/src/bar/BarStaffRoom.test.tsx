@@ -28,6 +28,8 @@ it('waits for the room image and three seconds then opens Oleg chat',async()=>{
  expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
  fireEvent.load(screen.getByAltText('Элина — второй кадр'));
  expect(view.container.querySelector('main')).toHaveAttribute('data-staff-room-pose','first');
+ expect(screen.getByAltText('Элина — первый кадр')).toHaveAttribute('src','/bar/city-v3/elina-office-frame-2-v2.webp');
+ expect(screen.getByAltText('Элина — второй кадр')).toHaveAttribute('src','/bar/city-v3/elina-office-frame-1-v2.webp');
  await act(async()=>vi.advanceTimersByTimeAsync(1000));
  expect(view.container.querySelector('main')).toHaveAttribute('data-staff-room-pose','second');
  await act(async()=>vi.advanceTimersByTimeAsync(1999));

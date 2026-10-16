@@ -1,3 +1,6 @@
+import {BarIdentityPanel} from './BarIdentityPanel.js';
+import {createDefaultBarLayout} from '@hockey/game-core';
+import {BarAvatarDock} from './BarAvatarDock.js';
 import {ArrowLeft} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import {useNavigate} from 'react-router-dom';
@@ -8,6 +11,7 @@ import './bar-staff-room.css';
 
 export function BarStaffRoom() {
  const navigate=useNavigate();
+ const previewPose=import.meta.env.DEV&&window.location.pathname.endsWith('/durak-preview.html')?new URLSearchParams(window.location.search).get('office-preview'):null;
  const [attempt,setAttempt]=useState(0);
  const [state,setState]=useState<StaffRoomState|null>(null);
  const [error,setError]=useState(false);
@@ -37,11 +41,12 @@ export function BarStaffRoom() {
  useEffect(()=>{
   if(state?.phase==='warning'){showOleg();return;}
   if(state?.phase!=='scene'||!roomLoaded||!framesLoaded.every(Boolean)||warning)return;
+  if(previewPose==='scene-1'||previewPose==='scene-2'){setPose(previewPose==='scene-1'?'first':'second');return;}
   setPose('first');
   const reaction=setTimeout(()=>setPose('second'),1000);
   const timer=setTimeout(()=>void warnRef.current(),3000);
   return()=>{clearTimeout(reaction);clearTimeout(timer);};
- },[state?.phase,roomLoaded,framesLoaded,warning]);
+ },[state?.phase,roomLoaded,framesLoaded,warning,previewPose]);
  const back=()=>{
   active.current=false;
   if(!warnPending.current)void staffRoomEvent('leave',entry.current).catch(()=>{});
@@ -56,12 +61,13 @@ export function BarStaffRoom() {
  return <main className="bar-staff-room" aria-label="Кабинет директора" data-staff-room-phase={warning?'warning':state?.phase??'loading'} data-staff-room-pose={!warning&&state?.phase==='scene'?pose:undefined}>
   <picture className="bar-staff-room__background">
    <source media="(orientation:landscape)" srcSet="/bar/city-v3/director-office-wide-v1.webp"/>
-   <img src="/bar/city-v3/director-office-portrait-v1.webp" alt="Кабинет директора: книжные полки, рабочий стол и свободное место в центре" draggable={false} onLoad={()=>setRoomLoaded(true)} onError={()=>setError(true)}/>
+   <img src="/bar/city-v3/director-office-portrait-v2.webp" alt="Кабинет директора: книжные полки, рабочий стол и свободное место в центре" draggable={false} onLoad={()=>setRoomLoaded(true)} onError={()=>setError(true)}/>
   </picture>
   {state?.phase==='scene'&&<div className="bar-staff-room__elina" data-pose={pose}>
-   {[1,2].map((frame,index)=><img key={frame} className={`bar-staff-room__frame bar-staff-room__frame--${frame}`} src={`/bar/city-v3/elina-office-frame-${frame}-v1.webp`} alt={`Элина — ${frame===1?'первый':'второй'} кадр`} draggable={false} onLoad={()=>setFramesLoaded(previous=>previous[index]?previous:previous.map((loaded,i)=>i===index||loaded))} onError={()=>setError(true)}/>)}
+   {[1,2].map((frame,index)=><img key={frame} className={`bar-staff-room__frame bar-staff-room__frame--${frame}`} src={`/bar/city-v3/elina-office-frame-${3-frame}-v2.webp`} alt={`Элина — ${frame===1?'первый':'второй'} кадр`} draggable={false} onLoad={()=>setFramesLoaded(previous=>previous[index]?previous:previous.map((loaded,i)=>i===index||loaded))} onError={()=>setError(true)}/>)}
   </div>}
   <header className="bar-staff-room__header bonus-games-catalog__header"><button className="icon-btn catalog-header-back" type="button" aria-label="Вернуться в бар" onClick={back}><ArrowLeft size={16}/></button><h1 className="bonus-games-catalog__title screen-title-on-arena">Кабинет</h1></header>
+  {previewPose?.startsWith('scene-')&&<div className="bar-bottom-chrome bar-staff-room__preview-dock"><section className="bar-space__actions"><BarIdentityPanel profile={{...createDefaultBarLayout().profiles.maria,name:'Элина',role:'Директор'}} actions={['cards']} onTalk={()=>{}} onAction={()=>{}}/></section><BarAvatarDock layout={createDefaultBarLayout()} onSelectSlot={id=>{sessionStorage.setItem('bar-staff-return-slot',id);back();}}/></div>}
   {error&&<div className="bar-staff-room__status" role="alert">Не удалось проверить доступ. <button className="btn" onClick={()=>warning?void warn():setAttempt(v=>v+1)}>Повторить</button></div>}
  </main>;
 }

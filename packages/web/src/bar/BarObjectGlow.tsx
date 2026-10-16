@@ -13,7 +13,9 @@ export function BarObjectGlow({character}:{character:BarOccupantId|null}) {
  if(!character || !(character in targets))return null;
  const target=targets[character as keyof typeof targets];
  const east=target.section===2;
+ // East artwork uses a taller viewBox; compensate to match the other rings on screen.
+ const radius=east?(55/3)*(1254/916):Math.max(32,Math.min(55,Math.max(target.w,target.h)*.48))/3;
  return <svg className="bar-space__object-glow" aria-hidden="true" viewBox={east?'0 0 1254 1254':'0 0 1717 916'} preserveAspectRatio="xMidYMid slice" style={{left:`${target.section*40}%`,width:east?'20%':'40%'}}>
-  <circle data-bar-object-glow={character} cx={target.x+target.w/2} cy={target.y+target.h/2} r={Math.max(32,Math.min(55,Math.max(target.w,target.h)*.48))/3} fill="none"/>
+  <circle data-bar-object-glow={character} cx={target.x+target.w/2} cy={target.y+target.h/2} r={radius} fill="none"/>
  </svg>;
 }
