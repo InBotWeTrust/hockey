@@ -597,9 +597,9 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 
 /* Quiet object affordance; never intercept taps or scale the artwork. */
 .bar-space__object-glow {position:absolute;top:0;height:100%;pointer-events:none;overflow:hidden;}
-.bar-space__object-glow circle {pointer-events:none;fill:none;stroke:rgba(255,255,255,.6);stroke-width:2;vector-effect:non-scaling-stroke;transform-box:fill-box;transform-origin:center;animation:bar-object-breathe 1s ease-out infinite;}
+.bar-space__object-glow circle, .bar-space__bicep-glow {pointer-events:none;fill:none;stroke:rgba(255,255,255,.6);stroke-width:2;vector-effect:non-scaling-stroke;transform-box:fill-box;transform-origin:center;animation:bar-object-breathe 1s ease-out infinite;}
 @keyframes bar-object-breathe {0%{opacity:0;transform:scale(.2)}15%{opacity:.6}85%,100%{opacity:0;transform:scale(1.2)}}
-@media (prefers-reduced-motion:reduce) {.bar-space__object-glow circle {animation:none;opacity:.18;transform:scale(.7);}}
+@media (prefers-reduced-motion:reduce) {.bar-space__object-glow circle, .bar-space__bicep-glow {animation:none;opacity:.18;transform:scale(.7);}}
 
 /* The terminal belongs to the viewport, independently of the bottom dock. */
 .bar-space > section.bar-space__actions--terminal,
@@ -618,17 +618,3 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-space__header .catalog-header-back svg {width:16px;height:16px;}
 
 .bar-space__character-hit .bar-space__bicep-hit { pointer-events: all; cursor: pointer; }
-.bar-space__bicep-glow {
- pointer-events: none;
- stroke: #fff;
- stroke-width: 2;
- opacity: .3;
- transform-box: fill-box;
- transform-origin: center;
- animation: bar-bicep-ripple 2.1s ease-out infinite;
-}
-@keyframes bar-bicep-ripple {
- 0% {opacity:.35;transform:scale(.7);}
- 100% {opacity:0;transform:scale(1.6);}
-}
-@media(prefers-reduced-motion:reduce){.bar-space__bicep-glow{animation:none;opacity:.25;}}

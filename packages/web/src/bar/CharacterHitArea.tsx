@@ -25,7 +25,7 @@ export function CharacterHitArea({character,x,y,style,onGame,onSwipe}:{character
      onClick={e=>{e.stopPropagation();if(suppress.current){suppress.current=false;return;}onGame();}}
      onKeyDown={e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();e.stopPropagation();onGame();}}}>
     <circle cx="270" cy="480" r="65" fill="transparent" className="bar-space__bicep-hit"/>
-    <circle cx="270" cy="480" r="20" fill="none" className="bar-space__bicep-glow" data-bar-object-glow="oleg"/>
+    <circle cx="270" cy="480" r="60" fill="none" className="bar-space__bicep-glow" data-bar-object-glow="oleg"/>
    </g>}
   </g>
  </svg>;
