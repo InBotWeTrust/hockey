@@ -1,3 +1,4 @@
+import * as adminApi from '../admin/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
 import type { AchievementDto } from '../api/achievements.js';
@@ -302,6 +303,26 @@ describe('SectionsScreen', () => {
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
   });
 
+  it('reuses the admin menu attention query and updates the admin circle',async()=>{
+    mockSectionsApi();
+    useAuthStore.setState({user:{id:'u1',displayName:'Админ',role:'admin'}});
+    const attention=vi.spyOn(adminApi,'fetchAdminAttention').mockResolvedValue({feedbackUnreadCount:2,officialDialogsUnreadCount:3,totalCount:5});
+    const client=renderSections();
+    expect(await screen.findByLabelText('События администратора: 5')).toHaveTextContent('5');
+    expect(attention).toHaveBeenCalledTimes(1);
+    act(()=>{client.setQueryData(['admin','attention'],{feedbackUnreadCount:0,officialDialogsUnreadCount:0,totalCount:0});});
+    await waitFor(()=>expect(screen.queryByLabelText(/События администратора/)).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button',{name:'Открыть админку'}));
+    expect(screen.getByTestId('location')).toHaveTextContent('/admin');
+  });
+  it('does not request admin attention for regular players',async()=>{
+    mockSectionsApi();
+    const attention=vi.spyOn(adminApi,'fetchAdminAttention');
+    renderSections();
+    await screen.findByRole('heading',{name:'Стадион «Центральный»'});
+    expect(screen.queryByRole('button',{name:'Открыть админку'})).not.toBeInTheDocument();
+    expect(attention).not.toHaveBeenCalled();
+  });
   it('updates district badges from the shared navigation caches',async()=>{
     mockSectionsApi({achievementsUnclaimedCount:2});
     const client=renderSections();

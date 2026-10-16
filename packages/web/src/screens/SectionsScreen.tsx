@@ -1,6 +1,7 @@
 import type {GameDockStatus} from '../city/gameDockStatus.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
+import { fetchAdminAttention } from '../admin/api.js';
 import { CityMap } from '../city/CityMap.js';
 import { lazy, Suspense, useEffect, useState } from 'react';
 const CityGameHub=lazy(()=>import('./DailyScreen.js').then(module=>({default:module.GameHub})));
@@ -115,6 +116,14 @@ export function SectionsScreen(): JSX.Element {
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  });
+  const isAdmin = (profileQuery.data?.role ?? user?.role) === 'admin';
+  const adminAttention = useQuery({
+    queryKey: ['admin', 'attention'],
+    queryFn: fetchAdminAttention,
+    enabled: Boolean(user) && isAdmin,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const failureQuery = useQuery({
     queryKey: ['weekly-challenge', 'failure', 'pending'],
@@ -273,7 +282,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
+      <CityMap isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
         onOpenDailyPlay={()=>navigate('/?view=daily')}
         onOpenTraining={()=>navigate('/?view=training')}
         onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
