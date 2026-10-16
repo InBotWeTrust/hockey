@@ -6,7 +6,7 @@ import { fetchChatList, fetchUnreadCounts, type ChatDTO } from '../chat/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
 
-function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
+export function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
   if (match.status === 'invited') {
     return match.me.side === 'opponent' && match.me.state === 'invited';
   }
