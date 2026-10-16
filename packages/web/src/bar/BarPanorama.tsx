@@ -1,3 +1,4 @@
+import { useBarActivity } from './barActivity.js';
 import {useAuthStore} from '../auth/authStore.js';
 import {claimDailyGreeting,hasDailyGreeting,localDay,nextLocalMidnight} from './dailyGreeting.js';
 import {emotionFromSnapshot,canGreet,preloadEmotions,prepareGreeting,entryEmotion,type CharacterEmotion} from './characterEmotion.js';
@@ -14,6 +15,7 @@ import { BarConversation } from './BarConversation.js';
 import { barCharacters, fetchConversation, sendPhysicalIncident, type BarCharacter } from './conversationApi.js';
 export function BarPanorama() {
   const navigate = useNavigate();
+  const activityCounts = useBarActivity();
   const account=useAuthStore(state=>state.user?.id)??'preview';
   const [day,setDay]=useState(localDay);
   const [visible,setVisible]=useState(()=>document.visibilityState!=='hidden');
@@ -134,7 +136,7 @@ export function BarPanorama() {
   }, [retry]);
   const [gameCharacter, setGameCharacter] = useState<GameCharacter | null>(null);
   const action = (kind: BarAction, id: BarOccupantId) => {
-    if (kind === 'cards') setOpponent('maria');
+    if (kind === 'cards') setOpponent(id === 'grigory' ? 'grigory' : 'maria');
     else if (kind === 'darts' || kind === 'billiards' || kind === 'checkers')
       setGameCharacter(id as GameCharacter);
     else if (kind === 'online') navigate('/bar/cards/online', { state: { mode: 'online' } });
@@ -142,8 +144,9 @@ export function BarPanorama() {
   };
   return (
     <>
-      <BarScene
+      <BarScene activityCounts={activityCounts}
         layout={layout}
+        onStaffRoom={(id) => {sessionStorage.setItem('bar-staff-return-slot', id); sessionStorage.setItem('bar-active-slot', id); navigate('/bar/staff-room');}}
         characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
         hideIdentity={conversation !== null}
         activeSlotId={slot}

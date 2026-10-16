@@ -18,6 +18,7 @@ import { OnlineDurakLobby } from './OnlineDurakLobby.js';
 import { OnlineDurakScreen } from './OnlineDurakScreen.js';
 import { DurakScreen } from './DurakScreen.js';
 import { BarScreen, BarBroadcastsScreen } from '../BarScreen.js';
+import {BarStaffRoom} from '../BarStaffRoom.js';
 import '../../app/global.css';
 import '../../app/design-system.css';
 import '../../app/liquid-glass.css';
@@ -212,6 +213,7 @@ createRoot(document.getElementById('root')!).render(
                   </div>
                 }
               />
+              <Route path="/bar/staff-room" element={<BarStaffRoom />} />
               <Route path="/bar/broadcasts" element={<BarBroadcastsScreen />} />
               <Route path="*" element={<BarScreen />} />
             </Routes>
