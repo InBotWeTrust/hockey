@@ -23,6 +23,13 @@ const places=[
 ];
 export function CityMap(props:Props){
  const {weather}=useWeatherCycle();
+ const district=useRef<HTMLElement>(null),panel=useRef<HTMLElement>(null);
+ useLayoutEffect(()=>{
+  const root=district.current,menu=panel.current;if(!root||!menu)return;
+  const update=()=>root.style.setProperty('--city-menu-top',`${menu.getBoundingClientRect().top-root.getBoundingClientRect().top}px`);
+  update();const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(update);observer?.observe(root);observer?.observe(menu);window.addEventListener('resize',update);
+  return()=>{observer?.disconnect();window.removeEventListener('resize',update);};
+ },[]);
  const {owner,level,daily,training,tasks,bonus,onNavigate}=props;
  const dailyId={beginner:'yard',amateur:'stadium',professional:'pro'}[level];
  const dailyVenue=places.find(p=>p.id===dailyId)!;
@@ -71,7 +78,7 @@ export function CityMap(props:Props){
   const label=id==='chat'?'Непрочитанные':id==='stadium'?'Дуэли и турниры':id==='tasks'?'Задания и челленджи':'Приглашения в бар';
   return (count??0)>0?<small className="district-badge" aria-label={`${label}: ${count}`}>{count!>99?'99+':count}</small>:null;
  };
- return <section className="district" aria-label="Хоккейный район">
+ return <section ref={district} className="district" aria-label="Хоккейный район">
   <div ref={viewport} className="district-viewport" tabIndex={0} aria-label="Карта района"
    onPointerDown={e=>{if(!e.isPrimary||e.button!==0)return;blockUntil.current=0;drag.current={x:e.clientX,y:e.clientY,left:e.currentTarget.scrollLeft,type:e.pointerType,moved:false};e.currentTarget.scrollTo?.({left:e.currentTarget.scrollLeft,behavior:'instant' as ScrollBehavior});}}
    onPointerMove={e=>{const d=drag.current;if(!d)return;if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>8)d.moved=true;if(d.moved&&d.type==='mouse'){e.currentTarget.setPointerCapture(e.pointerId);e.currentTarget.scrollLeft=d.left+d.x-e.clientX;}}}
@@ -84,7 +91,7 @@ export function CityMap(props:Props){
    </div>
   </div>
   <WeatherOverlay key={props.weatherOverride??weather} weather={props.weatherOverride??weather}/>
-  <section className="district-panel" aria-label="Выбранное место"><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>onNavigate(a.path)}>{a.kind==='training'?<Snowflake/>:a.kind==='daily'?<Goal/>:<ChevronRight/>}</button>)}</div></div>
+  <section ref={panel} className="district-panel" aria-label="Выбранное место"><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>onNavigate(a.path)}>{a.kind==='training'?<Snowflake/>:a.kind==='daily'?<Goal/>:<ChevronRight/>}</button>)}</div></div>
    <nav className="district-dock" ref={dock} aria-label="Места района"><button aria-label="Открыть профиль" aria-pressed={selected==='profile'} title="Мой профиль" onClick={()=>onNavigate('/profile')}><span className="district-profile">{props.avatarUrl?<img src={props.avatarUrl} alt=""/>:<User aria-hidden="true"/>}</span></button>{places.filter(p=>p.id!=='profile').map(p=><button key={p.id} aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>{select(p.id);if(p.id===dailyId&&props.gameStatus?.urgent)props.onOpenGamePanel?.();}}><span style={{backgroundImage:`url(${image})`,backgroundPosition:`${p.thumb?.[0]??p.x}% ${p.thumb?.[1]??p.y}%`}}/>{badge(p.id)}{p.id===dailyId&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>)}</nav>
   </section>
  </section>;

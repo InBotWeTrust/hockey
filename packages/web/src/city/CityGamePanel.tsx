@@ -36,7 +36,7 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
  return <section className={`city-game-panel glass${expanded?' is-expanded':''}`} aria-label="Мои игры">
   <div className="city-game-summary">
    <button className="city-game-toggle" aria-label={expanded?'Свернуть игры':'Развернуть игры'} aria-expanded={expanded} aria-controls="city-game-details" onClick={()=>setExpanded(value=>!value)}>
-    <span><strong>{active.eyebrow}</strong><span className="city-game-status">{active.title}{timer?.timer&&<> · <span aria-label={timer.timerLabel}>{timer.timer}</span></>}</span></span>
+    <span><strong>{active.eyebrow}</strong>{(active.title!==active.eyebrow||timer?.timer)&&<span className="city-game-status">{active.title===active.eyebrow?null:active.title}{timer?.timer&&<>{active.title===active.eyebrow?'':' · '}<span aria-label={timer.timerLabel}>{timer.timer}</span></>}</span>}</span>
     {expanded?<ChevronUp size={18}/>:<ChevronDown size={18}/>}
    </button>
    {actionable.length>0&&<button className={`icon-btn city-game-notification${pulse?' is-new':''}`} aria-label={`Игры требуют действия: ${actionable.length}`} onClick={openNotification}><Bell size={18}/><small>{actionable.length>99?'99+':actionable.length}</small></button>}

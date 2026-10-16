@@ -210,6 +210,7 @@ type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
 export interface ArenaEntry {
+  dockTimer?:string;
   dockState?: 'ready'|'active'|'break'|'done'|'blocked';
   attention?: boolean;
   deadlineAt?: number | undefined;
@@ -1136,6 +1137,7 @@ export function GameHub({
 
   useEffect(() => {
     if (
+      presentation !== 'city' &&
       data.state !== 'period_active' &&
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
@@ -1148,6 +1150,7 @@ export function GameHub({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [
+    presentation,
     activeDuelEvents.length,
     classicTournamentGames.data?.games?.length,
     data.state,
@@ -1381,6 +1384,7 @@ export function GameHub({
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
+    dockTimer: isDailyInProgress?dailyHubScoreboard.timer:formatHms(nextDayRemaining),
     dockState: data.state==='closed'?'done':isDailyLockedByTraining?'blocked':data.state==='period_active'?'active':data.state==='break_active'?'break':'ready',
     kind: 'daily',
     eyebrow: 'Ежедневная игра',
@@ -1417,6 +1421,7 @@ export function GameHub({
   };
   const trainingArenaEntry: ArenaEntry = {
     id: 'training',
+    dockTimer: trainingData?formatHms(Math.max(0,timestampMs(trainingData.next_day_starts_at)-now)):'',
     dockState: trainingData?.state==='closed'?'done':!trainingData||trainingData.gameplay_lock?.blocked?'blocked':trainingData.state==='active'?'active':'ready',
     kind: 'training',
     eyebrow: 'Тренировка',
@@ -1439,7 +1444,7 @@ export function GameHub({
       id: `duel-${event.id}`,
       attention: isActionableDuelEvent(event),
       dockState: event.me.state==='period_active'?'active':event.me.state==='break_active'?'break':isActionableDuelEvent(event)?'ready':'blocked',
-      deadlineAt: timestampMs(event.me.state==='period_active'?event.period_ends_at:event.me.state==='break_active'?event.break_ends_at:event.status==='ready_check'||event.status==='invited'?event.ready_expires_at:event.ends_at)||undefined,
+      deadlineAt: timestampMs(event.status==='ready_check'||event.status==='invited'?event.ready_expires_at:timestampMs(event.starts_at)>now?event.starts_at:event.me.state==='period_active'?event.period_ends_at:event.me.state==='break_active'?event.break_ends_at:event.ends_at)||undefined,
       kind: 'duel',
       eyebrow: 'Активная дуэль',
       eyebrowStatus: duelOutcomeText(event),
@@ -1656,7 +1661,7 @@ export function GameHub({
         id: `classic-${game.tournament_id}`,
         attention: !completed,
         dockState: completed?'done':locked?'blocked':isBreak?'break':game.state==='period_active'?'active':'ready',
-        deadlineAt: timestampMs(game.closes_at),
+        deadlineAt: timestampMs(isBreak?game.break_ends_at:game.closes_at),
         kind: 'classic',
         eyebrow: `Турнир · ${game.tournament_day}-й тур`,
         title: game.tournament_title,
