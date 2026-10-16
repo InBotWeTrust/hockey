@@ -16,6 +16,7 @@ function renderScreen(): void {
     <QueryClientProvider client={qc}>
       <MemoryRouter initialEntries={['/chat']}>
         <Routes>
+          <Route path="/sections" element={<div>district map</div>} />
           <Route path="/chat" element={<ChatListScreen />} />
           <Route path="/chat/:chatId" element={<div>room</div>} />
         </Routes>
@@ -57,6 +58,8 @@ describe('ChatListScreen — global search dropdown', () => {
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
+
+  it('shows chat title and returns to the district map',()=>{renderScreen();expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Назад'}));expect(screen.getByText('district map')).toBeInTheDocument();});
 
   it('does not render the dropdown when filter has fewer than 2 chars', async () => {
     renderScreen();
