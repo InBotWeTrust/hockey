@@ -26,6 +26,7 @@ import {
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 import {
   DailyScreen,
+  GameHub,
   DEMO_SPEED_OVERRIDES,
   DemoCompletionModal,
   DUEL_INVENTORY_ICON_GLASS_STYLE,
@@ -9503,4 +9504,18 @@ describe('duel pending period expiry presentation', () => {
       opponent:{...settledDuelMatch.opponent,state:'period_active',current_period:totalPeriods}};
     expect(duelRinkPrimaryLabel(duelExpiredPeriodPresentation(match,now),now)).toBe('Ждём соперника');
   });
+});
+
+
+describe('city game hub presentation',()=>{
+ it('uses the real daily scoreboard and actions without rendering the arena artwork',async()=>{
+  useDailyStore.setState({data:{...baseState,state:'closed'}});
+  const open=vi.fn();
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><GameHub presentation="city" onOpenDailyPlay={open} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></MemoryRouter></QueryClientProvider>);
+  expect(screen.getByRole('region',{name:'Мои игры'})).toHaveTextContent('Завершена');
+  expect(document.querySelector('.arena-video-cube__cube')).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Развернуть игры'}));
+  expect(screen.getByLabelText(/Завершена. До обновления/)).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'На лёд'}));await waitFor(()=>expect(open).toHaveBeenCalledOnce());
+ });
 });

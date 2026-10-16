@@ -1,3 +1,4 @@
+import {GameEntryRoute} from './GameEntryRoute.js';
 import { useApplicationTheme } from './theme.js';
 import { BarAccessGate } from '../bar/BarAccessGate.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
@@ -460,7 +461,7 @@ function AppExperience(): JSX.Element {
                 path="/"
                 element={
                   <PrivateRoute>
-                    <DailyScreen />
+                    <GameEntryRoute><DailyScreen /></GameEntryRoute>
                   </PrivateRoute>
                 }
               />

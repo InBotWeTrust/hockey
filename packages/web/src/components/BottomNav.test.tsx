@@ -53,7 +53,7 @@ function renderBottomNav(path: string, extra?: JSX.Element, preview = false): Qu
 
 describe('BottomNav remembered navigation', () => {
   it('uses compact thin icons without changing the outer menu radius', () => {
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
     const navigation = screen.getByLabelText('Навигация');
     expect(navigation).toHaveStyle({ height: '54px', borderRadius: '19px' });
     for (const icon of navigation.querySelectorAll('.bottom-nav__icon-wrap svg')) {
@@ -113,7 +113,7 @@ describe('BottomNav remembered navigation', () => {
       refreshToken: 'refresh',
       user: { id: 'u1', displayName: 'Player' },
     });
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(screen.getByLabelText('Навигация')).toHaveStyle({ borderRadius: '19px' });
   });
@@ -129,7 +129,7 @@ describe('BottomNav remembered navigation', () => {
   });
 
   it('keeps the chat badge consistent with refreshed list counts and clears it after reading', async () => {
-    const client = renderBottomNav('/chat');
+    const client = renderBottomNav('/chat',undefined,true);
     await waitFor(() => expect(globalThis.fetch).toHaveBeenCalled());
     const chat = {
       id: 'direct-1', type: 'direct', name: 'Opponent', avatarUrl: null,
@@ -157,7 +157,7 @@ describe('BottomNav remembered navigation', () => {
 
   it('opens the arena from another section', () => {
     sessionStorage.setItem('hockey.nav.lastGameRoute', '/?view=training');
-    renderBottomNav('/profile/settings');
+    renderBottomNav('/profile/settings',undefined,true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Игра' }));
 
@@ -186,7 +186,7 @@ describe('BottomNav remembered navigation', () => {
 
   it('opens the last remembered sections route from another tab', () => {
     sessionStorage.setItem('hockey.nav.lastSectionsRoute', '/?view=amateur&section=duels');
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Разделы' }));
 
@@ -316,7 +316,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
   });
@@ -354,7 +354,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События игры: 2')).toHaveTextContent('2');
   });
@@ -391,7 +391,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
   });
@@ -425,7 +425,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События игры: 1')).toHaveTextContent('1');
   });
@@ -478,7 +478,7 @@ describe('BottomNav remembered navigation', () => {
     });
     useChatStore.getState().setUnread({ 'chat-1': 3 });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     const badges = await Promise.all([
       screen.findByLabelText('События игры: 1'),
@@ -518,7 +518,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    const client = renderBottomNav('/profile');
+    const client = renderBottomNav('/profile',undefined,true);
 
     await waitFor(() =>
       expect(client.getQueryState(['weekly-challenge', 'current'])?.status).toBe('success'),
@@ -554,7 +554,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
   });
@@ -586,7 +586,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
   });
@@ -624,7 +624,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События разделов: 1')).toHaveTextContent('1');
   });
@@ -670,7 +670,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События разделов: 3')).toHaveTextContent('3');
   });
@@ -706,7 +706,7 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     await waitFor(() => {
       expect(screen.queryByLabelText(/События разделов:/)).toBeNull();
@@ -753,7 +753,7 @@ describe('BottomNav remembered navigation', () => {
   });
 
   it('resets the active profile tab to the profile root', () => {
-    renderBottomNav('/profile/settings');
+    renderBottomNav('/profile/settings',undefined,true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Раздевалка' }));
 
@@ -761,7 +761,7 @@ describe('BottomNav remembered navigation', () => {
   });
 
   it('resets the active chat section to the chat list', () => {
-    renderBottomNav('/chat?new=1');
+    renderBottomNav('/chat?new=1',undefined,true);
 
     fireEvent.click(screen.getByRole('button', { name: 'Чат' }));
 
@@ -799,19 +799,23 @@ describe('BottomNav remembered navigation', () => {
       );
     });
 
-    renderBottomNav('/profile');
+    renderBottomNav('/profile',undefined,true);
 
     expect(await screen.findByLabelText('События администратора: 5')).toHaveTextContent('5');
   });
 });
 
-it('hides global navigation on the district map only',()=>{
+it('hides global navigation on the district map, profile and chat',()=>{
  const user={id:'test',displayName:'Player'};
  expect(isBottomNavVisible('/sections',user)).toBe(false);
- expect(isBottomNavVisible('/profile',user)).toBe(true);
- expect(isBottomNavVisible('/chat',user)).toBe(true);
+ expect(isBottomNavVisible('/profile',user)).toBe(false);
+ expect(isBottomNavVisible('/chat',user)).toBe(false);
 });
 
 it('does not hide navigation on unrelated routes sharing the bar prefix',()=>{
  expect(isBottomNavVisible('/barbers',{id:'test',displayName:'Player'})).toBe(true);
+});
+
+it.each(['/profile','/profile/settings','/chat','/chat/room/info'])('hides global navigation throughout %s',path=>{
+ useAuthStore.setState({user:{id:'test',displayName:'Player'}});renderBottomNav(path);expect(screen.queryByLabelText('Навигация')).not.toBeInTheDocument();
 });

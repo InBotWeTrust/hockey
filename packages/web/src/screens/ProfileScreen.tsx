@@ -1,4 +1,5 @@
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import {DistrictPageHeader} from '../components/DistrictPageHeader.js';
 import { SocialProfile } from '../social/SocialProfile.js';
 import { ProfileBio } from '../social/ProfileBio.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -750,6 +751,7 @@ function SportingMetrics({
 function ProfileLoadError({ onRetry }: { onRetry: () => void }): JSX.Element {
   return (
     <main className="screen profile-screen profile-screen--status">
+      <DistrictPageHeader title="Профиль"/>
       <section className="profile-error-state" role="alert">
         <h1>Не удалось загрузить профиль</h1>
         <p>Баланс и прогресс не показаны, чтобы не выдать ошибку за реальные данные.</p>
@@ -845,6 +847,7 @@ export function ProfileScreen(): JSX.Element {
   if (profileQuery.isLoading) {
     return (
       <main className="screen profile-screen profile-screen--status" aria-busy="true">
+        <DistrictPageHeader title="Профиль"/>
         <p>Загружаем профиль…</p>
       </main>
     );
@@ -871,6 +874,7 @@ export function ProfileScreen(): JSX.Element {
     <main
       className={`screen profile-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(profile.competitionLevel)}`}
     >
+      <DistrictPageHeader title="Профиль"/>
       <section className="profile-passport glass" aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
           <SocialProfile userId={profile.id} renderIdentity={counts=><div className="public-profile-social-identity"><div className="profile-identity__main">

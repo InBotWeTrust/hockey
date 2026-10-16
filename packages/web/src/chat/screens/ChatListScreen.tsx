@@ -27,7 +27,7 @@ import { UserPickerModal } from '../components/UserPickerModal.js';
 import { UserAvatar } from '../components/UserAvatar.js';
 import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
-import { NAV_HEIGHT } from '../../components/BottomNav.js';
+import {DistrictPageHeader} from '../../components/DistrictPageHeader.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { SegmentedTabs } from '../../components/SegmentedTabs.js';
 import { SocialFeed } from '../../social/SocialFeed.js';
@@ -220,6 +220,7 @@ export function ChatListScreen(): JSX.Element {
         paddingBottom: 16,
       }}
     >
+      <DistrictPageHeader title="Чат"/>
       <div className="chat-list-switcher"><SegmentedTabs ariaLabel="Раздел чата" activeTab={searchParams.get('view')==='feed'?'feed':'messenger'} items={[{id:'messenger',label:'Мессенджер'},{id:'feed',label:'Лента',attention:feedRead.status.data?.hasUnread??false}]} onChange={tab=>{const next=new URLSearchParams(searchParams);if(tab==='feed')next.set('view','feed');else next.delete('view');setSearchParams(next);}}/></div>
       {searchParams.get('view')==='feed'?<div className="chat-feed-content"><SocialFeed/></div>:<><div
         className="chat-edge-top"
@@ -344,7 +345,7 @@ export function ChatListScreen(): JSX.Element {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: `calc(${NAV_HEIGHT + 24}px + var(--app-safe-bottom))`,
+            bottom: `calc(24px + var(--app-safe-bottom))`,
             transform: 'translateX(-50%)',
             padding: '10px 16px',
             borderRadius: 999,

@@ -1,0 +1,18 @@
+.city-weather{position:absolute;inset:0;z-index:2;overflow:hidden;pointer-events:none;isolation:isolate;animation:city-weather-appear 1.2s ease both}
+.city-weather canvas,.city-weather-tint{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
+.city-weather-tint{background:transparent}
+.city-weather--snow .city-weather-tint{background:rgba(175,195,215,.035)}
+.city-weather--blizzard .city-weather-tint{background:linear-gradient(rgba(163,185,207,.13),rgba(202,215,227,.16))}
+.city-weather-haze{display:none;position:absolute;inset:-12%;pointer-events:none;will-change:transform}
+.city-weather--blizzard .city-weather-haze{display:block;background:repeating-linear-gradient(166deg,transparent 0%,rgba(231,239,247,.08) 18%,transparent 33%);animation:city-weather-gust 9s ease-in-out infinite alternate}
+.city-weather--fog .city-weather-tint{background:linear-gradient(rgba(199,213,224,.08),rgba(205,217,228,.18) 45%,rgba(220,229,235,.33))}
+.city-weather--fog .city-weather-haze{display:block;background:radial-gradient(ellipse at 25% 55%,rgba(222,231,238,.4),transparent 64%),radial-gradient(ellipse at 80% 76%,rgba(226,233,239,.34),transparent 57%);animation:city-weather-fog 34s ease-in-out infinite alternate}
+.city-weather--fog .city-weather-haze--front{opacity:.65;transform:scale(1.1);animation-duration:47s;animation-direction:alternate-reverse}
+.city-weather--overcast .city-weather-tint{background:linear-gradient(rgba(29,43,59,.33),rgba(42,54,69,.21) 65%,rgba(40,52,68,.14))}
+.city-weather--overcast .city-weather-haze--back{display:block;background:radial-gradient(ellipse at 40% 0%,rgba(178,190,205,.18),transparent 60%);animation:city-weather-fog 55s ease-in-out infinite alternate}
+@keyframes city-weather-appear{from{opacity:0}to{opacity:1}}
+@keyframes city-weather-fog{from{transform:translateX(-5%) translateY(1%)}to{transform:translateX(5%) translateY(-2%)}}
+@keyframes city-weather-gust{from{transform:translate(-5%,-1%);opacity:.45}to{transform:translate(5%,1%);opacity:.85}}
+@media(prefers-reduced-motion:reduce){.city-weather,.city-weather-haze{animation:none!important;will-change:auto}}
+
+.city-weather[data-paused="true"],.city-weather[data-paused="true"] .city-weather-haze{animation-play-state:paused}

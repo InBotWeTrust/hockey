@@ -111,3 +111,43 @@ it('shows live counters on their circles and removes zero badges',()=>{
  expect(screen.queryByLabelText('Непрочитанные: 120')).toBeNull();
  expect(document.querySelector('.district-badge')).toBeNull();
 });
+it('renders persisted weather on the actual city map without intercepting input',()=>{
+ localStorage.setItem('city-weather-v1',JSON.stringify({weather:'fog',until:Date.now()+3_600_000,blizzardAt:Date.now()+6*24*3_600_000}));
+ const view=render(<CityMap {...base} level="beginner"/>);
+ expect(view.container.querySelector('[data-weather="fog"]')).not.toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Магазин'}));
+ expect(screen.getByRole('heading',{name:'Магазин'})).toBeVisible();
+ view.unmount();localStorage.removeItem('city-weather-v1');
+});
+it('centers the apartment first and opens profile on the next centered tap',()=>{
+ sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner" avatarUrl="/avatar.webp"/>);
+ const {viewport}=mapGeometry();const apartment=screen.getByRole('button',{name:'На карте: Моя квартира'});
+ fireEvent.click(apartment);expect(base.onNavigate).not.toHaveBeenCalled();expect(screen.getByRole('heading',{name:'Моя квартира'})).toBeVisible();
+ viewport.scrollLeft=0;fireEvent.click(apartment);expect(base.onNavigate).toHaveBeenCalledWith('/profile');
+});
+it('does not open the apartment after a map swipe',()=>{
+ sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
+ const {viewport}=mapGeometry();viewport.setPointerCapture=vi.fn();const apartment=screen.getByRole('button',{name:'На карте: Моя квартира'});
+ fireEvent.click(apartment);viewport.scrollLeft=0;
+ fireEvent.pointerDown(viewport,{isPrimary:true,button:0,pointerType:'mouse',pointerId:1,clientX:200,clientY:200});
+ fireEvent.pointerMove(viewport,{pointerId:1,clientX:100,clientY:200});fireEvent.pointerUp(viewport,{pointerId:1});
+ fireEvent.click(apartment,{detail:1});expect(base.onNavigate).not.toHaveBeenCalled();
+});
+
+for(const [level,id,name] of [['beginner','yard','Дворовый каток'],['amateur','stadium','Стадион «Центральный»'],['professional','pro','Арена Ультимейт']] as const){
+ it(`anchors the game panel to the ${level} venue and starts home there`,()=>{
+  sessionStorage.setItem(`city-place-v2:test:${level}`,'bank');
+  const view=render(<CityMap {...base} level={level} startAtDaily gamePanel={<div>Game panel</div>}/>);
+  expect(view.container.querySelector('.district-game-anchor')).toHaveAttribute('data-venue',id);
+  expect(screen.getByRole('heading',{name})).toBeVisible();expect(view.container.querySelector('.district-world')).toContainElement(screen.getByText('Game panel'));
+ });
+}
+for(const [level,name] of [['beginner','Дворовый каток'],['amateur','Стадион «Центральный»'],['professional','Арена Ультимейт']] as const){
+ it(`shows the game timer only under the ${level} home venue and opens urgent games`,()=>{
+  const open=vi.fn();const view=render(<CityMap {...base} level={level} gameStatus={{label:'04:59',urgent:true}} onOpenGamePanel={open}/>);
+  expect(screen.getAllByLabelText('Статус игр: 04:59')).toHaveLength(1);
+  const circle=screen.getByRole('button',{name:`Выбрать ${name}`});expect(circle).toContainElement(screen.getByLabelText('Статус игр: 04:59'));
+  fireEvent.click(circle);expect(open).toHaveBeenCalledOnce();
+  view.rerender(<CityMap {...base} level={level} gameStatus={{label:null,urgent:false}} onOpenGamePanel={open}/>);expect(screen.queryByLabelText(/Статус игр:/)).not.toBeInTheDocument();
+ });
+}

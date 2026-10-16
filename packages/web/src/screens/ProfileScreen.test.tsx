@@ -293,6 +293,7 @@ function renderProfile(): void {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/profile']}>
         <Routes>
+          <Route path="/sections" element={<div>district map</div>} />
           <Route path="/profile" element={<ProfileScreen />} />
           <Route path="/profile/stats" element={<div>stats screen</div>} />
           <Route path="/profile/equipment" element={<div>equipment screen</div>} />
@@ -308,6 +309,7 @@ function renderProfile(): void {
 }
 
 describe('ProfileScreen', () => {
+  it('shows profile title and returns to the district map', async()=>{mockProfileRequest();renderProfile();expect(await screen.findByRole('heading',{name:'Профиль'})).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Назад'}));expect(screen.getByText('district map')).toBeInTheDocument();});
   beforeEach(() => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();
@@ -433,7 +435,7 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Скопировать ссылку' })).toHaveTextContent('Ссылка');
     expect(screen.queryByText(/\/invite\/TEAM-77/)).not.toBeInTheDocument();
     expect(screen.queryByText('8 из 10 до 150 звёзд')).not.toBeInTheDocument();
-    expect(screen.getByText('Профиль')).toHaveClass('profile-section-label');
+    expect(screen.getByText('Профиль',{selector:'.profile-section-label'})).toHaveClass('profile-section-label');
     expect(screen.getByText('Настройки', { selector: '.profile-settings-card__title' })).toBeInTheDocument();
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
