@@ -12,7 +12,7 @@ alter table amateur_duel_matchmaking_ticket add constraint amateur_duel_matchmak
 with base as (select * from amateur_duel_template where duel_kind='classic' and deleted_at is null order by is_active desc, created_at desc limit 1)
 insert into amateur_duel_template
 select (jsonb_populate_record(null::amateur_duel_template,to_jsonb(base)||jsonb_build_object(
- 'id',gen_random_uuid(),'title','Ритм','description','Забивайте не позднее двух прокатов после предыдущего гола. При равенстве очков побеждают длинные серии.',
+ 'id',gen_random_uuid(),'title','Ритм','description','Забивайте сериями: первый гол засчитывается вместе со вторым за два проката. При равенстве очков побеждают длинные серии.',
  'duel_kind','rhythm','duel_variant','time_attack','is_active',true,'total_periods',1,'period_duration_ms',150000,'break_duration_ms',0,
  'period_speed_presets',(select jsonb_agg(p) from jsonb_array_elements(base.period_speed_presets) p where p->>'periodNumber'='1'),
  'period_rules','[{"periodNumber":1,"mode":"time_attack","durationMs":150000,"shotsLimit":null}]'::jsonb,

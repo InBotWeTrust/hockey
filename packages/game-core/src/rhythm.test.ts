@@ -3,12 +3,12 @@ import { describe, it, expect } from 'vitest';
 import { projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
 describe('Rhythm goal windows', () => {
   it('accepts the exact boundary and rejects a late goal', () => {
-    expect(projectRhythm({ shots: [{ travel: 2, goal: true }], travel: 2 }).score).toBe(1);
-    expect(projectRhythm({ shots: [{ travel: 2.001, goal: true }], travel: 2.001 }).score).toBe(0);
+    expect(projectRhythm({ version: 1, shots: [{ travel: 2, goal: true }], travel: 2 }).score).toBe(1);
+    expect(projectRhythm({ version: 1, shots: [{ travel: 2.001, goal: true }], travel: 2.001 }).score).toBe(0);
   });
   it('preserves windows across misses and scores across broken series', () => {
     expect(
-      projectRhythm({
+      projectRhythm({ version: 1,
         shots: [
           { travel: 1, goal: true },
           { travel: 2, goal: false },
@@ -18,7 +18,7 @@ describe('Rhythm goal windows', () => {
       }),
     ).toMatchObject({ score: 2, currentSeries: 2 });
     expect(
-      projectRhythm({
+      projectRhythm({ version: 1,
         shots: [
           { travel: 1, goal: true },
           { travel: 3.1, goal: true },
@@ -32,6 +32,35 @@ describe('Rhythm goal windows', () => {
     expect(compareRhythmSeries([4, 1, 1], [3, 3])).toBe(1);
     expect(compareRhythmSeries([4, 2, 1], [4, 3])).toBe(-1);
     expect(compareRhythmSeries([1, 4], [4, 1])).toBe(0);
+  });
+});
+
+describe('Rhythm confirmed series', () => {
+  it('keeps the first goal pending even after the initial two traversals', () => {
+    expect(projectRhythm({ shots: [{ travel: 5, goal: true }], travel: 5 }))
+      .toMatchObject({ score: 0, currentSeries: 1, series: [], remainingTraversals: 2 });
+  });
+  it('credits both goals when the second shot starts at the two-traversal boundary', () => {
+    expect(projectRhythm({ shots: [{ travel: 5, goal: true }, { travel: 7, goal: true }], travel: 7 }))
+      .toMatchObject({ score: 2, currentSeries: 2, series: [2] });
+  });
+  it('discards an unconfirmed goal on expiry and starts a new pending pair', () => {
+    expect(projectRhythm({ shots: [{ travel: 1, goal: true }], travel: 3.001 }))
+      .toMatchObject({ score: 0, currentSeries: 0, series: [] });
+    const shots = [{ travel: 1, goal: true }, { travel: 3.001, goal: true }];
+    expect(projectRhythm({ shots, travel: 3.001 })).toMatchObject({ score: 0, currentSeries: 1, series: [] });
+    expect(projectRhythm({ shots: [...shots, { travel: 4, goal: true }], travel: 4 }))
+      .toMatchObject({ score: 2, currentSeries: 2, series: [2] });
+  });
+  it('preserves confirmed points through a miss, expiry and an unconfirmed last goal', () => {
+    expect(projectRhythm({ shots: [
+      { travel: 4, goal: true }, { travel: 5, goal: false },
+      { travel: 6, goal: true }, { travel: 7, goal: true }, { travel: 10, goal: true },
+    ], travel: 13 })).toMatchObject({ score: 3, currentSeries: 0, series: [3] });
+  });
+  it('preserves the original scoring of version-one match snapshots', () => {
+    expect(projectRhythm({ version: 1, shots: [{ travel: 1, goal: true }], travel: 1 }))
+      .toMatchObject({ score: 1, currentSeries: 1, series: [1] });
   });
 });
 

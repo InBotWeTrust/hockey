@@ -21,7 +21,9 @@ export interface RhythmProjection {
 export function projectRhythm(input: {
   shots: readonly RhythmShot[];
   travel: number;
+  version?: 1 | 2;
 }): RhythmProjection {
+  if (input.version !== 1) return projectConfirmedRhythm(input);
   let score = 0,
     currentSeries = 0,
     lastGoalTravel = 0;
@@ -51,6 +53,39 @@ export function projectRhythm(input: {
     lastGoalTravel,
   };
 }
+/** A lone goal is pending; a second timely goal credits the entire pair. */
+function projectConfirmedRhythm(input: {
+  shots: readonly RhythmShot[];
+  travel: number;
+}): RhythmProjection {
+  let score = 0;
+  let currentSeries = 0;
+  let lastGoalTravel = 0;
+  const finished: number[] = [];
+  const endSeries = () => {
+    if (currentSeries >= 2) finished.push(currentSeries);
+    currentSeries = 0;
+  };
+  for (const shot of input.shots) {
+    if (shot.travel - lastGoalTravel > 2) endSeries();
+    if (!shot.goal) continue;
+    if (currentSeries === 0) currentSeries = 1;
+    else {
+      currentSeries++;
+      score += currentSeries === 2 ? 2 : 1;
+    }
+    lastGoalTravel = shot.travel;
+  }
+  if (input.travel - lastGoalTravel > 2) endSeries();
+  return {
+    score,
+    currentSeries,
+    series: [...finished, ...(currentSeries >= 2 ? [currentSeries] : [])].sort((a, b) => b - a),
+    remainingTraversals: Math.max(0, 2 - (input.travel - lastGoalTravel)),
+    lastGoalTravel,
+  };
+}
+
 export function compareRhythmSeries(a: readonly number[], b: readonly number[]): number {
   const left = [...a].sort((x, y) => y - x),
     right = [...b].sort((x, y) => y - x);

@@ -13,3 +13,9 @@ Extend types, selections/labels/ratings/admin/history/result; use same shared mo
 
 ## Task 4: Verification
 Only internal browser for checks: expose local automatic checks and real API in an isolated test environment. Verify RED then GREEN, boundary/goal/miss/retry/stale/focus/period completion and six-format shot lifecycle. One independent whole-branch review, fix important findings, keep local commits without deployment.
+
+## Approved follow-up: confirmed pairs and simpler HUD
+
+The user's local-play feedback supersedes the initial scoring/display specification for new matches. A first goal, regardless of initial travel, starts a pending series without points. A second goal initiated within two traversals credits both goals (score/series 2); further timely goals add one. Expiry discards an isolated pending goal while retaining previously confirmed series. Misses preserve the window. New snapshots use `rhythmVersion: 2`; explicit version-one snapshots retain their scoring.
+
+Remove the two-segment progress bar and its caption entirely. Rhythm condition notices return below the scoreboard using the existing placement. The first or isolated goal has no modal subtitle; confirmed goals show only `Серия N`. Other formats' UI and shot lifecycle stay unchanged.

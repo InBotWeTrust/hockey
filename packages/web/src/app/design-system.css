@@ -15831,10 +15831,3 @@ button.daily-calendar__day:active {
 
 /* Preserve keyboard focus while suppressing the browser touch flash. */
 .achievement-card, .achievement-card * { -webkit-tap-highlight-color:transparent; }
-
-/* Rhythm reuses scoreboard spacing and palette without another card surface. */
-.rhythm-progress { width:min(100%, 400px); margin:6px auto 0; padding:0 6px; box-sizing:border-box; pointer-events:none; }
-.rhythm-progress__segments { display:flex; gap:5px; height:5px; }
-.rhythm-progress__segments > span { flex:1; min-width:0; overflow:hidden; border-radius:99px; background:var(--liquid-inset-bg); }
-.rhythm-progress__segments i { display:block; height:100%; border-radius:inherit; background:var(--liquid-ink); }
-.rhythm-progress__caption { margin-top:4px; text-align:center; color:var(--liquid-ink); font-size:11px; line-height:1.2; }

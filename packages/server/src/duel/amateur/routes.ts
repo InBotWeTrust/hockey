@@ -741,7 +741,7 @@ interface DuelRulesSnapshot {
   description: string;
   difficulty: DuelDifficulty;
   duelKind: DuelKind;
-  rhythmVersion?: 1;
+  rhythmVersion?: 1 | 2;
   rhythmWindowTraversals?: 2;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
@@ -1356,7 +1356,7 @@ export function makeRulesSnapshot(
     periodDurationMs: Number(template.period_duration_ms),
   });
   const snapshot: DuelRulesSnapshot = {
-    ...(template.duel_kind === 'rhythm' ? {rhythmVersion: 1 as const, rhythmWindowTraversals: 2 as const} : {}),
+    ...(template.duel_kind === 'rhythm' ? {rhythmVersion: 2 as const, rhythmWindowTraversals: 2 as const} : {}),
     templateId: template.id,
     title: template.title,
     description: template.description,
@@ -1487,7 +1487,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       duelKind: z
         .enum(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])
         .default('classic'),
-      rhythmVersion: z.literal(1).optional(),
+      rhythmVersion: z.union([z.literal(1), z.literal(2)]).optional(),
       rhythmWindowTraversals: z.literal(2).optional(),
       scoredClockVersion: z.literal(2).optional(),
       shotResultPauseMs: z.literal(1000).optional(),
@@ -3936,7 +3936,7 @@ async function scoredParticipantFields(
       travel:shot.input_payload.rhythmTravel ?? 0,goal:shot.server_result==='goal'}));
     const sampler=rhythmMovementForParticipant(match,participant,rules);
     const travel=sampler.travelAt(clockFields.scene_elapsed_ms,history);
-    const projection=projectRhythm({shots:history,travel});
+    const projection=projectRhythm({shots:history,travel,version:rules.rhythmVersion ?? 1});
     return {...clockFields,format_score:projection.score,rhythm_series:projection.series,
       rhythm_current_series:projection.currentSeries,rhythm_travel:travel,
       rhythm_last_goal_travel:projection.lastGoalTravel,rhythm_shots:history,last_shot_ends_ms:lastShotEndsMs};

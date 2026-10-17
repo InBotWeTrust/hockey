@@ -117,7 +117,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       duelKind: 'rhythm',
       totalPeriods: 1,
       periodDurationMs: 150000,
-      rhythmVersion: 1,
+      rhythmVersion: 2,
       rhythmWindowTraversals: 2,
       scoredClockVersion: 2,
       shotResultPauseMs: 1000,
@@ -300,8 +300,8 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     }
     expect(projectRhythm({ shots: plan, travel: plan[3]!.travel })).toMatchObject({
       score: 2,
-      currentSeries: 1,
-      series: [1, 1],
+      currentSeries: 2,
+      series: [2],
     });
   });
   it('matches only a shared format and reserves the unchanged common limits', async () => {
@@ -376,7 +376,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     const { id, post, rules } = await start();
     for (const [side, travels] of [
       [0, [1, 1.5, 2, 2.5]],
-      [1, [1, 1.5, 4, 4.5, 5]],
+      [1, [1, 1.5, 4, 4.5, 7]],
     ] as const) {
       for (const [index, travel] of travels.entries())
         await app.pg.query(
@@ -427,6 +427,6 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       .find((m: any) => m.id === id);
     expect(Number(row.my_score)).toBe(4);
     expect(Number(row.opponent_score)).toBe(4);
-    expect(rules.rhythmVersion).toBe(1);
+    expect(rules.rhythmVersion).toBe(2);
   });
 });

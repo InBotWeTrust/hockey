@@ -89,6 +89,7 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
+    rhythmVersion?: 1 | 2;
     scoredClockVersion?: 2;
     shotResultPauseMs?: 1000;
     marathonWindowMs?: 4000 | 7000;
@@ -286,7 +287,7 @@ async function playersFor(
           row.duel_kind === 'sniper'
             ? shots.reduce((total, shot) => total + Number(shot.awarded_points), 0) / 10
             : row.duel_kind === 'rhythm'
-            ? projectRhythm({shots:shots.map(shot=>({travel:shot.input_payload.rhythmTravel??0,goal:shot.server_result==='goal'})),travel:shots.at(-1)?.input_payload.rhythmTravel??0}).score
+            ? projectRhythm({version:row.rules_snapshot?.rhythmVersion ?? 1,shots:shots.map(shot=>({travel:shot.input_payload.rhythmTravel??0,goal:shot.server_result==='goal'})),travel:shots.at(-1)?.input_payload.rhythmTravel??0}).score
             : projectMarathon({
                 durationMs: row.rules_snapshot?.periodRules?.[0]?.durationMs ?? 240000,
                 windowMs: row.rules_snapshot?.marathonWindowMs ?? 7000,

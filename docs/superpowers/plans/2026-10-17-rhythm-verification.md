@@ -37,3 +37,13 @@ The real 150-second period completed: the traversal bar disappeared, gameplay st
 ## Remaining acceptance boundaries
 
 No deployed-runtime, physical-device or CI result is claimed. Physical background suspension/network reconnection and arbitrary out-of-order network delivery have not been exhaustively exercised in the browser. Deterministic sampling order and request retries are covered by automated checks. Baseline test failures above remain outside this task.
+
+## Follow-up: confirmed pairs and HUD simplification
+
+- Observed RED: four new core regressions failed with the old algorithm (pending late first goal, exact boundary pair, isolated-goal expiry, confirmed-score preservation).
+- GREEN: 16 core/version tests, 111 targeted web tests, 7 real-route Rhythm integration tests.
+- Real local API, internal browser: eight consecutive throws. First goal modal had only `ГОЛ`; the next timely goal showed `ГОЛ` with `Серия 2`; authoritative score became 2:0. Misses did not reset the pending pair. Entity displacement during all eight result modals was zero; durations 997–1001 ms.
+- Mobile 375×812: no traversal indicators or caption; condition status is inside the existing scoreboard container below its opponent row, rather than over the player.
+- Snapshot scoring version 2 preserves version-one match interpretation. Existing hockey shot-version compatibility remains explicit; movement/flight code was not changed by this follow-up.
+
+Follow-up typecheck, lint and full workspace build: PASS. No push or deployment performed.

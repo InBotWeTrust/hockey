@@ -1,3 +1,4 @@
+import { projectRhythm, type RhythmShot } from '@hockey/game-core';
 import type {
   AmateurDuelKind,
   AmateurDuelParticipant,
@@ -39,4 +40,11 @@ export function duelScorePairText(
   opponent: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
 ): string {
   return [duelScoreText(kind, me), duelScoreText(kind, opponent)].join(kind === 'sniper' ? '\u2009:\u2009' : ':');
+}
+
+export function rhythmGoalDetails(shots: readonly RhythmShot[], version: 1 | 2): string[] {
+  const latest = shots.at(-1);
+  if (!latest?.goal) return [];
+  const result = projectRhythm({shots, travel:latest.travel, version});
+  return result.currentSeries >= 2 ? [`Серия ${result.currentSeries}`] : [];
 }
