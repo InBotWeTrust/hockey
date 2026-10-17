@@ -8,7 +8,7 @@ export function NavalResult({ game, player }: { game: sea.View; player: 0 | 1 })
   if (game.winner === null || !reveal) return null;
   const position = (ship: sea.Ship) => ({ left: `${ship.x / 12 * 100}%`, top: `${ship.y / 12 * 100}%`, width: `${ship.w / 12 * 100}%`, height: `${ship.h / 12 * 100}%` });
   return <section className="bar-naval-review">
-    <button className="btn btn--ghost bar-naval-review-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>Посмотреть поле соперника<span aria-hidden="true">{open ? '−' : '+'}</span></button>
+    <button className="bar-naval-review-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>Посмотреть поле соперника<span aria-hidden="true">{open ? '▴' : '▾'}</span></button>
     {open && <>
       <div className="bar-naval-grid">
         <span aria-hidden="true"/>

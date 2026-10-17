@@ -1801,7 +1801,9 @@
 .bar-naval-grid--airstrike { animation: naval-airstrike-contact 450ms ease-out both; transform-origin: center; }
 @keyframes naval-airstrike-contact { 0% { transform: translate(0, 5px) scale(.99); } 15% { transform: translate(-5px, -4px); } 30% { transform: translate(5px, 3px); } 50% { transform: translate(-4px, -2px); } 70% { transform: translate(3px, 1px); } 85% { transform: translate(-1px, 0); } 100% { transform: none; } }
 .bar-naval-review { margin: 16px 0; width: 100%; min-width: 0; }
-.bar-naval-review-toggle { display: flex; justify-content: space-between; gap: 12px; width: 100%; text-align: left; }
+.bar-naval-review-toggle { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; text-align: left; cursor: pointer; }
+.bar-naval-review-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.bar-naval-review-toggle span { flex: none; font-size: 12px; opacity: .7; }
 .bar-naval-review .bar-naval-grid { width: 100%; max-width: 440px; margin: 16px auto 12px; }
 .bar-naval-review .bar-naval-board { aspect-ratio: 1; pointer-events: none; }
 .bar-naval-review .bar-naval-cell { min-width: 0; min-height: 0; }
