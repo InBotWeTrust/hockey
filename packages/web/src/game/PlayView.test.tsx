@@ -491,6 +491,24 @@ describe('PlayView', () => {
     expect(resolvedContexts[0]?.goalieConfig).toEqual(beachGoalie);
   });
 
+  it('activates authoritative movement after the ready lobby without recreating the scene', async () => {
+    const contexts: Parameters<PlayShotResolver>[0][] = [];
+    const common = {
+      suppressedByModal:false, showIceCar:false, onBack:()=>undefined,
+      preserveSceneOnModalReturn:true, seed:'rhythm-lobby', goalieId:'rookie', periodNumber:1, goals:0, shots:0,
+      shotResolver:(context:Parameters<PlayShotResolver>[0])=>{contexts.push(context);return {type:'miss' as const,reason:'wide' as const};},
+      optimisticAddShot:()=>undefined, submitShot:()=>new Promise<null>(()=>undefined), applyState:()=>undefined,
+    };
+    const view=render(<PlayView {...common} active={false}/>);
+    const sceneCount=playerContainers.length;
+    view.rerender(<PlayView {...common} active shooterMotionTime={()=>123.5}/>);
+    await waitFor(()=>expect(screen.getByRole('button',{name:'БРОСОК'})).toBeEnabled());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]!.input.shooterMotionTime).toBe(123.5);
+    expect(playerContainers).toHaveLength(sceneCount);
+  });
+
   it('starts the server shot index from one in a new period while preserving cumulative shots', () => {
     // Break caught: after 41 cumulative shots in period one, period two sent index 42
     // even though the server-authoritative index for the new period must restart at one.
