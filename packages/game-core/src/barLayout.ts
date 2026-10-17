@@ -109,7 +109,7 @@ export function createDefaultBarLayout(): BarLayout {
       ),
       oleg: profile('Олег', 'Охранник', 'Немногословный и внимательный. Следит за порядком, ценит прямоту и иногда неожиданно шутит.', '/bar/cards/oleg-avatar-v2.webp', '/bar/cards/oleg-composition-v1.webp'),
       timofey: profile('Тимофей', 'Руководитель службы стадиона', 'Уверенный и обаятельный руководитель службы стадиона. Начальник Григория; любит пошутить, иногда забывает мелочи и легко находит общий язык с людьми.', '/bar/cards/timofey-avatar-v2.webp', '/bar/cards/timofey-composition-v2.webp'),
-      veronika: profile('Вероника', 'Управляющая баром', 'Собранная и гостеприимная. Держит бар в порядке, замечает каждую мелочь и умеет найти подход к людям.', '/bar/cards/veronika-avatar-v1.webp', '/bar/cards/veronika-composition-v1.webp'),
+      veronika: profile('Вероника', 'Управляющая баром', 'Собранная и гостеприимная. Держит бар в порядке, замечает каждую мелочь и умеет найти подход к людям.', '/bar/cards/veronika-avatar-v2.webp', '/bar/cards/veronika-composition-v2.webp'),
       igor: profile('Игорь', 'Бармен', 'Общительный парень, который всегда в курсе спортивных новостей. Любит обсуждать матчи, результаты и спорить о любимых командах.', '/bar/cards/igor-avatar-v2.webp', '/bar/cards/igor-composition-v1.webp'),
       news: profile('Газеты на стойке', '', ''),
       broadcasts: profile('Трансляции', '', 'Смотри хоккейные матчи.', null, '/bar/cards/broadcast-tv-v1.webp'),
@@ -197,6 +197,9 @@ export function upgradeBarLayout(layout: BarLayout): BarLayout {
       description: current.description || defaults.profiles[id].description,
     } : defaults.profiles[id];
   }
+  const veronika=next.profiles.veronika;
+  if(veronika.avatar==='/bar/cards/veronika-avatar-v1.webp')veronika.avatar=defaults.profiles.veronika.avatar;
+  if(veronika.composition==='/bar/cards/veronika-composition-v1.webp')veronika.composition=defaults.profiles.veronika.composition;
   const timofey = next.profiles.timofey;
   if (timofey.avatar === '/bar/cards/timofey-avatar-v1.webp') timofey.avatar = defaults.profiles.timofey.avatar;
   if (timofey.composition === '/bar/cards/timofey-composition-v1.webp') timofey.composition = defaults.profiles.timofey.composition;

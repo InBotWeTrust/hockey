@@ -9,6 +9,7 @@ export function safeEmotion(value:unknown):CharacterEmotion {
  return typeof value==='string'&&emotions.includes(value as CharacterEmotion)?value as CharacterEmotion:'neutral';
 }
 export function emotionAsset(character:string,emotion:unknown):string|null {
+ if(character==='veronika'&&emotion!=='greeting')return `/bar/emotions/veronika/${safeEmotion(emotion)}-v2.webp`;
  if(character==='timofey'&&emotion==='interest')return '/bar/emotions/timofey/interest-v2.webp';
  if(emotion==='greeting'&&handshakeCharacters.includes(character))return `/bar/greetings/${character}-v1.webp`;
  return supported.includes(character)?`/bar/emotions/${character}/${emotion==='greeting'?'greeting':safeEmotion(emotion)}-v1.webp`:null;

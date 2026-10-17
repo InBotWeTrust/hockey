@@ -76,3 +76,6 @@ it('loads the revised low-hand interest pose for Timofey without changing other 
  expect(emotionAsset('timofey','neutral')).toBe('/bar/emotions/timofey/neutral-v1.webp');
  expect(emotionAsset('timofey','joy')).toBe('/bar/emotions/timofey/joy-v1.webp');
 });
+it.each(['neutral','joy','interest','surprise','empathy','displeasure'])('uses a fresh URL for corrected Veronika %s',emotion=>{
+ expect(emotionAsset('veronika',emotion)).toBe(`/bar/emotions/veronika/${emotion}-v2.webp`);
+});

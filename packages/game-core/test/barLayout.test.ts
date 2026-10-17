@@ -88,3 +88,13 @@ it('upgrades shipped Timofey and TV while preserving custom edits and placement'
  expect(custom.profiles.timofey.role).toBe('Custom role');expect(custom.profiles.timofey.description).toBe('Custom copy');expect(custom.profiles.timofey.composition).toBe('/bar/custom.png');
 });
 it('offers Grigory his own ochko game',()=>{expect(barActionsFor('grigory')).toEqual(['ochko']);});
+it('refreshes shipped Veronika URLs without replacing custom artwork',()=>{
+ const layout=createDefaultBarLayout();
+ layout.profiles.veronika.composition='/bar/cards/veronika-composition-v1.webp';
+ layout.profiles.veronika.avatar='/bar/cards/veronika-avatar-v1.webp';
+ const next=upgradeBarLayout(layout);
+ expect(next.profiles.veronika.composition).toBe('/bar/cards/veronika-composition-v2.webp');
+ expect(next.profiles.veronika.avatar).toBe('/bar/cards/veronika-avatar-v2.webp');
+ layout.profiles.veronika.composition='/bar/cards/custom.png';
+ expect(upgradeBarLayout(layout).profiles.veronika.composition).toBe('/bar/cards/custom.png');
+});
