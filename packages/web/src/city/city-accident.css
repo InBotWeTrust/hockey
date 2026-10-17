@@ -1,0 +1,9 @@
+.city-incident{position:absolute;inset:0;pointer-events:none}
+.city-incident .city-incident-car{width:3.6%;animation:none;pointer-events:none}
+.city-incident .city-incident-car.is-moving{animation:city-incident-drive var(--incident-duration) linear var(--incident-delay) both}
+@keyframes city-incident-drive{from{left:var(--incident-from)}to{left:var(--incident-to)}}
+.city-police-beacons{position:absolute;left:48%;top:4%;width:14%;height:5%;display:flex;gap:1px;pointer-events:none}
+.city-police-beacons i{width:50%;height:100%;border-radius:2px;background:#48a6ff;box-shadow:0 0 5px 2px #2489ff;animation:city-police-flash .8s steps(1) infinite}
+.city-police-beacons i+i{background:#ff514a;box-shadow:0 0 5px 2px #ff3838;animation-delay:-.4s}
+@keyframes city-police-flash{0%,35%{opacity:1}36%,100%{opacity:.12}}
+@media(prefers-reduced-motion:reduce){.city-police-beacons i{animation:none;opacity:.5}}
