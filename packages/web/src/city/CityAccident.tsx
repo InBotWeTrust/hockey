@@ -1,4 +1,4 @@
-import type {CSSProperties} from 'react';
+import {useEffect,type CSSProperties} from 'react';
 import {accidentCarWidth,accidentStageAt} from './accident.js';
 import {accidentAssets} from './accidentAssets.js';
 import {trafficAssets} from './trafficAssets.js';
@@ -7,6 +7,10 @@ import './city-accident.css';
 const bottoms=[19.5,17] as const;
 export function CityAccident({incident}:{incident:VisibleAccident}){
  const {event,phase,sampledAt}=incident;
+ useEffect(()=>{
+  // Decode damage and police artwork while the cars are still approaching.
+  for(const src of Object.values(accidentAssets)){const image=new Image();image.src=src;void image.decode?.().catch(()=>{});}
+ },[event.start]);
  if(phase==='done')return null;
  const stage=accidentStageAt(event,sampledAt),elapsed=Math.max(0,(sampledAt-stage.start)/1000),depart=phase==='departing',approach=phase==='approach';
  const actor=(id:string,from:number,to:number,duration:number,lane:0|1,src:string,leftward:boolean,police=false)=><div key={id} data-testid={`accident-${id}`} className={`city-vehicle city-incident-car${leftward?' is-leftward':''}${police?' is-police':''}${from!==to?' is-moving':''}`} style={{'--lane-bottom':`${bottoms[lane]}%`,'--incident-from':`${from}%`,'--incident-to':`${to}%`,'--incident-duration':`${duration}s`,'--incident-delay':`${-elapsed}s`,left:`${from}%`,zIndex:lane+1} as CSSProperties}>

@@ -19,3 +19,9 @@ it('restores police waiting by real time and catches up when a hidden tab return
  const view=renderHook(()=>useCityAccident('user',false));expect(view.result.current?.phase).toBe('police-wait');
  act(()=>{vi.setSystemTime(event.end+1);fireEvent(document,new Event('visibilitychange'));});expect(view.result.current).toBeNull();view.unmount();
 });
+it('switches to damaged cars at the collision deadline without waiting for the polling tick',()=>{
+ vi.useFakeTimers();const event=createAccident(1000000,()=>.4);vi.setSystemTime(event.collisionAt-100);
+ localStorage.setItem('city-accident-v1:user',JSON.stringify({nextAt:nextAccidentAt(event),event}));
+ const view=renderHook(()=>useCityAccident('user',false));expect(view.result.current?.phase).toBe('approach');
+ act(()=>vi.advanceTimersByTime(101));expect(view.result.current?.phase).toBe('waiting');view.unmount();
+});

@@ -14,19 +14,24 @@ export function useCityAccident(owner:string|undefined,upperBusy:boolean,preview
   if(preview)schedule.nextAt=Date.now();
   const save=()=>{if(!preview)try{localStorage.setItem(key,JSON.stringify(schedule));}catch{/* Storage is optional. */}};
   save();
+  let timer:ReturnType<typeof setTimeout>|undefined;
   const update=(force=false)=>{
+   clearTimeout(timer);
    const now=Date.now();
    if(schedule.event&&now>=schedule.event.end){schedule.event=null;save();}
    if(!schedule.event&&now>=schedule.nextAt&&!document.hidden&&!busy.current&&!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches){
     schedule.event=createAccident(now,Math.random,preview);schedule.nextAt=nextAccidentAt(schedule.event);save();
    }
-   const event=schedule.event,phase=event?accidentStageAt(event,now).phase:null;
+   const event=schedule.event,stage=event?accidentStageAt(event,now):null,phase=stage?.phase;
+   // Wake at the exact phase boundary rather than waiting for a polling tick.
+   const next=stage&&stage.phase!=='done'?stage.end:Math.max(now+500,schedule.nextAt);
+   timer=setTimeout(update,Math.max(1,Math.ceil(next-now)));
    setVisible(previous=>event&&phase&&phase!=='done'?(previous?.event.start===event.start&&previous.phase===phase&&!force?previous:{event,phase,sampledAt:now}):null);
   };
   const visibility=()=>update(true);
-  update();const timer=setInterval(update,500);
+  update();
   document.addEventListener('visibilitychange',visibility);window.addEventListener('focus',visibility);
-  return()=>{clearInterval(timer);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('focus',visibility);};
+  return()=>{clearTimeout(timer);document.removeEventListener('visibilitychange',visibility);window.removeEventListener('focus',visibility);};
  },[owner,preview]);
  return visible;
 }
