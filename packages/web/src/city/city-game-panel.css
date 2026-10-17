@@ -38,10 +38,6 @@
 .city-game-face>[role=article] { height:auto!important; }
 .city-game-face>[role=article]>div { height:auto!important; align-content:start!important; row-gap:10px!important; }
 .city-game-actions { display:flex; justify-content:center; padding-top:0; }
-.district-game-anchor {
-  --city-panel-open-top: calc(12px + var(--app-safe-top,0px));
-  top: var(--city-panel-open-top);
-}
 .district-game-anchor .city-game-details { max-height:none; min-height:0; flex:1 1 auto; }
 .city-game-notification.is-new { animation:city-game-notice .85s ease-out; }
 @keyframes city-game-notice { 40% { box-shadow:0 0 0 7px rgba(255,255,255,.22); } }
