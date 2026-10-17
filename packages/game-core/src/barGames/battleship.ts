@@ -16,6 +16,7 @@ export type State = {
   phase: 'setup' | 'battle';
   airstrikeCharges?: [number, number];
   mobileSubmarines?: boolean;
+  maneuverAccess?: [boolean, boolean];
   turn: 0 | 1;
   fleets: [Ship[], Ship[]];
   moves: [number, number];
@@ -24,12 +25,13 @@ export type State = {
   winner: 0 | 1 | 'draw' | null;
   lastAction: { player: 0 | 1; type: 'attack' | 'move'; cells: Mark[] } | null;
 };
-export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges' | 'submarineHistory'> & {
+export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges' | 'submarineHistory' | 'maneuverAccess'> & {
   ownShips: Ship[];
   player?: 0 | 1;
   enemySunk: Ship[];
   shots: [Mark[], Mark[]];
   movesLeft: number;
+  maneuverAvailable?: boolean;
   enemyMovesLeft?: number;
   enemyWrecks?: number[];
   enemyReveal?: { ships: Ship[]; submarineTrail?: SubmarinePosition[] };
@@ -142,10 +144,11 @@ export function fleet(seed: number): Ship[] {
   }
   throw Error('Fleet generation failed');
 }
-export function create(starter: 0 | 1, seed: number, chargedAirstrikes = false, mobileSubmarines = false): State {
+export function create(starter: 0 | 1, seed: number, chargedAirstrikes = false, mobileSubmarines = false, damageOnlyManeuvers = false): State {
   return {
     ...(chargedAirstrikes ? { airstrikeCharges: [0, 0] as [number, number] } : {}),
     ...(mobileSubmarines ? { mobileSubmarines: true } : {}),
+    ...(damageOnlyManeuvers ? { maneuverAccess: [false, false] as [boolean,boolean] } : {}),
     kind: 'battleship',
     phase: 'setup',
     turn: starter,
@@ -164,6 +167,7 @@ const clone = (g: State): State => ({
   ...g,
   fleets: g.fleets.map((f) => f.map((s) => ({ ...s, hits: [...s.hits] }))) as State['fleets'],
   moves: [...g.moves],
+  ...(g.maneuverAccess ? {maneuverAccess:[...g.maneuverAccess] as [boolean,boolean]} : {}),
   ...(g.submarineHistory ? { submarineHistory: g.submarineHistory.map(trail => trail.map(s => ({ ...s, hits: [...s.hits] }))) as [SubmarinePosition[], SubmarinePosition[]] } : {}),
   ...(g.airstrikeCharges ? { airstrikeCharges: [...g.airstrikeCharges] as [number, number] } : {}),
   shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
@@ -188,9 +192,10 @@ export function configure(
 }
 export function view(g: State, p: 0 | 1): View {
   const ownShips = g.fleets[p].map((s) => ({ ...s, hits: [...s.hits] }));
-  const cap = ownShips.filter((s) => !sunk(s)).length === 1 ? 3 : 2;
+  const cap = g.maneuverAccess ? 1 : ownShips.filter((s) => !sunk(s)).length === 1 ? 3 : 2;
   return {
     ...(g.mobileSubmarines ? { mobileSubmarines: true, enemyWrecks: g.fleets[1 - p]!.flatMap(s => s.wreck === undefined ? [] : [s.wreck]) } : {}),
+    ...(g.maneuverAccess ? {maneuverAvailable:g.maneuverAccess[p] && g.moves[p]===0 && ownShips.some(s=>s.kind==='submarine' && s.hits.length>0 && !sunk(s))} : {}),
     kind: g.kind,
     phase: g.phase,
     turn: g.turn,
@@ -200,7 +205,7 @@ export function view(g: State, p: 0 | 1): View {
     enemySunk: g.fleets[1 - p]!.filter(sunk).map((s) => ({ ...s, hits: [...s.hits] })),
     shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
     movesLeft: Math.max(0, cap - g.moves[p]),
-    enemyMovesLeft: Math.max(0, (g.fleets[1 - p]!.filter(s => !sunk(s)).length === 1 ? 3 : 2) - g.moves[1 - p]!),
+    enemyMovesLeft: Math.max(0, (g.maneuverAccess ? 1 : g.fleets[1 - p]!.filter(s => !sunk(s)).length === 1 ? 3 : 2) - g.moves[1 - p]!),
     ...(g.winner !== null ? { enemyReveal: {
       ships: g.fleets[1 - p]!.map(s => ({ ...s, hits: [...s.hits] })),
       ...(g.submarineHistory ? { submarineTrail: g.submarineHistory[1 - p]!.map(s => ({ ...s, hits: [...s.hits] })) } : {}),
@@ -227,7 +232,7 @@ export function surroundingWater(ships: Ship[]): number[] {
 }
 export function moves(v: View) {
   const s = v.ownShips.find(s => s.kind === 'submarine');
-  if (!s || sunk(s) || (!v.mobileSubmarines && s.hits.length) || !v.movesLeft) return [];
+  if (v.maneuverAvailable === false || !s || sunk(s) || (!v.mobileSubmarines && s.hits.length) || !v.movesLeft) return [];
   const escape = !!v.mobileSubmarines && s.hits.length > 0;
   const blocked = new Set(v.mobileSubmarines ? [
     ...v.shots[1-(v.player ?? v.turn)]!.map(m=>m.cell),
@@ -259,6 +264,7 @@ export function move(g: State, p: 0 | 1, x: number, y: number): State {
   }
   Object.assign(submarine, { x, y });
   n.moves[p]++;
+  if(n.maneuverAccess)n.maneuverAccess[p]=false;
   n.turn = p === 0 ? 1 : 0;
   n.lastAction = { player: p, type: 'move', cells: [] };
   return n;
@@ -293,6 +299,10 @@ export function attack(
       if (old >= 0) n.shots[p][old] = mark;
       else n.shots[p].push(mark);
     }
+  if(n.maneuverAccess && marks.every(m=>!m.hit)) {
+    const sub=n.fleets[1-p]!.find(s=>s.kind==='submarine');
+    if(sub && !sunk(sub) && sub.hits.length>0 && n.moves[1-p]===0) n.maneuverAccess[1-p]=true;
+  }
   if(n.mobileSubmarines) {
     const water=surroundingWater(n.fleets[1-p]!.filter(sunk));
     for(const c of water) if(!n.shots[p].some(m=>m.cell===c)) n.shots[p].push({cell:c,hit:false});

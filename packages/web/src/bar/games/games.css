@@ -1808,7 +1808,7 @@
 .bar-naval-review .bar-naval-cell { min-width: 0; min-height: 0; }
 .bar-naval-vessel--trail { z-index: 2; }
 .bar-naval-vessel--trail svg { opacity: .35; }
-.bar-naval-vessel--trail b { position: absolute; left: 0; top: -7px; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #d7e8f2; border-radius: 50%; background: #263947; font-size: 10px; line-height: 1; color: white; }
+.bar-naval-position-number { position: absolute; left: 0; top: -7px; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #d7e8f2; border-radius: 50%; background: #263947; font-size: 10px; line-height: 1; color: white; }
 @media (prefers-reduced-motion: reduce) { .bar-naval-grid--airstrike, .bar-naval-damage--burning::before, .bar-naval-damage--burning::after { animation: none; } }
 
 .bar-naval-cell[data-sunk='true'], .bar-naval-cell[data-ship-color][data-sunk='true'][data-hit='true'] { background: transparent; }
@@ -1820,3 +1820,8 @@
 .bar-naval-damage--abandoned::after { width: 17.5%; height: 37.5%; left: 41.25%; }
 .bar-naval-vessel--wreck:not([data-sunk='true']) .bar-naval-hull { fill: #48545b; }
 .bar-naval-vessel--wreck { border-color: rgba(160, 175, 182, .3); }
+.bar-naval-sub-parts { display: flex; align-items: center; gap: 4px; width: 100%; height: 100%; }
+.bar-naval-sub-part { position: relative; flex: 1; min-width: 0; height: 15px; }
+.bar-naval-sub-part[data-damaged='true'] .bar-naval-hull { fill: #40464b; stroke: #8d7773; }
+.bar-naval-fleet-icon--split { overflow: visible; }
+.bar-naval-vessel--trail { border-style: dashed; border-color: #bbd5e099; }

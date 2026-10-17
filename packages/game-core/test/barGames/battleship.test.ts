@@ -300,3 +300,22 @@ it('never hunts beside an abandoned submarine wreck when only the survivor remai
   expect(sea.cell(target.x,target.y)).toBe(survivor);
  }
 });
+it('unlocks one rescue only after a hit followed by a miss and never grants another maneuver',()=>{
+ const g=sea.start(sea.create(1,4,true,true,true));
+ expect(sea.moves(sea.view(g,0))).toEqual([]);
+ const sub=g.fleets[0].find(s=>s.kind==='submarine')!;
+ const hit=sea.attack(g,1,sub.x,sub.y,false,false);
+ expect(sea.moves(sea.view(hit,0))).toEqual([]);
+ const missCell=Array.from({length:144},(_,c)=>c).find(c=>!hit.fleets[0].some(s=>sea.cells(s).includes(c)))!;
+ const missed=sea.attack(hit,1,missCell%12,Math.floor(missCell/12),false,false);
+ const target=sea.moves(sea.view(missed,0))[0]!;expect(target).toBeDefined();
+ const escaped=sea.move(missed,0,target.x,target.y);
+ expect(sea.moves(sea.view(escaped,0))).toEqual([]);
+ expect(sea.view(escaped,0).maneuverAvailable).toBe(false);
+ const again=sea.attack(escaped,1,missCell%12,Math.floor(missCell/12),false,false);
+ expect(sea.view(again,0).maneuverAvailable).toBe(false);
+ for(const ship of escaped.fleets[0])if(ship.kind!=='submarine')ship.hits=sea.cells(ship);
+ expect(sea.view(escaped,0).movesLeft).toBe(0);
+ expect(sea.view(escaped,1).enemyMovesLeft).toBe(0);
+ escaped.turn=0;expect(()=>sea.move(escaped,0,sub.x,sub.y)).toThrow();
+});

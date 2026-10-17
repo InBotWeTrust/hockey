@@ -232,7 +232,8 @@ export function BattleshipField({
         {[true,false].map(self=><div key={String(self)} data-side={self?'self':'enemy'} aria-label={self?'Твой флот: остаток':'Флот противника: остаток'}><div className="bar-naval-fleet-rows">{sea.shipTypes().filter((t,i,all)=>all.findIndex(s=>shipColor(s)===shipColor(t))===i).map(type=><div className="bar-naval-fleet-row" key={shipColor(type)} aria-label={shipName(type)}>{sea.shipTypes().filter(t=>shipColor(t)===shipColor(type)).map(template=>{
           const ship=(self?game.ownShips:game.enemySunk).find(s=>s.id===template.id);
           const destroyed=!!ship&&sea.cells(ship).every(c=>ship.hits.includes(c));
-          return <span key={template.id} className="bar-naval-fleet-icon" data-sunk={destroyed} data-ship-color={shipColor(template)} style={{width:template.kind==='carrier'?32:10+Math.max(template.w,template.h)*5}} title={`${shipName(template)}${destroyed?' — потоплен':''}`}><ShipGraphic ship={template}/>{!self && template.kind === 'submarine' && !destroyed && !!game.enemyMovesLeft && <b className="bar-naval-moves-left" aria-label={`Манёвров соперника осталось: ${game.enemyMovesLeft}`}>{game.enemyMovesLeft}</b>}</span>;
+          const split=template.kind==='submarine' && (!!ship?.hits.length || (self ? ship?.wreck!==undefined : !!game.enemyWrecks?.length));
+          return <span key={template.id} className={`bar-naval-fleet-icon${split?' bar-naval-fleet-icon--split':''}`} data-sunk={destroyed} data-ship-color={shipColor(template)} style={{width:split?40:template.kind==='carrier'?32:10+Math.max(template.w,template.h)*5}} title={`${shipName(template)}${destroyed?' — потоплен':''}`}><>{split ? <SubmarineParts destroyed={destroyed}/> : <ShipGraphic ship={template}/>}</>{!self && game.maneuverAvailable===undefined && template.kind === 'submarine' && !destroyed && !!game.enemyMovesLeft && <b className="bar-naval-moves-left" aria-label={`Манёвров соперника осталось: ${game.enemyMovesLeft}`}>{game.enemyMovesLeft}</b>}</span>;
         })}</div>)}</div></div>)}
       </div>}
       </div>
@@ -500,9 +501,18 @@ export function ShipGraphic({ship}:{ship:sea.Ship}) {
   return <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><g transform={vertical?'rotate(90 50 50)':undefined}>
     <path className="bar-naval-hull" d={ship.kind==='carrier'?'M8 18H84L96 50L84 82H8Z':ship.kind==='submarine'?'M20 28Q-5 50 20 72H78Q105 50 78 28Z':'M8 25L72 20L96 50L72 80L8 75Z'}/>
     {ship.kind==='carrier'?<><path className="bar-naval-deck" d="M18 40H82M18 60H82"/><rect className="bar-naval-cabin" x="35" y="20" width="28" height="14"/></>:<><rect className="bar-naval-cabin" x="35" y="36" width="25" height="28" rx="5"/><path className="bar-naval-deck" d="M65 50H84M17 50H30"/></>}
+    {ship.kind==='submarine'&&ship.w*ship.h===1&&<path className="bar-naval-deck" d="M50 36V18H65"/>}
   </g></svg>;
 }
 
 export function SubmarineWrecks({positions,sunk}:{positions:number[];sunk:number[]}) {
  return <>{positions.map(c=><span key={`wreck-${c}`} className="bar-naval-vessel bar-naval-vessel--wreck" data-sunk={sunk.includes(c)} aria-hidden="true" style={{left:`${c%12/12*100}%`,top:`${Math.floor(c/12)/12*100}%`,width:`${100/12}%`,height:`${100/12}%`}}><ShipGraphic ship={{id:'wreck',kind:'submarine',x:c%12,y:Math.floor(c/12),w:1,h:1,hits:[c]}}/></span>)}</>;
+}
+
+function SubmarineParts({destroyed}:{destroyed:boolean}) {
+ const half:sea.Ship={id:'submarine',kind:'submarine',x:0,y:0,w:1,h:1,hits:[]};
+ return <span className="bar-naval-sub-parts" aria-label={destroyed?"Подлодка: обе части потоплены":"Подлодка: подбитая часть и уцелевшая часть"}>
+  <span className="bar-naval-sub-part" data-damaged="true"><ShipGraphic ship={half}/><i className={`bar-naval-damage${destroyed?' bar-naval-damage--sunk':' bar-naval-damage--burning'}`}/></span>
+  <span className="bar-naval-sub-part"><ShipGraphic ship={half}/>{destroyed&&<i className="bar-naval-damage bar-naval-damage--sunk"/>}</span>
+ </span>;
 }

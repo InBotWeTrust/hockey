@@ -6,7 +6,7 @@ import { GameResult } from './GameModals.js';
 afterEach(cleanup);
 it.each([0, 1] as const)('expands the final enemy board with shots and submarine trail for player %i', player => {
   const enemy = player === 0 ? 1 : 0;
-  const runtime = createMatch('battleship', enemy, 0, false, 4);
+  const runtime = createMatch('battleship', enemy, 0, false, 4,18);
   let game = sea.start(runtime.game as unknown as sea.State);
   const destination = sea.moves(sea.view(game, enemy))[0]!;
   game = sea.move(game, enemy, destination.x, destination.y);
@@ -19,7 +19,8 @@ it.each([0, 1] as const)('expands the final enemy board with shots and submarine
   fireEvent.click(screen.getByText('Посмотреть поле соперника'));
   expect(screen.getByRole('group', {name:'Расстановка соперника'})).toBeInTheDocument();
   expect(document.querySelectorAll('.bar-naval-review .bar-naval-vessel:not(.bar-naval-vessel--trail)')).toHaveLength(12);
-  expect(document.querySelector('.bar-naval-vessel--trail')).toHaveTextContent('1');
+  expect(document.querySelector('.bar-naval-vessel--trail .bar-naval-position-number')).toBeNull();
+  expect(document.querySelector('.bar-naval-vessel:not(.bar-naval-vessel--trail) .bar-naval-position-number')).toHaveTextContent('1');
   expect(document.querySelectorAll('.bar-naval-review .bar-naval-miss')).toHaveLength(1);
 });
 
@@ -29,4 +30,16 @@ it('shows the actual partial placement when a player leaves before the battle st
  fireEvent.click(screen.getByText('Посмотреть поле соперника'));
  expect(screen.getByText('Игра закончилась до завершения расстановки. Показаны размещённые корабли.')).toBeInTheDocument();
  expect(document.querySelectorAll('.bar-naval-review .bar-naval-vessel')).toHaveLength(0);
+});
+
+it('shows one-cell departure silhouettes after the submarine separates',()=>{
+ let game=sea.start(sea.create(1,4,true,true));const sub=game.fleets[1].find(s=>s.kind==='submarine')!;
+ sub.hits=[sea.cells(sub)[0]!];game.shots[0]=[{cell:sub.hits[0]!,hit:true}];
+ const destination=sea.moves(sea.view(game,1))[0]!;game=sea.move(game,1,destination.x,destination.y);game.winner=0;
+ render(<NavalResult game={sea.view(game,0)} player={0}/>);
+ fireEvent.click(screen.getByText('Посмотреть поле соперника'));
+ const trail=document.querySelector<HTMLElement>('.bar-naval-vessel--trail')!;
+ expect(parseFloat(trail.style.width)).toBeCloseTo(100/12);
+ expect(parseFloat(trail.style.height)).toBeCloseTo(100/12);
+ expect(document.querySelector('.bar-naval-damage--abandoned')).not.toBeNull();
 });

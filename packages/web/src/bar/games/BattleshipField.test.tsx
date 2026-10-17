@@ -346,3 +346,22 @@ it('uses filled dots around sunk ships in new-rule matches',()=>{
  expect(container.querySelector('.bar-naval-water')).toBeNull();
  expect(container.querySelectorAll('.bar-naval-miss')).toHaveLength(sea.surroundingWater([victim]).length);
 });
+
+it('shows both submarine sections in the fleet row without exposing an enemy hit before escape',()=>{
+ const game=sea.start(sea.create(0,4,true,true));const sub=game.fleets[0].find(s=>s.kind==='submarine')!;sub.hits=[sea.cells(sub)[0]!];
+ const {rerender}=render(<BattleshipField game={sea.view(game,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(document.querySelectorAll('.bar-naval-sub-part')).toHaveLength(2);
+ rerender(<BattleshipField game={sea.view(game,1)} player={1} disabled={false} locked={false} send={()=>{}}/>);
+ expect(document.querySelector('.bar-naval-sub-parts')).toBeNull();
+ const target=sea.moves(sea.view(game,0))[0]!;const escaped=sea.move(game,0,target.x,target.y);
+ rerender(<BattleshipField game={sea.view(escaped,1)} player={1} disabled={false} locked={false} send={()=>{}}/>);
+ expect(document.querySelectorAll('.bar-naval-sub-part')).toHaveLength(2);
+ expect(document.querySelector('.bar-naval-sub-part[data-damaged="true"] .bar-naval-damage--burning')).not.toBeNull();
+});
+
+it('does not advertise an initial enemy maneuver in rescue-only matches',()=>{
+ const game=sea.start(sea.create(0,4,true,true,true));
+ render(<BattleshipField game={sea.view(game,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
+ expect(screen.queryByLabelText(/Манёвров соперника осталось/)).toBeNull();
+});
