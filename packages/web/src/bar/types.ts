@@ -13,7 +13,7 @@ export interface BarPlayer {
   until: string | null;
 }
 export interface BarMatch {
-  format?: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | null;
+  format?: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm' | null;
   marathonWindowMs?: 4000 | 7000;
   totalPeriods?: number | null;
   id: string;

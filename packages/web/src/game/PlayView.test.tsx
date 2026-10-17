@@ -249,6 +249,35 @@ describe('PlayView', () => {
     expect(shotResolver).toHaveBeenLastCalledWith(expect.objectContaining({input:expect.objectContaining({tapTime:500})}));
   });
 
+
+  it('does not coast past flight contact while its result callback is delayed', async () => {
+    vi.useFakeTimers();
+    let now=1000;
+    vi.spyOn(performance,'now').mockImplementation(()=>now);
+    const motion=gameCore.createRhythmMovementSampler({seed:'delayed-contact',userId:'local',periodNumber:1,elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:600,baselineShooterSpeed:.75,currentShooterSpeed:.75,loadout:{stick:null,skates:null,nutrition:null}});
+    const clocks:number[]=[];
+    render(<PlayView active suppressedByModal={false} showIceCar={false} onBack={()=>{}}
+      seed="delayed-contact" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+      playEntranceOnMount={false} goals={0} shots={0}
+      initialSceneElapsedMs={0} initialShooterElapsedMs={0}
+      speedOverrides={{goalFreq:.5,goalieFreq:.6,shooterFreq:.75,puckSpeed:1.3}}
+      shooterMotionTime={(time,pauses)=>motion.motionAt(time,pauses)}
+      onSceneClock={(scene)=>clocks.push(scene)} shotResultPauseMs={1000}
+      shotResolver={()=>({type:'miss',reason:'wide'})}
+      optimisticAddShot={()=>{}} submitShot={()=>new Promise(()=>{})} applyState={()=>{}}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    const frozenPlayer=playerPositions.at(-1)!;
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    now=1900;act(()=>tickerCallbacks.at(-1)?.());
+    const contactGoal=goalOffsets.at(-1)!;
+    // A slow frame runs before the timer callback can display the outcome.
+    now=2100;act(()=>tickerCallbacks.at(-1)?.());
+    expect(playerPositions.at(-1)).toBeCloseTo(frozenPlayer,8);
+    expect(goalOffsets.at(-1)).toBeCloseTo(contactGoal,8);
+    expect(clocks.at(-1)).toBeCloseTo(900,8);
+  });
+
   it('preserves moving entities and an in-flight puck across rink resize', async () => {
     let now = 1000;
     vi.spyOn(performance, 'now').mockImplementation(() => now);

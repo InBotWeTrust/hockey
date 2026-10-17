@@ -28,7 +28,7 @@ export function activityText(event:ActivityEvent,actor=activityActor(event)):str
    const stage=d.seriesKind==='third_place'?'матче за 3-е место':round.includes('1/4')||round.includes('четверть')?'1/4 финала':round.includes('1/2')||round.includes('полуфинал')?'1/2 финала':round.includes('финал')?'финале':null;
    return `${stage?`${won?'Победил':'Проиграл'} в ${stage}`:won?'Выиграл серию':'Проиграл серию'}${score?` · счёт ${score}`:''}`;
   }
-  case 'duel':return `Завершил дуэль · ${d.format?({express:'Экспресс',express_plus:'Микс',classic:'Классика',sniper:'Снайпер',marathon:'Марафон'}[d.format]):'Дуэль'} · ${result==='win'?'победа':result==='loss'?'поражение':'ничья'}`;
+  case 'duel':return `Завершил дуэль · ${d.format?({express:'Экспресс',express_plus:'Микс',classic:'Классика',sniper:'Снайпер',marathon:'Марафон',rhythm:'Ритм'}[d.format]):'Дуэль'} · ${result==='win'?'победа':result==='loss'?'поражение':'ничья'}`;
   case 'bar_fight':return `Подрался с Олегом в баре · ${result==='win'?'победа':result==='loss'?'поражение':'ничья'}`;
   case 'bar_cards':return character?(result==='win'?`Выиграл у ${character.won} в карты в баре`:result==='loss'?`Проиграл ${character.lost} в карты в баре`:`Сыграл вничью с ${character.name} в карты в баре`):`Сыграл в ${d.game??'карты'} в баре · ${result==='win'?'победа':result==='loss'?'поражение':'ничья'}`;
  }

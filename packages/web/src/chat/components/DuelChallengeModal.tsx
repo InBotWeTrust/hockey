@@ -35,6 +35,7 @@ const DUEL_KIND_ORDER: Record<AmateurDuelKind, number> = {
   classic: 2,
   sniper: 3,
   marathon: 4,
+  rhythm: 5,
 };
 
 export function hasOpenDuelWithUser(matches: AmateurDuelMatch[], userId: string): boolean {
@@ -48,6 +49,7 @@ export function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express_plus') return 'Микс';
   if (kind === 'sniper') return 'Снайпер';
   if (kind === 'marathon') return 'Марафон';
+  if (kind === 'rhythm') return 'Ритм';
   return 'Классика';
 }
 

@@ -141,7 +141,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     }
   });
 
-  it.each(['sniper', 'marathon'])(
+  it.each(['sniper', 'marathon', 'rhythm'])(
     'closes the %s rating and pays its independent reward once',
     async (kind) => {
       const users = await seedSeason('2026-08', 2);

@@ -1,6 +1,9 @@
 import { getPlayerFatigueState } from './playerFatigue.js';
 import { createRng } from './rng.js';
 
+// The existing renderer keeps a stumble visible for this long after its last active frame.
+export const DUEL_STUMBLE_HOLD_MS = 650;
+
 export type DuelInventoryResourceUnit = 'period' | 'shot' | 'distance' | 'energy_ms';
 export type DuelPlayerConditionStatus =
   | 'normal'
