@@ -32,6 +32,6 @@ const locations={yard:{x:12,y:54.5},stadium:{x:44,y:65},pro:{x:86,y:65}};
 export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeof locations}){
  const point=locations[venue];
  return <div className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
-  <div className="city-caretaker-step"><img src={`/sprites/rink-caretaker-${kind}.webp`} alt="" draggable={false}/></div>
+  <div className="city-caretaker-step"><img src={kind==='flood'?'/sprites/city-grigory-flood-hose-v1.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
  </div>;
 }
