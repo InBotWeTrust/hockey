@@ -127,3 +127,14 @@ it('uses the agreed cheating budget distribution and auto-settles the fourth cha
   expect(end.series.totals).toEqual(g.series.totals);
   expect(end.series.history).toHaveLength(4);
 });
+it.each([true,false])('waits three seconds before the next hand in the new continuation mode (%s)',character=>{
+ let g=series.create(deck,0,character,0,3000);
+ g=series.act(g,0,'stand',1,1400);g=series.act(g,1,'stand',1,1400);
+ g=series.advance(g,g.series.reviewAt);
+ const now=g.series.reviewAt;
+ g=series.act(g,0,'next',1,now);
+ if(!character)g=series.act(g,1,'next',1,now);
+ expect(g.series.phase).toBe('countdown');expect(g.series.nextAt).toBe(now+3000);
+ expect(series.advance(g,now+2999).series.round).toBe(1);
+ expect(series.advance(g,now+3000).series.round).toBe(2);
+});

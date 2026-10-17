@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
 import { createMatch, type BarGameId } from '@hockey/game-core';
-import { readGame, actGame } from './service.js';
+import { readGame, actGame, startComputer } from './service.js';
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -157,4 +157,16 @@ it('does not discard an arm surrender merely because a heartbeat won the race',a
  await actGame(pool,'a','match',{requestId:'held',revision:0,action:{type:'arm-input',seq:1,supportHeld:true,support:0.5,pressing:true,wrist:'straight'}});
  const result=await actGame(pool,'a','match',{requestId:'leave',revision:0,action:{type:'surrender'}});
  expect(result.runtime.reason).toBe('surrender');expect(result.runtime.game.winner).toBe(1);
+});
+
+it('preserves the current round pause when starting a private character game', async () => {
+  let stored: { runtime: { engineVersion: number; game: { roundPauseMs?: number } } } | undefined;
+  const query = vi.fn(async (sql: string, args: unknown[] = []) => {
+    if (sql.startsWith('insert into bar_game_matches')) stored = JSON.parse(args[5] as string);
+    return { rows: [] };
+  });
+  const pool = { connect: async () => ({ query, release: vi.fn() }) } as unknown as Pool;
+  await startComputer(pool, 'a', 'grigory', 'new-private-match');
+  expect(stored?.runtime.engineVersion).toBe(17);
+  expect(stored?.runtime.game.roundPauseMs).toBe(3000);
 });

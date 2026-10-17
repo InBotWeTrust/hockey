@@ -58,3 +58,9 @@ it('keeps disabled hand controls during reveal and replaces them with review con
  expect(screen.getByRole('button',{name:'Проверить счёт'})).toBeEnabled();
  expect(screen.getByRole('button',{name:'Дальше'})).toBeEnabled();
 });
+it('does not display hidden-score sentinels as player totals',()=>{
+ const g=review(false),v=series.view(g,0,g.series.reviewAt);v.scores=[-1,-1];
+ const {container}=render(<OchkoField game={v} player={0} now={g.series.reviewAt} disabled={false} send={vi.fn()}/>);
+ expect(container.querySelector('.bar-ochko-sum')).toBeNull();
+ expect(screen.queryByText('-1')).not.toBeInTheDocument();
+});
