@@ -367,7 +367,8 @@ export function bot(v: View, seed: number, smart = true) {
   if (!smart) return legacyBot(v, seed);
   const rng = random(seed),
     known = new Map(v.shots[v.turn].map((m) => [m.cell, m.hit]));
-  const blocked = new Set<number>(v.enemyWrecks ?? []);
+  const wrecks: Ship[]=(v.enemyWrecks??[]).map(c=>({id:'wreck',kind:'submarine',x:c%12,y:Math.floor(c/12),w:1,h:1,hits:[c]}));
+  const blocked = new Set<number>([...(v.enemyWrecks??[]),...surroundingWater(wrecks)]);
   for (const ship of v.enemySunk) {
     for (
       let y = Math.max(0, ship.y - 1);

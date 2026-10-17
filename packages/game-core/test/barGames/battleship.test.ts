@@ -284,3 +284,19 @@ it('lets a damaged submarine detach one cell, keeps a wreck and sinks only on a 
  expect(sea.view(dead,1).enemySunk.some(s=>s.id==='submarine')).toBe(true);
  expect(g.fleets[0].find(s=>s.kind==='submarine')!.w*g.fleets[0].find(s=>s.kind==='submarine')!.h).toBe(2);
 });
+it('never hunts beside an abandoned submarine wreck when only the survivor remains',()=>{
+ const g=sea.start(sea.create(1,4,true,true));const sub=g.fleets[1].find(s=>s.kind==='submarine')!;
+ sub.hits=[sea.cells(sub)[0]!];const wreck=sub.hits[0]!;
+ const destination=sea.moves(sea.view(g,1)).find(p=>Math.abs(p.x-sub.x)+Math.abs(p.y-sub.y)>3)!;
+ const moved=sea.move(g,1,destination.x,destination.y);
+ for(const ship of moved.fleets[1])if(ship.kind!=='submarine')ship.hits=sea.cells(ship);
+ const survivor=sea.cell(destination.x,destination.y);
+ const wreckShip={...sub,x:wreck%12,y:Math.floor(wreck/12),w:1,h:1};
+ const unknown=new Set([...sea.surroundingWater([wreckShip]),survivor]);
+ moved.shots[0]=Array.from({length:144},(_,cell)=>cell).filter(c=>!unknown.has(c)).map(cell=>({cell,hit:cell===wreck||moved.fleets[1].some(s=>s.hits.includes(cell))}));
+ moved.turn=0;
+ for(let seed=0;seed<32;seed++){
+  const target=sea.bot(sea.view(moved,0),seed);
+  expect(sea.cell(target.x,target.y)).toBe(survivor);
+ }
+});
