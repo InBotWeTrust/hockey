@@ -1482,7 +1482,7 @@
 .bar-naval-cell[data-kind='carrier'] { background: #567ab5; }
 .bar-naval-cell[data-kind='submarine'] { background: #34a9af; }
 .bar-naval-cell[data-maneuver='true'] { outline: 2px solid #76e0da; outline-offset: -3px; }
-.bar-naval-cell[data-hit='true'] { background: #9f363d; }
+.bar-naval-cell[data-hit='true'] { background: transparent; }
 .bar-naval-cell[data-selected='true'] { background: #d0a53d; box-shadow: inset 0 0 0 2px white; }
 .bar-naval-toolbar {
   display: flex;
