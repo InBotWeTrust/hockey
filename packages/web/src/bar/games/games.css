@@ -1791,3 +1791,6 @@
 .bar-game-result__score { display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:baseline; gap:8px; margin:12px 0 16px; color:var(--ink); font-variant-numeric:tabular-nums; }
 .bar-game-result__score span { font-size:14px; font-weight:700; color:var(--muted); }
 .bar-game-result__score strong { font-size:24px; }
+
+.bar-ochko-field--series .bar-ochko-hand[aria-label="Карты соперника"] { padding-top: 30px; }
+.bar-ochko-field--series .bar-ochko-sum--opponent { top: 0; }

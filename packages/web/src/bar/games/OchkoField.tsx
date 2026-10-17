@@ -68,7 +68,7 @@ export function OchkoField({
         className={`bar-ochko-hand${!series && revealed ? ' bar-ochko-hand--revealed' : ''}`}
         aria-label="Карты соперника"
       >
-        {series && revealed && (
+        {series && revealed && game.scores[other] >= 0 && (
           <strong className="bar-ochko-sum bar-ochko-sum--opponent">{game.scores[other]}</strong>
         )}
         {game.hands[other].map((id, i) => (
@@ -81,7 +81,7 @@ export function OchkoField({
         ))}
       </div>
       <div className="bar-ochko-hand" aria-label="Твои карты">
-        {series && (
+        {series && game.scores[player] >= 0 && (
           <strong className="bar-ochko-sum bar-ochko-sum--self">{game.scores[player]}</strong>
         )}
         {game.hands[player].map((id, i) => (

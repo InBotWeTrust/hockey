@@ -34,7 +34,7 @@ export type BarGameAction =
   | { type: 'naval-attack'; x: number; y: number; salvo: boolean; vertical: boolean }
   | { type: 'naval-move'; x: number; y: number }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 16;
+export const ENGINE_VERSION = 17;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -59,6 +59,7 @@ function supportedVersion(version: number): boolean {
     version === 13 ||
     version === 14 ||
     version === 15 ||
+    version === 16 ||
     version === ENGINE_VERSION
   );
 }
@@ -141,7 +142,7 @@ export function createMatch(
           ? arm.createArmwrestling(now, seed)
           : kind === 'ochko'
             ? version >= 12
-              ? createSeries(seed, now, computer)
+              ? createSeries(seed, now, computer, version)
               : ochko.createOchko(seed, now)
             : kind === 'darts'
               ? darts.create(starter)
@@ -651,13 +652,14 @@ function privateSea(g: sea.View): sea.State {
   if (!('fleets' in g)) throw Error('Private naval state required');
   return g as unknown as sea.State;
 }
-function createSeries(seed: number, now: number, computer: boolean) {
+function createSeries(seed: number, now: number, computer: boolean, version: number) {
   const old = ochko.createOchko(seed, now);
   return series.create(
     [...old.deck, ...old.hands[1].slice().reverse(), ...old.hands[0].slice().reverse()],
     now,
     computer,
     seed,
+    version >= 17 ? 3000 : undefined,
   );
 }
 function seriesRuntime(m: Runtime, g: series.State, now: number): Runtime {

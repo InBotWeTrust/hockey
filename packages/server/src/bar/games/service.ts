@@ -149,7 +149,7 @@ async function create(
     g.fleets[0] = [];
     if (!character) g.fleets[1] = [];
   }
-  if (kind === 'ochko' && character) row.data.runtime.game = createPrivateOchko(now);
+  if (kind === 'ochko' && character) row.data.runtime.game = createPrivateOchko(now, row.data.runtime.engineVersion);
   await c.query(
     'insert into bar_game_matches(id,kind,player_a,player_b,character,data) values($1,$2,$3,$4,$5,$6)',
     [id, kind, a, b, character, JSON.stringify(row.data)],
