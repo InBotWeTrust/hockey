@@ -59,3 +59,20 @@ it('keeps battle controls visible but disabled throughout the naval launch count
  rerender(<GameTable view={v} now={5001} disabled={false} send={()=>{}}/>);
  expect(screen.getByRole('button',{name:'Выстрел'})).toBeEnabled();
 });
+it.each([null,'grigory'] as const)('keeps ochko cards and totals off the table until readiness finishes (%s)',character=>{
+ const v=snapshot('ochko');v.character=character;
+ const send=vi.fn();
+ const {container,rerender}=render(<GameTable view={v} now={0} disabled={false} send={send}/>);
+ for(const players of [[],[0],[1],[0,1]] as (0|1)[][]){
+  v.ready={...v.ready!,players,startsAt:players.length===2?5000:null};
+  rerender(<GameTable view={v} now={1000} disabled={false} send={send}/>);
+  expect(container.querySelectorAll('.bar-ochko-card')).toHaveLength(0);
+  expect(container.querySelector('.bar-ochko-sum')).toBeNull();
+  expect(screen.queryByRole('button',{name:'Ещё карту'})).not.toBeInTheDocument();
+ }
+ v.ready=null;
+ rerender(<GameTable view={v} now={5001} disabled={false} send={send}/>);
+ expect(container.querySelectorAll('.bar-ochko-card')).toHaveLength(4);
+ expect(screen.queryByRole('button',{name:'Готов'})).not.toBeInTheDocument();
+ expect(send).not.toHaveBeenCalled();
+});

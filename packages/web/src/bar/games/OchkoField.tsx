@@ -61,6 +61,7 @@ export function OchkoField({
       (!!series && series.phase !== 'play') ||
       game.winner !== null ||
       now < game.dealUntil[player];
+  if (pregame) return <div className={`bar-ochko-field${series ? ' bar-ochko-field--series' : ''}`} />;
   return (
     <div className={`bar-ochko-field${series ? ' bar-ochko-field--series' : ''}`}>
       <div
