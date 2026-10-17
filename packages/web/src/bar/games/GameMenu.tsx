@@ -19,7 +19,12 @@ function count(view: BarGameSnapshot, player: 0 | 1): number | undefined {
   if (g.kind === 'darts') return g.scores[player];
   if (g.kind === 'checkers') return g.board.filter((p) => p && (p > 0 ? 0 : 1) === player).length;
   if (g.kind === 'armwrestling') return Math.round(g.stamina[player] * 100);
-  if (g.kind === 'ochko') return g.scores[player] < 0 ? undefined : g.scores[player];
+  if (g.kind === 'ochko')
+    return g.series ? g.series.totals[player] : g.scores[player] < 0 ? undefined : g.scores[player];
+  if (g.kind === 'battleship')
+    return player === view.player
+      ? g.ownShips.filter((s) => s.hits.length < s.w * s.h).length
+      : 12 - g.enemySunk.length;
   const group = g.groups[player];
   if (!group) return 0;
   return g.balls.filter(
@@ -39,14 +44,17 @@ function PoolGroup({ group }: { group: barPool.Group | null | undefined }) {
   );
 }
 function dartBust(view: BarGameSnapshot): string {
-  const m = view.runtime, g = m.game, f = m.feedback;
+  const m = view.runtime,
+    g = m.game,
+    f = m.feedback;
   if (m.engineVersion < 9 || m.engineVersion >= 11) return 'Перебор – дротик не засчитан';
-  if (g.kind !== 'darts' || !f || !m.dartHits?.length)
-    return 'Перебор – очки хода отменены';
+  if (g.kind !== 'darts' || !f || !m.dartHits?.length) return 'Перебор – очки хода отменены';
   // A bust restores the visit's opening score; score the saved hits before board rotation.
   const angle = m.dartRotation?.from ?? g.boardAngle ?? 0;
-  const remaining = g.scores[f.actor] - m.dartHits.reduce((sum, hit) => sum + barDarts.score(hit, angle), 0);
-  const reason = remaining === 1 ? 'остался 1' : remaining < 0 ? 'превышен остаток' : 'нужно удвоение';
+  const remaining =
+    g.scores[f.actor] - m.dartHits.reduce((sum, hit) => sum + barDarts.score(hit, angle), 0);
+  const reason =
+    remaining === 1 ? 'остался 1' : remaining < 0 ? 'превышен остаток' : 'нужно удвоение';
   return `Перебор: ${reason} – ход отменён`;
 }
 function actionResult(view: BarGameSnapshot): string {
@@ -74,6 +82,10 @@ function actionResult(view: BarGameSnapshot): string {
       return 'Биток установлен';
     case 'timeout':
       return 'Время на ход вышло';
+    case 'naval-attack':
+      return f.points ? `${actor}: попаданий ${f.points}` : 'Мимо';
+    case 'naval-move':
+      return '';
   }
 }
 export function GameMenu({
@@ -94,7 +106,12 @@ export function GameMenu({
   const { runtime: m, player } = view,
     g = m.game,
     other = player === 0 ? 1 : 0;
-  const ochkoRevealed = useOchkoReveal(g.kind === 'ochko' && g.winner !== null, now, g.kind === 'ochko' ? Math.max(...g.dealUntil) : 0, 1600);
+  const ochkoRevealed = useOchkoReveal(
+    g.kind === 'ochko' && g.winner !== null,
+    now,
+    g.kind === 'ochko' ? Math.max(...g.dealUntil) : 0,
+    1600,
+  );
   const motionDuration = !m.feedback
     ? 0
     : m.feedback.type === 'dart'
@@ -106,37 +123,67 @@ export function GameMenu({
             ? POOL_STROKE_MS + ((m.poolFrames.length - 1) * 1000) / 60
             : Math.max(0, m.animationUntil - m.animationStart)
           : 0;
-  const motionUntil = Math.max(m.animationStart + motionDuration, g.kind === 'darts' ? m.dartRotation?.until ?? 0 : 0);
+  const motionUntil = Math.max(
+    m.animationStart + motionDuration,
+    g.kind === 'darts' ? (m.dartRotation?.until ?? 0) : 0,
+  );
   const animating = now < motionUntil;
   const thinking = m.computer && g.turn === other && g.winner === null && !animating && !view.ready;
   const poolShotPending = g.kind === 'billiards' && m.feedback?.type === 'shot' && animating;
-  const settledPool = useRef<{ id: string; groups: barPool.Game['groups']; counts: [number, number] } | null>(null);
+  const settledPool = useRef<{
+    id: string;
+    groups: barPool.Game['groups'];
+    counts: [number, number];
+  } | null>(null);
   if (settledPool.current?.id !== view.id || g.kind !== 'billiards') settledPool.current = null;
   if (g.kind === 'billiards' && !poolShotPending) {
-    settledPool.current = { id: view.id, groups: [...g.groups], counts: [count(view, 0)!, count(view, 1)!] };
+    settledPool.current = {
+      id: view.id,
+      groups: [...g.groups],
+      counts: [count(view, 0)!, count(view, 1)!],
+    };
   }
   // Keep the previous summary until the balls stop, including across repeated polls.
   // A mid-shot reconnect has no settled summary, so do not expose the outcome yet.
-  const poolGroups = g.kind === 'billiards'
-    ? poolShotPending ? settledPool.current?.groups : g.groups
-    : undefined;
-  const visibleCount = (p: 0 | 1) => poolShotPending ? settledPool.current?.counts[p] ?? 0 : count(view, p);
+  const poolGroups =
+    g.kind === 'billiards' ? (poolShotPending ? settledPool.current?.groups : g.groups) : undefined;
+  const visibleCount = (p: 0 | 1) =>
+    poolShotPending ? (settledPool.current?.counts[p] ?? 0) : count(view, p);
   const armCountdown = g.kind === 'armwrestling' && !view.ready && now < g.startedAt;
-  const seconds = armCountdown && g.kind === 'armwrestling' ? Math.ceil((g.startedAt - now) / 1000) :
-    (g.winner !== null && !poolShotPending) || view.ready || (g.kind === 'ochko' && g.done[player])
-      ? null
-      : Math.max(
+  const navalSetup = g.kind === 'battleship' && !!view.ready && !view.ready.cancelled;
+  const seconds =
+    navalSetup ? Math.max(0, Math.ceil(((view.ready!.startsAt ?? view.ready!.expiresAt) - now) / 1000)) :
+    g.kind === 'ochko' && g.series && g.series.phase !== 'play' && g.winner === null
+      ? Math.max(
           0,
           Math.ceil(
-            ((g.kind === 'ochko'
-              ? g.deadlines[player]
-              : g.kind === 'armwrestling'
-                ? g.endsAt
-                : m.deadline) -
-              Math.max(now, motionUntil, g.kind === 'ochko' ? g.dealUntil[player] : 0)) /
+            ((g.series.phase === 'countdown'
+              ? g.series.nextAt
+              : g.series.phase === 'reveal'
+                ? g.series.reviewAt
+                : g.series.reviewUntil) -
+              now) /
               1000,
           ),
-        );
+        )
+      : armCountdown && g.kind === 'armwrestling'
+        ? Math.ceil((g.startedAt - now) / 1000)
+        : (g.winner !== null && !poolShotPending) ||
+            view.ready ||
+            (g.kind === 'ochko' && g.done[player])
+          ? null
+          : Math.max(
+              0,
+              Math.ceil(
+                ((g.kind === 'ochko'
+                  ? g.deadlines[player]
+                  : g.kind === 'armwrestling'
+                    ? g.endsAt
+                    : m.deadline) -
+                  Math.max(now, motionUntil, g.kind === 'ochko' ? g.dealUntil[player] : 0)) /
+                  1000,
+              ),
+            );
   let turn = poolShotPending
     ? 'Ход выполняется…'
     : g.winner !== null
@@ -160,10 +207,37 @@ export function GameMenu({
       : 'Держи опору и дави правой рукой';
   if (g.kind === 'ochko' && !view.ready && g.winner === null)
     turn = g.done[player] ? 'Ждём соперника' : 'Бери карту или выбирай «Хватит»';
+  if (
+    g.kind === 'battleship' &&
+    view.ready &&
+    view.ready.startsAt === null &&
+    !view.ready.cancelled
+  )
+    turn = view.ready.players.includes(player)
+      ? 'Ждём начала партии'
+      : 'Выбери корабль сверху и расставь весь флот';
   if (armCountdown) turn = 'Приготовься к схватке';
-  if (g.kind === 'ochko' && g.winner !== null && !ochkoRevealed)
-    turn = 'Вскрываем карты…';
-  const boardSpinning = g.kind === 'darts' && !!m.dartRotation && now >= m.dartRotation.start && now < m.dartRotation.until;
+  if (g.kind === 'ochko' && g.series && !view.ready) {
+    if (g.series.phase === 'reveal') turn = 'Вскрываем карты…';
+    if (g.series.phase === 'review')
+      turn =
+        g.series.challengeResult === 'correct'
+          ? 'Счёт исправлен'
+          : g.series.challengeResult === 'wrong'
+            ? 'Счёт верный. Штраф: 3 очка'
+            : g.series.ready[player]
+              ? 'Ждём соперника'
+              : 'Проверь карты и продолжай';
+    if (g.series.phase === 'countdown') turn = 'Следующая раздача начинается…';
+  }
+  if (g.kind === 'battleship' && g.lastAction?.type === 'move' && !view.ready)
+    turn = `Подлодка ${g.lastAction.player === player ? 'перемещена' : 'соперника переместилась'} · ${turn}`;
+  if (g.kind === 'ochko' && g.winner !== null && !ochkoRevealed) turn = 'Вскрываем карты…';
+  const boardSpinning =
+    g.kind === 'darts' &&
+    !!m.dartRotation &&
+    now >= m.dartRotation.start &&
+    now < m.dartRotation.until;
   if (boardSpinning) turn = 'Мишень вращается…';
   if (g.kind === 'darts' && g.winner === null && !view.ready && !boardSpinning)
     turn += ` · Осталось дротиков: ${g.dartsLeft}`;
@@ -171,7 +245,8 @@ export function GameMenu({
   const sinceContact = now - m.animationStart - DART_FLIGHT_MS;
   const result =
     (dartFeedback && (sinceContact < 0 || sinceContact >= 2000)) ||
-    (g.kind === 'billiards' && (animating || now >= motionUntil + 2000))
+    (g.kind === 'billiards' && (animating || now >= motionUntil + 2000)) ||
+    (g.kind === 'battleship' && now >= m.animationStart + 2000)
       ? ''
       : actionResult(view);
   const poolHint =
@@ -192,13 +267,19 @@ export function GameMenu({
           : turn;
   const tone = poolShotPending
     ? 'warning'
-    : m.missed[player] > 0 || (g.kind==='armwrestling'&&g.warning[player]) || m.feedback?.bust || m.feedback?.foul
+    : m.missed[player] > 0 ||
+        (g.kind === 'armwrestling' && g.warning[player]) ||
+        m.feedback?.bust ||
+        m.feedback?.foul
       ? 'danger'
       : (g.kind !== 'ochko' && g.kind !== 'armwrestling' && g.turn !== player) || animating
         ? 'warning'
         : 'success';
   return (
-    <section className="durak-menu game-scoreboard-stack bar-game-menu" aria-label="Меню игры">
+    <section
+      className={`durak-menu game-scoreboard-stack bar-game-menu${g.kind === 'ochko' && g.series ? ' bar-game-menu--series' : ''}`}
+      aria-label="Меню игры"
+    >
       <div className="game-scoreboard game-scoreboard--stable-surface">
         <div className="game-scoreboard__row durak-menu__row">
           <div className="game-scoreboard__metric bar-game-player--self">
@@ -212,10 +293,13 @@ export function GameMenu({
                 size={30}
                 alt="Твой аватар"
               />
+              <div className="bar-game-name-stack bar-game-name-stack--self">
               <CardPlayerName
                 name={view.participants[player]!.displayName}
                 count={view.ready ? undefined : visibleCount(player)}
               />
+                {view.ready?.players.includes(player) && !view.ready.cancelled && <small className="bar-game-ready-label">Готов</small>}
+              </div>
             </div>
           </div>
           <div
@@ -232,19 +316,40 @@ export function GameMenu({
             aria-label="Осталось времени"
             role="timer"
           >
-            <FittedMenuLabel>Время</FittedMenuLabel>
-            <strong className="game-scoreboard__value">{seconds ?? '–'}</strong>
+            <FittedMenuLabel>
+              {navalSetup ? (view.ready!.startsAt === null ? 'Расстановка' : 'Старт') : g.kind === 'ochko' && g.series ? 'Таймер' : 'Время'}
+            </FittedMenuLabel>
+            <strong className="game-scoreboard__value">
+              {((g.kind === 'ochko' && g.series) || navalSetup) && seconds !== null
+                ? `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+                : (seconds ?? '–')}
+            </strong>
+
           </div>
+          {g.kind === 'ochko' && g.series && <div className="game-scoreboard__metric bar-ochko-round-metric" role="group" aria-label="Раздача">
+            <FittedMenuLabel>Раздача</FittedMenuLabel>
+            <strong className="game-scoreboard__value">{g.series.round}/4</strong>
+          </div>}
           <div className="game-scoreboard__metric bar-game-player--opponent">
             <span className="bar-pool-group-slot bar-pool-group-slot--opponent">
               <PoolGroup group={view.ready ? null : poolGroups?.[other]} />
             </span>
             <div className="durak-menu__identity durak-menu__identity--opponent">
-              <CardPlayerName
-                name={view.participants[other]!.displayName}
-                count={view.ready || (g.kind === 'ochko' && !ochkoRevealed) ? undefined : visibleCount(other)}
-                countFirst
-              />
+              <div
+                className="bar-game-name-stack"
+              >
+                <CardPlayerName
+                  name={view.participants[other]!.displayName}
+                  count={
+                    view.ready || (g.kind === 'ochko' && !g.series && !ochkoRevealed)
+                      ? undefined
+                      : visibleCount(other)
+                  }
+                  countFirst
+                />
+                {view.ready?.players.includes(other) &&
+                  !view.ready.cancelled && <small className="bar-game-ready-label">Готов</small>}
+              </div>
               <UserAvatar
                 avatarUrl={view.participants[other]!.avatarUrl}
                 name={view.participants[other]!.displayName}

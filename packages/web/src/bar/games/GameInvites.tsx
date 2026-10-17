@@ -99,7 +99,7 @@ export function GameInvites() {
             </div>
             <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 760, marginTop: 2 }}>
               Приглашает сыграть в{' '}
-              {invite.kind === 'billiards'
+              {invite.kind === 'battleship' ? 'морской бой' : invite.kind === 'billiards'
                 ? 'бильярд'
                 : invite.kind === 'darts'
                   ? 'дартс'

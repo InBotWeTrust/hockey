@@ -161,6 +161,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
         pregame={{
           text,
           ready,
+          opponentReady: !!opponent && view.ready.includes(opponent.userId),
           countdown: view.status === 'countdown',
           cancelled: view.status === 'ended',
           pending: busy,
