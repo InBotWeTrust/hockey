@@ -7,8 +7,9 @@
 @keyframes city-caretaker-hose{from{transform:rotate(-2deg)}to{transform:rotate(2deg)}}
 @media(prefers-reduced-motion:reduce){.city-caretaker,.city-caretaker-step,.city-caretaker--flood .city-caretaker-step{animation:none}}
 
-/* The hose continues beyond the sprite and exits the clipped map viewport. */
+/* A ground-plane curve joins the sprite hose and exits the map at the near corner. */
 .city-caretaker--flood{animation:none}
 .city-caretaker--flood .city-caretaker-step{position:relative;animation:none}
 .city-caretaker--flood img{position:absolute;left:50%;top:0;width:auto;max-width:none;height:100%;transform:translateX(-82%)}
-.city-caretaker--flood::before{content:'';position:absolute;right:calc(50% + var(--caretaker-height)*2.05 - 1px);top:85.8%;width:100vw;height:max(1px,calc(var(--caretaker-height)*.035));background:linear-gradient(#6c8c79,#31584d 40%,#203e36);border-radius:0;pointer-events:none}
+.city-caretaker--flood img{clip-path:inset(0 0 0 67%)}
+.city-caretaker-ground-hose{position:absolute;right:calc(50% + var(--caretaker-height)*.375 - .5px);top:85.8%;width:calc(var(--caretaker-height)*9);height:calc(var(--caretaker-height)*3);overflow:visible;pointer-events:none}
