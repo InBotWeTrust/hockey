@@ -4,13 +4,12 @@ export type CaretakerSchedule={day:string;visits:CaretakerVisit[]};
 export const caretakerDay=(now:number)=>{const date=new Date(now);return `${date.getFullYear()}-${date.getMonth()+1}-${date.getDate()}`;};
 export function createCaretakerSchedule(now:number,random:()=>number=Math.random):CaretakerSchedule{
  const day=new Date(now);day.setHours(0,0,0,0);
- const count=random()<.5?1:2;
+ const count=5;
  const first: CaretakerKind=random()<.5?'flood':'scrape';
  const visits=Array.from({length:count},(_,index)=>{
-  const startHour=count===1?6:6+index*8;
-  const windowHours=count===1?16:8;
-  const start=new Date(day);start.setHours(startHour);start.setMinutes(Math.floor(random()*(windowHours*60-6)));
-  return {start:start.getTime(),end:start.getTime()+(3+random()*2)*60_000,kind:index===0?first:first==='flood'?'scrape':'flood'};
+  const windowMinutes=16*60/count;
+  const start=new Date(day);start.setMinutes(6*60+index*windowMinutes+Math.floor(random()*(windowMinutes-6)));
+  return {start:start.getTime(),end:start.getTime()+(3+random()*2)*60_000,kind:index%2===0?first:first==='flood'?'scrape':'flood'};
  });
  return {day:caretakerDay(now),visits};
 }

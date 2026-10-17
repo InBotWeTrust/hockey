@@ -5,12 +5,12 @@ export function useCaretakerVisit(owner:string|undefined,blocked:boolean):Careta
  const [kind,setKind]=useState<CaretakerKind|null>(null);
  const shown=useRef<{owner:string|undefined;kind:CaretakerKind}|null>(null);
  useEffect(()=>{
-  const key=`city-caretaker-v1:${owner??'anonymous'}`;
+  const key=`city-caretaker-v2:${owner??'anonymous'}`;
   let schedule:CaretakerSchedule|undefined;
   const read=(now:number)=>{
    try{
     const saved=JSON.parse(localStorage.getItem(key)??'null') as CaretakerSchedule|null;
-    if(saved?.day===caretakerDay(now)&&Array.isArray(saved.visits)&&saved.visits.length<=2&&saved.visits.every(v=>Number.isFinite(v.start)&&Number.isFinite(v.end)&&v.end>v.start&&(v.kind==='flood'||v.kind==='scrape')))return saved;
+    if(saved?.day===caretakerDay(now)&&Array.isArray(saved.visits)&&saved.visits.length<=5&&saved.visits.every(v=>Number.isFinite(v.start)&&Number.isFinite(v.end)&&v.end>v.start&&(v.kind==='flood'||v.kind==='scrape')))return saved;
    }catch{/* Storage is optional. */}
    return createCaretakerSchedule(now);
   };

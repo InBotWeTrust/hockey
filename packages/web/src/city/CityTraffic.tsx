@@ -1,3 +1,5 @@
+import {useCityAccident} from './useCityAccident.js';
+import {CityAccident} from './CityAccident.js';
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
 import {trafficAssets} from './trafficAssets.js';
 import './city-traffic.css';
@@ -13,15 +15,19 @@ export function trafficChoice(random:()=>number=Math.random){
  return {lane,leftward:lane>=2,bottom:bottoms[lane]!,duration:28+random()*22,model};
 }
 type Vehicle=ReturnType<typeof trafficChoice>&{id:number};
-export function CityTraffic({night,preview=false}:{night:boolean;preview?:boolean}){
+export function CityTraffic({night,preview=false,owner,accidentPreview=false}:{night:boolean;preview?:boolean;owner?:string|undefined;accidentPreview?:boolean}){
  const [vehicles,setVehicles]=useState<Vehicle[]>([]),[plane,setPlane]=useState(false),[paused,setPaused]=useState(document.hidden);
  const serial=useRef(0);
+ const incident=useCityAccident(owner,vehicles.some(vehicle=>vehicle.lane<2),accidentPreview);
+ const incidentActive=useRef(Boolean(incident));incidentActive.current=Boolean(incident);
+ const incidentStart=incident?.event.start;
+ useEffect(()=>{if(incidentStart!==undefined)setVehicles(previous=>previous.some(vehicle=>vehicle.lane<2)?previous.filter(vehicle=>vehicle.lane>=2):previous);},[incidentStart]);
  useEffect(()=>{
   const motion=window.matchMedia?.('(prefers-reduced-motion: reduce)');
   let stopped=false,carTimer:ReturnType<typeof setTimeout>|undefined,planeTimer:ReturnType<typeof setTimeout>|undefined;
   const enabled=()=>!document.hidden&&!motion?.matches;
   const spawn=()=>{if(stopped)return;if(enabled()){
-   const choice=trafficChoice();setVehicles(previous=>previous.some(v=>v.lane===choice.lane)?previous:[...previous,{...choice,id:++serial.current}]);
+   const choice=trafficChoice();setVehicles(previous=>(choice.lane<2&&incidentActive.current)||previous.some(v=>v.lane===choice.lane)?previous:[...previous,{...choice,id:++serial.current}]);
   }carTimer=setTimeout(spawn,preview?6000:trafficDelay());};
   const fly=()=>{if(stopped)return;if(enabled())setPlane(true);planeTimer=setTimeout(fly,(480+Math.random()*420)*1000);};
   const visibility=()=>setPaused(!enabled());
@@ -33,6 +39,7 @@ export function CityTraffic({night,preview=false}:{night:boolean;preview?:boolea
   {vehicles.map(vehicle=><div key={vehicle.id} data-testid="city-vehicle" className={`city-vehicle${vehicle.leftward?' is-leftward':''}${vehicle.model.startsWith('bus')?' is-bus':''}`} style={{'--lane-bottom':`${vehicle.bottom}%`,'--travel':`${vehicle.duration}s`,zIndex:vehicle.lane+1} as CSSProperties} onAnimationEnd={event=>{if(event.target===event.currentTarget)setVehicles(previous=>previous.filter(v=>v.id!==vehicle.id));}}>
    <img src={trafficAssets[vehicle.model]} alt="" draggable={false}/><i className="city-headlights"/><i className="city-taillights"/><span className="city-exhaust"><i/><i/><i/></span>
   </div>)}
+  {incident&&<CityAccident incident={incident}/>}
   {plane&&<div className="city-plane" onAnimationEnd={()=>setPlane(false)}><img src="/sprites/city-plane-687338bfb4c3.webp" alt="" draggable={false}/></div>}
  </div>;
 }
