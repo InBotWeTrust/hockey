@@ -1616,7 +1616,7 @@
 .bar-naval-grid + .bar-naval-toolbar:not(.bar-naval-toolbar--ready) { padding-top: 14px; padding-bottom: 8px; }
 
 .bar-naval-damage--sunk { background: none; box-shadow: none; border-radius: 0; width: 56%; height: 56%; left: 22%; top: 22%; }
-.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #35272a; box-shadow: 0 0 2px #fff0ce88; transform: rotate(45deg); }
+.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #c49b91; box-shadow: 0 0 2px #fff0ce99; transform: rotate(45deg); }
 .bar-naval-damage--sunk::after { transform: rotate(-45deg); }
 
 /* Anchor the naval controls near the bottom on tall screens. */
