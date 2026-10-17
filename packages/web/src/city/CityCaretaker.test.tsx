@@ -1,4 +1,4 @@
-import {act,renderHook,render,screen} from '@testing-library/react';
+import {act,fireEvent,renderHook,render,screen} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
 import {useCaretakerVisit,CityCaretaker} from './CityCaretaker.js';
 import {caretakerDay} from './caretakerSchedule.js';
@@ -18,4 +18,21 @@ it('uses both existing caretaker sprites and never intercepts map gestures',()=>
  expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')).toHaveAttribute('src','/sprites/city-grigory-flood-long-v4.webp');
  view.rerender(<CityCaretaker kind="scrape" venue="yard"/>);
  expect(screen.getByRole('img',{name:'Григорий чистит снег'}).querySelector('img')).toHaveAttribute('src','/sprites/rink-caretaker-scrape.webp');
+});
+
+it('keeps the hose outside the viewport after the map scrolls to its left edge',()=>{
+ let imageLeft=150;
+ const rect=(left:number)=>({left,right:left+400,top:0,bottom:100,x:left,y:0,width:400,height:100,toJSON:()=>({})}) as DOMRect;
+ const natural=vi.spyOn(HTMLImageElement.prototype,'naturalWidth','get').mockReturnValue(1536);
+ const bounds=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement){
+  if(this instanceof HTMLImageElement){const shift=parseFloat(this.closest('.city-caretaker')?.getAttribute('style')?.match(/--caretaker-edge-shift:\s*([-\d.]+)/)?.[1]??'0');return rect(imageLeft+shift);}
+  return rect(100);
+ });
+ try{
+  render(<div data-testid="viewport"><div><CityCaretaker kind="flood" venue="yard"/></div></div>);
+  const image=screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')!;
+  expect(image.getBoundingClientRect().left).toBeLessThanOrEqual(80);
+  imageLeft=250;fireEvent.scroll(screen.getByTestId('viewport'));
+  expect(image.getBoundingClientRect().left).toBeLessThanOrEqual(80);
+ }finally{bounds.mockRestore();natural.mockRestore();}
 });

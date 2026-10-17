@@ -38,16 +38,14 @@ export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeo
   let shift=0;
   const update=()=>{
    if(!image.naturalWidth)return;
-   const venueX={yard:12.7,stadium:44.8,pro:87}[venue];
-   const centeredLeft=Math.max(0,Math.min(world.clientWidth-viewport.clientWidth,world.clientWidth*venueX/100-viewport.clientWidth/2));
-   const imageWorldLeft=image.getBoundingClientRect().left-world.getBoundingClientRect().left+shift;
-   shift=Math.max(0,imageWorldLeft-centeredLeft+20);
+   const unshiftedLeft=image.getBoundingClientRect().left-viewport.getBoundingClientRect().left+shift;
+   shift=Math.max(0,unshiftedLeft+20);
    root.style.setProperty('--caretaker-edge-shift',`${-shift}px`);
   };
-  update();image.addEventListener('load',update);
+  update();image.addEventListener('load',update);viewport.addEventListener('scroll',update,{passive:true});
   const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(update);
   observer?.observe(viewport);observer?.observe(world);observer?.observe(image);
-  return()=>{observer?.disconnect();image.removeEventListener('load',update);root.style.removeProperty('--caretaker-edge-shift');};
+  return()=>{observer?.disconnect();image.removeEventListener('load',update);viewport.removeEventListener('scroll',update);root.style.removeProperty('--caretaker-edge-shift');};
  },[kind,venue]);
  return <div ref={figure} className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
   <div className="city-caretaker-step"><img ref={sprite} src={kind==='flood'?'/sprites/city-grigory-flood-long-v4.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
