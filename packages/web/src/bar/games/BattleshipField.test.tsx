@@ -365,3 +365,24 @@ it('does not advertise an initial enemy maneuver in rescue-only matches',()=>{
  expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
  expect(screen.queryByLabelText(/Манёвров соперника осталось/)).toBeNull();
 });
+it.each([0,1] as const)('reveals airstrike cells one by one for actor %i during the impact scene',actor=>{
+ const game=sea.start(sea.create(actor,4,true,true));game.airstrikeCharges![actor]=5;
+ game.fleets[1-actor]=[{id:'ship-8',kind:'standard',x:10,y:10,w:1,h:1,hits:[]}];
+ const {container,rerender}=render(<BattleshipField game={sea.view(game,0)} player={0} disabled locked={false} send={()=>{}} now={1000}/>);
+ const hit=sea.attack(game,actor,0,0,true,false);
+ for(const [elapsed,count] of [[0,1],[249,1],[250,2],[500,3],[750,4]]){
+  rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={2000+elapsed!} animationStart={2000}/>);
+  expect(container.querySelectorAll('.bar-naval-miss')).toHaveLength(count!);
+ }
+});
+it('keeps the later bomb cells hidden even when an earlier bomb sinks a ship beside them',()=>{
+ const game=sea.start(sea.create(0,4,true,true));game.airstrikeCharges![0]=5;
+ game.fleets[1]=[{id:'ship-4',kind:'standard',x:0,y:0,w:2,h:1,hits:[]}];
+ const {rerender}=render(<BattleshipField game={sea.view(game,0)} player={0} disabled locked={false} send={()=>{}} now={1000}/>);
+ const hit=sea.attack(game,0,0,0,true,false);
+ rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={2250} animationStart={2000}/>);
+ const board=screen.getByRole('group',{name:'Поле противника'});
+ expect(board.querySelectorAll('button')[12]!.querySelector('.bar-naval-miss')).toBeNull();
+ rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={2500} animationStart={2000}/>);
+ expect(board.querySelectorAll('button')[12]!.querySelector('.bar-naval-miss')).not.toBeNull();
+});

@@ -1825,3 +1825,5 @@
 .bar-naval-sub-part[data-damaged='true'] .bar-naval-hull { fill: #40464b; stroke: #8d7773; }
 .bar-naval-fleet-icon--split { overflow: visible; }
 .bar-naval-vessel--trail { border-style: dashed; border-color: #bbd5e099; }
+.bar-naval-cell[data-airstrike='true'] .bar-naval-impact { animation-duration: 850ms; }
+@keyframes naval-airstrike-contact-next { 0% { transform: translate(0, 5px) scale(.99); } 15% { transform: translate(-5px, -4px); } 30% { transform: translate(5px, 3px); } 50% { transform: translate(-4px, -2px); } 70% { transform: translate(3px, 1px); } 85% { transform: translate(-1px, 0); } 100% { transform: none; } }

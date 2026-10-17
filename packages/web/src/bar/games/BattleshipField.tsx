@@ -1,12 +1,13 @@
+import { navalAttackFrame, NAVAL_BOMB_STEP_MS, NAVAL_ATTACK_SCENE_MS } from './navalAttackFrame.js';
 import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
 import { barBattleship as sea, type BarGameAction } from '@hockey/game-core';
 const letters = 'АБВГДЕЖЗИКЛМ';
 const shipColor = (s: sea.Ship) => s.kind === 'standard' ? `standard-${Math.max(s.w, s.h)}` : s.kind;
 const shipName = (s: sea.Ship) => s.kind === 'carrier' ? 'Авианосец' : s.kind === 'submarine' ? 'Подлодка' : ({1: 'Катер', 2: 'Эсминец', 3: 'Крейсер', 4: 'Линкор'}[Math.max(s.w, s.h)] ?? 'Корабль');
 export function BattleshipField({
-  game,
+  game: authoritativeGame,
   player,
-  disabled,
+  disabled: externallyDisabled,
   locked,
   send,
   readyAction,
@@ -26,6 +27,11 @@ export function BattleshipField({
   animationStart?: number;
   countdown?: boolean;
 }) {
+  const frames=useRef<{stamp:number;latest:sea.View;before?:sea.View}>({stamp:animationStart,latest:authoritativeGame});
+  if(frames.current.stamp!==animationStart)frames.current={stamp:animationStart,latest:authoritativeGame,before:frames.current.latest};
+  else frames.current.latest=authoritativeGame;
+  const game=animationStart>0?navalAttackFrame(authoritativeGame,frames.current.before,now-animationStart,player):authoritativeGame;
+  const disabled=externallyDisabled||(authoritativeGame.lastAction?.type==='attack'&&authoritativeGame.lastAction.cells.length>1&&now<animationStart+NAVAL_ATTACK_SCENE_MS);
   const [own, setOwn] = useState<{value:boolean; key:string} | null>(null),
     [mode, setMode] = useState<'shot' | 'salvo' | 'move'>('shot'),
     [vertical, setVertical] = useState(false),
@@ -57,10 +63,8 @@ export function BattleshipField({
     const ship = game.ownShips.find(s=>s.id===pendingShip.current);
     if(ship) { setSelected(ship.id); setVertical(ship.h>ship.w); pendingShip.current=null; }
   }, [game.ownShips]);
-  const effectClock = useRef({ stamp: animationStart, delay: -Math.max(0, now - animationStart) });
-  if (effectClock.current.stamp !== animationStart) effectClock.current = { stamp: animationStart, delay: -Math.max(0, now - animationStart) };
   const setup = game.phase === 'setup' && !countdown;
-  const impactActive = !setup && game.lastAction?.type === 'attack' && animationStart > 0 && now >= animationStart && now < animationStart + 1600;
+  const impactActive = !setup && game.lastAction?.type === 'attack' && animationStart > 0 && now < animationStart + NAVAL_ATTACK_SCENE_MS;
   const opponentImpact = impactActive && game.lastAction?.player !== player;
   const boardKey = `${game.phase}:${game.turn}:${animationStart}`;
   useEffect(() => {
@@ -79,12 +83,22 @@ export function BattleshipField({
   const ships = showOwn ? game.ownShips : game.enemySunk;
   const destroyedShips=ships.filter(s=>sea.cells(s).every(c=>s.hits.includes(c)));
   const inferredWater = new Set(sea.surroundingWater(destroyedShips));
+  if(impactActive && game.lastAction!.cells.length>1) {
+    const priorShips=(showOwn?frames.current.before?.ownShips:frames.current.before?.enemySunk)??[];
+    const priorWater=new Set(sea.surroundingWater(priorShips.filter(s=>sea.cells(s).every(c=>s.hits.includes(c)))));
+    game.lastAction!.cells.forEach((m,i)=>{if(now<animationStart+i*NAVAL_BOMB_STEP_MS&&!priorWater.has(m.cell))inferredWater.delete(m.cell);});
+  }
   const wrecks=showOwn?game.ownShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]):game.enemyWrecks??[];
   const sunkWrecks=destroyedShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]);
   const visibleImpact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player);
   const impactAirstrike = visibleImpact && game.lastAction!.cells.length > 1;
   const impactSunk = visibleImpact && ships.some(s => sea.cells(s).every(c=>s.hits.includes(c)) && game.lastAction!.cells.some(m=>m.hit && sea.cells(s).includes(m.cell)));
-  const shake = visibleImpact && now < animationStart + (impactAirstrike ? 450 : 300) && game.lastAction!.cells.some(m=>m.hit);
+  const revealedIndex=impactAirstrike?Math.min(game.lastAction!.cells.length-1,Math.floor((now-animationStart)/NAVAL_BOMB_STEP_MS)):0;
+  const lastHitIndex=visibleImpact?game.lastAction!.cells.slice(0,revealedIndex+1).map((m,i)=>m.hit?i:-1).filter(i=>i>=0).pop()??-1:-1;
+  const shockAt=animationStart+(impactAirstrike?Math.max(0,lastHitIndex)*NAVAL_BOMB_STEP_MS:0);
+  const shockClock=useRef({at:shockAt,delay:-Math.max(0,now-shockAt)});
+  if(shockClock.current.at!==shockAt)shockClock.current={at:shockAt,delay:-Math.max(0,now-shockAt)};
+  const shake=visibleImpact&&lastHitIndex>=0&&now<shockAt+(impactAirstrike?450:300);
   const submarineSelected =
     showOwn && game.ownShips.some((s) => s.id === selected && s.kind === 'submarine');
   const canPlace = (id: string, x: number, y: number, rotated: boolean) =>
@@ -237,7 +251,7 @@ export function BattleshipField({
         })}</div>)}</div></div>)}
       </div>}
       </div>
-      <div className={`bar-naval-grid${shake ? impactAirstrike ? ' bar-naval-grid--airstrike' : impactSunk ? ' bar-naval-grid--sunk' : ' bar-naval-grid--hit' : ''}`} style={shake ? {animationDelay: `${effectClock.current.delay}ms`} : undefined}>
+      <div className={`bar-naval-grid${shake ? impactAirstrike ? ' bar-naval-grid--airstrike' : impactSunk ? ' bar-naval-grid--sunk' : ' bar-naval-grid--hit' : ''}`} style={shake ? {animationDelay: `${shockClock.current.delay}ms`,...(impactAirstrike&&lastHitIndex%2?{animationName:'naval-airstrike-contact-next'}:{})} : undefined}>
         <span aria-hidden="true" />
         <div className="bar-naval-columns" aria-hidden="true">
           {Array.from(letters).map((letter) => (
@@ -337,7 +351,9 @@ export function BattleshipField({
               ship = ships.find((s) => sea.cells(s).includes(c)),
               mark = marks.find((m) => m.cell === c),
               hit = ship?.hits.includes(c) || mark?.hit;
-            const impact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player) ? game.lastAction.cells.find(m => m.cell === c) : undefined;
+            const impactIndex=game.lastAction?.cells.findIndex(m=>m.cell===c)??-1;
+            const impactAt=animationStart+(impactAirstrike?Math.max(0,impactIndex)*NAVAL_BOMB_STEP_MS:0);
+            const impact = visibleImpact&&impactIndex>=0&&now>=impactAt ? game.lastAction!.cells[impactIndex] : undefined;
             const destroyed = (!!ship && sea.cells(ship).every(c => ship.hits.includes(c))) || sunkWrecks.includes(c);
             return (
               <button
@@ -366,6 +382,7 @@ export function BattleshipField({
                 data-maneuver={
                   !setup && showOwn && mode === 'move' && sea.moves(game).some(m => m.x === x && m.y === y)
                 }
+                data-airstrike={impactAirstrike}
                 data-impact={impact ? impact.hit ? destroyed ? 'sunk' : 'hit' : 'miss' : undefined}
                 data-hit={!!hit}
                 data-sunk={destroyed}
@@ -382,7 +399,7 @@ export function BattleshipField({
                 }}
               >
                 {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ' bar-naval-damage--burning'}${!destroyed&&wrecks.includes(c)?' bar-naval-damage--abandoned':''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className={game.mobileSubmarines?"bar-naval-miss":"bar-naval-water"} aria-hidden="true" /> : null}
-                {impact && <span key={`${animationStart}-${c}`} className="bar-naval-impact" style={{animationDelay: `${effectClock.current.delay}ms`}} aria-hidden="true" />}
+                {impact && <NavalImpact key={`${animationStart}-${c}`} at={impactAt} now={now}/>}
               </button>
             );
           })}
@@ -515,4 +532,9 @@ function SubmarineParts({destroyed}:{destroyed:boolean}) {
   <span className="bar-naval-sub-part" data-damaged="true"><ShipGraphic ship={half}/><i className={`bar-naval-damage${destroyed?' bar-naval-damage--sunk':' bar-naval-damage--burning'}`}/></span>
   <span className="bar-naval-sub-part"><ShipGraphic ship={half}/>{destroyed&&<i className="bar-naval-damage bar-naval-damage--sunk"/>}</span>
  </span>;
+}
+
+function NavalImpact({at,now}:{at:number;now:number}) {
+ const delay=useRef(-Math.max(0,now-at));
+ return <span className="bar-naval-impact" style={{animationDelay:`${delay.current}ms`}} aria-hidden="true"/>;
 }
