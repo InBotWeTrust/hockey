@@ -213,8 +213,8 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
       return view(c, row, user, now);
     }
     if (
-      (input.action.type !== 'rules-pause' && input.revision !==
-        (row.kind === 'armwrestling' ? storedRevision : row.data.runtime.revision) &&
+      (input.revision !==
+        (row.kind === 'armwrestling' || input.action.type === 'rules-pause' ? storedRevision : row.data.runtime.revision) &&
         !(
           (row.kind === 'ochko' &&
             (input.action.type === 'ochko-hit' || input.action.type === 'ochko-stand' || input.action.type==='ochko-next' || input.action.type==='ochko-challenge')) ||

@@ -232,3 +232,13 @@ it('holds the character shot until its remaining thinking time elapses after res
  vi.setSystemTime(120000+due-1);expect((await readGame(pool,'a','match')).runtime.revision).toBe(resumed.runtime.revision);
  vi.setSystemTime(120000+due);expect((await readGame(pool,'a','match')).runtime.revision).toBeGreaterThan(resumed.runtime.revision);
 });
+it('rejects a delayed resume from an older revision without releasing the newer pause',async()=>{
+ const {pool,row}=fixture();Object.assign(row,{character:'daria',player_b:null});row.data.runtime.computer=true;
+ await actGame(pool,'a','match',{requestId:'p1',revision:0,action:{type:'rules-pause',paused:true}});
+ const newer=await actGame(pool,'a','match',{requestId:'p2',revision:1,action:{type:'rules-pause',paused:true}});
+ vi.setSystemTime(121000);
+ await expect(actGame(pool,'a','match',{requestId:'old-resume',revision:0,action:{type:'rules-pause',paused:false}})).rejects.toMatchObject({statusCode:409});
+ expect((await readGame(pool,'a','match')).rulesPaused).toBe(true);
+ const resumed=await actGame(pool,'a','match',{requestId:'resume',revision:newer.runtime.revision,action:{type:'rules-pause',paused:false}});
+ expect(resumed.rulesPaused).toBe(false);
+});
