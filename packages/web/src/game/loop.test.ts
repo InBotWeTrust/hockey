@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
 import { getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode, getBonusChallengeShooterMotionTime,
-  simulateGoal, simulateGoalie, getSessionPhaseOffsets, type GoalieConfig } from '@hockey/game-core';
+  createRhythmMovementSampler, simulateGoal, simulateGoalie, getSessionPhaseOffsets, type GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
 const stationaryCustomGoalie: GoalieConfig = {
@@ -52,6 +52,38 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+
+  it.each(['express','express_plus','classic','sniper','marathon','rhythm'])('preserves flight, frozen result and smooth resume in %s', (kind) => {
+    const now=vi.spyOn(performance,'now').mockReturnValue(1000);
+    const player=vi.fn(),goal=vi.fn(),goalie=vi.fn(),puck=vi.fn();
+    const sample=createRhythmMovementSampler({seed:'sequence',userId:'local',periodNumber:1,elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:600,baselineShooterSpeed:.75,currentShooterSpeed:.75,loadout:{stick:null,skates:null,nutrition:null}});
+    const loop=makeLoop({getGoalieId:()=> 'rookie',getSeed:()=> 'sequence',
+      getSpeedOverrides:()=>({goalFreq:.5,goalieFreq:.6,shooterFreq:.75,puckSpeed:.85}),
+      playerRenderer:{update:player} as never,goalRenderer:{update:goal} as never,goalieRenderer:{update:goalie} as never,
+      puckRenderer:{isHeld:()=>true,isFlying:()=>false,resetAtStart:vi.fn(),update:puck} as never,
+      ...(kind==='rhythm'?{getShooterMotionTime:(ms:number,pauses:readonly {tapTime:number;flightMs:number}[])=>sample.motionAt(ms,pauses)}:{})});
+    const ticker=makeTicker();loop.attach(ticker);const tick=ticker.add.mock.calls[0]![0] as ()=>void;
+    now.mockReturnValue(1100);tick();
+    const startPlayer=player.mock.calls.at(-1)![1],startGoal=goal.mock.calls.at(-1)![1];
+    loop.beginShooterPause(400);
+    now.mockReturnValue(1300);tick();
+    expect(player.mock.calls.at(-1)![1]).toBeCloseTo(startPlayer,8);
+    expect(goal.mock.calls.at(-1)![1]).not.toBe(startGoal);
+    now.mockReturnValue(1500);tick();loop.beginScenePause();
+    const scene=loop.getSceneT(),frozenPlayer=player.mock.calls.at(-1)![1],frozenGoal=goal.mock.calls.at(-1)![1],frozenGoalie=JSON.stringify(goalie.mock.calls.at(-1)![0]);
+    const puckFrames=puck.mock.calls.length;
+    for(const time of [1600,1800,2100,2499,2500]){now.mockReturnValue(time);tick();
+      expect(loop.getSceneT()).toBe(scene);
+      expect(player.mock.calls.at(-1)![1]).toBeCloseTo(frozenPlayer,8);
+      expect(goal.mock.calls.at(-1)![1]).toBe(frozenGoal);
+      expect(JSON.stringify(goalie.mock.calls.at(-1)![0])).toBe(frozenGoalie);
+    }
+    expect(puck.mock.calls.length).toBeGreaterThan(puckFrames);
+    loop.endScenePause();loop.endShooterPause();now.mockReturnValue(2516);tick();
+    expect(loop.getSceneT()).toBe(scene+16);
+    expect(Math.abs(player.mock.calls.at(-1)![1]-frozenPlayer)).toBeLessThan(20);
+    loop.detach();now.mockRestore();
+  });
   it('excludes modal time when reattaching the same scene', () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const goal = vi.fn();

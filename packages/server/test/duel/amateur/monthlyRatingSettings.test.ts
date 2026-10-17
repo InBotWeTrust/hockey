@@ -28,7 +28,7 @@ describe('monthly rating settings', () => {
 });
 
 it('rewards the first place in both new formats without changing existing rewards', () => {
-  for (const scope of ['sniper', 'marathon'] as const) {
+  for (const scope of ['sniper', 'marathon', 'rhythm'] as const) {
     expect(DEFAULT_MONTHLY_RATING_SETTINGS[scope]).toEqual({
       enabled: true,
       first: { coins: 0, stars: 30, experience: 30, tokens: 0 },

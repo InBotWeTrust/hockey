@@ -7,18 +7,18 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for single-out darts with per-dart busts', () => {
-    expect(GAME_CORE_VERSION).toBe(102);
+  it('is bumped for additive Rhythm movement and scoring', () => {
+    expect(GAME_CORE_VERSION).toBe(103);
   });
 });
 
 describe('shot core compatibility', () => {
   it('preserves sessions from the bar-only releases', () => {
-    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101])
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102])
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 103, NaN])
+    for (const version of [77, 87, 104, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });

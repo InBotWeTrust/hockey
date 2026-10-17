@@ -1,3 +1,5 @@
+import { RhythmProgress } from '../components/duel/RhythmProgress.js';
+import { createRhythmMovementSampler, projectRhythm } from '@hockey/game-core';
 import {gameDockStatus,type GameDockStatus} from '../city/gameDockStatus.js';
 import {CityGamePanel} from '../city/CityGamePanel.js';
 import {isActionableDuelEvent} from '../components/useNavigationActivity.js';
@@ -241,6 +243,7 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   classic: '/modes/amateur-duel.webp',
   sniper: '/modes/amateur-duel-card.webp',
   marathon: '/modes/amateur-duel.webp',
+  rhythm: '/modes/amateur-duel.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
@@ -4123,6 +4126,7 @@ function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express_plus') return 'Микс';
   if (kind === 'sniper') return 'Снайпер';
   if (kind === 'marathon') return 'Марафон';
+  if (kind === 'rhythm') return 'Ритм';
   return 'Классика';
 }
 
@@ -4198,6 +4202,7 @@ const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
   classic: 2,
   sniper: 3,
   marathon: 4,
+  rhythm: 5,
 };
 
 function sortDuelTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] {
@@ -4482,6 +4487,7 @@ const DUEL_KIND_OPTIONS: AmateurDuelKind[] = [
   'classic',
   'sniper',
   'marathon',
+  'rhythm',
 ];
 
 function DuelKindPreferencePicker({
@@ -4577,6 +4583,7 @@ function DuelKindPreferencePicker({
 
 function MatchmakingRulesContent(): JSX.Element {
   const ruleItems: Array<{ title: string; text: string }> = [
+    { title: 'Ритм', text: '1 период, 2:30. Забивайте за два проката после предыдущего гола. Опоздавший гол начинает новый отсчёт без очка. При равном счёте решают длинные серии.' },
     {
       title: 'Снайпер',
       text: '1 период, 3 минуты. Очки за сложность гола по правилам Меткости; при равенстве решает точность.',
@@ -5820,10 +5827,11 @@ export function AmateurDuelPlayView({
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
   const [shotRequestActive, setShotRequestActive] = useState(false);
   const [shotAnimationActive, setShotAnimationActive] = useState(false);
+  const rhythmSceneClockRef = useRef<number | null>(null);
   const marathonFrozenMsRef = useRef<number | null>(null);
   const [marathonFrozenMs, setMarathonFrozenMs] = useState<number | null>(null);
   const [localShotClock, setLocalShotClock] = useState<{
-    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number;
+    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number; sceneTapTime: number; flightMs: number; shotIndex:number;
   } | null>(null);
   const [sniperScoreParts, setSniperScoreParts] = useState<readonly { points: number; label: string }[] | null>(null);
   const sniperPendingPartsRef = useRef<readonly { points: number; label: string }[] | null>(null);
@@ -5836,6 +5844,7 @@ export function AmateurDuelPlayView({
   }, []);
   useEffect(() => {
     setLocalShotClock(null);
+    rhythmSceneClockRef.current = null;
     setSniperScoreParts(null);
     sniperPendingPartsRef.current = null;
     sniperResultVisibleRef.current = false;
@@ -5903,7 +5912,7 @@ export function AmateurDuelPlayView({
   }, [matchId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : match?.rules.duelKind === 'marathon' && match?.me.state === 'period_active' ? 100 : 1000);
+    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : (match?.rules.duelKind === 'marathon' || match?.rules.duelKind === 'rhythm') && match?.me.state === 'period_active' ? 100 : 1000);
     return () => window.clearInterval(id);
   }, [match?.fight?.status, match?.fight_paused_at, match?.me.fight_aid_until, match?.me.recovery_until, match?.rules.duelKind, match?.me.state]);
 
@@ -6048,6 +6057,8 @@ export function AmateurDuelPlayView({
     };
   }, [match?.id, match?.status, matchId, refresh]);
 
+  const rhythmMovementKey = match?.rules.duelKind === 'rhythm' ? JSON.stringify(rhythmMovementInputForMatch(match)) : null;
+  const rhythmSampler = useMemo(() => rhythmMovementKey ? createRhythmMovementSampler(JSON.parse(rhythmMovementKey)) : null, [rhythmMovementKey]);
   const duelCondition = useMemo(
     () => (match ? createDuelConditionForMatch(match) : () => null),
     [match],
@@ -6202,6 +6213,16 @@ export function AmateurDuelPlayView({
     : Math.min(windowMs, Math.max(0, localPausePending && localShotClock.goal && fightNow >= resultPauseStart
       ? localShotClock.goalAtMs + windowMs - ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta())
       : authoritativeMarathonRemainingMs));
+  const rhythmPauses = mergeRhythmFlightPauses(match.me.rhythm_shots ?? [], localShotClock ? [{tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs}] : []);
+  const rhythmSceneMs = rhythmSceneClockRef.current ?? (match.me.scene_elapsed_ms ?? 0) + scoredClockDelta();
+  const rhythmTravel = rhythmSampler?.travelAt(rhythmSceneMs,rhythmPauses) ?? 0;
+  const rhythmDisplayShots = [...(match.me.rhythm_shots ?? [])];
+  if (rhythmSampler && localShotClock?.goal && fightNow >= Date.parse(localShotClock.startsAt) &&
+      rhythmDisplayShots.length < localShotClock.shotIndex) {
+    rhythmDisplayShots.push({tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs,
+      travel:rhythmSampler.travelAt(localShotClock.sceneTapTime,rhythmPauses),goal:true});
+  }
+  const rhythmProjection = projectRhythm({shots:rhythmDisplayShots,travel:rhythmTravel});
   const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
     (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
   const visibleMatch = periodLocallyExpired
@@ -6444,7 +6465,7 @@ export function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'}
           suppressedByModal={!!fightOverlay}
           preserveSceneOnModalReturn
           showIceCar={false}
@@ -6478,7 +6499,7 @@ export function AmateurDuelPlayView({
           backLabel={duelBackLabel(match.source, false)}
           scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
           canStartAction={
-            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
+            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'
               ? () =>
                   periodEndsAt === undefined ||
                   periodEndsAt === null ||
@@ -6521,7 +6542,9 @@ export function AmateurDuelPlayView({
             applyShotStateAtContact: true,
             shotResultPauseMs: match.rules.shotResultPauseMs,
           } : {})}
-          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'}
+          onSceneClock={rhythmSampler ? (sceneMs) => {rhythmSceneClockRef.current = sceneMs;} : undefined}
+          shooterMotionTime={rhythmSampler ? (ms, pauses) => rhythmSampler.motionAt(ms,mergeRhythmFlightPauses(match.me.rhythm_shots??[],pauses)) : undefined}
           onShotResolved={(context) => {
             setShotAnimationActive(true);
             if (!pausedScoredClock) return null;
@@ -6536,18 +6559,27 @@ export function AmateurDuelPlayView({
               ? previousWindowEndsAt + (Math.floor((startsAt - previousWindowEndsAt) / windowMs) + 1) * windowMs
               : previousWindowEndsAt;
             marathonFrozenMsRef.current = Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt));
-            setLocalShotClock({startsAt: new Date(startsAt).toISOString(),
+            setLocalShotClock({shotIndex:context.shotIndex,sceneTapTime:context.input.tapTime,flightMs,startsAt: new Date(startsAt).toISOString(),
               endsAt: new Date(startsAt + 1000).toISOString(),
               previousEndsAt: match.me.result_pause_ends_at ?? null,
               goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + periodClockDelta() + flightMs,
               goal: context.result.type === 'goal',
               previousWindowEndsAt,
               frozenWindowMs: Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt))});
+            if (rhythmSampler && context.result.type === 'goal') {
+              const travel=rhythmSampler.travelAt(context.input.tapTime,rhythmPauses);
+              const before=projectRhythm({shots:match.me.rhythm_shots??[],travel});
+              const timely=travel-before.lastGoalTravel<=2;
+              return {details:[timely?`Засчитан · серия ${before.currentSeries+1}`:'Вне ритма · следующий гол может принести очко']};
+            }
             return null;
           }}
           submitShot={async (args) => {
             setShotRequestActive(true);
-            const result = await submitShot(args).finally(() => setShotRequestActive(false));
+            const requestArgs = match.rules.duelKind === 'rhythm'
+              ? {...args, input:{...args.input, periodTapTime:args.input.tapTime + (args.shotIndex - 1) * (match.rules.shotResultPauseMs ?? 1000)}}
+              : args;
+            const result = await submitShot(requestArgs).finally(() => setShotRequestActive(false));
             if (pausedScoredClock) {
               if (result === null) setLocalShotClock(null);
               else setLocalShotClock((previous) => previous ? {...previous, goal: result.serverResult === 'goal'} : null);
@@ -6557,6 +6589,17 @@ export function AmateurDuelPlayView({
               sniperPendingPartsRef.current = result.serverResult === 'goal' && (points ?? 0) > 0
                 ? [{ points: points!, label: sniperPendingPartsRef.current?.[0]?.label ?? 'Гол' }] : null;
               if (sniperResultVisibleRef.current) showSniperScore(sniperPendingPartsRef.current);
+            }
+            if (match.rules.duelKind === 'rhythm' && result?.isCurrent() && result.serverResult === 'goal') {
+              const confirmed = result.state.me.rhythm_shots ?? [];
+              const last = confirmed.at(-1);
+              if (last) {
+                const before = projectRhythm({shots: confirmed.slice(0, -1), travel: last.travel});
+                const timely = last.travel - before.lastGoalTravel <= 2;
+                return {...result, resultPresentation: {details: [timely
+                  ? `Засчитан · серия ${before.currentSeries + 1}`
+                  : 'Вне ритма · следующий гол может принести очко']}};
+              }
             }
             return result;
           }}
@@ -6570,11 +6613,14 @@ export function AmateurDuelPlayView({
           applyState={applyState}
           duelCondition={(elapsed, speeds) => {
             const condition = duelCondition(elapsed, speeds);
-            if (!condition || fightRecovery <= 0) return condition;
+            if (!condition) return condition;
+            if (rhythmSampler && !rhythmSampler.conditionAt(elapsed).canShoot)
+              return {...condition,canShoot:false};
+            if (fightRecovery <= 0) return condition;
             return { ...condition, canShoot: false };
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
-          scoreboardAccessory={match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
+          scoreboardAccessory={match.rules.duelKind === 'rhythm' && scoredRemainingMs > 0 && !periodLocallyExpired ? <RhythmProgress remaining={rhythmProjection.remainingTraversals} series={rhythmProjection.currentSeries}/> : match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
             <EnduranceTimer windowMs={windowMs} remainingMs={marathonRemainingMs} tone={enduranceTimerTone(marathonRemainingMs)} />
           ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
             <MarksmanshipScoreNotice parts={sniperScoreParts} scoring={match.rules.sniperScoring} />
@@ -6661,7 +6707,7 @@ export function AmateurDuelPlayView({
       </div>
       <DuelLoadoutSummary match={match} />
       <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-        {statusText}. {match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
+        {statusText}. {match.rules.duelKind==='rhythm' ? 'При равном счёте решают длины серий.' : match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
       </div>
       {error && (
         <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
@@ -6802,7 +6848,7 @@ function tournamentSeriesResultArtwork(
   return { src: '/tournament-results/series-win.webp', alt: 'Победа в серии' };
 }
 
-function DuelResultCard({
+export function DuelResultCard({
   match,
   isLoadingDetails = false,
   compact = false,
@@ -6915,6 +6961,9 @@ function DuelResultCard({
               <div className="section-label" style={{ margin: 0, padding: 0 }}>
                 Итоговый результат
               </div>
+              {match.rules.duelKind === 'rhythm' && (
+                <DuelResultDetailRow label="Счёт" value={duelScorePairText(match.rules.duelKind,match.me,match.opponent)}/>
+              )}
               <DuelResultCompactStatsTable
                 label="Итоговый результат"
                 me={{
@@ -7082,6 +7131,11 @@ function DuelResultCard({
               </div>
             )}
           </>
+        )}
+        {match.rules.duelKind === 'rhythm' && (
+          <div style={{marginTop:10}}>
+            <DuelResultDetailRow label="Серии" value={`${(match.me.rhythm_series??[]).join(', ')||'0'} : ${(match.opponent.rhythm_series??[]).join(', ')||'0'}`}/>
+          </div>
         )}
         {(compact || hasMultiplePeriods) && (
           <DuelInventoryUsageSummary
@@ -7401,6 +7455,7 @@ function duelTiebreakerExplanation(
       duelDisplayScore(match.rules.duelKind, match.opponent)
   )
     return null;
+  if (match.rules.duelKind === 'rhythm') return null;
   if (match.rules.duelKind === 'marathon')
     return {
       label: 'Среднее время на гол',
@@ -8226,7 +8281,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
     scoreSeparator: match.rules.duelKind === 'sniper' ? '\u2009:\u2009' : ':',
-    ...(['sniper','marathon'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
+    ...(['sniper','marathon', 'rhythm'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
     shots: opponent.shots_taken,
     shotsLabel,
     time,
@@ -8989,6 +9044,21 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
     fallbackNutritionTiming:
       match.rules.noInventoryTiming?.nutrition ?? DEFAULT_DUEL_INVENTORY_TIMING,
   };
+}
+
+function mergeRhythmFlightPauses(...groups: readonly (readonly {tapTime:number;flightMs:number}[])[]) {
+  const result:Array<{tapTime:number;flightMs:number}>=[];
+  for(const group of groups) for(const pause of group)
+    if(!result.some(previous=>Math.abs(previous.tapTime-pause.tapTime)<0.01)) result.push(pause);
+  return result.sort((a,b)=>a.tapTime-b.tapTime);
+}
+
+function rhythmMovementInputForMatch(match: AmateurDuelMatchState) {
+  const base=periodSpeedPresetFor(1,match.rules.periodSpeedPresets);
+  const effective=periodSpeedPresetFor(1,match.period_speed_presets);
+  return {seed:match.match_seed!,userId:match.me.user_id,periodNumber:1,
+    elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:SHOOTER_AMPLITUDE*2,
+    baselineShooterSpeed:base.shooterFrequency,currentShooterSpeed:effective.shooterFrequency,loadout:{...duelConditionLoadout(match),stick:null}};
 }
 
 function createDuelConditionForMatch(

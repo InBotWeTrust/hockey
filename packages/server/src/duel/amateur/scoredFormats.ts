@@ -1,4 +1,4 @@
-export const SCORED_DUEL_KINDS = ['sniper', 'marathon'] as const;
+export const SCORED_DUEL_KINDS = ['sniper', 'marathon', 'rhythm'] as const;
 export type MarathonWindowMs = 4000 | 7000;
 export interface MarathonShot {
   startedMs: number;

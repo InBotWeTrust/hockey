@@ -7,7 +7,7 @@ export function duelDisplayScore(
   kind: AmateurDuelKind,
   player: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
 ): number {
-  return kind === 'sniper' || kind === 'marathon' ? (player.format_score ?? 0) : player.goals;
+  return kind === 'sniper' || kind === 'marathon' || kind === 'rhythm' ? (player.format_score ?? 0) : player.goals;
 }
 export function duelFormatLabel(
   rules: Pick<AmateurDuelRules, 'duelKind' | 'marathonWindowMs'>,
@@ -18,6 +18,7 @@ export function duelFormatLabel(
     classic: 'Классика',
     sniper: 'Снайпер',
     marathon: 'Марафон',
+    rhythm: 'Ритм',
   };
   return (
     labels[rules.duelKind] +
