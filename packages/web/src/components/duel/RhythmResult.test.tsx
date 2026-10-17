@@ -1,3 +1,4 @@
+import {RhythmShotNotice} from './RhythmShotNotice.js';
 import { render, screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
 import { DuelResultCard } from '../../screens/DailyScreen.js';
@@ -60,4 +61,16 @@ it('groups repeated series by length and separates each player in the result', (
   expect(within(own).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['6×3','4×2','2×1']);
   expect(within(opponent).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['5×1','3×2']);
   expect(within(own).getByText('×1')).toBeInTheDocument();
+});
+
+it('shows the last goal series below the menu and hides it on a missed shot', () => {
+  const goals=[{travel:5,goal:true},{travel:6,goal:true}];
+  const view=render(<RhythmShotNotice shots={goals.slice(0,1)} version={2}/>);
+  expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+  view.rerender(<RhythmShotNotice shots={goals} version={2}/>);
+  expect(screen.getByRole('status')).toHaveTextContent('Серия 2');
+  view.rerender(<RhythmShotNotice shots={[...goals,{travel:6.5,goal:false}]} version={2}/>);
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  view.rerender(<RhythmShotNotice shots={[...goals,{travel:9,goal:true}]} version={2}/>);
+  expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
 });

@@ -1,4 +1,4 @@
-import { rhythmGoalDetails } from '../components/duel/scoredDuel.js';
+import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
 import { createRhythmMovementSampler } from '@hockey/game-core';
 import {gameDockStatus,type GameDockStatus} from '../city/gameDockStatus.js';
 import {CityGamePanel} from '../city/CityGamePanel.js';
@@ -5827,6 +5827,8 @@ export function AmateurDuelPlayView({
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
   const [shotRequestActive, setShotRequestActive] = useState(false);
   const [shotAnimationActive, setShotAnimationActive] = useState(false);
+  const rhythmPendingShotRef=useRef<{index:number;travel:number;goal:boolean}|null>(null);
+  const [rhythmVisibleShot,setRhythmVisibleShot]=useState<{index:number;travel:number;goal:boolean}|null>(null);
   const marathonFrozenMsRef = useRef<number | null>(null);
   const [marathonFrozenMs, setMarathonFrozenMs] = useState<number | null>(null);
   const [localShotClock, setLocalShotClock] = useState<{
@@ -5843,6 +5845,8 @@ export function AmateurDuelPlayView({
   }, []);
   useEffect(() => {
     setLocalShotClock(null);
+    rhythmPendingShotRef.current=null;
+    setRhythmVisibleShot(null);
     setSniperScoreParts(null);
     sniperPendingPartsRef.current = null;
     sniperResultVisibleRef.current = false;
@@ -6212,6 +6216,9 @@ export function AmateurDuelPlayView({
       ? localShotClock.goalAtMs + windowMs - ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta())
       : authoritativeMarathonRemainingMs));
   const rhythmPauses = mergeRhythmFlightPauses(match.me.rhythm_shots ?? [], localShotClock ? [{tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs}] : []);
+  const rhythmNoticeShots=(match.me.rhythm_shots??[]).slice(0,rhythmVisibleShot?.index);
+  if(rhythmVisibleShot && rhythmNoticeShots.length<rhythmVisibleShot.index)
+    rhythmNoticeShots.push({tapTime:0,flightMs:0,travel:rhythmVisibleShot.travel,goal:rhythmVisibleShot.goal});
   const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
     (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
   const visibleMatch = periodLocallyExpired
@@ -6554,11 +6561,11 @@ export function AmateurDuelPlayView({
               goal: context.result.type === 'goal',
               previousWindowEndsAt,
               frozenWindowMs: Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt))});
-            if (rhythmSampler && context.result.type === 'goal') {
-              const travel=rhythmSampler.travelAt(context.input.tapTime,rhythmPauses);
-              return {details:rhythmGoalDetails([
-                ...(match.me.rhythm_shots??[]), {travel,goal:true},
-              ], match.rules.rhythmVersion ?? 1)};
+            if (rhythmSampler) {
+              rhythmPendingShotRef.current={index:context.shotIndex,
+                travel:rhythmSampler.travelAt(context.input.tapTime,rhythmPauses),
+                goal:context.result.type==='goal'};
+              return {details:[]};
             }
             return null;
           }}
@@ -6578,18 +6585,13 @@ export function AmateurDuelPlayView({
                 ? [{ points: points!, label: sniperPendingPartsRef.current?.[0]?.label ?? 'Гол' }] : null;
               if (sniperResultVisibleRef.current) showSniperScore(sniperPendingPartsRef.current);
             }
-            if (match.rules.duelKind === 'rhythm' && result?.isCurrent() && result.serverResult === 'goal') {
-              const confirmed = result.state.me.rhythm_shots ?? [];
-              const last = confirmed.at(-1);
-              if (last) {
-                return {...result, resultPresentation: {
-                  details:rhythmGoalDetails(confirmed,match.rules.rhythmVersion ?? 1),
-                }};
-              }
-            }
+            if (match.rules.duelKind === 'rhythm' && result)
+              return {...result,resultPresentation:{details:[]}};
             return result;
           }}
           onResultVisibilityChange={(visible) => {
+            if(visible && match.rules.duelKind==='rhythm' && rhythmPendingShotRef.current)
+              setRhythmVisibleShot({...rhythmPendingShotRef.current});
             if (visible && match.rules.duelKind === 'marathon') setMarathonFrozenMs(marathonFrozenMsRef.current ?? localShotClock?.frozenWindowMs ?? marathonRemainingMs);
             if (!visible) { setShotAnimationActive(false); setMarathonFrozenMs(null); marathonFrozenMsRef.current = null; }
             if (match.rules.duelKind !== 'sniper') return;
@@ -6606,7 +6608,9 @@ export function AmateurDuelPlayView({
             return { ...condition, canShoot: false };
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
-          scoreboardAccessory={match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
+          scoreboardAccessory={match.rules.duelKind==='rhythm' && !periodLocallyExpired && scoredRemainingMs>0 ? (
+            <RhythmShotNotice shots={rhythmNoticeShots} version={match.rules.rhythmVersion??1}/>
+          ) : match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
             <EnduranceTimer windowMs={windowMs} remainingMs={marathonRemainingMs} tone={enduranceTimerTone(marathonRemainingMs)} />
           ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
             <MarksmanshipScoreNotice parts={sniperScoreParts} scoring={match.rules.sniperScoring} />

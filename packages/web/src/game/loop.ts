@@ -68,7 +68,7 @@ export interface GameLoopOpts {
   getTimeScale?: (sceneElapsedMs: number) => number;
   getEpisodeSample?: (sceneElapsedMs: number) => AdvancedTrainingEpisodeSample | null;
   getCourtMotionTime?: (target: 'goal' | 'goalie', sceneMs: number) => number;
-  getShooterMotionTime?: (sceneElapsedMs: number, pauses: readonly BonusChallengeShotPause[]) => number;
+  getShooterMotionTime?: ((sceneElapsedMs: number, pauses: readonly BonusChallengeShotPause[]) => number) | undefined;
 }
 
 export interface GameLoop {

@@ -1541,10 +1541,14 @@ export function PlayView<TState>({
         getEpisodeSample: (sceneMs) => episodeSamplerRef.current?.(sceneMs) ?? null,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
-        ...(shooterMotionTimeRef.current ? {
-          getShooterMotionTime: (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
-            shooterMotionTimeRef.current!(ms, pauses),
-        } : {}),
+        // Ready lobbies create this loop before a format's motion hook is present.
+        // Read availability dynamically, just like the callback's current implementation.
+        get getShooterMotionTime() {
+          return shooterMotionTimeRef.current
+            ? (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
+                shooterMotionTimeRef.current!(ms, pauses)
+            : undefined;
+        },
         ...(skidVisualRef.current ? {
           getSkidVisual: (ms: number) => skidVisualRef.current?.(ms) ?? null,
           onEntitiesRendered: (ms: number) => {
