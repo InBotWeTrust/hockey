@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
+import type { barBattleship as sea } from '@hockey/game-core';
 import { createMatch, type BarGameId } from '@hockey/game-core';
 import { readGame, actGame, startComputer } from './service.js';
 afterEach(() => {
@@ -167,6 +168,19 @@ it('preserves the current round pause when starting a private character game', a
   });
   const pool = { connect: async () => ({ query, release: vi.fn() }) } as unknown as Pool;
   await startComputer(pool, 'a', 'grigory', 'new-private-match');
-  expect(stored?.runtime.engineVersion).toBe(17);
+  expect(stored?.runtime.engineVersion).toBe(19);
   expect(stored?.runtime.game.roundPauseMs).toBe(3000);
+});
+it('keeps enemy placement private in the API until completion, then reveals it to either player', async () => {
+  const { pool, row } = fixture('battleship');
+  const game = row.data.runtime.game as unknown as sea.State;
+  game.phase = 'battle';
+  const hidden = await readGame(pool, 'a', 'match');
+  expect(hidden.runtime.game).not.toHaveProperty('enemyReveal');
+  game.winner = 0;
+  for (const [user, enemy] of [['a', 1], ['b', 0]] as const) {
+    const result = await readGame(pool, user, 'match');
+    expect((result.runtime.game as sea.View).enemyReveal?.ships).toEqual(game.fleets[enemy]);
+    expect(result.runtime.game).not.toHaveProperty('submarineHistory');
+  }
 });
