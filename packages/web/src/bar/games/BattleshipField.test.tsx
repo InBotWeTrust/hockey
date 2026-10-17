@@ -307,3 +307,19 @@ it('labels structurally disabled airstrikes and damaged-submarine maneuvers unav
  expect(screen.getByRole('button',{name:'Авианалёт Недоступен'})).toBeDisabled();
  expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
 });
+
+it.each([0,1] as const)('uses stronger airstrike shake and burning damage for actor %i', actor => {
+ const g=sea.start(sea.create(actor,4,true));g.airstrikeCharges![actor]=5;
+ const victim=g.fleets[1-actor]!.find(s=>s.kind==='carrier')!;
+ const hit=sea.attack(g,actor,Math.min(victim.x,10),Math.min(victim.y,10),true,false);
+ const {container}=render(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={1350} animationStart={1000}/>);
+ expect(container.querySelector('.bar-naval-grid--airstrike')).not.toBeNull();
+ expect(container.querySelector('.bar-naval-damage--burning')).not.toBeNull();
+});
+it('shows the opponent remaining submarine moves and removes the exhausted counter',()=>{
+ const game=sea.view(sea.start(sea.create(0,4)),0);
+ const {rerender}=render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(screen.getByLabelText('Манёвров соперника осталось: 2')).toBeInTheDocument();
+ rerender(<BattleshipField game={{...game,enemyMovesLeft:0}} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(screen.queryByLabelText(/Манёвров соперника осталось/)).toBeNull();
+});

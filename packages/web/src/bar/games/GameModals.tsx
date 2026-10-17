@@ -1,3 +1,4 @@
+import { NavalResult } from './NavalResult.js';
 import { Star, X } from 'lucide-react';
 import { ENGINE_VERSION, type BarGameId, type BarGameSnapshot } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
@@ -104,6 +105,7 @@ export function GameResult({
       )}
       {finalScores && <p className="bar-game-result__score" aria-label="Итоговый счёт"><span>{technicalScore ? 'Технический счёт:' : 'Счёт:'}</span><strong>{finalScores[view.player]} : {finalScores[view.player === 0 ? 1 : 0]}</strong>{game.kind === 'ochko' && !!game.series?.history.length && <span className="bar-game-result__rounds">({technicalScore ? 'раздачи: ' : ''}{game.series.history.map(round => `${round.awards[view.player]}:${round.awards[view.player === 0 ? 1 : 0]}`).join(', ')})</span>}</p>}
       {challengePenalty > 0 && <p className="modal-copy">Штраф за проверку счёта: −{challengePenalty}</p>}
+      {game.kind === 'battleship' && <NavalResult game={game} player={view.player}/>}
       <div className="modal-actions">
         {view.character ? (
           <>

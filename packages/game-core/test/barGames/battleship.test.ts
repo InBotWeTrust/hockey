@@ -219,3 +219,29 @@ it('does not extend a line beyond the size of the only remaining carrier',()=>{
  const remaining=sea.cells(carrier).filter(c=>!hits.includes(c));
  for(let seed=0;seed<20;seed++){const b=sea.bot(v,seed);expect(remaining).toContain(sea.cell(b.x,b.y));}
 });
+
+it('reveals the enemy fleet and numbered submarine trail only after the match ends', () => {
+  const g = sea.start(sea.create(1, 4));
+  const destination = sea.moves(sea.view(g, 1))[0]!;
+  const original = structuredClone(g.fleets[1].find(s => s.kind === 'submarine')!);
+  const moved = sea.move(g, 1, destination.x, destination.y);
+  const hidden = sea.view(moved, 0);
+  expect(hidden).not.toHaveProperty('submarineHistory');
+  expect(hidden).not.toHaveProperty('enemyReveal');
+  expect(hidden.enemyMovesLeft).toBe(1);
+  moved.winner = 0;
+  const final = sea.view(moved, 0);
+  expect(final.enemyReveal?.ships).toEqual(moved.fleets[1]);
+  expect(final.enemyReveal?.submarineTrail).toEqual([{ ...original, move: 1 }]);
+  final.enemyReveal!.ships[0]!.hits.push(999);
+  expect(moved.fleets[1][0]!.hits).not.toContain(999);
+});
+it('keeps missing legacy submarine history explicit and grants the last-ship third maneuver', () => {
+  const g = sea.start(sea.create(0, 4));
+  delete g.submarineHistory;
+  for (const s of g.fleets[1]) if (s.kind !== 'submarine') s.hits = sea.cells(s);
+  g.moves[1] = 2;
+  expect(sea.view(g, 0).enemyMovesLeft).toBe(1);
+  g.winner = 'draw';
+  expect(sea.view(g, 0).enemyReveal?.submarineTrail).toBeUndefined();
+});

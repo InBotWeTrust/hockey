@@ -1,4 +1,4 @@
-/** Deterministic naval rules. Hidden fleets never enter an opponent view. */
+/** Deterministic naval rules. Hidden fleets enter an opponent view only after the match ends. */
 export type Ship = {
   id: string;
   kind: 'standard' | 'carrier' | 'submarine';
@@ -8,6 +8,7 @@ export type Ship = {
   h: number;
   hits: number[];
 };
+export type SubmarinePosition = Ship & { move: number };
 type Mark = { cell: number; hit: boolean };
 export type State = {
   kind: 'battleship';
@@ -16,15 +17,18 @@ export type State = {
   turn: 0 | 1;
   fleets: [Ship[], Ship[]];
   moves: [number, number];
+  submarineHistory?: [SubmarinePosition[], SubmarinePosition[]];
   shots: [Mark[], Mark[]];
   winner: 0 | 1 | 'draw' | null;
   lastAction: { player: 0 | 1; type: 'attack' | 'move'; cells: Mark[] } | null;
 };
-export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges'> & {
+export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges' | 'submarineHistory'> & {
   ownShips: Ship[];
   enemySunk: Ship[];
   shots: [Mark[], Mark[]];
   movesLeft: number;
+  enemyMovesLeft?: number;
+  enemyReveal?: { ships: Ship[]; submarineTrail?: SubmarinePosition[] };
   canSalvo: boolean;
   airstrikeCharge?: number;
 };
@@ -142,6 +146,7 @@ export function create(starter: 0 | 1, seed: number, chargedAirstrikes = false):
     turn: starter,
     fleets: [fleet(seed), fleet(seed + 1)],
     moves: [0, 0],
+    submarineHistory: [[], []],
     shots: [[], []],
     winner: null,
     lastAction: null,
@@ -154,6 +159,7 @@ const clone = (g: State): State => ({
   ...g,
   fleets: g.fleets.map((f) => f.map((s) => ({ ...s, hits: [...s.hits] }))) as State['fleets'],
   moves: [...g.moves],
+  ...(g.submarineHistory ? { submarineHistory: g.submarineHistory.map(trail => trail.map(s => ({ ...s, hits: [...s.hits] }))) as [SubmarinePosition[], SubmarinePosition[]] } : {}),
   ...(g.airstrikeCharges ? { airstrikeCharges: [...g.airstrikeCharges] as [number, number] } : {}),
   shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
 });
@@ -187,6 +193,11 @@ export function view(g: State, p: 0 | 1): View {
     enemySunk: g.fleets[1 - p]!.filter(sunk).map((s) => ({ ...s, hits: [...s.hits] })),
     shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
     movesLeft: Math.max(0, cap - g.moves[p]),
+    enemyMovesLeft: Math.max(0, (g.fleets[1 - p]!.filter(s => !sunk(s)).length === 1 ? 3 : 2) - g.moves[1 - p]!),
+    ...(g.winner !== null ? { enemyReveal: {
+      ships: g.fleets[1 - p]!.map(s => ({ ...s, hits: [...s.hits] })),
+      ...(g.submarineHistory ? { submarineTrail: g.submarineHistory[1 - p]!.map(s => ({ ...s, hits: [...s.hits] })) } : {}),
+    } } : {}),
     canSalvo: carrierReady(ownShips.find((s) => s.kind === 'carrier')!) && (!g.airstrikeCharges || g.airstrikeCharges[p] >= 5),
     ...(g.airstrikeCharges ? { airstrikeCharge: g.airstrikeCharges[p] } : {}),
     lastAction: g.lastAction
@@ -213,7 +224,9 @@ export function move(g: State, p: 0 | 1, x: number, y: number): State {
   active(g, p);
   if (!moves(view(g, p)).some((pos) => pos.x === x && pos.y === y)) throw Error('Invalid maneuver');
   const n = clone(g);
-  Object.assign(n.fleets[p].find((s) => s.kind === 'submarine')!, { x, y });
+  const submarine = n.fleets[p].find(s => s.kind === 'submarine')!;
+  n.submarineHistory?.[p].push({ ...submarine, hits: [...submarine.hits], move: n.moves[p] + 1 });
+  Object.assign(submarine, { x, y });
   n.moves[p]++;
   n.turn = p === 0 ? 1 : 0;
   n.lastAction = { player: p, type: 'move', cells: [] };

@@ -85,8 +85,9 @@ export function BattleshipField({
     }
   }
   const visibleImpact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player);
+  const impactAirstrike = visibleImpact && game.lastAction!.cells.length > 1;
   const impactSunk = visibleImpact && ships.some(s => sea.cells(s).every(c=>s.hits.includes(c)) && game.lastAction!.cells.some(m=>m.hit && sea.cells(s).includes(m.cell)));
-  const shake = visibleImpact && now < animationStart + 300 && game.lastAction!.cells.some(m=>m.hit);
+  const shake = visibleImpact && now < animationStart + (impactAirstrike ? 450 : 300) && game.lastAction!.cells.some(m=>m.hit);
   const submarineSelected =
     showOwn && game.ownShips.some((s) => s.id === selected && s.kind === 'submarine');
   const canPlace = (id: string, x: number, y: number, rotated: boolean) =>
@@ -234,11 +235,11 @@ export function BattleshipField({
         {[true,false].map(self=><div key={String(self)} data-side={self?'self':'enemy'} aria-label={self?'Твой флот: остаток':'Флот противника: остаток'}><div className="bar-naval-fleet-rows">{sea.shipTypes().filter((t,i,all)=>all.findIndex(s=>shipColor(s)===shipColor(t))===i).map(type=><div className="bar-naval-fleet-row" key={shipColor(type)} aria-label={shipName(type)}>{sea.shipTypes().filter(t=>shipColor(t)===shipColor(type)).map(template=>{
           const ship=(self?game.ownShips:game.enemySunk).find(s=>s.id===template.id);
           const destroyed=!!ship&&sea.cells(ship).every(c=>ship.hits.includes(c));
-          return <span key={template.id} className="bar-naval-fleet-icon" data-sunk={destroyed} data-ship-color={shipColor(template)} style={{width:template.kind==='carrier'?32:10+Math.max(template.w,template.h)*5}} title={`${shipName(template)}${destroyed?' — потоплен':''}`}><ShipGraphic ship={template}/></span>;
+          return <span key={template.id} className="bar-naval-fleet-icon" data-sunk={destroyed} data-ship-color={shipColor(template)} style={{width:template.kind==='carrier'?32:10+Math.max(template.w,template.h)*5}} title={`${shipName(template)}${destroyed?' — потоплен':''}`}><ShipGraphic ship={template}/>{!self && template.kind === 'submarine' && !destroyed && !!game.enemyMovesLeft && <b className="bar-naval-moves-left" aria-label={`Манёвров соперника осталось: ${game.enemyMovesLeft}`}>{game.enemyMovesLeft}</b>}</span>;
         })}</div>)}</div></div>)}
       </div>}
       </div>
-      <div className={`bar-naval-grid${shake ? impactSunk ? ' bar-naval-grid--sunk' : ' bar-naval-grid--hit' : ''}`} style={shake ? {animationDelay: `${effectClock.current.delay}ms`} : undefined}>
+      <div className={`bar-naval-grid${shake ? impactAirstrike ? ' bar-naval-grid--airstrike' : impactSunk ? ' bar-naval-grid--sunk' : ' bar-naval-grid--hit' : ''}`} style={shake ? {animationDelay: `${effectClock.current.delay}ms`} : undefined}>
         <span aria-hidden="true" />
         <div className="bar-naval-columns" aria-hidden="true">
           {Array.from(letters).map((letter) => (
@@ -381,7 +382,7 @@ export function BattleshipField({
                   select(x, y);
                 }}
               >
-                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className="bar-naval-water" aria-hidden="true" /> : null}
+                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ' bar-naval-damage--burning'}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className="bar-naval-water" aria-hidden="true" /> : null}
                 {impact && <span key={`${animationStart}-${c}`} className="bar-naval-impact" style={{animationDelay: `${effectClock.current.delay}ms`}} aria-hidden="true" />}
               </button>
             );
@@ -495,7 +496,7 @@ export function BattleshipField({
   );
 }
 
-function ShipGraphic({ship}:{ship:sea.Ship}) {
+export function ShipGraphic({ship}:{ship:sea.Ship}) {
   const vertical=ship.h>ship.w;
   return <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><g transform={vertical?'rotate(90 50 50)':undefined}>
     <path className="bar-naval-hull" d={ship.kind==='carrier'?'M8 18H84L96 50L84 82H8Z':ship.kind==='submarine'?'M20 28Q-5 50 20 72H78Q105 50 78 28Z':'M8 25L72 20L96 50L72 80L8 75Z'}/>
