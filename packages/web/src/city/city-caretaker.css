@@ -8,6 +8,6 @@
 @media(prefers-reduced-motion:reduce){.city-caretaker,.city-caretaker-step,.city-caretaker--flood .city-caretaker-step{animation:none}}
 
 /* Character and the entire hose are one raster; no joined vector extension. */
-.city-caretaker--flood{animation:none}
+.city-caretaker--flood{animation:none;translate:var(--caretaker-edge-shift,0px) 0}
 .city-caretaker--flood .city-caretaker-step{position:relative;animation:none}
 .city-caretaker--flood img{position:absolute;left:50%;top:100%;width:auto;max-width:none;height:calc(var(--caretaker-height)*2.2);transform:translate(-91.7%,-83.2%)}

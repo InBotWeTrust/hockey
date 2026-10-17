@@ -1,4 +1,4 @@
-import {useEffect,useState} from 'react';
+import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {activeCaretakerVisit,caretakerDay,createCaretakerSchedule,type CaretakerKind,type CaretakerSchedule} from './caretakerSchedule.js';
 import './city-caretaker.css';
 export function useCaretakerVisit(owner:string|undefined,blocked:boolean):CaretakerKind|null{
@@ -31,7 +31,25 @@ export function useCaretakerVisit(owner:string|undefined,blocked:boolean):Careta
 const locations={yard:{x:12,y:54.5},stadium:{x:44,y:65},pro:{x:86,y:65}};
 export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeof locations}){
  const point=kind==='flood'&&venue==='yard'?{x:10.5,y:54.5}:locations[venue];
- return <div className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
-  <div className="city-caretaker-step"><img src={kind==='flood'?'/sprites/city-grigory-flood-long-v4.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
+ const figure=useRef<HTMLDivElement>(null),sprite=useRef<HTMLImageElement>(null);
+ useLayoutEffect(()=>{
+  const root=figure.current,image=sprite.current,world=root?.parentElement,viewport=world?.parentElement;
+  if(kind!=='flood'||!root||!image||!world||!viewport)return;
+  let shift=0;
+  const update=()=>{
+   if(!image.naturalWidth)return;
+   const venueX={yard:12.7,stadium:44.8,pro:87}[venue];
+   const centeredLeft=Math.max(0,Math.min(world.clientWidth-viewport.clientWidth,world.clientWidth*venueX/100-viewport.clientWidth/2));
+   const imageWorldLeft=image.getBoundingClientRect().left-world.getBoundingClientRect().left+shift;
+   shift=Math.max(0,imageWorldLeft-centeredLeft+20);
+   root.style.setProperty('--caretaker-edge-shift',`${-shift}px`);
+  };
+  update();image.addEventListener('load',update);
+  const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(update);
+  observer?.observe(viewport);observer?.observe(world);observer?.observe(image);
+  return()=>{observer?.disconnect();image.removeEventListener('load',update);root.style.removeProperty('--caretaker-edge-shift');};
+ },[kind,venue]);
+ return <div ref={figure} className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
+  <div className="city-caretaker-step"><img ref={sprite} src={kind==='flood'?'/sprites/city-grigory-flood-long-v4.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
  </div>;
 }
