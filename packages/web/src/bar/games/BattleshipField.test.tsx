@@ -40,7 +40,7 @@ it('highlights legal submarine maneuvers and confirms one separately', () => {
       sub.y * 12 + sub.x
     ]!,
   );
-  fireEvent.click(screen.getByRole('button', { name: 'Манёвр (2)' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Манёвр Осталось 2' }));
   const dest = sea.moves(game)[0]!;
   const board = screen.getByRole('group', { name: 'Твой флот' });
   expect(board.querySelectorAll('[data-maneuver="true"]').length).toBeGreaterThan(0);
@@ -91,16 +91,16 @@ it('disables attacks on the own board and enables maneuver only for a selected s
   expect(enemy).toHaveAttribute('aria-pressed', 'false');
   expect(screen.getByRole('button', { name: 'Выстрел' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Залп' })).toBeDisabled();
-  expect(screen.getByRole('button', { name: 'Манёвр (2)' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Манёвр Осталось 2' })).toBeDisabled();
   const sub = game.ownShips.find((s) => s.kind === 'submarine')!;
   fireEvent.click(
     screen.getByRole('group', { name: 'Твой флот' }).querySelectorAll('button')[
       sub.y * 12 + sub.x
     ]!,
   );
-  expect(screen.getByRole('button', { name: 'Манёвр (2)' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Манёвр Осталось 2' })).toBeEnabled();
   fireEvent.click(enemy);
-  expect(screen.getByRole('button', { name: 'Манёвр (2)' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Манёвр Осталось 2' })).toBeDisabled();
   expect(screen.getByRole('button', { name: 'Выстрел' })).toBeEnabled();
 });
 it('keeps an invalid placement selected and explains why rotation is blocked', () => {
@@ -231,4 +231,79 @@ it('marks every sunk cell with a cross while keeping partial damage round',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
  expect(container.querySelectorAll('.bar-naval-damage--sunk')).toHaveLength(6);
  expect(container.querySelectorAll('.bar-naval-damage:not(.bar-naval-damage--sunk)')).toHaveLength(1);
+});
+it('shows a charging airstrike and offers directional submarine controls before confirmation', () => {
+  const game=sea.view(sea.start(sea.create(0,4,true)),0), send=vi.fn();
+  render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send}/>);
+  expect(screen.getByRole('button',{name:'Авианалёт Заряд 0%'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
+  const sub=game.ownShips.find(s=>s.kind==='submarine')!;
+  fireEvent.click(screen.getByRole('group',{name:'Твой флот'}).querySelectorAll('.bar-naval-cell')[sub.y*12+sub.x]!);
+  expect(screen.getAllByRole('button',{name:/Переместить подлодку/})).toHaveLength(sea.moves(game).length);
+  fireEvent.click(screen.getAllByRole('button',{name:/Переместить подлодку/})[0]!);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Подтвердить'}));
+  expect(send).toHaveBeenCalledWith({type:'naval-move',...sea.moves(game)[0]!});
+});
+it('marks only water bordering sunk ships without recording shots or hiding live neighbors', () => {
+ const state=sea.start(sea.create(0,4,true));
+ const destroyed=state.fleets[1].find(s=>s.kind==='standard'&&s.w*s.h===2)!;
+ destroyed.hits=sea.cells(destroyed);
+ const wounded=state.fleets[1].find(s=>s.kind==='standard'&&s.w*s.h===3)!;
+ wounded.hits=[sea.cells(wounded)[0]!];
+ const game=sea.view(state,0),before=JSON.stringify(game),send=vi.fn();
+ render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send}/>);
+ const board=screen.getByRole('group',{name:'Поле противника'});
+ const expected:number[]=[];
+ for(let y=Math.max(0,destroyed.y-1);y<=Math.min(11,destroyed.y+destroyed.h);y++)
+  for(let x=Math.max(0,destroyed.x-1);x<=Math.min(11,destroyed.x+destroyed.w);x++)
+   if(!sea.cells(destroyed).includes(sea.cell(x,y)))expected.push(sea.cell(x,y));
+ expect(board.querySelectorAll('[data-inferred-water="true"]')).toHaveLength(expected.length);
+ for(const c of expected)expect(board.querySelectorAll('.bar-naval-cell')[c]).toHaveAttribute('data-inferred-water','true');
+ expect(board.querySelectorAll('.bar-naval-cell')[sea.cells(wounded)[1]!]).not.toHaveAttribute('data-inferred-water','true');
+ expect(JSON.stringify(game)).toBe(before);
+});
+it('explains the top-left anchor when selecting a charged airstrike',()=>{
+ const state=sea.start(sea.create(0,4,true));state.airstrikeCharges=[5,0];
+ const onHint=vi.fn(),send=vi.fn();
+ render(<BattleshipField game={sea.view(state,0)} player={0} disabled={false} locked={false} send={send} onHint={onHint}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Авианалёт Заряд 100%'}));
+ expect(onHint).toHaveBeenCalledWith('Выбери верхний левый угол области 2×2');
+ expect(send).not.toHaveBeenCalled();
+});
+it('switches battle boards by horizontal swipe without selecting a target or sending a move',()=>{
+ const send=vi.fn();
+ render(<BattleshipField game={sea.view(sea.start(sea.create(0,4,true)),0)} player={0} disabled={false} locked={false} send={send}/>);
+ let board=screen.getByRole('group',{name:'Поле противника'});
+ fireEvent.touchStart(board,{touches:[{clientX:50,clientY:100}]});
+ fireEvent.touchEnd(board,{changedTouches:[{clientX:160,clientY:110}]});
+ board=screen.getByRole('group',{name:'Твой флот'});
+ fireEvent.click(board.querySelectorAll('.bar-naval-cell')[10]!);
+ expect(screen.getByRole('button',{name:'Подтвердить'})).toBeDisabled();
+ fireEvent.touchStart(board,{touches:[{clientX:160,clientY:100}]});
+ fireEvent.touchEnd(board,{changedTouches:[{clientX:50,clientY:110}]});
+ expect(screen.getByRole('group',{name:'Поле противника'})).toBeInTheDocument();
+ expect(send).not.toHaveBeenCalled();
+});
+it('ignores vertical swipes and does not switch boards during setup',()=>{
+ const {rerender}=render(<BattleshipField game={sea.view(sea.start(sea.create(0,4,true)),0)} player={0} disabled={false} locked={false} send={vi.fn()}/>);
+ let board=screen.getByRole('group',{name:'Поле противника'});
+ fireEvent.touchStart(board,{touches:[{clientX:50,clientY:100}]});
+ fireEvent.touchEnd(board,{changedTouches:[{clientX:60,clientY:200}]});
+ expect(screen.getByRole('group',{name:'Поле противника'})).toBeInTheDocument();
+ rerender(<BattleshipField game={sea.view(sea.create(0,4,true),0)} player={0} disabled={false} locked={false} send={vi.fn()}/>);
+ board=screen.getByRole('group',{name:'Твой флот'});
+ fireEvent.touchStart(board,{touches:[{clientX:150,clientY:100}]});
+ fireEvent.touchEnd(board,{changedTouches:[{clientX:10,clientY:100}]});
+ expect(screen.getByRole('group',{name:'Твой флот'})).toBeInTheDocument();
+});
+it('labels structurally disabled airstrikes and damaged-submarine maneuvers unavailable',()=>{
+ const state=sea.start(sea.create(0,4,true));state.airstrikeCharges=[5,0];
+ const carrier=state.fleets[0].find(s=>s.kind==='carrier')!;
+ carrier.hits=sea.cells(carrier);
+ const sub=state.fleets[0].find(s=>s.kind==='submarine')!;
+ sub.hits=[sea.cells(sub)[0]!];
+ render(<BattleshipField game={sea.view(state,0)} player={0} disabled={false} locked={false} send={vi.fn()}/>);
+ expect(screen.getByRole('button',{name:'Авианалёт Недоступен'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
 });

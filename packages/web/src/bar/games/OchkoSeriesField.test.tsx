@@ -46,3 +46,15 @@ it('offers exactly one challenge to Grigory and disables hand actions during rev
   fireEvent.click(screen.getByRole('button', { name: 'Проверить счёт' }));
   expect(send).toHaveBeenCalledWith({ type: 'ochko-challenge', round: 1 });
 });
+it('keeps disabled hand controls during reveal and replaces them with review controls',()=>{
+ const g=review(true);g.series.phase='reveal';const now=g.series.reviewAt-1,send=vi.fn();
+ const {rerender}=render(<OchkoField game={series.view(g,0,now)} player={0} now={now} disabled={false} character send={send}/>);
+ for(const name of ['Ещё карту','Хватит']) {const b=screen.getByRole('button',{name});expect(b).toBeDisabled();fireEvent.click(b);}
+ expect(send).not.toHaveBeenCalled();
+ expect(screen.queryByRole('button',{name:'Дальше'})).toBeNull();
+ g.series.phase='review';
+ rerender(<OchkoField game={series.view(g,0,g.series.reviewAt)} player={0} now={g.series.reviewAt} disabled={false} character send={send}/>);
+ expect(screen.queryByRole('button',{name:'Хватит'})).toBeNull();
+ expect(screen.getByRole('button',{name:'Проверить счёт'})).toBeEnabled();
+ expect(screen.getByRole('button',{name:'Дальше'})).toBeEnabled();
+});

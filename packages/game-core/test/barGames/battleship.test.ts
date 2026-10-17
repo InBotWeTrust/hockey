@@ -52,7 +52,7 @@ it('legacy rules pass after hits and salvos and permits shooting old water again
 });
 it('moves only an undamaged submarine by one orthogonal cell with a total limit of 2 or 3', () => {
   let g = sea.start(sea.create(0, 4));
-  let v = sea.view(g, 0);
+  const v = sea.view(g, 0);
   const legal = sea.moves(v);
   expect(legal.length).toBeGreaterThan(0);
   g = sea.move(g, 0, legal[0]!.x, legal[0]!.y);
@@ -125,4 +125,35 @@ it('retains the turn only for a new ordinary hit; salvos, misses and repeat hits
  expect(sea.attack(hit,0,c%12,Math.floor(c/12),false,false).turn).toBe(1);
  expect(sea.attack(g,0,c%12,Math.floor(c/12),true,false).turn).toBe(1);
  expect(sea.attack(g,0,c%12,Math.floor(c/12),false,false,false).turn).toBe(1);
+});
+it('charges a four-cell airstrike only through five ordinary shots and resets after use', () => {
+  let g = sea.start(sea.create(0, 4, true));
+  expect(sea.view(g, 0).canSalvo).toBe(false);
+  expect(() => sea.attack(g, 0, 0, 0, true, false)).toThrow();
+  for (let i=0;i<5;i++) {
+    g.turn=0;
+    g=sea.attack(g,0,11,11,false,false);
+    expect(sea.view(g,0).airstrikeCharge).toBe(i+1);
+  }
+  g.turn=0;
+  g=sea.attack(g,0,10,10,true,false);
+  expect(g.lastAction!.cells).toHaveLength(4);
+  expect(g.turn).toBe(1);
+  expect(sea.view(g,0).airstrikeCharge).toBe(0);
+  expect(sea.view(g,0).canSalvo).toBe(false);
+});
+it('does not expose the enemy charge, mutates neither input, and keeps legacy salvos', () => {
+  const old = sea.start(sea.create(0, 5));
+  expect(sea.attack(old,0,0,0,true,false).lastAction!.cells).toHaveLength(6);
+  const current=sea.start(sea.create(0,5,true));
+  current.airstrikeCharges=[5,3];
+  const before=JSON.stringify(current);
+  const after=sea.attack(current,0,0,0,true,true);
+  expect(after.lastAction!.cells).toHaveLength(4);
+  expect(JSON.stringify(current)).toBe(before);
+  expect(sea.view(current,0).airstrikeCharge).toBe(5);
+  expect('airstrikeCharges' in sea.view(current,0)).toBe(false);
+  const carrier=current.fleets[0].find(s=>s.kind==='carrier')!;
+  carrier.hits=carrier.w===3?[sea.cell(carrier.x,carrier.y),sea.cell(carrier.x,carrier.y+1)]:[sea.cell(carrier.x,carrier.y),sea.cell(carrier.x+1,carrier.y)];
+  expect(sea.view(current,0).canSalvo).toBe(false);
 });

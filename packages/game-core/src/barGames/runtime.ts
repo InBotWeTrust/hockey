@@ -34,7 +34,7 @@ export type BarGameAction =
   | { type: 'naval-attack'; x: number; y: number; salvo: boolean; vertical: boolean }
   | { type: 'naval-move'; x: number; y: number }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 14;
+export const ENGINE_VERSION = 15;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -57,6 +57,7 @@ function supportedVersion(version: number): boolean {
     version === 11 ||
     version === 12 ||
     version === 13 ||
+    version === 14 ||
     version === ENGINE_VERSION
   );
 }
@@ -134,7 +135,7 @@ export function createMatch(
     engineVersion: version,
     game:
       kind === 'battleship'
-        ? (sea.create(starter, seed) as unknown as sea.View)
+        ? (sea.create(starter, seed, version >= 15) as unknown as sea.View)
         : kind === 'armwrestling'
           ? arm.createArmwrestling(now, seed)
           : kind === 'ochko'

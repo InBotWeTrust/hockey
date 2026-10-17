@@ -19,7 +19,9 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
     ? dartsDoubleOutRules
     : kind === 'darts' && engineVersion < 9
       ? rules.darts.filter(p => !p.startsWith('После каждого хода мишень')).map(p => p.replace('501', '301'))
-      : rules[kind];
+      : kind === 'battleship' && engineVersion < 15
+        ? rules.battleship.map(p => p.replace('авианалёт на квадрат 2×2', 'залп 3×2 (можно повернуть)').replace('Авианалёт заряжается после пяти обычных выстрелов, в начале он недоступен. После использования заряд сбрасывается. ', '').replaceAll('Авианалёт', 'Залп').replaceAll('авианалёт', 'залп'))
+        : rules[kind];
   return (
     <AccessibleModal
       cardClassName="bar-game-help"
@@ -32,7 +34,7 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
           {p}
         </p>
       ))}
-      {kind !== 'ochko' && kind !== 'armwrestling' && <p className="modal-copy">{timerRules}</p>}
+      {kind !== 'ochko' && kind !== 'armwrestling' && kind !== 'battleship' && <p className="modal-copy">{timerRules}</p>}
     </AccessibleModal>
   );
 }
@@ -47,7 +49,9 @@ export function GameResult({
   back: () => void;
   busy?: boolean;
 }) {
-  const winner = view.runtime.game.winner;
+  const game = view.runtime.game;
+  const finalScores = game.kind === 'ochko' ? game.series?.totals ?? game.scores : null;
+  const winner = game.winner;
   const outcome = winner === 'draw' ? 'draw' : winner === view.player ? 'win' : 'loss';
   const title = outcome === 'draw' ? 'Ничья' : outcome === 'win' ? 'Победа' : 'Поражение';
   const reason =
@@ -94,6 +98,7 @@ export function GameResult({
           <strong>{view.stake.payout > view.stake.amount ? '+' : view.stake.payout < view.stake.amount ? '−' : ''}{Math.abs(view.stake.payout - view.stake.amount)}</strong>
         </div>
       )}
+      {finalScores && <p className="bar-game-result__score" aria-label="Итоговый счёт"><span>Счёт:</span><strong>{finalScores[view.player]} : {finalScores[view.player === 0 ? 1 : 0]}</strong>{game.kind === 'ochko' && !!game.series?.history.length && <span className="bar-game-result__rounds">({game.series.history.map(round => `${round.awards[view.player]}:${round.awards[view.player === 0 ? 1 : 0]}`).join(', ')})</span>}</p>}
       <div className="modal-actions">
         {view.character ? (
           <>
