@@ -1,12 +1,12 @@
 import {expect,it} from 'vitest';
 import {createCaretakerSchedule,activeCaretakerVisit,caretakerBlocked} from './caretakerSchedule.js';
-it('creates one or two separated daytime visits lasting three to five minutes',()=>{
+it('creates five separated daytime visits lasting three to five minutes',()=>{
  const now=new Date(2026,9,17,12).getTime();
  for(const value of [0,.3,.9]){
   const schedule=createCaretakerSchedule(now,()=>value);
-  expect(schedule.visits.length).toBeGreaterThanOrEqual(1);expect(schedule.visits.length).toBeLessThanOrEqual(2);
+  expect(schedule.visits).toHaveLength(5);
   for(const visit of schedule.visits){expect(new Date(visit.start).getHours()).toBeGreaterThanOrEqual(6);expect(new Date(visit.end).getHours()).toBeLessThan(23);expect(visit.end-visit.start).toBeGreaterThanOrEqual(180000);expect(visit.end-visit.start).toBeLessThanOrEqual(300000);}
-  if(schedule.visits.length===2)expect(schedule.visits[0]!.end).toBeLessThan(schedule.visits[1]!.start);
+  for(let index=1;index<5;index++)expect(schedule.visits[index-1]!.end).toBeLessThan(schedule.visits[index]!.start);
  }
 });
 it('only shows a visit inside its time window and never restarts a missed visit',()=>{
