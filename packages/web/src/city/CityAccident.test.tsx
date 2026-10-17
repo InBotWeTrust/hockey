@@ -24,3 +24,11 @@ it('bounces both rear ends only at fresh contact, never when restoring an old co
  expect(screen.getByTestId('accident-sedan')).not.toHaveClass('has-impact');
  expect(screen.getByTestId('accident-taxi')).not.toHaveClass('has-impact');
 });
+it('flashes a small contact burst between the two fronts only at the impact instant',()=>{
+ const event=createAccident(1000,()=>.5);
+ const view=render(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt}}/>);
+ const burst=screen.getByTestId('accident-contact-burst');
+ expect(burst.style.left).toBe(`${event.impact+3.6}%`);expect(burst.children).toHaveLength(3);
+ view.rerender(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt+1000}}/>);
+ expect(screen.queryByTestId('accident-contact-burst')).toBeNull();
+});
