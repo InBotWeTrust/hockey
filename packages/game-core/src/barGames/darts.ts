@@ -67,13 +67,13 @@ export function aim(g: Gesture, gain = SWIPE_GAIN): Point {
     y: Math.max(-2, Math.min(2, 1.6 - (-g.dy / g.durationMs) * gain)),
   };
 }
-export function hit(g: Game, p: Point, doubleOut = true): Game {
+export function hit(g: Game, p: Point, doubleOut = true, rotatedBoard = doubleOut): Game {
   if (g.winner !== null || ![p.x, p.y].every(Number.isFinite)) throw new Error('Invalid dart');
   const n: Game = {
     ...g,
     scores: [...g.scores],
     hits: [...g.hits, p],
-    lastScore: score(p, doubleOut ? g.boardAngle ?? 0 : 0),
+    lastScore: score(p, rotatedBoard ? g.boardAngle ?? 0 : 0),
     lastBust: false,
     dartsLeft: g.dartsLeft - 1,
   };
@@ -92,6 +92,7 @@ export function hit(g: Game, p: Point, doubleOut = true): Game {
     }
   } else {
     if (n.lastScore <= n.scores[g.turn]) n.scores[g.turn] -= n.lastScore;
+    else if (rotatedBoard) n.lastBust = true;
     if (n.scores[g.turn] === 0) n.winner = g.turn;
   }
   if (n.winner === null && !n.dartsLeft) {

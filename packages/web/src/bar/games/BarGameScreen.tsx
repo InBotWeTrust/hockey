@@ -113,7 +113,7 @@ export function BarGameScreen() {
             <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
           )}
           {stakeOpen && <CharacterLaunch character="grigory" close={() => setStakeOpen(false)} />}
-          {help && <GameHelp kind={view.kind} close={() => setHelp(false)} />}
+          {help && <GameHelp kind={view.kind} engineVersion={view.runtime.engineVersion} close={() => setHelp(false)} />}
           {exit && (
             <AccessibleModal
               title="Выйти из партии?"

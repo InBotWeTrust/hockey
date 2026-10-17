@@ -87,6 +87,7 @@ it.each([
   (start, throws, radius, angle, reason) => {
     const view = snapshot('darts');
     let m = view.runtime;
+    m.engineVersion = 10;
     if (m.game.kind !== 'darts') throw Error();
     m.game = { ...m.game, scores: [start, 501], turnStartScore: start, boardAngle: angle };
     const p = barDarts.rotatePoint({ x: 0, y: -radius }, angle),

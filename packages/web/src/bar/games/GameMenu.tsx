@@ -40,7 +40,7 @@ function PoolGroup({ group }: { group: barPool.Group | null | undefined }) {
 }
 function dartBust(view: BarGameSnapshot): string {
   const m = view.runtime, g = m.game, f = m.feedback;
-  if (m.engineVersion < 9) return 'Перебор – дротик не засчитан';
+  if (m.engineVersion < 9 || m.engineVersion >= 11) return 'Перебор – дротик не засчитан';
   if (g.kind !== 'darts' || !f || !m.dartHits?.length)
     return 'Перебор – очки хода отменены';
   // A bust restores the visit's opening score; score the saved hits before board rotation.

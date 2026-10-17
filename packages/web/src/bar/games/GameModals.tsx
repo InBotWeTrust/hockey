@@ -1,13 +1,18 @@
 import { Star, X } from 'lucide-react';
-import type { BarGameId, BarGameSnapshot } from '@hockey/game-core';
+import { ENGINE_VERSION, type BarGameId, type BarGameSnapshot } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
-import { gameArt, gameCopy, gameNames, characterNames, rules, timerRules } from './content.js';
+import { gameArt, gameCopy, gameNames, characterNames, dartsDoubleOutRules, rules, timerRules } from './content.js';
 export const gameClose = (close: () => void) => (
   <button className="icon-btn" aria-label="Закрыть" onClick={close}>
     <X size={18} />
   </button>
 );
-export function GameHelp({ kind, close }: { kind: BarGameId; close: () => void }) {
+export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind: BarGameId; close: () => void; engineVersion?: number }) {
+  const paragraphs = kind === 'darts' && engineVersion >= 9 && engineVersion <= 10
+    ? dartsDoubleOutRules
+    : kind === 'darts' && engineVersion < 9
+      ? rules.darts.filter(p => !p.startsWith('После каждого хода мишень')).map(p => p.replace('501', '301'))
+      : rules[kind];
   return (
     <AccessibleModal
       cardClassName="bar-game-help"
@@ -15,7 +20,7 @@ export function GameHelp({ kind, close }: { kind: BarGameId; close: () => void }
       onRequestClose={close}
       headerAction={gameClose(close)}
     >
-      {rules[kind].map((p) => (
+      {paragraphs.map((p) => (
         <p className="modal-copy" key={p}>
           {p}
         </p>
