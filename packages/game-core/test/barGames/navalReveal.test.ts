@@ -12,3 +12,15 @@ it.each(['surrender', 'timeout'] as const)('reveals the fleet after %s, never du
     expect(view).not.toHaveProperty('submarineHistory');
   }
 });
+it('lets Timofey escape with the surviving half only in new matches',()=>{
+ for(const version of [16,18]) {
+  const runtime=createMatch('battleship',1,0,true,4,version);
+  const game=sea.start(runtime.game as unknown as sea.State);
+  const sub=game.fleets[1].find(s=>s.kind==='submarine')!;
+  sub.hits=[sea.cells(sub)[0]!];game.shots[0]=[{cell:sub.hits[0]!,hit:true}];
+  runtime.game=game as unknown as sea.View;
+  const updated=advance(runtime,runtime.animationUntil).game as unknown as sea.State;
+  expect(updated.moves[1]).toBe(version===18?1:0);
+  expect(updated.fleets[1].find(s=>s.kind==='submarine')!.w*updated.fleets[1].find(s=>s.kind==='submarine')!.h).toBe(version===18?1:2);
+ }
+});

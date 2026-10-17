@@ -69,21 +69,18 @@ export function BattleshipField({
   const showOwn = setup || (impactActive ? game.lastAction!.player !== player : (own?.key === boardKey ? own.value : game.turn !== player));
 
   const carrierOperational = sea.carrierReady(game.ownShips.find(s => s.kind === 'carrier'));
-  const submarineOperational = game.ownShips.some(s => s.kind === 'submarine' && s.hits.length === 0);
+  const submarineOperational = sea.moves(game).length > 0;
+  const submarine = game.ownShips.find(s=>s.kind==='submarine');
+  const submarineEscaping = !!game.mobileSubmarines && !!submarine && submarine.hits.length>0;
   const squareAirstrike = game.airstrikeCharge !== undefined;
   const salvoW = squareAirstrike ? 2 : vertical ? 2 : 3;
   const salvoH = squareAirstrike ? 2 : vertical ? 3 : 2;
   const marks = game.shots[showOwn ? 1 - player : player]!;
   const ships = showOwn ? game.ownShips : game.enemySunk;
-  const inferredWater = new Set<number>();
-  for (const ship of ships.filter(s => sea.cells(s).every(c => s.hits.includes(c)))) {
-    for (let y = Math.max(0, ship.y - 1); y <= Math.min(11, ship.y + ship.h); y++) {
-      for (let x = Math.max(0, ship.x - 1); x <= Math.min(11, ship.x + ship.w); x++) {
-        const c = sea.cell(x, y);
-        if (!sea.cells(ship).includes(c)) inferredWater.add(c);
-      }
-    }
-  }
+  const destroyedShips=ships.filter(s=>sea.cells(s).every(c=>s.hits.includes(c)));
+  const inferredWater = new Set(sea.surroundingWater(destroyedShips));
+  const wrecks=showOwn?game.ownShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]):game.enemyWrecks??[];
+  const sunkWrecks=destroyedShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]);
   const visibleImpact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player);
   const impactAirstrike = visibleImpact && game.lastAction!.cells.length > 1;
   const impactSunk = visibleImpact && ships.some(s => sea.cells(s).every(c=>s.hits.includes(c)) && game.lastAction!.cells.some(m=>m.hit && sea.cells(s).includes(m.cell)));
@@ -158,7 +155,7 @@ export function BattleshipField({
         (s) => s.kind === 'submarine' && sea.cells(s).includes(sea.cell(x, y)),
       );
       setSelected(ship?.id ?? null);
-      if (ship && sea.moves(game).length) setMode('move');
+      if (ship && sea.moves(game).length) { setMode('move'); if(submarineEscaping)onHint?.('Выбери свободную клетку для уцелевшей части и подтверди манёвр'); }
       setTarget(null);
       return;
     }
@@ -340,7 +337,7 @@ export function BattleshipField({
               mark = marks.find((m) => m.cell === c),
               hit = ship?.hits.includes(c) || mark?.hit;
             const impact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player) ? game.lastAction.cells.find(m => m.cell === c) : undefined;
-            const destroyed = !!ship && sea.cells(ship).every(c => ship.hits.includes(c));
+            const destroyed = (!!ship && sea.cells(ship).every(c => ship.hits.includes(c))) || sunkWrecks.includes(c);
             return (
               <button
                 key={c}
@@ -383,13 +380,14 @@ export function BattleshipField({
                   select(x, y);
                 }}
               >
-                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ' bar-naval-damage--burning'}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className="bar-naval-water" aria-hidden="true" /> : null}
+                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ' bar-naval-damage--burning'}${!destroyed&&wrecks.includes(c)?' bar-naval-damage--abandoned':''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className={game.mobileSubmarines?"bar-naval-miss":"bar-naval-water"} aria-hidden="true" /> : null}
                 {impact && <span key={`${animationStart}-${c}`} className="bar-naval-impact" style={{animationDelay: `${effectClock.current.delay}ms`}} aria-hidden="true" />}
               </button>
             );
           })}
           {ships.map(ship=><span key={`vessel-${ship.id}`} className="bar-naval-vessel" data-sunk={sea.cells(ship).every(cell => ship.hits.includes(cell))} data-side={showOwn?'self':'enemy'} data-ship-color={shipColor(ship)} aria-hidden="true" style={{left:`${ship.x/12*100}%`,top:`${ship.y/12*100}%`,width:`${ship.w/12*100}%`,height:`${ship.h/12*100}%`}}><ShipGraphic ship={ship}/></span>)}
-          {!setup && showOwn && submarineSelected && !disabled && sea.moves(game).map(pos=>{
+          <SubmarineWrecks positions={wrecks} sunk={sunkWrecks}/>
+          {!setup && showOwn && submarineSelected && !submarineEscaping && !disabled && sea.moves(game).map(pos=>{
             const sub=game.ownShips.find(s=>s.kind==='submarine')!;
             const dx=pos.x-sub.x,dy=pos.y-sub.y;
             const direction=dx>0?'вправо':dx<0?'влево':dy>0?'вниз':'вверх';
@@ -397,7 +395,7 @@ export function BattleshipField({
           })}
           {!setup && showOwn && mode==='move' && target && (()=>{
             const sub=game.ownShips.find(s=>s.kind==='submarine')!;
-            return <span className="bar-naval-move-preview" aria-hidden="true" style={{left:`${target.x/12*100}%`,top:`${target.y/12*100}%`,width:`${sub.w/12*100}%`,height:`${sub.h/12*100}%`}}/>;
+            return <span className="bar-naval-move-preview" aria-hidden="true" style={{left:`${target.x/12*100}%`,top:`${target.y/12*100}%`,width:`${(submarineEscaping?1:sub.w)/12*100}%`,height:`${(submarineEscaping?1:sub.h)/12*100}%`}}/>;
           })()}
           {!preview && selected && (() => {
             const ship = ships.find(s => s.id === selected);
@@ -466,7 +464,7 @@ export function BattleshipField({
               aria-pressed={showOwn && mode === 'move'}
               onClick={() => {
                 setMode('move');
-                onHint?.(null);
+                onHint?.(submarineEscaping?'Выбери свободную клетку для уцелевшей части и подтверди манёвр':null);
                 setOwn({value:true,key:boardKey});
                 setTarget(null);
               }}
@@ -503,4 +501,8 @@ export function ShipGraphic({ship}:{ship:sea.Ship}) {
     <path className="bar-naval-hull" d={ship.kind==='carrier'?'M8 18H84L96 50L84 82H8Z':ship.kind==='submarine'?'M20 28Q-5 50 20 72H78Q105 50 78 28Z':'M8 25L72 20L96 50L72 80L8 75Z'}/>
     {ship.kind==='carrier'?<><path className="bar-naval-deck" d="M18 40H82M18 60H82"/><rect className="bar-naval-cabin" x="35" y="20" width="28" height="14"/></>:<><rect className="bar-naval-cabin" x="35" y="36" width="25" height="28" rx="5"/><path className="bar-naval-deck" d="M65 50H84M17 50H30"/></>}
   </g></svg>;
+}
+
+export function SubmarineWrecks({positions,sunk}:{positions:number[];sunk:number[]}) {
+ return <>{positions.map(c=><span key={`wreck-${c}`} className="bar-naval-vessel bar-naval-vessel--wreck" data-sunk={sunk.includes(c)} aria-hidden="true" style={{left:`${c%12/12*100}%`,top:`${Math.floor(c/12)/12*100}%`,width:`${100/12}%`,height:`${100/12}%`}}><ShipGraphic ship={{id:'wreck',kind:'submarine',x:c%12,y:Math.floor(c/12),w:1,h:1,hits:[c]}}/></span>)}</>;
 }

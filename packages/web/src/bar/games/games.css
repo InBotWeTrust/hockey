@@ -1817,3 +1817,6 @@
 .bar-naval-vessel[data-sunk='true'] .bar-naval-hull { fill: #26323b; stroke: #62717c; }
 .bar-naval-vessel[data-sunk='true'] .bar-naval-cabin { fill: #39454e; stroke: #18232c; }
 .bar-naval-vessel[data-sunk='true'] .bar-naval-deck { stroke: #687781; }
+.bar-naval-damage--abandoned { width: 21%; height: 21%; left: 39.5%; top: 39.5%; }
+.bar-naval-vessel--wreck:not([data-sunk='true']) .bar-naval-hull { fill: #48545b; }
+.bar-naval-vessel--wreck { border-color: rgba(160, 175, 182, .3); }

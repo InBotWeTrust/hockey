@@ -323,3 +323,26 @@ it('shows the opponent remaining submarine moves and removes the exhausted count
  rerender(<BattleshipField game={{...game,enemyMovesLeft:0}} player={0} disabled={false} locked={false} send={()=>{}}/>);
  expect(screen.queryByLabelText(/Манёвров соперника осталось/)).toBeNull();
 });
+it('offers board-wide escape for a damaged modern submarine and renders its abandoned fire smaller',()=>{
+ const g=sea.start(sea.create(0,4,true,true));const sub=g.fleets[0].find(s=>s.kind==='submarine')!;sub.hits=[sea.cells(sub)[0]!];g.shots[1]=[{cell:sub.hits[0]!,hit:true}];
+ const send=vi.fn();const {container,rerender}=render(<BattleshipField game={sea.view(g,0)} player={0} disabled={false} locked={false} send={send}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
+ const board=screen.getByRole('group',{name:'Твой флот'});
+ fireEvent.click(board.querySelectorAll('button')[sea.cells(sub)[1]!]!);
+ expect(screen.getByRole('button',{name:'Манёвр Осталось 2'})).toBeEnabled();
+ expect(container.querySelectorAll('.bar-naval-move-arrow')).toHaveLength(0);
+ const destination=sea.moves(sea.view(g,0)).find(p=>Math.abs(p.x-sub.x)+Math.abs(p.y-sub.y)>3)!;
+ fireEvent.click(board.querySelectorAll('button')[sea.cell(destination.x,destination.y)]!);
+ fireEvent.click(screen.getByRole('button',{name:'Подтвердить'}));
+ expect(send).toHaveBeenCalledWith({type:'naval-move',...destination});
+ const moved=sea.move(g,0,destination.x,destination.y);
+ rerender(<BattleshipField game={sea.view(moved,0)} player={0} disabled locked={false} send={send}/>);
+ expect(container.querySelector('.bar-naval-damage--abandoned')).not.toBeNull();
+});
+it('uses filled dots around sunk ships in new-rule matches',()=>{
+ const game=sea.start(sea.create(0,4,true,true));const victim=game.fleets[1].find(s=>s.w*s.h===1)!;
+ const hit=sea.attack(game,0,victim.x,victim.y,false,false);
+ const {container}=render(<BattleshipField game={sea.view(hit,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(container.querySelector('.bar-naval-water')).toBeNull();
+ expect(container.querySelectorAll('.bar-naval-miss')).toHaveLength(sea.surroundingWater([victim]).length);
+});

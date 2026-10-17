@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
-import { barBattleship as sea, createMatch, type BarGameId } from '@hockey/game-core';
+import type { barBattleship as sea } from '@hockey/game-core';
+import { createMatch, type BarGameId } from '@hockey/game-core';
 import { readGame, actGame } from './service.js';
 afterEach(() => {
   vi.useRealTimers();

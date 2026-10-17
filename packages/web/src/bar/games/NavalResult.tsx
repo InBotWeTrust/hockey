@@ -1,11 +1,14 @@
 import { useState } from 'react';
 import { barBattleship as sea } from '@hockey/game-core';
-import { ShipGraphic } from './BattleshipField.js';
+import { ShipGraphic, SubmarineWrecks } from './BattleshipField.js';
 const letters = 'АБВГДЕЖЗИКЛМ';
 export function NavalResult({ game, player }: { game: sea.View; player: 0 | 1 }) {
   const [open, setOpen] = useState(false);
   const reveal = game.enemyReveal;
   if (game.winner === null || !reveal) return null;
+  const wrecks=reveal.ships.flatMap(s=>s.wreck===undefined?[]:[s.wreck]);
+  const sunkWrecks=reveal.ships.filter(s=>sea.cells(s).every(c=>s.hits.includes(c))).flatMap(s=>s.wreck===undefined?[]:[s.wreck]);
+  const water=new Set(sea.surroundingWater(reveal.ships.filter(s=>sea.cells(s).every(c=>s.hits.includes(c)))));
   const position = (ship: sea.Ship) => ({ left: `${ship.x / 12 * 100}%`, top: `${ship.y / 12 * 100}%`, width: `${ship.w / 12 * 100}%`, height: `${ship.h / 12 * 100}%` });
   return <section className="bar-naval-review">
     <button className="bar-naval-review-toggle" aria-expanded={open} onClick={() => setOpen(value => !value)}>Посмотреть поле соперника<span aria-hidden="true">{open ? '▴' : '▾'}</span></button>
@@ -18,17 +21,19 @@ export function NavalResult({ game, player }: { game: sea.View; player: 0 | 1 })
           {Array.from({length:144},(_,cell)=>{
             const ship = reveal.ships.find(s => sea.cells(s).includes(cell));
             const mark = game.shots[player].find(m => m.cell === cell);
-            const hit = ship?.hits.includes(cell) || mark?.hit;
-            const destroyed = !!ship && sea.cells(ship).every(c => ship.hits.includes(c));
+            const hit = ship?.hits.includes(cell) || mark?.hit || wrecks.includes(cell);
+            const destroyed = (!!ship && sea.cells(ship).every(c => ship.hits.includes(c))) || sunkWrecks.includes(cell);
             return <span key={cell} className="bar-naval-cell" data-hit={!!hit} data-sunk={destroyed} aria-label={`${letters[cell%12]} ${Math.floor(cell/12)+1}${hit?' попадание':mark?' промах':''}`}>
-              {hit ? <span className={`bar-naval-damage${destroyed?' bar-naval-damage--sunk':' bar-naval-damage--burning'}`}/> : mark ? <span className="bar-naval-miss"/> : null}
+              {hit ? <span className={`bar-naval-damage${destroyed?' bar-naval-damage--sunk':' bar-naval-damage--burning'}${!destroyed&&wrecks.includes(cell)?' bar-naval-damage--abandoned':''}`}/> : mark || (game.mobileSubmarines && water.has(cell)) ? <span className="bar-naval-miss"/> : null}
             </span>;
           })}
+          <SubmarineWrecks positions={wrecks} sunk={sunkWrecks}/>
           {reveal.submarineTrail?.map((ship, index, trail) => <span key={ship.move} className="bar-naval-vessel bar-naval-vessel--trail" style={position(ship)} aria-label={`Подлодка до манёвра ${ship.move}`}><ShipGraphic ship={ship}/><b style={{ left: trail.slice(0, index).filter(previous => previous.x === ship.x && previous.y === ship.y).length * 18 }}>{ship.move}</b></span>)}
           {reveal.ships.map(ship => <span key={ship.id} className="bar-naval-vessel" data-sunk={sea.cells(ship).every(cell => ship.hits.includes(cell))} style={position(ship)} aria-hidden="true"><ShipGraphic ship={ship}/></span>)}
         </div>
       </div>
       <p className="modal-copy">{game.phase === 'setup' ? 'Игра закончилась до завершения расстановки. Показаны размещённые корабли.' : 'Твои попадания и промахи, все корабли соперника. Огонь - подбит, крест - потоплен.'}</p>
+      {wrecks.length>0 && <p className="modal-copy">Маленький огонь - оставленная часть подлодки.</p>}
       {reveal.submarineTrail === undefined ? <p className="modal-copy">История перемещений в этой партии не записывалась.</p> : reveal.submarineTrail.length > 0 ? <p className="modal-copy">Силуэты с цифрами - позиции подлодки до манёвров. Сплошная подлодка - последняя позиция.</p> : null}
     </>}
   </section>;
