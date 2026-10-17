@@ -28,8 +28,8 @@ export function NavalResult({ game, player }: { game: sea.View; player: 0 | 1 })
           {reveal.ships.map(ship => <span key={ship.id} className="bar-naval-vessel" style={position(ship)} aria-hidden="true"><ShipGraphic ship={ship}/></span>)}
         </div>
       </div>
-      <p className="modal-copy">{game.phase === 'setup' ? 'Игра закончилась до завершения расстановки. Показаны размещённые корабли.' : 'Твои попадания и промахи, все корабли соперника. Огонь — подбит, крест — потоплен.'}</p>
-      {reveal.submarineTrail === undefined ? <p className="modal-copy">История перемещений в этой партии не записывалась.</p> : reveal.submarineTrail.length > 0 ? <p className="modal-copy">Силуэты с цифрами — позиции подлодки до манёвров. Сплошная подлодка — последняя позиция.</p> : null}
+      <p className="modal-copy">{game.phase === 'setup' ? 'Игра закончилась до завершения расстановки. Показаны размещённые корабли.' : 'Твои попадания и промахи, все корабли соперника. Огонь - подбит, крест - потоплен.'}</p>
+      {reveal.submarineTrail === undefined ? <p className="modal-copy">История перемещений в этой партии не записывалась.</p> : reveal.submarineTrail.length > 0 ? <p className="modal-copy">Силуэты с цифрами - позиции подлодки до манёвров. Сплошная подлодка - последняя позиция.</p> : null}
     </>}
   </section>;
 }
