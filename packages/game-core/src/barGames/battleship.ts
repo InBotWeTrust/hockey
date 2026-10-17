@@ -1,4 +1,4 @@
-/** Deterministic naval rules. Hidden fleets never enter an opponent view. */
+/** Deterministic naval rules. Hidden fleets enter an opponent view only after the match ends. */
 export type Ship = {
   id: string;
   kind: 'standard' | 'carrier' | 'submarine';
@@ -7,24 +7,34 @@ export type Ship = {
   w: number;
   h: number;
   hits: number[];
+  wreck?: number;
 };
+export type SubmarinePosition = Ship & { move: number };
 type Mark = { cell: number; hit: boolean };
 export type State = {
   kind: 'battleship';
   phase: 'setup' | 'battle';
   airstrikeCharges?: [number, number];
+  mobileSubmarines?: boolean;
+  maneuverAccess?: [boolean, boolean];
   turn: 0 | 1;
   fleets: [Ship[], Ship[]];
   moves: [number, number];
+  submarineHistory?: [SubmarinePosition[], SubmarinePosition[]];
   shots: [Mark[], Mark[]];
   winner: 0 | 1 | 'draw' | null;
   lastAction: { player: 0 | 1; type: 'attack' | 'move'; cells: Mark[] } | null;
 };
-export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges'> & {
+export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges' | 'submarineHistory' | 'maneuverAccess'> & {
   ownShips: Ship[];
+  player?: 0 | 1;
   enemySunk: Ship[];
   shots: [Mark[], Mark[]];
   movesLeft: number;
+  maneuverAvailable?: boolean;
+  enemyMovesLeft?: number;
+  enemyWrecks?: number[];
+  enemyReveal?: { ships: Ship[]; submarineTrail?: SubmarinePosition[] };
   canSalvo: boolean;
   airstrikeCharge?: number;
 };
@@ -134,14 +144,17 @@ export function fleet(seed: number): Ship[] {
   }
   throw Error('Fleet generation failed');
 }
-export function create(starter: 0 | 1, seed: number, chargedAirstrikes = false): State {
+export function create(starter: 0 | 1, seed: number, chargedAirstrikes = false, mobileSubmarines = false, damageOnlyManeuvers = false): State {
   return {
     ...(chargedAirstrikes ? { airstrikeCharges: [0, 0] as [number, number] } : {}),
+    ...(mobileSubmarines ? { mobileSubmarines: true } : {}),
+    ...(damageOnlyManeuvers ? { maneuverAccess: [false, false] as [boolean,boolean] } : {}),
     kind: 'battleship',
     phase: 'setup',
     turn: starter,
     fleets: [fleet(seed), fleet(seed + 1)],
     moves: [0, 0],
+    submarineHistory: [[], []],
     shots: [[], []],
     winner: null,
     lastAction: null,
@@ -154,6 +167,8 @@ const clone = (g: State): State => ({
   ...g,
   fleets: g.fleets.map((f) => f.map((s) => ({ ...s, hits: [...s.hits] }))) as State['fleets'],
   moves: [...g.moves],
+  ...(g.maneuverAccess ? {maneuverAccess:[...g.maneuverAccess] as [boolean,boolean]} : {}),
+  ...(g.submarineHistory ? { submarineHistory: g.submarineHistory.map(trail => trail.map(s => ({ ...s, hits: [...s.hits] }))) as [SubmarinePosition[], SubmarinePosition[]] } : {}),
   ...(g.airstrikeCharges ? { airstrikeCharges: [...g.airstrikeCharges] as [number, number] } : {}),
   shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
 });
@@ -177,16 +192,24 @@ export function configure(
 }
 export function view(g: State, p: 0 | 1): View {
   const ownShips = g.fleets[p].map((s) => ({ ...s, hits: [...s.hits] }));
-  const cap = ownShips.filter((s) => !sunk(s)).length === 1 ? 3 : 2;
+  const cap = g.maneuverAccess ? 1 : ownShips.filter((s) => !sunk(s)).length === 1 ? 3 : 2;
   return {
+    ...(g.mobileSubmarines ? { mobileSubmarines: true, enemyWrecks: g.fleets[1 - p]!.flatMap(s => s.wreck === undefined ? [] : [s.wreck]) } : {}),
+    ...(g.maneuverAccess ? {maneuverAvailable:g.maneuverAccess[p] && g.moves[p]===0 && ownShips.some(s=>s.kind==='submarine' && s.hits.length>0 && !sunk(s))} : {}),
     kind: g.kind,
     phase: g.phase,
     turn: g.turn,
     winner: g.winner,
     ownShips,
+    player: p,
     enemySunk: g.fleets[1 - p]!.filter(sunk).map((s) => ({ ...s, hits: [...s.hits] })),
     shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
     movesLeft: Math.max(0, cap - g.moves[p]),
+    enemyMovesLeft: Math.max(0, (g.maneuverAccess ? 1 : g.fleets[1 - p]!.filter(s => !sunk(s)).length === 1 ? 3 : 2) - g.moves[1 - p]!),
+    ...(g.winner !== null ? { enemyReveal: {
+      ships: g.fleets[1 - p]!.map(s => ({ ...s, hits: [...s.hits] })),
+      ...(g.submarineHistory ? { submarineTrail: g.submarineHistory[1 - p]!.map(s => ({ ...s, hits: [...s.hits] })) } : {}),
+    } } : {}),
     canSalvo: carrierReady(ownShips.find((s) => s.kind === 'carrier')!) && (!g.airstrikeCharges || g.airstrikeCharges[p] >= 5),
     ...(g.airstrikeCharges ? { airstrikeCharge: g.airstrikeCharges[p] } : {}),
     lastAction: g.lastAction
@@ -194,17 +217,37 @@ export function view(g: State, p: 0 | 1): View {
       : null,
   };
 }
+/** Water excluded by the no-touch rule, including separated submarine wrecks. */
+export function surroundingWater(ships: Ship[]): number[] {
+  const occupied = new Set(ships.flatMap(s => [...cells(s), ...(s.wreck === undefined ? [] : [s.wreck])]));
+  const water = new Set<number>();
+  for (const ship of ships) {
+    for (const c of [...cells(ship), ...(ship.wreck === undefined ? [] : [ship.wreck])]) {
+      for(let y=Math.max(0,Math.floor(c/12)-1);y<=Math.min(11,Math.floor(c/12)+1);y++)
+        for(let x=Math.max(0,c%12-1);x<=Math.min(11,c%12+1);x++)
+          if(!occupied.has(cell(x,y))) water.add(cell(x,y));
+    }
+  }
+  return [...water];
+}
 export function moves(v: View) {
-  const s = v.ownShips.find((s) => s.kind === 'submarine');
-  if (!s || s.hits.length || !v.movesLeft) return [];
-  return [
-    [1, 0],
-    [-1, 0],
-    [0, 1],
-    [0, -1],
-  ]
-    .map(([dx, dy]) => ({ x: s.x + dx!, y: s.y + dy! }))
-    .filter((pos) => spaced(v.ownShips.map((t) => (t.id === s.id ? { ...t, ...pos } : t))));
+  const s = v.ownShips.find(s => s.kind === 'submarine');
+  if (v.maneuverAvailable === false || !s || sunk(s) || (!v.mobileSubmarines && s.hits.length) || !v.movesLeft) return [];
+  const escape = !!v.mobileSubmarines && s.hits.length > 0;
+  const blocked = new Set(v.mobileSubmarines ? [
+    ...v.shots[1-(v.player ?? v.turn)]!.map(m=>m.cell),
+    ...surroundingWater(v.ownShips.filter(sunk)),
+  ] : []);
+  const candidates = escape
+    ? Array.from({length:144},(_,c)=>({x:c%12,y:Math.floor(c/12)}))
+    : [[1,0],[-1,0],[0,1],[0,-1]].map(([dx,dy])=>({x:s.x+dx!,y:s.y+dy!}));
+  return candidates.filter(pos => {
+    const candidate={...s,...pos,...(escape ? {w:1,h:1} : {})};
+    const wreck=s.wreck ?? (escape ? s.hits[0] : undefined);
+    const obstacles=v.ownShips.map(t=>t.id===s.id?candidate:t);
+    if(wreck!==undefined)obstacles.push({...s,id:'wreck',x:wreck%12,y:Math.floor(wreck/12),w:1,h:1,hits:[]});
+    return (pos.x!==s.x || pos.y!==s.y) && spaced(obstacles) && !cells(candidate).some(c=>blocked.has(c));
+  });
 }
 function active(g: State, p: 0 | 1) {
   if (g.phase !== 'battle' || g.winner !== null || g.turn !== p) throw Error('Not your turn');
@@ -213,8 +256,15 @@ export function move(g: State, p: 0 | 1, x: number, y: number): State {
   active(g, p);
   if (!moves(view(g, p)).some((pos) => pos.x === x && pos.y === y)) throw Error('Invalid maneuver');
   const n = clone(g);
-  Object.assign(n.fleets[p].find((s) => s.kind === 'submarine')!, { x, y });
+  const submarine = n.fleets[p].find(s => s.kind === 'submarine')!;
+  n.submarineHistory?.[p].push({ ...submarine, hits: [...submarine.hits], move: n.moves[p] + 1 });
+  if (n.mobileSubmarines && submarine.hits.length > 0) {
+    submarine.wreck = submarine.hits[0]!;
+    submarine.w = 1; submarine.h = 1; submarine.hits = [];
+  }
+  Object.assign(submarine, { x, y });
   n.moves[p]++;
+  if(n.maneuverAccess)n.maneuverAccess[p]=false;
   n.turn = p === 0 ? 1 : 0;
   n.lastAction = { player: p, type: 'move', cells: [] };
   return n;
@@ -243,12 +293,20 @@ export function attack(
       const c = cell(x + dx, y + dy),
         s = n.fleets[1 - p]!.find((s) => cells(s).includes(c));
       if (s && !s.hits.includes(c)) { s.hits.push(c); freshHit = true; }
-      const mark = { cell: c, hit: !!s };
+      const mark = { cell: c, hit: !!s || !!(n.mobileSubmarines && n.fleets[1-p]!.some(t=>t.wreck===c)) };
       marks.push(mark);
       const old = n.shots[p].findIndex((m) => m.cell === c);
       if (old >= 0) n.shots[p][old] = mark;
       else n.shots[p].push(mark);
     }
+  if(n.maneuverAccess && marks.every(m=>!m.hit)) {
+    const sub=n.fleets[1-p]!.find(s=>s.kind==='submarine');
+    if(sub && !sunk(sub) && sub.hits.length>0 && n.moves[1-p]===0) n.maneuverAccess[1-p]=true;
+  }
+  if(n.mobileSubmarines) {
+    const water=surroundingWater(n.fleets[1-p]!.filter(sunk));
+    for(const c of water) if(!n.shots[p].some(m=>m.cell===c)) n.shots[p].push({cell:c,hit:false});
+  }
   n.lastAction = { player: p, type: 'attack', cells: marks };
   n.turn = continueOnHit && !salvo && freshHit ? p : p === 0 ? 1 : 0;
   if (n.fleets[1 - p]!.every(sunk)) n.winner = p;
@@ -319,7 +377,8 @@ export function bot(v: View, seed: number, smart = true) {
   if (!smart) return legacyBot(v, seed);
   const rng = random(seed),
     known = new Map(v.shots[v.turn].map((m) => [m.cell, m.hit]));
-  const blocked = new Set<number>();
+  const wrecks: Ship[]=(v.enemyWrecks??[]).map(c=>({id:'wreck',kind:'submarine',x:c%12,y:Math.floor(c/12),w:1,h:1,hits:[c]}));
+  const blocked = new Set<number>([...(v.enemyWrecks??[]),...surroundingWater(wrecks)]);
   for (const ship of v.enemySunk) {
     for (
       let y = Math.max(0, ship.y - 1);
@@ -349,7 +408,7 @@ export function bot(v: View, seed: number, smart = true) {
     scores = Array<number>(144).fill(0);
   const remaining = shipTypes().filter(
     (s) => !v.enemySunk.some((t) => t.id === s.id),
-  );
+  ).map(s=>v.mobileSubmarines && v.enemyWrecks?.length && s.kind==='submarine' ? {...s,w:1,h:1} : s);
   for (const template of remaining) {
     const orientations =
       template.w === template.h

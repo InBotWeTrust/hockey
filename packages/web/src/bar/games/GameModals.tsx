@@ -1,3 +1,4 @@
+import { NavalResult } from './NavalResult.js';
 import { Star, X } from 'lucide-react';
 import { ENGINE_VERSION, type BarGameId, type BarGameSnapshot } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
@@ -7,8 +8,12 @@ export const gameClose = (close: () => void) => (
     <X size={18} />
   </button>
 );
-export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind: BarGameId; close: () => void; engineVersion?: number }) {
-  const paragraphs = kind==='ochko'&&engineVersion>=12 ? [
+export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION, notice, onRetry }: { kind: BarGameId; close: () => void; engineVersion?: number; notice?: string | null; onRetry?: (() => void) | undefined }) {
+  const paragraphs = kind==='battleship' && engineVersion>=18
+    ? rules.battleship.map(p=>p.startsWith('Неповреждённая подлодка')
+      ? (engineVersion>=19 ? 'В начале манёвр недоступен. После попадания в подлодку и последующего промаха соперника манёвр открывается, пока жива уцелевшая часть. ' : '') + (engineVersion>=19 ? 'Подлодка не может занимать клетки с кораблями и точками. ' : 'Неповреждённая подлодка сдвигается на одну клетку без поворота, только на клетки без кораблей и точек. ') + 'Если подлодка подбита, уцелевшая часть может уйти в любую свободную клетку без точки. Между кораблями сохраняется пустая клетка. Перенос расходует обычный манёвр и передаёт ход. После спасения одноклеточная подлодка снова сдвигается только на одну клетку. Два манёвра за матч, три суммарно, если подлодка осталась последним кораблём. Оставленная часть горит слабее; повторный выстрел в неё не повреждает подлодку. Попадание в уцелевшую часть топит её. Вокруг потопленных кораблей автоматически появляются сплошные точки: подлодка не может занимать эти клетки.'
+      : p).map(p=>engineVersion>=19 ? p.replace('манёвр открывается, пока жива уцелевшая часть.', 'можно один раз спасти уцелевшую часть.').replace('После спасения одноклеточная подлодка снова сдвигается только на одну клетку. Два манёвра за матч, три суммарно, если подлодка осталась последним кораблём.', 'Всего один манёвр за матч, даже если подлодка осталась последним кораблём. После спасения она больше не перемещается.') : p)
+    : kind==='ochko'&&engineVersion>=12 ? [
     'Матч состоит из четырёх раздач одной колодой на 36 карт. Карты не возвращаются. 6–10 дают свой номинал, валет — 2, дама — 3, король — 4, туз — 11. Два туза в начальной руке дают 21: набор владельца заканчивается, соперник продолжает.',
     'Бери карты или нажми «Хватит». Сумма до 21 включительно добавляется к общему счёту, перебор даёт 0. Побеждает большая сумма за четыре раздачи. Для будущих раздач резервируются по четыре карты: если свободные закончились, набор останавливается.',
     'Григорий может приписать себе 1–3 очка, не меняя карты и не скрывая перебор. После вскрытия можно один раз проверить счёт. Верное обвинение исправляет сумму, ошибочное отнимает 3 очка у тебя. Общий счёт может быть отрицательным.',
@@ -22,6 +27,9 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
       : kind === 'battleship' && engineVersion < 15
         ? rules.battleship.map(p => p.replace('авианалёт на квадрат 2×2', 'залп 3×2 (можно повернуть)').replace('Авианалёт заряжается после пяти обычных выстрелов, в начале он недоступен. После использования заряд сбрасывается. ', '').replaceAll('Авианалёт', 'Залп').replaceAll('авианалёт', 'залп'))
         : rules[kind];
+  const displayedParagraphs = kind === 'ochko' && engineVersion >= 17
+    ? paragraphs.map(p => p.replace('затем отсчёт 5 секунд', 'затем отсчёт 3 секунды').replace('Между раздачами опоздание означает поражение.', 'Между раздачами опоздание означает поражение. После «Дальше» — пауза 3 секунды перед новой раздачей.'))
+    : paragraphs;
   return (
     <AccessibleModal
       cardClassName="bar-game-help"
@@ -29,7 +37,9 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
       onRequestClose={close}
       headerAction={gameClose(close)}
     >
-      {paragraphs.map((p) => (
+      {notice && <p role="alert" className="modal-copy">{notice}</p>}
+      {onRetry && <button className="btn btn--ghost" onClick={onRetry}>Повторить</button>}
+      {displayedParagraphs.map((p) => (
         <p className="modal-copy" key={p}>
           {p}
         </p>
@@ -104,6 +114,7 @@ export function GameResult({
       )}
       {finalScores && <p className="bar-game-result__score" aria-label="Итоговый счёт"><span>{technicalScore ? 'Технический счёт:' : 'Счёт:'}</span><strong>{finalScores[view.player]} : {finalScores[view.player === 0 ? 1 : 0]}</strong>{game.kind === 'ochko' && !!game.series?.history.length && <span className="bar-game-result__rounds">({technicalScore ? 'раздачи: ' : ''}{game.series.history.map(round => `${round.awards[view.player]}:${round.awards[view.player === 0 ? 1 : 0]}`).join(', ')})</span>}</p>}
       {challengePenalty > 0 && <p className="modal-copy">Штраф за проверку счёта: −{challengePenalty}</p>}
+      {game.kind === 'battleship' && <NavalResult game={game} player={view.player}/>}
       <div className="modal-actions">
         {view.character ? (
           <>

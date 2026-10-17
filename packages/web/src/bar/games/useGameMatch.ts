@@ -20,7 +20,7 @@ export function useGameMatch(id: string | undefined) {
     armQueued = useRef<Extract<BarGameAction, { type: 'arm-input' }> | null>(null);
   const seenStakes = useRef(new Set<string>());
   const recovering = useRef(false);
-  const queued = useRef<BarGameAction | null>(null);
+  const queued = useRef<BarGameCommand['action'] | null>(null);
   const current = useRef(view);
   current.current = view;
   const pending = useRef<BarGameCommand | null>(null),
@@ -29,9 +29,9 @@ export function useGameMatch(id: string | undefined) {
     offset = useRef(0);
   const apply = useCallback(
     (next: BarGameSnapshot) => {
-      if (next.id !== id) return;
+      if (next.id !== id || mergeGameSnapshot(current.current, next) !== next) return;
       offset.current = next.serverNow - Date.now();
-      setNow(Date.now() + offset.current);
+      setNow(next.rulesPaused ? next.serverNow : Date.now() + offset.current);
       current.current = mergeGameSnapshot(current.current, next);
       if (current.current === next && next.stake) {
         const key = `${next.id}:${next.stake.amount}:${next.stake.payout}`;
@@ -84,7 +84,7 @@ export function useGameMatch(id: string | undefined) {
     };
     void refresh();
     const timer = setInterval(() => void refresh(), 500),
-      clock = setInterval(() => setNow(Date.now() + offset.current), 100);
+      clock = setInterval(() => setNow(current.current?.rulesPaused ? current.current.serverNow : Date.now() + offset.current), 100);
     document.addEventListener('visibilitychange', refresh);
     return () => {
       generation.current++;
@@ -185,16 +185,16 @@ export function useGameMatch(id: string | undefined) {
       }
     }
   };
-  const send = (action: BarGameAction | { type: 'ready' }) => {
+  const send = (action: BarGameCommand['action']) => {
     if (action.type === 'arm-input') {
       void deliverArm(action);
       return;
     }
     if (pending.current) {
       if (
-        pending.current.action.type === 'aim' &&
+        action.type === 'rules-pause' || (pending.current.action.type === 'aim' &&
         action.type !== 'ready' &&
-        queued.current?.type !== 'shot'
+        queued.current?.type !== 'shot')
       )
         queued.current = action;
       return;

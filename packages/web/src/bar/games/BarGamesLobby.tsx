@@ -9,6 +9,7 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
 import { gameNames } from './content.js';
 import './games.css';
+import {useBarInvitation} from '../useBarInvitation.js';
 export function BarGamesLobby({
   initial = 'cards',
   embedded = false,
@@ -17,6 +18,11 @@ export function BarGamesLobby({
   embedded?: boolean;
 }) {
   const [kind, setKind] = useState<BarGameId | 'cards'>(initial);
+  const invitation=useBarInvitation(!embedded);
+  const openedInvitation=useRef<string|null>(null);
+  useEffect(()=>{
+    if(invitation&&openedInvitation.current!==invitation.id){openedInvitation.current=invitation.id;setKind(invitation.kind);}
+  },[invitation]);
   return (
     <section className="bar-games-lobby">
       <SegmentedTabs

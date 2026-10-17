@@ -111,6 +111,7 @@ export const gameAction = z.discriminatedUnion('type', [
     .strict(),
   z.object({ type: z.literal('surrender') }).strict(),
   z.object({ type: z.literal('ready') }).strict(),
+  z.object({ type: z.literal('rules-pause'), paused: z.boolean() }).strict(),
 ]);
 export const barGameRoutes: FastifyPluginAsync = async (app) => {
   const auth = { preHandler: [app.authenticate] };
