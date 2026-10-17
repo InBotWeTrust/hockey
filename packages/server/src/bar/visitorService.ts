@@ -71,9 +71,21 @@ export async function visitorAccount(
     [user, new Date(now)],
   );
   await db.query(
-    `update bar_visitor_accounts a set messages_used=0,games_used='{}',day_started_at=$2,
-    reset_at=case when a.day_timezone=coalesce(u.timezone,'UTC') then ((($2::timestamptz at time zone coalesce(u.timezone,'UTC'))::date+1)::timestamp at time zone coalesce(u.timezone,'UTC')) else greatest(a.reset_at+interval '24 hours',((($2::timestamptz at time zone coalesce(u.timezone,'UTC'))::date+1)::timestamp at time zone coalesce(u.timezone,'UTC'))) end,day_timezone=coalesce(u.timezone,'UTC')
-    from users u where a.user_id=$1 and u.id=a.user_id and a.reset_at<=$2`,
+    `with boundary as (
+      select a.user_id,coalesce(u.timezone,'UTC') as zone,
+        case when a.day_timezone=coalesce(u.timezone,'UTC') then $2::timestamptz
+          else greatest($2::timestamptz,a.reset_at+interval '24 hours') end as earliest
+      from bar_visitor_accounts a join users u on u.id=a.user_id
+      where a.user_id=$1 and a.reset_at<=$2
+    ), midnight as (
+      select *,((earliest at time zone zone)::date::timestamp at time zone zone) as candidate
+      from boundary
+    )
+    update bar_visitor_accounts a set messages_used=0,games_used='{}',day_started_at=$2,
+      reset_at=case when m.candidate>=m.earliest and m.candidate>$2 then m.candidate
+        else (((m.earliest at time zone m.zone)::date+1)::timestamp at time zone m.zone) end,
+      day_timezone=m.zone
+    from midnight m where a.user_id=m.user_id`,
     [user, new Date(now)],
   );
   const row = (

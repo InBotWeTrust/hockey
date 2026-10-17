@@ -258,6 +258,19 @@ describe.skipIf(!enabled)('visitor SQL transactions in an isolated schema', () =
     expect(after.messages.remaining).toBe(10);
     expect(after.messages.paid).toBe(10);
   });
+  it('aligns the new timezone to a real midnight so the second reset cannot arrive early', async () => {
+    await visitorTransaction(pool,user,async db=>{
+      await visitorAccount(db,user,Date.parse('2026-10-17T12:00:00Z'));
+      await db.query("update users set timezone='America/New_York'");
+      const changed=await visitorAccount(db,user,Date.parse('2026-10-17T21:00:00.001Z'));
+      expect(changed.resetAt).toBe('2026-10-19T04:00:00.000Z');
+      await db.query('update bar_visitor_accounts set messages_used=3');
+      const held=await visitorAccount(db,user,Date.parse('2026-10-18T21:00:00.001Z'));
+      expect(held.messagesUsed).toBe(3);
+      const next=await visitorAccount(db,user,Date.parse('2026-10-19T04:00:00.001Z'));
+      expect(next.resetAt).toBe('2026-10-20T04:00:00.000Z');
+    });
+  });
   it('uses local midnight on a short daylight-saving day without granting an early reset for timezone changes', async () => {
     await pool.query("update users set timezone='America/New_York'");
     await visitorTransaction(pool, user, async (db) => {
