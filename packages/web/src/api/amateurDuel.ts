@@ -30,7 +30,7 @@ export type AmateurDuelParticipantState =
   | 'completed'
   | 'forfeit';
 export type AmateurDuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
-export type AmateurDuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
+export type AmateurDuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm';
 export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
 export type AmateurDuelVenuePolicy =
   | 'direct_challenge'
@@ -104,6 +104,8 @@ export interface AmateurDuelRules {
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duelKind: AmateurDuelKind;
+  rhythmVersion?: 1 | 2;
+  rhythmWindowTraversals?: 2;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: 4000 | 7000;
@@ -154,6 +156,11 @@ export interface AmateurDuelParticipant {
   last_shot_ends_ms?: number;
   scene_elapsed_ms?: number;
   shooter_elapsed_ms?: number;
+  rhythm_series?: number[];
+  rhythm_current_series?: number;
+  rhythm_travel?: number;
+  rhythm_last_goal_travel?: number;
+  rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; goal:boolean}>;
   format_score?: number;
   sniper_points?: number;
   marathon_penalties?: number;
@@ -376,7 +383,7 @@ export interface MonthlyRatingCongratulation {
   tokens: number;
   created_at: string;
   awards?: Array<{
-    scope: 'overall' | 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
+    scope: 'overall' | 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm';
     place: number;
     points?: number;
     coins: number;

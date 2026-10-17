@@ -1,3 +1,4 @@
+import { projectRhythm, type RhythmShot } from '@hockey/game-core';
 import type {
   AmateurDuelKind,
   AmateurDuelParticipant,
@@ -7,7 +8,7 @@ export function duelDisplayScore(
   kind: AmateurDuelKind,
   player: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
 ): number {
-  return kind === 'sniper' || kind === 'marathon' ? (player.format_score ?? 0) : player.goals;
+  return kind === 'sniper' || kind === 'marathon' || kind === 'rhythm' ? (player.format_score ?? 0) : player.goals;
 }
 export function duelFormatLabel(
   rules: Pick<AmateurDuelRules, 'duelKind' | 'marathonWindowMs'>,
@@ -18,6 +19,7 @@ export function duelFormatLabel(
     classic: 'Классика',
     sniper: 'Снайпер',
     marathon: 'Марафон',
+    rhythm: 'Ритм',
   };
   return (
     labels[rules.duelKind] +
@@ -38,4 +40,11 @@ export function duelScorePairText(
   opponent: Pick<AmateurDuelParticipant, 'goals' | 'format_score'>,
 ): string {
   return [duelScoreText(kind, me), duelScoreText(kind, opponent)].join(kind === 'sniper' ? '\u2009:\u2009' : ':');
+}
+
+export function rhythmGoalDetails(shots: readonly RhythmShot[], version: 1 | 2): string[] {
+  const latest = shots.at(-1);
+  if (!latest?.goal) return [];
+  const result = projectRhythm({shots, travel:latest.travel, version});
+  return [result.currentSeries >= 2 ? `Серия ${result.currentSeries}` : 'Серия началась'];
 }

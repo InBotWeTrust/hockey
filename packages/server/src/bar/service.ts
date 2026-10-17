@@ -2,6 +2,7 @@ import { projectMarathon, scoredElapsedFromShots } from '../duel/amateur/scoredF
 import { sampleBarMotion } from './motion.js';
 import type { Pool } from 'pg';
 import {
+  projectRhythm,
   PUCK_START,
   GOAL_OPENING,
   getGoalie,
@@ -77,7 +78,7 @@ interface MatchRow {
   match_id: string | null;
   status: string;
   duel_status: string | null;
-  duel_kind: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | null;
+  duel_kind: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm' | null;
   match_seed?: string;
   starts_at: Date | null;
   ends_at: Date | null;
@@ -88,6 +89,7 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
+    rhythmVersion?: 1 | 2;
     scoredClockVersion?: 2;
     shotResultPauseMs?: 1000;
     marathonWindowMs?: 4000 | 7000;
@@ -198,7 +200,7 @@ async function playersFor(
     ],
   );
   const scoredIds = rows
-    .filter((row) => row.duel_kind === 'sniper' || row.duel_kind === 'marathon')
+    .filter((row) => row.duel_kind === 'sniper' || row.duel_kind === 'marathon' || row.duel_kind === 'rhythm')
     .map((row) => row.match_id)
     .filter(Boolean);
   const scoringShots =
@@ -208,7 +210,7 @@ async function playersFor(
           await pool.query<{
             amateur_duel_match_id: string;
             user_id: string;
-            input_payload: { tapTime: number; periodTapTime?: number; puckSpeedPerMs: number };
+            input_payload: { tapTime: number; periodTapTime?: number; rhythmTravel?: number; puckSpeedPerMs: number };
             server_result: string;
             awarded_points: number;
           }>(
@@ -251,7 +253,7 @@ async function playersFor(
       legacyScore: number,
     ): BarPlayer => {
       const result = publicPlayer(p, legacyScore);
-      if (row.duel_kind !== 'sniper' && row.duel_kind !== 'marathon') return result;
+      if (row.duel_kind !== 'sniper' && row.duel_kind !== 'marathon' && row.duel_kind !== 'rhythm') return result;
       const shots = scoringShots.filter(
         (shot) => shot.amateur_duel_match_id === row.match_id && shot.user_id === p.user_id,
       );
@@ -284,6 +286,8 @@ async function playersFor(
         score:
           row.duel_kind === 'sniper'
             ? shots.reduce((total, shot) => total + Number(shot.awarded_points), 0) / 10
+            : row.duel_kind === 'rhythm'
+            ? projectRhythm({version:row.rules_snapshot?.rhythmVersion ?? 1,shots:shots.map(shot=>({travel:shot.input_payload.rhythmTravel??0,goal:shot.server_result==='goal'})),travel:shots.at(-1)?.input_payload.rhythmTravel??0}).score
             : projectMarathon({
                 durationMs: row.rules_snapshot?.periodRules?.[0]?.durationMs ?? 240000,
                 windowMs: row.rules_snapshot?.marathonWindowMs ?? 7000,

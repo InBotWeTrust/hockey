@@ -1,6 +1,6 @@
 export const GAME_CORE_VERSION = 106 as const;
 
-// Versions 89–106 changed only bar games; hockey shot simulation is identical to 88.
+// Versions 89–106 add bar games and Rhythm; existing hockey shot simulation is identical to 88.
 // Reassess this compatibility explicitly on the next engine version bump.
 export function isShotCoreVersionCompatible(version: number): boolean {
   return (

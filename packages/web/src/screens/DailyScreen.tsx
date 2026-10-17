@@ -1,3 +1,5 @@
+import { rhythmGoalDetails } from '../components/duel/scoredDuel.js';
+import { createRhythmMovementSampler } from '@hockey/game-core';
 import {gameDockStatus,type GameDockStatus} from '../city/gameDockStatus.js';
 import {CityGamePanel} from '../city/CityGamePanel.js';
 import {isActionableDuelEvent} from '../components/useNavigationActivity.js';
@@ -241,6 +243,7 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   classic: '/modes/amateur-duel.webp',
   sniper: '/modes/amateur-duel-card.webp',
   marathon: '/modes/amateur-duel.webp',
+  rhythm: '/modes/amateur-duel.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
@@ -4123,6 +4126,7 @@ function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express_plus') return 'Микс';
   if (kind === 'sniper') return 'Снайпер';
   if (kind === 'marathon') return 'Марафон';
+  if (kind === 'rhythm') return 'Ритм';
   return 'Классика';
 }
 
@@ -4198,6 +4202,7 @@ const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
   classic: 2,
   sniper: 3,
   marathon: 4,
+  rhythm: 5,
 };
 
 function sortDuelTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] {
@@ -4482,6 +4487,7 @@ const DUEL_KIND_OPTIONS: AmateurDuelKind[] = [
   'classic',
   'sniper',
   'marathon',
+  'rhythm',
 ];
 
 function DuelKindPreferencePicker({
@@ -4577,6 +4583,7 @@ function DuelKindPreferencePicker({
 
 function MatchmakingRulesContent(): JSX.Element {
   const ruleItems: Array<{ title: string; text: string }> = [
+    { title: 'Ритм', text: '1 период, 2:30. Первый гол засчитывается вместе со вторым, если успеть за два проката. Продолжайте серию: каждый следующий гол должен быть не позднее двух прокатов. При равном счёте решают длинные серии.' },
     {
       title: 'Снайпер',
       text: '1 период, 3 минуты. Очки за сложность гола по правилам Меткости; при равенстве решает точность.',
@@ -5823,7 +5830,7 @@ export function AmateurDuelPlayView({
   const marathonFrozenMsRef = useRef<number | null>(null);
   const [marathonFrozenMs, setMarathonFrozenMs] = useState<number | null>(null);
   const [localShotClock, setLocalShotClock] = useState<{
-    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number;
+    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number; sceneTapTime: number; flightMs: number; shotIndex:number;
   } | null>(null);
   const [sniperScoreParts, setSniperScoreParts] = useState<readonly { points: number; label: string }[] | null>(null);
   const sniperPendingPartsRef = useRef<readonly { points: number; label: string }[] | null>(null);
@@ -6048,6 +6055,8 @@ export function AmateurDuelPlayView({
     };
   }, [match?.id, match?.status, matchId, refresh]);
 
+  const rhythmMovementKey = match?.rules.duelKind === 'rhythm' ? JSON.stringify(rhythmMovementInputForMatch(match)) : null;
+  const rhythmSampler = useMemo(() => rhythmMovementKey ? createRhythmMovementSampler(JSON.parse(rhythmMovementKey)) : null, [rhythmMovementKey]);
   const duelCondition = useMemo(
     () => (match ? createDuelConditionForMatch(match) : () => null),
     [match],
@@ -6202,6 +6211,7 @@ export function AmateurDuelPlayView({
     : Math.min(windowMs, Math.max(0, localPausePending && localShotClock.goal && fightNow >= resultPauseStart
       ? localShotClock.goalAtMs + windowMs - ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta())
       : authoritativeMarathonRemainingMs));
+  const rhythmPauses = mergeRhythmFlightPauses(match.me.rhythm_shots ?? [], localShotClock ? [{tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs}] : []);
   const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
     (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
   const visibleMatch = periodLocallyExpired
@@ -6478,7 +6488,7 @@ export function AmateurDuelPlayView({
           backLabel={duelBackLabel(match.source, false)}
           scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
           canStartAction={
-            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
+            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'
               ? () =>
                   periodEndsAt === undefined ||
                   periodEndsAt === null ||
@@ -6521,7 +6531,8 @@ export function AmateurDuelPlayView({
             applyShotStateAtContact: true,
             shotResultPauseMs: match.rules.shotResultPauseMs,
           } : {})}
-          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'}
+          shooterMotionTime={rhythmSampler ? (ms, pauses) => rhythmSampler.motionAt(ms,mergeRhythmFlightPauses(match.me.rhythm_shots??[],pauses)) : undefined}
           onShotResolved={(context) => {
             setShotAnimationActive(true);
             if (!pausedScoredClock) return null;
@@ -6536,18 +6547,27 @@ export function AmateurDuelPlayView({
               ? previousWindowEndsAt + (Math.floor((startsAt - previousWindowEndsAt) / windowMs) + 1) * windowMs
               : previousWindowEndsAt;
             marathonFrozenMsRef.current = Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt));
-            setLocalShotClock({startsAt: new Date(startsAt).toISOString(),
+            setLocalShotClock({shotIndex:context.shotIndex,sceneTapTime:context.input.tapTime,flightMs,startsAt: new Date(startsAt).toISOString(),
               endsAt: new Date(startsAt + 1000).toISOString(),
               previousEndsAt: match.me.result_pause_ends_at ?? null,
               goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + periodClockDelta() + flightMs,
               goal: context.result.type === 'goal',
               previousWindowEndsAt,
               frozenWindowMs: Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt))});
+            if (rhythmSampler && context.result.type === 'goal') {
+              const travel=rhythmSampler.travelAt(context.input.tapTime,rhythmPauses);
+              return {details:rhythmGoalDetails([
+                ...(match.me.rhythm_shots??[]), {travel,goal:true},
+              ], match.rules.rhythmVersion ?? 1)};
+            }
             return null;
           }}
           submitShot={async (args) => {
             setShotRequestActive(true);
-            const result = await submitShot(args).finally(() => setShotRequestActive(false));
+            const requestArgs = match.rules.duelKind === 'rhythm'
+              ? {...args, input:{...args.input, periodTapTime:args.input.tapTime + (args.shotIndex - 1) * (match.rules.shotResultPauseMs ?? 1000)}}
+              : args;
+            const result = await submitShot(requestArgs).finally(() => setShotRequestActive(false));
             if (pausedScoredClock) {
               if (result === null) setLocalShotClock(null);
               else setLocalShotClock((previous) => previous ? {...previous, goal: result.serverResult === 'goal'} : null);
@@ -6557,6 +6577,15 @@ export function AmateurDuelPlayView({
               sniperPendingPartsRef.current = result.serverResult === 'goal' && (points ?? 0) > 0
                 ? [{ points: points!, label: sniperPendingPartsRef.current?.[0]?.label ?? 'Гол' }] : null;
               if (sniperResultVisibleRef.current) showSniperScore(sniperPendingPartsRef.current);
+            }
+            if (match.rules.duelKind === 'rhythm' && result?.isCurrent() && result.serverResult === 'goal') {
+              const confirmed = result.state.me.rhythm_shots ?? [];
+              const last = confirmed.at(-1);
+              if (last) {
+                return {...result, resultPresentation: {
+                  details:rhythmGoalDetails(confirmed,match.rules.rhythmVersion ?? 1),
+                }};
+              }
             }
             return result;
           }}
@@ -6570,7 +6599,10 @@ export function AmateurDuelPlayView({
           applyState={applyState}
           duelCondition={(elapsed, speeds) => {
             const condition = duelCondition(elapsed, speeds);
-            if (!condition || fightRecovery <= 0) return condition;
+            if (!condition) return condition;
+            if (rhythmSampler && !rhythmSampler.conditionAt(elapsed).canShoot)
+              return {...condition,canShoot:false};
+            if (fightRecovery <= 0) return condition;
             return { ...condition, canShoot: false };
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
@@ -6661,7 +6693,7 @@ export function AmateurDuelPlayView({
       </div>
       <DuelLoadoutSummary match={match} />
       <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-        {statusText}. {match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
+        {statusText}. {match.rules.duelKind==='rhythm' ? 'При равном счёте решают длины серий.' : match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
       </div>
       {error && (
         <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
@@ -6802,7 +6834,7 @@ function tournamentSeriesResultArtwork(
   return { src: '/tournament-results/series-win.webp', alt: 'Победа в серии' };
 }
 
-function DuelResultCard({
+export function DuelResultCard({
   match,
   isLoadingDetails = false,
   compact = false,
@@ -6915,6 +6947,9 @@ function DuelResultCard({
               <div className="section-label" style={{ margin: 0, padding: 0 }}>
                 Итоговый результат
               </div>
+              {match.rules.duelKind === 'rhythm' && (
+                <DuelResultDetailRow label="Счёт" value={duelScorePairText(match.rules.duelKind,match.me,match.opponent)}/>
+              )}
               <DuelResultCompactStatsTable
                 label="Итоговый результат"
                 me={{
@@ -7082,6 +7117,12 @@ function DuelResultCard({
               </div>
             )}
           </>
+        )}
+        {match.rules.duelKind === 'rhythm' && (
+          <div style={{marginTop:10,display:'grid',gap:8}}>
+            <DuelResultDetailRow label="Вы" value={<RhythmSeriesValues label="Вы" series={match.me.rhythm_series??[]}/>}/>
+            <DuelResultDetailRow label="Соперник" value={<RhythmSeriesValues label="Соперник" series={match.opponent.rhythm_series??[]}/>}/>
+          </div>
         )}
         {(compact || hasMultiplePeriods) && (
           <DuelInventoryUsageSummary
@@ -7401,6 +7442,7 @@ function duelTiebreakerExplanation(
       duelDisplayScore(match.rules.duelKind, match.opponent)
   )
     return null;
+  if (match.rules.duelKind === 'rhythm') return null;
   if (match.rules.duelKind === 'marathon')
     return {
       label: 'Среднее время на гол',
@@ -7857,13 +7899,29 @@ export function DuelResultCompactFact({ label, value }: { label: string; value: 
   );
 }
 
+function RhythmSeriesValues({series,label}: {series:readonly number[];label:string}): JSX.Element {
+  const counts = new Map<number,number>();
+  for (const length of series) counts.set(length,(counts.get(length)??0)+1);
+  const groups = [...counts].sort(([a],[b])=>b-a);
+  return (
+    <span role="list" aria-label={label} style={{display:'flex',flexWrap:'wrap',gap:'4px 12px'}}>
+      {groups.length === 0 ? '—' : groups.map(([length,count])=>(
+        <span role="listitem" key={length} style={{display:'inline-flex',alignItems:'baseline',gap:3,whiteSpace:'nowrap'}}>
+          <span>{length}</span>
+          <span style={{fontSize:10,fontWeight:650}}>×{count}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function DuelResultDetailRow({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   tone?: 'star';
 }): JSX.Element {
   return (
@@ -8226,7 +8284,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
     scoreSeparator: match.rules.duelKind === 'sniper' ? '\u2009:\u2009' : ':',
-    ...(['sniper','marathon'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
+    ...(['sniper','marathon', 'rhythm'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
     shots: opponent.shots_taken,
     shotsLabel,
     time,
@@ -8989,6 +9047,21 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
     fallbackNutritionTiming:
       match.rules.noInventoryTiming?.nutrition ?? DEFAULT_DUEL_INVENTORY_TIMING,
   };
+}
+
+function mergeRhythmFlightPauses(...groups: readonly (readonly {tapTime:number;flightMs:number}[])[]) {
+  const result:Array<{tapTime:number;flightMs:number}>=[];
+  for(const group of groups) for(const pause of group)
+    if(!result.some(previous=>Math.abs(previous.tapTime-pause.tapTime)<0.01)) result.push(pause);
+  return result.sort((a,b)=>a.tapTime-b.tapTime);
+}
+
+function rhythmMovementInputForMatch(match: AmateurDuelMatchState) {
+  const base=periodSpeedPresetFor(1,match.rules.periodSpeedPresets);
+  const effective=periodSpeedPresetFor(1,match.period_speed_presets);
+  return {seed:match.match_seed!,userId:match.me.user_id,periodNumber:1,
+    elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:SHOOTER_AMPLITUDE*2,
+    baselineShooterSpeed:base.shooterFrequency,currentShooterSpeed:effective.shooterFrequency,loadout:{...duelConditionLoadout(match),stick:null}};
 }
 
 function createDuelConditionForMatch(

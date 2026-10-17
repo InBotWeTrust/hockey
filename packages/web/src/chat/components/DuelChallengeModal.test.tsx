@@ -99,6 +99,21 @@ describe('DuelChallengeModal Amateur preview access', () => {
     });
   });
 
+
+  it('shows Rhythm by name and sends its profile challenge without a Marathon window', async () => {
+    useAuthStore.getState().updateUser({competitionLevel:'amateur'});
+    const fetchMock=vi.spyOn(globalThis,'fetch').mockImplementation(async(input)=>{
+      const data=String(input).includes('/templates')?{templates:[{...template,id:'rhythm',duel_kind:'rhythm',title:'Ритм',period_duration_ms:150000}]}:String(input).includes('/challenge-availability')?{available:true}:{match:{}};
+      return new Response(JSON.stringify(data),{status:200,headers:{'content-type':'application/json'}});
+    });
+    renderModal();
+    fireEvent.click(await screen.findByRole('button',{name:/Ритм/}));
+    fireEvent.click(screen.getByRole('button',{name:'Вызвать'}));
+    await waitFor(()=>{
+      const call=fetchMock.mock.calls.find(([input,init])=>String(input).endsWith('/challenge')&&init?.method==='POST');
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({template_id:'rhythm',opponent_user_id:'opponent-1'});
+    });
+  });
   it('marks the selected duel type with a check indicator and pressed state', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
     vi.spyOn(globalThis, 'fetch').mockResolvedValue(

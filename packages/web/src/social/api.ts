@@ -16,7 +16,7 @@ export interface ActivityEvent {
  data: {
   daily?: DailyGameStats; training?: TrainingHistorySession; achievement?: ProfileAchievement;
   participants?: ActivityParticipant[]; winnerId?: string|null; outcome?: string|null; reason?: string|null;
-  format?: 'express'|'express_plus'|'classic'|'sniper'|'marathon'; matchId?: string;
+  format?: 'express'|'express_plus'|'classic'|'sniper'|'marathon'|'rhythm'; matchId?: string;
   rules?: {totalPeriods?: number}; character?: string; blockedUntil?: string|null; timezone?: string;
   game?: string; surrendered?: boolean; exercises?: number; stage?: number|null;
   tournamentTitle?: string; day?: number; seriesScore?: {home:number;away:number;homeId:string;awayId:string};

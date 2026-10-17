@@ -144,7 +144,7 @@ function MatchGroup({
               <span className="game-scoreboard__label bar-match-kind">
                 {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
                 {match.format
-                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика', sniper: 'Снайпер', marathon: 'Марафон' }[match.format]}${match.format === 'marathon' ? ` · ${(match.marathonWindowMs ?? 7000) / 1000} сек` : ''}`
+                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика', sniper: 'Снайпер', marathon: 'Марафон', rhythm: 'Ритм' }[match.format]}${match.format === 'marathon' ? ` · ${(match.marathonWindowMs ?? 7000) / 1000} сек` : ''}`
                   : ''}
                 {match.title ? ` · ${match.title}` : ''}
               </span>

@@ -125,7 +125,7 @@ async function settleSeason(client: PoolClient, seasonKey: string, now: Date): P
   const rewardedCount = Math.min(eligibleCount, 50, Math.max(3, Math.floor(eligibleCount * 0.2)));
 
   const formatRows = new Map<RatingScope, RatingRow[]>();
-  for (const scope of ['express', 'express_plus', 'classic', 'sniper', 'marathon'] as const) {
+  for (const scope of ['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'] as const) {
     const result = await client.query<RatingRow>(
       `with live as (
          select e.user_id, sum(e.points)::int as points, sum(e.wins)::int as wins,

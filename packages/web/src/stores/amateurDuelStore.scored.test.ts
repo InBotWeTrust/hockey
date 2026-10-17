@@ -38,3 +38,10 @@ it('does not roll back Marathon penalties with an older poll at the same shot re
     });
   expect(useAmateurDuelStore.getState().match?.me.format_score).toBe(1);
 });
+
+it('does not restore an expired Rhythm window from an older poll', () => {
+ const current={id:'rhythm',state_revision:3,status:'active',server_now:'2026-10-17T10:00:10Z',rules:{duelKind:'rhythm'},me:{state:'period_active',current_period:1,shots_taken:2,current_period_shots:2,goals:1,format_score:1,rhythm_travel:5,rhythm_current_series:0},opponent:{state:'period_active',current_period:1,shots_taken:0,current_period_shots:0,goals:0}} as AmateurDuelMatchState;
+ useAmateurDuelStore.setState({match:current});
+ useAmateurDuelStore.getState().applyState({...current,server_now:'2026-10-17T10:00:05Z',me:{...current.me,rhythm_travel:2,rhythm_current_series:1}});
+ expect(useAmateurDuelStore.getState().match?.me.rhythm_current_series).toBe(0);
+});
