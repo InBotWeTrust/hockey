@@ -19,3 +19,5 @@ Only internal browser for checks: expose local automatic checks and real API in 
 The user's local-play feedback supersedes the initial scoring/display specification for new matches. A first goal, regardless of initial travel, starts a pending series without points. A second goal initiated within two traversals credits both goals (score/series 2); further timely goals add one. Expiry discards an isolated pending goal while retaining previously confirmed series. Misses preserve the window. New snapshots use `rhythmVersion: 2`; explicit version-one snapshots retain their scoring.
 
 Remove the two-segment progress bar and its caption entirely. Rhythm condition notices return below the scoreboard using the existing placement. The first or isolated goal has no modal subtitle; confirmed goals show only `Серия N`. Other formats' UI and shot lifecycle stay unchanged.
+
+Follow-up caption clarification: the first goal of each new series shows `ГОЛ` with `Серия началась`; a confirmed second goal shows `Серия 2`. Unconfirmed single goals still contribute zero points.

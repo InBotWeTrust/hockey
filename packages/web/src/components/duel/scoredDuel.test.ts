@@ -16,8 +16,9 @@ describe('scored duel presentation', () => {
   });
 });
 
-it('shows only a short confirmed series after the first Rhythm goal', () => {
-  expect(rhythmGoalDetails([{travel:5,goal:true}], 2)).toEqual([]);
+it('labels a new Rhythm series before showing its confirmed length', () => {
+  expect(rhythmGoalDetails([{travel:5,goal:true}], 2)).toEqual(['Серия началась']);
   expect(rhythmGoalDetails([{travel:5,goal:true},{travel:7,goal:true}], 2)).toEqual(['Серия 2']);
-  expect(rhythmGoalDetails([{travel:5,goal:true},{travel:7.01,goal:true}], 2)).toEqual([]);
+  expect(rhythmGoalDetails([{travel:5,goal:true},{travel:7.01,goal:true}], 2)).toEqual(['Серия началась']);
+  expect(rhythmGoalDetails([{travel:5,goal:true},{travel:6,goal:true},{travel:9,goal:true}], 2)).toEqual(['Серия началась']);
 });

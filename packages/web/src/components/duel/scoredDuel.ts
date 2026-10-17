@@ -46,5 +46,5 @@ export function rhythmGoalDetails(shots: readonly RhythmShot[], version: 1 | 2):
   const latest = shots.at(-1);
   if (!latest?.goal) return [];
   const result = projectRhythm({shots, travel:latest.travel, version});
-  return result.currentSeries >= 2 ? [`Серия ${result.currentSeries}`] : [];
+  return [result.currentSeries >= 2 ? `Серия ${result.currentSeries}` : 'Серия началась'];
 }

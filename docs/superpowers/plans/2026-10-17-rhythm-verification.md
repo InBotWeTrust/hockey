@@ -47,3 +47,5 @@ No deployed-runtime, physical-device or CI result is claimed. Physical backgroun
 - Snapshot scoring version 2 preserves version-one match interpretation. Existing hockey shot-version compatibility remains explicit; movement/flight code was not changed by this follow-up.
 
 Follow-up typecheck, lint and full workspace build: PASS. No push or deployment performed.
+
+Caption clarification: RED observed (empty details instead of `Серия началась`); then 111 targeted client tests PASS. A real local first goal displayed `ГОЛ` / `Серия началась` with the scoreboard remaining 0:0. The scoring algorithm was unchanged.
