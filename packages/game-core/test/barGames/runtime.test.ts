@@ -125,3 +125,10 @@ it('clears the previous pool stroke when placing the cue after an opponent foul 
   const missed = advance(foul, foul.deadline);
   expect(missed.poolShot).toBeNull();
 });
+it('creates charging airstrikes only for new naval matches and supports engine fourteen', () => {
+  const current=createMatch('battleship',0,0,false,4);
+  const legacy=createMatch('battleship',0,0,false,4,14);
+  expect(current.game).toHaveProperty('airstrikeCharges',[0,0]);
+  expect(legacy.game).not.toHaveProperty('airstrikeCharges');
+  expect(()=>advance(legacy,1)).not.toThrow();
+});

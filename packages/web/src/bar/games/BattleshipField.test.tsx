@@ -232,3 +232,16 @@ it('marks every sunk cell with a cross while keeping partial damage round',()=>{
  expect(container.querySelectorAll('.bar-naval-damage--sunk')).toHaveLength(6);
  expect(container.querySelectorAll('.bar-naval-damage:not(.bar-naval-damage--sunk)')).toHaveLength(1);
 });
+it('shows a charging airstrike and offers directional submarine controls before confirmation', () => {
+  const game=sea.view(sea.start(sea.create(0,4,true)),0), send=vi.fn();
+  render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send}/>);
+  expect(screen.getByRole('button',{name:'Авианалёт 0/5'})).toBeDisabled();
+  fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
+  const sub=game.ownShips.find(s=>s.kind==='submarine')!;
+  fireEvent.click(screen.getByRole('group',{name:'Твой флот'}).querySelectorAll('.bar-naval-cell')[sub.y*12+sub.x]!);
+  expect(screen.getAllByRole('button',{name:/Переместить подлодку/})).toHaveLength(sea.moves(game).length);
+  fireEvent.click(screen.getAllByRole('button',{name:/Переместить подлодку/})[0]!);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button',{name:'Подтвердить'}));
+  expect(send).toHaveBeenCalledWith({type:'naval-move',...sea.moves(game)[0]!});
+});

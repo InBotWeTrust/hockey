@@ -19,7 +19,9 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
     ? dartsDoubleOutRules
     : kind === 'darts' && engineVersion < 9
       ? rules.darts.filter(p => !p.startsWith('После каждого хода мишень')).map(p => p.replace('501', '301'))
-      : rules[kind];
+      : kind === 'battleship' && engineVersion < 15
+        ? rules.battleship.map(p => p.replace('авианалёт на квадрат 2×2', 'залп 3×2 (можно повернуть)').replace('Авианалёт заряжается после пяти обычных выстрелов, в начале он недоступен. После использования заряд сбрасывается. ', '').replaceAll('Авианалёт', 'Залп').replaceAll('авианалёт', 'залп'))
+        : rules[kind];
   return (
     <AccessibleModal
       cardClassName="bar-game-help"
@@ -32,7 +34,7 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
           {p}
         </p>
       ))}
-      {kind !== 'ochko' && kind !== 'armwrestling' && <p className="modal-copy">{timerRules}</p>}
+      {kind !== 'ochko' && kind !== 'armwrestling' && kind !== 'battleship' && <p className="modal-copy">{timerRules}</p>}
     </AccessibleModal>
   );
 }

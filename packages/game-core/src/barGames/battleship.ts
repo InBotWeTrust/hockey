@@ -12,6 +12,7 @@ type Mark = { cell: number; hit: boolean };
 export type State = {
   kind: 'battleship';
   phase: 'setup' | 'battle';
+  airstrikeCharges?: [number, number];
   turn: 0 | 1;
   fleets: [Ship[], Ship[]];
   moves: [number, number];
@@ -19,12 +20,13 @@ export type State = {
   winner: 0 | 1 | 'draw' | null;
   lastAction: { player: 0 | 1; type: 'attack' | 'move'; cells: Mark[] } | null;
 };
-export type View = Omit<State, 'fleets' | 'moves' | 'shots'> & {
+export type View = Omit<State, 'fleets' | 'moves' | 'shots' | 'airstrikeCharges'> & {
   ownShips: Ship[];
   enemySunk: Ship[];
   shots: [Mark[], Mark[]];
   movesLeft: number;
   canSalvo: boolean;
+  airstrikeCharge?: number;
 };
 export const cell = (x: number, y: number) => y * 12 + x;
 export const cells = (s: Ship) =>
@@ -132,8 +134,9 @@ export function fleet(seed: number): Ship[] {
   }
   throw Error('Fleet generation failed');
 }
-export function create(starter: 0 | 1, seed: number): State {
+export function create(starter: 0 | 1, seed: number, chargedAirstrikes = false): State {
   return {
+    ...(chargedAirstrikes ? { airstrikeCharges: [0, 0] as [number, number] } : {}),
     kind: 'battleship',
     phase: 'setup',
     turn: starter,
@@ -151,6 +154,7 @@ const clone = (g: State): State => ({
   ...g,
   fleets: g.fleets.map((f) => f.map((s) => ({ ...s, hits: [...s.hits] }))) as State['fleets'],
   moves: [...g.moves],
+  ...(g.airstrikeCharges ? { airstrikeCharges: [...g.airstrikeCharges] as [number, number] } : {}),
   shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
 });
 export function configure(
@@ -183,7 +187,8 @@ export function view(g: State, p: 0 | 1): View {
     enemySunk: g.fleets[1 - p]!.filter(sunk).map((s) => ({ ...s, hits: [...s.hits] })),
     shots: g.shots.map((a) => a.map((m) => ({ ...m }))) as State['shots'],
     movesLeft: Math.max(0, cap - g.moves[p]),
-    canSalvo: carrierReady(ownShips.find((s) => s.kind === 'carrier')!),
+    canSalvo: carrierReady(ownShips.find((s) => s.kind === 'carrier')!) && (!g.airstrikeCharges || g.airstrikeCharges[p] >= 5),
+    ...(g.airstrikeCharges ? { airstrikeCharge: g.airstrikeCharges[p] } : {}),
     lastAction: g.lastAction
       ? { ...g.lastAction, cells: g.lastAction.cells.map((m) => ({ ...m })) }
       : null,
@@ -226,11 +231,12 @@ export function attack(
   active(g, p);
   if (!Number.isInteger(x) || !Number.isInteger(y)) throw Error('Invalid target');
   if (salvo && !view(g, p).canSalvo) throw Error('Carrier disabled');
-  const w = salvo ? (vertical ? 2 : 3) : 1,
-    h = salvo ? (vertical ? 3 : 2) : 1;
+  const w = salvo ? (g.airstrikeCharges ? 2 : vertical ? 2 : 3) : 1,
+    h = salvo ? (g.airstrikeCharges ? 2 : vertical ? 3 : 2) : 1;
   if (x < 0 || y < 0 || x + w > 12 || y + h > 12) throw Error('Invalid target');
   const n = clone(g),
     marks: Mark[] = [];
+  if (n.airstrikeCharges) n.airstrikeCharges[p] = salvo ? 0 : Math.min(5, n.airstrikeCharges[p] + 1);
   let freshHit = false;
   for (let dy = 0; dy < h; dy++)
     for (let dx = 0; dx < w; dx++) {
@@ -276,11 +282,11 @@ export function bot(v: View, seed: number) {
     const candidates: { x: number; y: number; salvo: boolean; vertical: boolean; score: number }[] =
       [];
     for (const vertical of [false, true])
-      for (let y = 0; y <= 12 - (vertical ? 3 : 2); y++)
-        for (let x = 0; x <= 12 - (vertical ? 2 : 3); x++) {
+      for (let y = 0; y <= 12 - (v.airstrikeCharge !== undefined ? 2 : vertical ? 3 : 2); y++)
+        for (let x = 0; x <= 12 - (v.airstrikeCharge !== undefined ? 2 : vertical ? 2 : 3); x++) {
           let score = 0;
-          for (let dy = 0; dy < (vertical ? 3 : 2); dy++)
-            for (let dx = 0; dx < (vertical ? 2 : 3); dx++) {
+          for (let dy = 0; dy < (v.airstrikeCharge !== undefined ? 2 : vertical ? 3 : 2); dy++)
+            for (let dx = 0; dx < (v.airstrikeCharge !== undefined ? 2 : vertical ? 2 : 3); dx++) {
               const c = cell(x + dx, y + dy),
                 mark = known.find((m) => m.cell === c);
               score += mark?.hit

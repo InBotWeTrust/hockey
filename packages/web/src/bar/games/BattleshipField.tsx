@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, type ReactNode } from 'react';
+import { useState, useRef, useEffect, type CSSProperties, type ReactNode } from 'react';
 import { barBattleship as sea, type BarGameAction } from '@hockey/game-core';
 const letters = 'АБВГДЕЖЗИКЛМ';
 const shipColor = (s: sea.Ship) => s.kind === 'standard' ? `standard-${Math.max(s.w, s.h)}` : s.kind;
@@ -67,6 +67,9 @@ export function BattleshipField({
   }, [setup, game.turn, player, opponentImpact]);
   const showOwn = setup || (impactActive ? game.lastAction!.player !== player : (own?.key === boardKey ? own.value : game.turn !== player));
 
+  const squareAirstrike = game.airstrikeCharge !== undefined;
+  const salvoW = squareAirstrike ? 2 : vertical ? 2 : 3;
+  const salvoH = squareAirstrike ? 2 : vertical ? 3 : 2;
   const marks = game.shots[showOwn ? 1 - player : player]!;
   const ships = showOwn ? game.ownShips : game.enemySunk;
   const visibleImpact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player);
@@ -142,6 +145,7 @@ export function BattleshipField({
         (s) => s.kind === 'submarine' && sea.cells(s).includes(sea.cell(x, y)),
       );
       setSelected(ship?.id ?? null);
+      if (ship && sea.moves(game).length) setMode('move');
       setTarget(null);
       return;
     }
@@ -157,16 +161,17 @@ export function BattleshipField({
     !!target &&
     x >= target.x &&
     y >= target.y &&
-    x < target.x + (mode === 'salvo' ? (vertical ? 2 : 3) : 1) &&
-    y < target.y + (mode === 'salvo' ? (vertical ? 3 : 2) : 1);
+    x < target.x + (mode === 'salvo' ? salvoW : 1) &&
+    y < target.y + (mode === 'salvo' ? salvoH : 1);
   const allowed =
     target &&
     (mode === 'move'
       ? sea.moves(game).some((m) => m.x === target.x && m.y === target.y)
-      : target.x + (mode === 'salvo' ? (vertical ? 2 : 3) : 1) <= 12 &&
-        target.y + (mode === 'salvo' ? (vertical ? 3 : 2) : 1) <= 12);
+      : target.x + (mode === 'salvo' ? salvoW : 1) <= 12 &&
+        target.y + (mode === 'salvo' ? salvoH : 1) <= 12);
   return (
     <section className="bar-naval" aria-label="Морской бой">
+      <div className={`bar-naval-header${setup ? ' bar-naval-header--setup' : ''}`}>
       <div className="bar-naval-toolbar">
         {!setup && (
           <>
@@ -210,6 +215,14 @@ export function BattleshipField({
           }}><span className="bar-naval-miniature" style={{gridTemplateColumns:`repeat(${type.w}, 7px)`}} aria-hidden="true">{Array.from({length:type.w*type.h},(_,i)=><i key={i}/>)}</span><span>{name} ×{available.length}</span></button>;
         })}
       </div>}
+      {!setup && <div className="bar-naval-fleet-status" aria-label="Остаток флота">
+        {[true,false].map(self=><div key={String(self)} data-side={self?'self':'enemy'} aria-label={self?'Твой флот: остаток':'Флот противника: остаток'}><div className="bar-naval-fleet-rows">{sea.shipTypes().filter((t,i,all)=>all.findIndex(s=>shipColor(s)===shipColor(t))===i).map(type=><div className="bar-naval-fleet-row" key={shipColor(type)} aria-label={shipName(type)}>{sea.shipTypes().filter(t=>shipColor(t)===shipColor(type)).map(template=>{
+          const ship=(self?game.ownShips:game.enemySunk).find(s=>s.id===template.id);
+          const destroyed=!!ship&&sea.cells(ship).every(c=>ship.hits.includes(c));
+          return <span key={template.id} className="bar-naval-fleet-icon" data-sunk={destroyed} data-ship-color={shipColor(template)} style={{width:template.kind==='carrier'?32:10+Math.max(template.w,template.h)*5}} title={`${shipName(template)}${destroyed?' — потоплен':''}`}><ShipGraphic ship={template}/></span>;
+        })}</div>)}</div></div>)}
+      </div>}
+      </div>
       <div className={`bar-naval-grid${shake ? impactSunk ? ' bar-naval-grid--sunk' : ' bar-naval-grid--hit' : ''}`} style={shake ? {animationDelay: `${effectClock.current.delay}ms`} : undefined}>
         <span aria-hidden="true" />
         <div className="bar-naval-columns" aria-hidden="true">
@@ -334,6 +347,17 @@ export function BattleshipField({
               </button>
             );
           })}
+          {ships.map(ship=><span key={`vessel-${ship.id}`} className="bar-naval-vessel" data-side={showOwn?'self':'enemy'} data-ship-color={shipColor(ship)} aria-hidden="true" style={{left:`${ship.x/12*100}%`,top:`${ship.y/12*100}%`,width:`${ship.w/12*100}%`,height:`${ship.h/12*100}%`}}><ShipGraphic ship={ship}/></span>)}
+          {!setup && showOwn && submarineSelected && !disabled && sea.moves(game).map(pos=>{
+            const sub=game.ownShips.find(s=>s.kind==='submarine')!;
+            const dx=pos.x-sub.x,dy=pos.y-sub.y;
+            const direction=dx>0?'вправо':dx<0?'влево':dy>0?'вниз':'вверх';
+            return <button key={direction} className="bar-naval-move-arrow icon-btn" aria-label={`Переместить подлодку ${direction}`} style={{left:`${(sub.x+sub.w/2+dx*(sub.w/2+0.6))/12*100}%`,top:`${(sub.y+sub.h/2+dy*(sub.h/2+0.6))/12*100}%`}} onClick={()=>{setMode('move');setTarget(pos);}}>{dx>0?'→':dx<0?'←':dy>0?'↓':'↑'}</button>;
+          })}
+          {!setup && showOwn && mode==='move' && target && (()=>{
+            const sub=game.ownShips.find(s=>s.kind==='submarine')!;
+            return <span className="bar-naval-move-preview" aria-hidden="true" style={{left:`${target.x/12*100}%`,top:`${target.y/12*100}%`,width:`${sub.w/12*100}%`,height:`${sub.h/12*100}%`}}/>;
+          })()}
           {!preview && selected && (() => {
             const ship = ships.find(s => s.id === selected);
             return ship ? <span className="bar-naval-ship-outline" aria-hidden="true" style={{left:`${ship.x / 12 * 100}%`,top:`${ship.y / 12 * 100}%`,width:`${ship.w / 12 * 100}%`,height:`${ship.h / 12 * 100}%`}} /> : null;
@@ -381,7 +405,8 @@ export function BattleshipField({
               Выстрел
             </button>
             <button
-              className="btn btn--ghost"
+              className="btn btn--ghost bar-naval-airstrike"
+              style={{'--charge': `${(game.airstrikeCharge ?? 5) * 20}%`} as CSSProperties}
               disabled={disabled || showOwn || !game.canSalvo}
               aria-pressed={!showOwn && mode === 'salvo'}
               onClick={() => {
@@ -390,7 +415,7 @@ export function BattleshipField({
                 setTarget(null);
               }}
             >
-              Залп
+              {squareAirstrike ? `Авианалёт ${game.airstrikeCharge}/5` : 'Залп'}
             </button>
             <button
               className="btn btn--ghost"
@@ -404,7 +429,7 @@ export function BattleshipField({
             >
               Манёвр ({game.movesLeft})
             </button>
-            {mode === 'salvo' && (
+            {mode === 'salvo' && !squareAirstrike && (
               <button className="btn btn--ghost" onClick={() => setVertical(!vertical)}>
                 Повернуть залп
               </button>
@@ -426,4 +451,12 @@ export function BattleshipField({
       </div>
     </section>
   );
+}
+
+function ShipGraphic({ship}:{ship:sea.Ship}) {
+  const vertical=ship.h>ship.w;
+  return <svg viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true"><g transform={vertical?'rotate(90 50 50)':undefined}>
+    <path className="bar-naval-hull" d={ship.kind==='carrier'?'M8 18H84L96 50L84 82H8Z':ship.kind==='submarine'?'M20 28Q-5 50 20 72H78Q105 50 78 28Z':'M8 25L72 20L96 50L72 80L8 75Z'}/>
+    {ship.kind==='carrier'?<><path className="bar-naval-deck" d="M18 40H82M18 60H82"/><rect className="bar-naval-cabin" x="35" y="20" width="28" height="14"/></>:<><rect className="bar-naval-cabin" x="35" y="36" width="25" height="28" rx="5"/><path className="bar-naval-deck" d="M65 50H84M17 50H30"/></>}
+  </g></svg>;
 }

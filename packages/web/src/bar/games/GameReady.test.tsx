@@ -53,7 +53,7 @@ it.each(['darts','checkers','billiards','ochko','armwrestling','battleship'] as 
 it('keeps battle controls visible but disabled throughout the naval launch countdown',()=>{
  const {container,rerender}=render(<GameTable view={snapshot('battleship',[0,1],5000)} now={1000} disabled={false} send={()=>{}}/>);
  expect(container.querySelector('.bar-naval-reserve')).toBeNull();
- for(const name of ['Мой флот','Противник','Выстрел','Залп','Манёвр (2)','Подтвердить']) expect(screen.getByRole('button',{name})).toBeDisabled();
+ for(const name of ['Мой флот','Противник','Выстрел','Авианалёт 0/5','Манёвр (2)','Подтвердить']) expect(screen.getByRole('button',{name})).toBeDisabled();
  const v=snapshot('battleship');v.ready=null;
  if(v.runtime.game.kind==='battleship')v.runtime.game.phase='battle';
  rerender(<GameTable view={v} now={5001} disabled={false} send={()=>{}}/>);
