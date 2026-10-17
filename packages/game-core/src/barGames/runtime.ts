@@ -600,12 +600,13 @@ export interface BarGameSnapshot {
   runtime: Runtime;
   ready: GameReady | null;
   serverNow: number;
+  rulesPaused?: boolean;
   stake?: { amount: number; payout: number | null };
 }
 export interface BarGameCommand {
   requestId: string;
   revision: number;
-  action: BarGameAction | { type: 'ready' };
+  action: BarGameAction | { type: 'ready' } | { type: 'rules-pause'; paused: boolean };
 }
 export interface BarGameInvite {
   id: string;

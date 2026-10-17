@@ -8,7 +8,7 @@ export const gameClose = (close: () => void) => (
     <X size={18} />
   </button>
 );
-export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind: BarGameId; close: () => void; engineVersion?: number }) {
+export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION, notice, onRetry }: { kind: BarGameId; close: () => void; engineVersion?: number; notice?: string | null; onRetry?: (() => void) | undefined }) {
   const paragraphs = kind==='battleship' && engineVersion>=18
     ? rules.battleship.map(p=>p.startsWith('Неповреждённая подлодка')
       ? (engineVersion>=19 ? 'В начале манёвр недоступен. После попадания в подлодку и последующего промаха соперника манёвр открывается, пока жива уцелевшая часть. ' : '') + (engineVersion>=19 ? 'Подлодка не может занимать клетки с кораблями и точками. ' : 'Неповреждённая подлодка сдвигается на одну клетку без поворота, только на клетки без кораблей и точек. ') + 'Если подлодка подбита, уцелевшая часть может уйти в любую свободную клетку без точки. Между кораблями сохраняется пустая клетка. Перенос расходует обычный манёвр и передаёт ход. После спасения одноклеточная подлодка снова сдвигается только на одну клетку. Два манёвра за матч, три суммарно, если подлодка осталась последним кораблём. Оставленная часть горит слабее; повторный выстрел в неё не повреждает подлодку. Попадание в уцелевшую часть топит её. Вокруг потопленных кораблей автоматически появляются сплошные точки: подлодка не может занимать эти клетки.'
@@ -37,6 +37,8 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION }: { kind
       onRequestClose={close}
       headerAction={gameClose(close)}
     >
+      {notice && <p role="alert" className="modal-copy">{notice}</p>}
+      {onRetry && <button className="btn btn--ghost" onClick={onRetry}>Повторить</button>}
       {displayedParagraphs.map((p) => (
         <p className="modal-copy" key={p}>
           {p}

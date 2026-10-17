@@ -17,7 +17,7 @@ import { cardTransaction, assertFree } from '../durakService.js';
 import { createPrivateOchko } from './ochkoDeck.js';
 import { chooseStake, recordOchkoStars } from './ochkoEconomy.js';
 import { AppError } from '../../plugins/errors.js';
-import { reconcile, persist, type MatchRow } from './admission.js';
+import { reconcile, persist, matchTime, type MatchRow } from './admission.js';
 const names = {
   maria: 'Мария',
   daria: 'Дарья',
@@ -74,7 +74,7 @@ async function view(
       avatarUrl: p?.avatar_url ?? null,
     };
   };
-  const runtime = publicRuntime(r.data.runtime, user === r.player_a ? 0 : 1,now);
+  const runtime = publicRuntime(r.data.runtime, user === r.player_a ? 0 : 1,matchTime(r, now));
   if (r.data.ready && runtime.game.kind === 'ochko')
     runtime.game = {
       ...runtime.game,
@@ -102,7 +102,8 @@ async function view(
     runtime,
     ...(r.data.stake ? { stake: r.data.stake } : {}),
     ready: r.data.ready,
-    serverNow: now,
+    serverNow: matchTime(r, now),
+    rulesPaused: !!r.character && r.data.rulesClock?.pausedAt != null,
   };
 }
 async function clearAdmission(c: PoolClient, users: string[]) {
@@ -212,7 +213,7 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
       return view(c, row, user, now);
     }
     if (
-      (input.revision !==
+      (input.action.type !== 'rules-pause' && input.revision !==
         (row.kind === 'armwrestling' ? storedRevision : row.data.runtime.revision) &&
         !(
           (row.kind === 'ochko' &&
@@ -231,14 +232,26 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
       rate[player].push(now);
       row.data.inputRate = rate;
     }
-    if (input.action.type === 'ready') {
+    if (input.action.type === 'rules-pause') {
+      if (!row.character || row.player_b !== null || player !== 0) throw conflict();
+      const clock = row.data.rulesClock ?? { elapsed: 0, pausedAt: null };
+      if (input.action.paused && clock.pausedAt === null) clock.pausedAt = now;
+      if (!input.action.paused && clock.pausedAt !== null) {
+        clock.elapsed += now - clock.pausedAt;
+        clock.pausedAt = null;
+      }
+      row.data.rulesClock = clock;
+      row.data.runtime.revision++;
+    } else if (input.action.type === 'ready') {
+      if (row.data.rulesClock?.pausedAt != null) throw conflict();
       const ready = row.data.ready;
       if (!ready || ready.cancelled || ready.startsAt !== null) throw conflict();
       if (row.kind === 'battleship' && !barBattleship.validFleet((row.data.runtime.game as unknown as barBattleship.State).fleets[player])) throw new AppError('fleet_incomplete', 'Расставь все 12 кораблей', 409);
       if (!ready.players.includes(player)) ready.players.push(player);
-      if (ready.players.length === 2) ready.startsAt = now + 5000;
+      if (ready.players.length === 2) ready.startsAt = matchTime(row, now) + 5000;
       row.data.runtime.revision++;
     } else {
+      if (row.data.rulesClock?.pausedAt != null && input.action.type !== 'surrender') throw conflict();
       if (row.data.ready && input.action.type !== 'surrender' && !(row.kind==='battleship'&& !row.data.ready.players.includes(player)&&row.data.ready.startsAt===null&&(input.action.type==='naval-configure'||input.action.type==='naval-shuffle'||input.action.type==='naval-deploy'))) throw conflict();
       if (input.action.type === 'surrender' && row.data.ready) {
         row.data.ready = null;
@@ -250,7 +263,7 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
         };
       } else
         try {
-          row.data.runtime = command(row.data.runtime, player, input.action, now);
+          row.data.runtime = command(row.data.runtime, player, input.action, matchTime(row, now));
         } catch {
           throw conflict();
         }
@@ -450,7 +463,7 @@ export const localCards = (pool: Pool, user: string, id: string, leave = false) 
 export const tickGames = (pool: Pool) =>
   tx(pool, async (c, now) => {
     const { rows } = await c.query<MatchRow>(
-      `select * from bar_game_matches where ended_at is null and (case when data->'ready' is not null and data->'ready'<>'null'::jsonb then coalesce((data->'ready'->>'startsAt')::bigint,(data->'ready'->>'expiresAt')::bigint) when kind in ('ochko','armwrestling') then (data->'runtime'->>'deadline')::bigint when (data->'runtime'->>'computer')::boolean and (data->'runtime'->'game'->>'turn')::int=1 then (data->'runtime'->>'animationUntil')::bigint else (data->'runtime'->>'deadline')::bigint end)<=$1 order by created_at limit 100`,
+      `select * from bar_game_matches where ended_at is null and (character is null or data->'rulesClock'->>'pausedAt' is null) and (case when data->'ready' is not null and data->'ready'<>'null'::jsonb then coalesce((data->'ready'->>'startsAt')::bigint,(data->'ready'->>'expiresAt')::bigint) when kind in ('ochko','armwrestling') then (data->'runtime'->>'deadline')::bigint when (data->'runtime'->>'computer')::boolean and (data->'runtime'->'game'->>'turn')::int=1 then (data->'runtime'->>'animationUntil')::bigint else (data->'runtime'->>'deadline')::bigint end) + coalesce((data->'rulesClock'->>'elapsed')::bigint,0)<=$1 order by created_at limit 100`,
       [now],
     );
     for (const row of rows) await reconcile(c, row, now);
