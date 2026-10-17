@@ -7119,8 +7119,9 @@ export function DuelResultCard({
           </>
         )}
         {match.rules.duelKind === 'rhythm' && (
-          <div style={{marginTop:10}}>
-            <DuelResultDetailRow label="Серии" value={`${(match.me.rhythm_series??[]).join(', ')||'0'} : ${(match.opponent.rhythm_series??[]).join(', ')||'0'}`}/>
+          <div style={{marginTop:10,display:'grid',gap:8}}>
+            <DuelResultDetailRow label="Вы" value={<RhythmSeriesValues label="Вы" series={match.me.rhythm_series??[]}/>}/>
+            <DuelResultDetailRow label="Соперник" value={<RhythmSeriesValues label="Соперник" series={match.opponent.rhythm_series??[]}/>}/>
           </div>
         )}
         {(compact || hasMultiplePeriods) && (
@@ -7898,13 +7899,29 @@ export function DuelResultCompactFact({ label, value }: { label: string; value: 
   );
 }
 
+function RhythmSeriesValues({series,label}: {series:readonly number[];label:string}): JSX.Element {
+  const counts = new Map<number,number>();
+  for (const length of series) counts.set(length,(counts.get(length)??0)+1);
+  const groups = [...counts].sort(([a],[b])=>b-a);
+  return (
+    <span role="list" aria-label={label} style={{display:'flex',flexWrap:'wrap',gap:'4px 12px'}}>
+      {groups.length === 0 ? '—' : groups.map(([length,count])=>(
+        <span role="listitem" key={length} style={{display:'inline-flex',alignItems:'baseline',gap:3,whiteSpace:'nowrap'}}>
+          <span>{length}</span>
+          {count>1 && <span style={{fontSize:10,fontWeight:650}}>×{count}</span>}
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function DuelResultDetailRow({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   tone?: 'star';
 }): JSX.Element {
   return (

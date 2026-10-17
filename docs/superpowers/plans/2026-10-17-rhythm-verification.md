@@ -49,3 +49,5 @@ No deployed-runtime, physical-device or CI result is claimed. Physical backgroun
 Follow-up typecheck, lint and full workspace build: PASS. No push or deployment performed.
 
 Caption clarification: RED observed (empty details instead of `Серия началась`); then 111 targeted client tests PASS. A real local first goal displayed `ГОЛ` / `Серия началась` with the scoreboard remaining 0:0. The scoring algorithm was unchanged.
+
+Grouped result display: observed RED for missing separate rows/lists, then 112 targeted client tests PASS. Internal browser 375×812 confirmed two rows and no series heading. Computed length font 13px, multiplier 10px; repeated counts and descending grouping were checked.

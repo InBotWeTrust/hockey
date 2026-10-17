@@ -41,8 +41,23 @@ it('shows credited Rhythm score and series in compact history while retaining re
   render(<DuelResultCard match={match} compact />);
   expect(screen.getByText('Счёт')).toBeInTheDocument();
   expect(screen.getByText('2:1')).toBeInTheDocument();
-  expect(screen.getByText('Серии')).toBeInTheDocument();
+  expect(screen.getByRole('list', {name:'Вы'})).toBeInTheDocument();
+  expect(screen.getByRole('list', {name:'Соперник'})).toBeInTheDocument();
   const table = screen.getByRole('table', { name: 'Итоговый результат' });
   expect(within(table).getByText('9')).toBeInTheDocument();
   expect(within(table).getByText('8')).toBeInTheDocument();
+});
+
+it('groups repeated series by length and separates each player in the result', () => {
+  const groupedMatch = {
+    ...match,
+    me: {...match.me, rhythm_series:[2,6,4,6,6,4]},
+    opponent: {...match.opponent, rhythm_series:[3,5,3]},
+  };
+  render(<DuelResultCard match={groupedMatch} />);
+  const own = screen.getByRole('list', {name:'Вы'});
+  const opponent = screen.getByRole('list', {name:'Соперник'});
+  expect(within(own).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['6×3','4×2','2']);
+  expect(within(opponent).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['5','3×2']);
+  expect(within(own).queryByText('×1')).not.toBeInTheDocument();
 });
