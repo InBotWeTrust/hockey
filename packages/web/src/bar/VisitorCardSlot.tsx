@@ -4,7 +4,7 @@ import type { VisitorState } from '@hockey/game-core';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { visitorTime, useVisitor } from './visitorApi.js';
 import './visitor-card.css';
-export const VISITOR_CARD_ART = '/bar/visitor-card-v1.webp';
+export const VISITOR_CARD_ART = '/bar/visitor-card-v2.webp';
 export function VisitorCardSlot({ card }: { card?: VisitorState['card'] }) {
   const [open, setOpen] = useState(false);
   const visitor = useVisitor(!!card?.purchased);
