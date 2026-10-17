@@ -1,7 +1,10 @@
+import { useRef } from 'react';
 import { useOchkoReveal } from './useResultReady.js';
 import { HelpCircle, LogOut } from 'lucide-react';
 import { formatRussianCount } from '../../lib/russianPlural.js';
 import {
+  barDarts,
+  type barPool,
   DART_FLIGHT_MS,
   DART_IMPACT_MS,
   POOL_STROKE_MS,
@@ -23,10 +26,9 @@ function count(view: BarGameSnapshot, player: 0 | 1): number | undefined {
     (b) => b.pocketed && b.id !== 0 && b.id !== 8 && (b.id < 8 ? 'solids' : 'stripes') === group,
   ).length;
 }
-function PoolGroup({ view, player }: { view: BarGameSnapshot; player: 0 | 1 }) {
-  const g = view.runtime.game;
-  if (g.kind !== 'billiards' || !g.groups[player] || view.ready) return null;
-  const striped = g.groups[player] === 'stripes';
+function PoolGroup({ group }: { group: barPool.Group | null | undefined }) {
+  if (!group) return null;
+  const striped = group === 'stripes';
   return (
     <span
       className={`bar-pool-group${striped ? ' bar-pool-group--striped' : ''}`}
@@ -36,6 +38,17 @@ function PoolGroup({ view, player }: { view: BarGameSnapshot; player: 0 | 1 }) {
     />
   );
 }
+function dartBust(view: BarGameSnapshot): string {
+  const m = view.runtime, g = m.game, f = m.feedback;
+  if (m.engineVersion < 9) return 'Перебор – дротик не засчитан';
+  if (g.kind !== 'darts' || !f || !m.dartHits?.length)
+    return 'Перебор – очки хода отменены';
+  // A bust restores the visit's opening score; score the saved hits before board rotation.
+  const angle = m.dartRotation?.from ?? g.boardAngle ?? 0;
+  const remaining = g.scores[f.actor] - m.dartHits.reduce((sum, hit) => sum + barDarts.score(hit, angle), 0);
+  const reason = remaining === 1 ? 'остался 1' : remaining < 0 ? 'превышен остаток' : 'нужно удвоение';
+  return `Перебор: ${reason} – ход отменён`;
+}
 function actionResult(view: BarGameSnapshot): string {
   const f = view.runtime.feedback;
   if (!f) return '';
@@ -43,7 +56,7 @@ function actionResult(view: BarGameSnapshot): string {
   switch (f.type) {
     case 'dart':
       return f.bust
-        ? view.runtime.engineVersion >= 9 ? 'Перебор – очки хода отменены' : 'Перебор – дротик не засчитан'
+        ? dartBust(view)
         : f.points === 0
           ? 'Промах'
           : `${actor}: ${formatRussianCount(f.points ?? 0, 'очко', 'очка', 'очков')}`;
@@ -97,6 +110,17 @@ export function GameMenu({
   const animating = now < motionUntil;
   const thinking = m.computer && g.turn === other && g.winner === null && !animating && !view.ready;
   const poolShotPending = g.kind === 'billiards' && m.feedback?.type === 'shot' && animating;
+  const settledPool = useRef<{ id: string; groups: barPool.Game['groups']; counts: [number, number] } | null>(null);
+  if (settledPool.current?.id !== view.id || g.kind !== 'billiards') settledPool.current = null;
+  if (g.kind === 'billiards' && !poolShotPending) {
+    settledPool.current = { id: view.id, groups: [...g.groups], counts: [count(view, 0)!, count(view, 1)!] };
+  }
+  // Keep the previous summary until the balls stop, including across repeated polls.
+  // A mid-shot reconnect has no settled summary, so do not expose the outcome yet.
+  const poolGroups = g.kind === 'billiards'
+    ? poolShotPending ? settledPool.current?.groups : g.groups
+    : undefined;
+  const visibleCount = (p: 0 | 1) => poolShotPending ? settledPool.current?.counts[p] ?? 0 : count(view, p);
   const armCountdown = g.kind === 'armwrestling' && !view.ready && now < g.startedAt;
   const seconds = armCountdown && g.kind === 'armwrestling' ? Math.ceil((g.startedAt - now) / 1000) :
     (g.winner !== null && !poolShotPending) || view.ready || (g.kind === 'ochko' && g.done[player])
@@ -179,7 +203,7 @@ export function GameMenu({
         <div className="game-scoreboard__row durak-menu__row">
           <div className="game-scoreboard__metric bar-game-player--self">
             <span className="bar-pool-group-slot bar-pool-group-slot--self">
-              <PoolGroup view={view} player={player} />
+              <PoolGroup group={view.ready ? null : poolGroups?.[player]} />
             </span>
             <div className="durak-menu__identity">
               <UserAvatar
@@ -190,7 +214,7 @@ export function GameMenu({
               />
               <CardPlayerName
                 name={view.participants[player]!.displayName}
-                count={view.ready ? undefined : count(view, player)}
+                count={view.ready ? undefined : visibleCount(player)}
               />
             </div>
           </div>
@@ -213,12 +237,12 @@ export function GameMenu({
           </div>
           <div className="game-scoreboard__metric bar-game-player--opponent">
             <span className="bar-pool-group-slot bar-pool-group-slot--opponent">
-              <PoolGroup view={view} player={other} />
+              <PoolGroup group={view.ready ? null : poolGroups?.[other]} />
             </span>
             <div className="durak-menu__identity durak-menu__identity--opponent">
               <CardPlayerName
                 name={view.participants[other]!.displayName}
-                count={view.ready || (g.kind === 'ochko' && !ochkoRevealed) ? undefined : count(view, other)}
+                count={view.ready || (g.kind === 'ochko' && !ochkoRevealed) ? undefined : visibleCount(other)}
                 countFirst
               />
               <UserAvatar
