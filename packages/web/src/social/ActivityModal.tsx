@@ -33,7 +33,7 @@ export function ActivityResult({event,userId,onClose}:{event:ActivityEvent;userI
   {event.kind!=='duel'&&<p className="modal-copy">{new Date(event.occurredAt).toLocaleString('ru-RU')}</p>}
   {(event.kind==='duel'||event.kind==='regular')&&<>
    {event.kind==='duel'&&<div className="duel-result-card__compact-meta">
-    <DuelResultCompactFact label="Формат" value={({express:'Экспресс',express_plus:'Микс',classic:'Классика',sniper:'Снайпер',marathon:'Марафон'}[d.format??'classic'])}/>
+    <DuelResultCompactFact label="Формат" value={({express:'Экспресс',express_plus:'Микс',classic:'Классика',sniper:'Снайпер',marathon:'Марафон',rhythm:'Ритм'}[d.format??'classic'])}/>
     <DuelResultCompactFact label="Дата" value={new Date(event.occurredAt).toLocaleString('ru-RU',{day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'})}/>
    </div>}
    {event.kind==='duel'?<div className="activity-duel-result">

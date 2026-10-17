@@ -1,5 +1,6 @@
 import type { Ticker } from 'pixi.js';
 import {
+  DUEL_STUMBLE_HOLD_MS,
   createGoalieSimulator,
   simulateGoal,
   getGoalie,
@@ -25,7 +26,6 @@ import type { Hitboxes } from './renderer/Hitboxes.js';
 import type { Player } from './renderer/Player.js';
 import type { Puck } from './renderer/Puck.js';
 
-const MIN_STUMBLE_PAUSE_MS = 650;
 
 export interface SpeedOverrides {
   goalFreq: number;
@@ -259,7 +259,7 @@ export function createGameLoop(opts: GameLoopOpts): GameLoop {
     const activeCfg = cachedActiveConfig;
     if (rawCondition?.stumbleActive === true) {
       if (heldStumbleCondition === null) heldStumbleCondition = { ...rawCondition };
-      heldStumbleUntilMs = Math.max(heldStumbleUntilMs, now + MIN_STUMBLE_PAUSE_MS);
+      heldStumbleUntilMs = Math.max(heldStumbleUntilMs, now + DUEL_STUMBLE_HOLD_MS);
     } else if (heldStumbleCondition !== null && now >= heldStumbleUntilMs) {
       heldStumbleCondition = null;
       heldStumbleUntilMs = 0;

@@ -1,0 +1,80 @@
+{
+  "date": "2026-10-17",
+  "branch": "feature/naval-and-ochko-series",
+  "base": "ad067e65fbf4aac81c655a9bcc5043a678cc62f6",
+  "barEngine": 14,
+  "gameCore": 106,
+  "migration": "228_bar_battleship.sql",
+  "checks": {
+    "coreBarGamesAndVersion": {
+      "passed": 110,
+      "command": "pnpm --filter @hockey/game-core exec vitest run test/barGames test/version.test.ts"
+    },
+    "webGames": {
+      "passed": 134,
+      "command": "pnpm --filter @hockey/web exec vitest run src/bar/games"
+    },
+    "serverGames": {
+      "passed": 42,
+      "command": "pnpm --filter @hockey/server exec vitest run src/bar/games",
+      "storage": "Dedicated local test database; disposable isolated schema per suite"
+    },
+    "widerWebBarEarlierRun": {
+      "passed": 392,
+      "command": "pnpm --filter @hockey/web exec vitest run src/bar"
+    },
+    "typecheck": "passed",
+    "lint": "passed",
+    "build": "passed",
+    "diffCheck": "passed"
+  },
+  "fullCoreRun": {
+    "initialPassed": 547,
+    "initialFailed": 6,
+    "resolved": "Two version assertions updated for core 103; all four version tests passed on rerun",
+    "existingFailures": {
+      "count": 4,
+      "files": [
+        "test/openWindowObservation.test.ts",
+        "test/openWindowTrainingScenes.test.ts"
+      ],
+      "baseline": "The same four failures reproduced from a clean git archive of base ad067e65; unrelated scene-bank fixtures remain unchanged"
+    },
+    "note": "The full core suite is not claimed green. Relevant bar-game and compatibility checks are green."
+  },
+  "browserAcceptance": {
+    "environment": "Local component preview, including 375x667 viewport",
+    "passed": [
+      "Seamless Timofey/table artwork with independent board overlay",
+      "Manual carrier rotation and relocation, readiness lock, five-second launch",
+      "Letter/number axes and square cells after an actual miss (22.91-22.92px rounding)",
+      "Placement instructions in the shared notice; opponent readiness under name",
+      "Own-board attacks disabled; maneuver enabled only after selecting a submarine",
+      "Distinct selected board and action styles; complete control row fits narrow viewport",
+      "Ochko reveal, false challenge penalty, retained cumulative score and next round",
+      "Round indicator inside menu, cumulative scores beside names, review clock in minutes and seconds",
+      "Naval scene fills mobile width and fades into dark background below",
+      "Empty initial fleet, reserve type/count selector, one-ship deployment and persistent partial preparation; drag/rotate retained",
+      "Manual setup only, readiness as the sole bottom button, floating rotation retained, no anchor-cell highlighting, persistent 90-second setup deadline shown as 1:30",
+      "Opponent attacks automatically shown on own fleet; local browser shot/reply checked; both actors hit/sink shake and miss impact covered by regressions",
+      "Ordinary new hit retains turn and enemy board in browser; salvo/miss/repeat-hit pass; engine 12 legacy turn rule regression retained; board switches derive from one action state"
+    ],
+    "notClaimed": [
+      "Physical iPhone acceptance",
+      "Authenticated live online match between real users"
+    ]
+  },
+  "clarifications": [
+    {
+      "decision": "Naval setup uses the shared ready expiry and five-second countdown for character matches as well; configured fleets survive launch",
+      "costIfWrong": "Change preparation timing and readiness policy"
+    },
+    {
+      "decision": "Final Grigory review auto-settles after 180 seconds; only intermediate review expiry forfeits; online final round settles after reveal",
+      "costIfWrong": "Change finalization timing and corresponding regression tests"
+    }
+  ],
+  "review": "Independent whole-branch read-only review found no blocking or significant defects; final UI delta checked separately",
+  "deferredMinors": [],
+  "release": "Authorized dev release pending; final local checks passed before integration with origin/dev."
+}

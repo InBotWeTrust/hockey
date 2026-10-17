@@ -2,8 +2,8 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import * as service from './service.js';
 const id = z.object({ id: z.string().uuid() });
-const kind = z.enum(['darts', 'billiards', 'checkers', 'ochko', 'armwrestling']);
-export const computerCharacter = z.enum(['daria', 'veronika', 'arsenich', 'oleg']);
+const kind = z.enum(['darts', 'billiards', 'checkers', 'ochko', 'armwrestling', 'battleship']);
+export const computerCharacter = z.enum(['daria', 'veronika', 'arsenich', 'oleg', 'timofey']);
 const spin = z
   .object({ x: z.number().finite(), y: z.number().finite() })
   .strict()
@@ -64,8 +64,51 @@ export const gameAction = z.discriminatedUnion('type', [
       wrist: z.enum(['straight', 'inside', 'outside']),
     })
     .strict(),
-  z.object({ type: z.literal('ochko-hit'), seq: z.number().int().positive() }).strict(),
-  z.object({ type: z.literal('ochko-stand'), seq: z.number().int().positive() }).strict(),
+  z
+    .object({
+      type: z.literal('ochko-hit'),
+      seq: z.number().int().positive(),
+      round: z.number().int().min(1).max(4).optional(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('ochko-stand'),
+      seq: z.number().int().positive(),
+      round: z.number().int().min(1).max(4).optional(),
+    })
+    .strict(),
+  z.object({ type: z.literal('ochko-next'), round: z.number().int().min(1).max(4) }).strict(),
+  z.object({ type: z.literal('ochko-challenge'), round: z.number().int().min(1).max(4) }).strict(),
+  z
+    .object({
+      type: z.literal('naval-configure'),
+      shipId: z.string().max(30),
+      x: z.number().int().min(0).max(11),
+      y: z.number().int().min(0).max(11),
+      vertical: z.boolean(),
+    })
+    .strict(),
+  z.object({type: z.literal('naval-deploy'), shipId: z.string().max(30), seed: z.number().int().min(0).max(4294967295)}).strict(),
+  z
+    .object({ type: z.literal('naval-shuffle'), seed: z.number().int().min(0).max(4294967295) })
+    .strict(),
+  z
+    .object({
+      type: z.literal('naval-attack'),
+      x: z.number().int().min(0).max(11),
+      y: z.number().int().min(0).max(11),
+      salvo: z.boolean(),
+      vertical: z.boolean(),
+    })
+    .strict(),
+  z
+    .object({
+      type: z.literal('naval-move'),
+      x: z.number().int().min(0).max(11),
+      y: z.number().int().min(0).max(11),
+    })
+    .strict(),
   z.object({ type: z.literal('surrender') }).strict(),
   z.object({ type: z.literal('ready') }).strict(),
 ]);

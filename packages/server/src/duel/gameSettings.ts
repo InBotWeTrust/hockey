@@ -82,6 +82,7 @@ const monthlyRatingScopes = [
   'classic',
   'sniper',
   'marathon',
+  'rhythm',
 ] as const;
 const overallRatingBands = ['first', 'second', 'third', 'fourToTen', 'elevenToFifty'] as const;
 const monthlyRatingCurrencies = ['coins', 'stars', 'experience', 'tokens'] as const;
@@ -92,6 +93,7 @@ const monthlyScopeLabels = {
   classic: 'Классика',
   sniper: 'Снайпер',
   marathon: 'Марафон',
+  rhythm: 'Ритм',
 };
 const monthlyBandLabels = {
   first: '1-е место', second: '2-е место', third: '3-е место',

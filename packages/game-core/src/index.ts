@@ -161,6 +161,7 @@ export type { SessionPhaseOffsets } from './session.js';
 export { getSessionPhaseOffsets, deriveShotSeed } from './session.js';
 export {
   DEFAULT_DUEL_INVENTORY_TIMING,
+  DUEL_STUMBLE_HOLD_MS,
   duelInventorySpeedPointsToPuckSpeedDelta,
   duelSpeedPressureMultiplier,
   createDuelStumbleRandomness,
@@ -227,3 +228,6 @@ export * as durakTable from './durakTable.js';
 export * from "./barLayout.js";
 
 export * from './barGames/runtime.js';
+
+export { projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
+export type { RhythmShot, RhythmProjection, RhythmFlightPause } from './rhythm.js';

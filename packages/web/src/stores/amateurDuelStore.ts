@@ -333,7 +333,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     if (
       current?.id === next.id &&
       (current.state_revision ?? 0) === (next.state_revision ?? 0) &&
-      (current.rules?.duelKind === 'sniper' || current.rules?.duelKind === 'marathon') &&
+      (current.rules?.duelKind === 'sniper' || current.rules?.duelKind === 'marathon' || current.rules?.duelKind === 'rhythm') &&
       Date.parse(current.server_now) > Date.parse(next.server_now) &&
       compareParticipantProgress(next.me, current.me) <= 0 &&
       compareParticipantProgress(next.opponent, current.opponent) <= 0

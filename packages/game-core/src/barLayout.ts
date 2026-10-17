@@ -21,7 +21,7 @@ export type BarCharacterId =
   | 'veronika'
   | 'igor';
 export type BarOccupantId = (typeof barOccupants)[number];
-export type BarAction = 'cards' | 'online' | 'broadcasts' | 'darts' | 'billiards' | 'checkers' | 'ochko' | 'armwrestling';
+export type BarAction = 'cards' | 'online' | 'broadcasts' | 'darts' | 'billiards' | 'checkers' | 'ochko' | 'armwrestling' | 'battleship';
 export interface BarSlot {
   id: string;
   occupantId: BarOccupantId | null;
@@ -47,6 +47,7 @@ export interface BarLayoutSnapshot {
 }
 export const barActionsFor = (id: BarOccupantId | null): BarAction[] =>
   id === 'maria' ? ['cards']
+    : id === 'timofey' ? ['battleship']
     : id === 'oleg' ? ['armwrestling']
     : id === 'grigory' ? ['ochko']
     : id === 'daria' ? ['darts']

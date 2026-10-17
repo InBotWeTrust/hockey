@@ -121,7 +121,7 @@ export function MultiDurakTable({
             <div className="game-scoreboard__metric">
               <div className="durak-menu__identity">
                 <UserAvatar name={self.displayName} avatarUrl={self.avatarUrl} size={28} />
-                <CardPlayerName name={self.displayName} count={pregame ? undefined : g.hand.length} />
+                <div className="bar-game-name-stack bar-game-name-stack--self"><CardPlayerName name={self.displayName} count={pregame ? undefined : g.hand.length} />{pregame && view.status !== 'ended' && ready && <small className="bar-game-ready-label">Готов</small>}</div>
               </div>
             </div>
             <div
@@ -143,7 +143,7 @@ export function MultiDurakTable({
             <div className="game-scoreboard__metric">
               {opponent ? (
                 <div className="durak-menu__identity durak-menu__identity--opponent">
-                  <CardPlayerName name={opponent.displayName} count={opponent.count} countFirst />
+                  <div className="bar-game-name-stack"><CardPlayerName name={opponent.displayName} count={opponent.count} countFirst />{pregame && view.status !== 'ended' && view.ready.includes(opponent.userId) && <small className="bar-game-ready-label">Готов</small>}</div>
                   <UserAvatar
                     name={opponent.displayName}
                     avatarUrl={opponent.avatarUrl}

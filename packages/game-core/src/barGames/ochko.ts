@@ -1,8 +1,10 @@
+import type { Series } from './ochkoSeries.js';
 import type { Player, Winner } from './darts.js';
 export const OCHKO_TURN_MS = 40000;
 export const OCHKO_DEAL_MS = 350;
 export interface OchkoView {
   kind: 'ochko';
+  series?: Series;
   // Compatibility metadata only; both players act independently.
   turn: Player;
   hands: [number[], number[]];

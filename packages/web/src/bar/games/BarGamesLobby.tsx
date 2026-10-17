@@ -28,6 +28,7 @@ export function BarGamesLobby({
           { id: 'checkers', label: 'Шашки' },
           { id: 'ochko', label: 'Очко' },
           { id: 'armwrestling', label: 'Армрестлинг' },
+          { id: 'battleship', label: 'Морской бой' },
         ]}
         activeTab={kind}
         onChange={(id) => setKind(id as typeof kind)}

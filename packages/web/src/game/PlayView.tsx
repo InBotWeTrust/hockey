@@ -903,6 +903,7 @@ export function PlayView<TState>({
   const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
   const pendingClockRebaseRef = useRef(false);
   const shotAnimationInProgressRef = useRef(false);
+  const shotContactSceneTimeRef = useRef<number | null>(null);
   const shotSubmitPendingRef = useRef(false);
   const resultVisualCompleteRef = useRef(false);
   const heldResultRef = useRef(false);
@@ -1202,6 +1203,7 @@ export function PlayView<TState>({
       }
       for (const id of shotTimeoutsRef.current) window.clearTimeout(id);
       shotTimeoutsRef.current = [];
+      shotContactSceneTimeRef.current = null;
       goalRef.current?.destroy();
       goalieRef.current?.destroy();
       playerRef.current?.destroy();
@@ -1525,9 +1527,13 @@ export function PlayView<TState>({
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
-        getMaxSceneTimeMs: () => expiryCheckRef.current() && !shotAnimationInProgressRef.current
-          ? loopRef.current?.getSceneT() ?? 0
-          : queuedPracticeShotRef.current ?? maxSceneTimeRef.current,
+        getMaxSceneTimeMs: () => {
+          if (expiryCheckRef.current() && !shotAnimationInProgressRef.current)
+            return loopRef.current?.getSceneT() ?? 0;
+          const limit = queuedPracticeShotRef.current ?? maxSceneTimeRef.current;
+          const contact = shotContactSceneTimeRef.current;
+          return contact === null ? limit : Math.min(limit ?? Infinity, contact);
+        },
         getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
           ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
         ...(courtMotionTimeRef.current ? { getCourtMotionTime: (target: 'goal' | 'goalie', ms: number) =>
@@ -1975,6 +1981,9 @@ export function PlayView<TState>({
     setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
+    // The scene reaches contact even if the outcome timer is delayed by a slow frame.
+    // Keep the puck renderer alive; only the simulation clock is bounded here.
+    shotContactSceneTimeRef.current = continuousClockDuringResult ? null : tapTime + flightMs;
     loop.beginShooterPause(flightMs);
     playerRef.current?.playShot();
     const beachRenderPoint = (elapsed: number) => {
@@ -2027,6 +2036,7 @@ export function PlayView<TState>({
       beachReleaseTimeRef.current = null;
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
+      shotContactSceneTimeRef.current = null;
       if (outcomeMotion && visualOutcomeDurationMs > 0) {
         puck.playOutcomeMotion(
           outcomeContact,

@@ -1,0 +1,34 @@
+{
+  "tool": "Built-in image_gen",
+  "referenceIdentity": "packages/web/public/bar/cards/timofey-composition-v2.webp",
+  "referenceLayout": "packages/web/public/bar/games/checkers-arsenich-table-v2.webp",
+  "assets": [
+    {
+      "outputs": [
+        "battleship-invite-v1.webp",
+        "battleship-character-win-v1.webp",
+        "battleship-character-loss-v1.webp",
+        "battleship-character-draw-v1.webp"
+      ],
+      "directory": "packages/web/public/bar/games",
+      "prompt": "Four equally sized panels, 2x2 grid. Same Timofey identity, navy blazer and pale blue shirt, facing viewer at a cozy pub wooden table playing naval battleship. Painterly realistic premium mobile game illustration. Top left neutral invitation; top right man loses and looks mildly disappointed (player victory); bottom left man wins with confident smile (player loss); bottom right relaxed draw expression. No text or watermarks.",
+      "processing": "Cropped panels without divider, 764x508, WebP quality 85. Source images retained in generated_images."
+    },
+    {
+      "outputs": [
+        "battleship-timofey-table-v1.webp"
+      ],
+      "directory": "packages/web/public/bar/games",
+      "prompt": "ONE portrait 2:3 mobile game background. Reference identity: Timofey in navy blazer and pale blue shirt. Reference layout: checkers Arsenich table scene. Timofey centered, seated facing player, whole head and shoulders visible above table; elbows and hands naturally at far edge. Lower scene is a broad empty wooden tabletop extending to the bottom edge for a separately composited interactive board. Cozy hockey pub, warm light, painterly realistic style. No board, ships, cards, pegs, grid, text or UI; single seamless scene.",
+      "processing": "1024px wide, WebP quality 85. Original portraits unchanged."
+    },
+    {
+      "outputs": [
+        "battleship-online-result-v1.webp"
+      ],
+      "directory": "packages/web/public/bar/games",
+      "prompt": "One landscape result illustration for online naval battleship in a cozy hockey pub. Close-up polished wooden table with two navy blue plastic battleship boards, miniature grey warships, red and white pegs. Warm amber blurred pub lighting, calm neutral end-of-match atmosphere. No people, faces, characters, text, logos, interface or watermark. Painterly realistic, dark marine blue and warm wood palette. Suitable for win, loss or draw.",
+      "processing": "1024px wide, WebP quality 85."
+    }
+  ]
+}

@@ -37,7 +37,7 @@ export function CharacterLaunch({
   };
   return (
     <AccessibleModal
-      title={`${gameNames[kind]} с ${{ maria: 'Марией', daria: 'Дарьей', veronika: 'Вероникой', arsenich: 'Арсеничем', grigory: 'Григорием', oleg: 'Олегом' }[character]}`}
+      title={`${gameNames[kind]} с ${{ maria: 'Марией', daria: 'Дарьей', veronika: 'Вероникой', arsenich: 'Арсеничем', grigory: 'Григорием', oleg: 'Олегом', timofey: 'Тимофеем' }[character]}`}
       onRequestClose={close}
       cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
       headerAction={gameClose(close)}
@@ -71,6 +71,7 @@ export function BarGamesPage() {
   const [params] = useSearchParams();
   const value = params.get('game');
   const initial =
+    value === 'battleship' ||
     value === 'armwrestling' ||
     value === 'ochko' ||
     value === 'darts' ||

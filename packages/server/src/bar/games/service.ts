@@ -2,6 +2,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import {
   CHARACTER_GAME,
+  barBattleship,
   createMatch,
   publicRuntime,
   command,
@@ -24,8 +25,10 @@ const names = {
   arsenich: 'Арсенич',
   grigory: 'Григорий',
   oleg: 'Олег',
+  timofey:'Тимофей',
 };
 const portraits = {
+  timofey:'/bar/cards/timofey-avatar-v2.webp',
   grigory: '/bar/cards/grigory-avatar-v1.webp',
   oleg: '/bar/emotions/oleg/neutral-v1.webp',
   maria: '/bar/cards/avatar-v2.webp',
@@ -71,7 +74,7 @@ async function view(
       avatarUrl: p?.avatar_url ?? null,
     };
   };
-  const runtime = publicRuntime(r.data.runtime, user === r.player_a ? 0 : 1);
+  const runtime = publicRuntime(r.data.runtime, user === r.player_a ? 0 : 1,now);
   if (r.data.ready && runtime.game.kind === 'ochko')
     runtime.game = {
       ...runtime.game,
@@ -135,12 +138,17 @@ async function create(
     data: {
       runtime: createMatch(kind, starter, kind === 'armwrestling' && character ? now + 3000 : now, character !== null, randomInt(0x100000000)),
       starter,
-      ready: character
+      ready: character && kind!=='battleship'
         ? null
-        : { players: [], expiresAt: now + 60000, startsAt: null, cancelled: false },
+        : { players: character?[1]:[], expiresAt: now + (kind === 'battleship' ? 90000 : 60000), startsAt: null, cancelled: false },
     },
     ended_at: null,
   };
+  if (kind === 'battleship') {
+    const g = row.data.runtime.game as unknown as barBattleship.State;
+    g.fleets[0] = [];
+    if (!character) g.fleets[1] = [];
+  }
   if (kind === 'ochko' && character) row.data.runtime.game = createPrivateOchko(now);
   await c.query(
     'insert into bar_game_matches(id,kind,player_a,player_b,character,data) values($1,$2,$3,$4,$5,$6)',
@@ -208,7 +216,7 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
         (row.kind === 'armwrestling' ? storedRevision : row.data.runtime.revision) &&
         !(
           (row.kind === 'ochko' &&
-            (input.action.type === 'ochko-hit' || input.action.type === 'ochko-stand')) ||
+            (input.action.type === 'ochko-hit' || input.action.type === 'ochko-stand' || input.action.type==='ochko-next' || input.action.type==='ochko-challenge')) ||
           (row.kind === 'armwrestling' && (input.action.type === 'arm-input' || (input.action.type === 'surrender'&&input.revision<=storedRevision)))
         )) ||
       row.ended_at
@@ -226,11 +234,12 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
     if (input.action.type === 'ready') {
       const ready = row.data.ready;
       if (!ready || ready.cancelled || ready.startsAt !== null) throw conflict();
+      if (row.kind === 'battleship' && !barBattleship.validFleet((row.data.runtime.game as unknown as barBattleship.State).fleets[player])) throw new AppError('fleet_incomplete', 'Расставь все 12 кораблей', 409);
       if (!ready.players.includes(player)) ready.players.push(player);
       if (ready.players.length === 2) ready.startsAt = now + 5000;
       row.data.runtime.revision++;
     } else {
-      if (row.data.ready && input.action.type !== 'surrender') throw conflict();
+      if (row.data.ready && input.action.type !== 'surrender' && !(row.kind==='battleship'&& !row.data.ready.players.includes(player)&&row.data.ready.startsAt===null&&(input.action.type==='naval-configure'||input.action.type==='naval-shuffle'||input.action.type==='naval-deploy'))) throw conflict();
       if (input.action.type === 'surrender' && row.data.ready) {
         row.data.ready = null;
         row.data.runtime = {

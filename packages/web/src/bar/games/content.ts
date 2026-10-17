@@ -1,5 +1,6 @@
 import type { BarGameId, GameCharacter } from '@hockey/game-core';
 export const gameNames: Record<BarGameId, string> = {
+  battleship: 'Морской бой',
   armwrestling: 'Армрестлинг',
   ochko: 'Очко',
   darts: 'Дартс',
@@ -7,6 +8,7 @@ export const gameNames: Record<BarGameId, string> = {
   checkers: 'Шашки',
 };
 export const gameCharacters: Record<BarGameId, GameCharacter> = {
+  battleship: 'timofey',
   armwrestling: 'oleg',
   ochko: 'grigory',
   darts: 'daria',
@@ -14,6 +16,7 @@ export const gameCharacters: Record<BarGameId, GameCharacter> = {
   checkers: 'arsenich',
 };
 export const characterNames: Record<GameCharacter, string> = {
+  timofey: 'Тимофей',
   oleg: 'Олег',
   grigory: 'Григорий',
   maria: 'Мария',
@@ -22,6 +25,13 @@ export const characterNames: Record<GameCharacter, string> = {
   arsenich: 'Арсенич',
 };
 export const gameCopy = {
+  battleship: {
+    invite: '«Расставляй флот. Проверим твою тактику.»',
+    playing: '«Море хранит свои секреты.»',
+    win: '«Мой флот на дне. Хорошая тактика!»',
+    loss: '«Море сегодня за меня. Ещё партию?»',
+    draw: '«Разошлись миром.»',
+  },
   armwrestling: {
     invite: '«Локоть на стол. Посмотрим, кто кого.»',
     playing: '«Не трать все силы сразу.»',
@@ -69,6 +79,13 @@ export const dartsDoubleOutRules = [
   ];
 
 export const rules: Record<BarGameId, string[]> = {
+  battleship: [
+    'Поле 12×12: десять обычных кораблей, авианосец 3×2 и двухклеточная подлодка. Корабли не касаются даже углами. На ручную расстановку даётся 90 секунд. Выбирай корабли сверху, перетаскивай и поворачивай их. Когда весь флот выставлен, нажми «Готов».',
+    'За ход выбери и подтверди одно действие: выстрел, залп 3×2 (можно повернуть) или манёвр. Обычное попадание даёт ещё один выстрел; промах передаёт ход. Залп и манёвр всегда передают ход сопернику. Повторный выстрел в повреждённую клетку не даёт дополнительного хода.',
+    'Авианосец теряет залп, когда уничтожены обе клетки любого поперечного ряда. Для потопления нужны все шесть попаданий.',
+    'Неповреждённая подлодка сдвигается на одну клетку без поворота. Два манёвра за матч, три суммарно, если осталась последним кораблём. Соперник видит только факт манёвра. Старую воду можно обстреливать повторно.',
+    'Побеждает уничтоживший весь флот соперника. На ход 30 секунд: первый пропуск передаёт ход, второй подряд означает поражение.',
+  ],
   armwrestling: [
     'Одна схватка длится до 60 секунд. Прижми руку соперника к подушке. Если время вышло, побеждает продавивший дальше. Почти по центру – ничья.',
     'Левым пальцем держись за ручку. Движение вверх усиливает опору и расход выносливости, вниз – экономит силы. Отпусти ручку – опора пропадёт.',
@@ -113,7 +130,7 @@ export const rules: Record<BarGameId, string[]> = {
 export const timerRules =
   'На ход есть 40 секунд: три броска, один удар или вся цепочка взятий. Анимация не тратит время. При первом пропуске оставшиеся дротики считаются промахами, в бильярде засчитывается фол, в шашках ход выполняется автоматически. Второй пропуск подряд – поражение. Самостоятельный бросок или завершённый ход прерывает серию пропусков. Открытые правила и потеря связи не останавливают таймер.';
 export const gameArt = (kind: BarGameId, scene: string, character?: GameCharacter) =>
-  kind === 'ochko' || kind === 'armwrestling'
+  kind === 'battleship' ? scene.startsWith('online-') ? '/bar/games/battleship-online-result-v1.webp' : `/bar/games/battleship-${scene}-v1.webp` : kind === 'ochko' || kind === 'armwrestling'
     ? `/bar/games/${kind}-${scene}-v1.webp`
     : `/bar/games/${kind}${kind === 'darts' && character === 'daria' ? '-daria' : ''}-${scene}-v${kind === 'darts' && character === 'daria' ? 1 : 2}.webp`;
 

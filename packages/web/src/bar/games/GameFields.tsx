@@ -664,12 +664,13 @@ export function PoolField({
       }
     }
   }
+  const aimLength = 0.65 + 4 * (0.018 + 0.014);
   const end =
     displayAngle === null
       ? cue
       : {
-          x: cue.x + Math.cos(displayAngle) * Math.min(length, 0.65),
-          y: cue.y + Math.sin(displayAngle) * Math.min(length, 0.65),
+          x: cue.x + Math.cos(displayAngle) * Math.min(length, aimLength),
+          y: cue.y + Math.sin(displayAngle) * Math.min(length, aimLength),
         };
   const cancelPullback = () => {
     powerDrag.current = null;
@@ -684,8 +685,69 @@ export function PoolField({
     send({ type: 'shot', angle, power: releasedPower, spin });
     setSpin({ x: 0, y: 0 });
   };
+  const cueGraphic = (
+(stroking || !game.ballInHand) && (!disabled || stroking || (opponent && !!remoteAim)) && (
+          <g className="bar-pool-cue" transform={`translate(${cue.x} ${cue.y})`}>
+            <g
+              className="bar-pool-cue-angle"
+              style={{
+                transform: `rotate(${(displayAngle * 180) / Math.PI}deg)`,
+                transition: opponent && !stroking ? 'transform 280ms ease-out' : 'none',
+              }}
+            >
+              <g
+                key={stroking ? animationStart : 'aim'}
+                className={stroking ? 'bar-pool-stroke' : undefined}
+                style={
+                  {
+                    '--cue-contact': `${cuePull - barPool.R}px`,
+                    ...(stroking
+                      ? {
+                          animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS + 500)}ms`,
+                        }
+                      : {}),
+                  } as CSSProperties
+                }
+              >
+                <g className="bar-pool-cue-body" transform={`translate(${-cuePull} 0)`}>
+                  {!disabled && !stroking && (
+                    <path
+                      className="bar-pool-cue-handle"
+                      d="M-.06 0 L-.74 0"
+                      stroke="transparent"
+                      strokeWidth=".18"
+                      pointerEvents="stroke"
+                      style={{ cursor: 'grab' }}
+                    />
+                  )}
+
+                  <path
+                    d="M0 -.004 L-.73 -.014 Q-.745 0 -.73 .014 L0 .004Z"
+                    fill="#261d16"
+                    stroke="#211a14"
+                    strokeWidth=".004"
+                  />
+                  <path d="M-.018 -.004 L-.48 -.010 L-.48 .010 L-.018 .004Z" fill="#dbb77b" />
+                  <path d="M-.035 -.002 L-.47 -.006" stroke="#f2d69e" strokeWidth=".002" />
+                  <path d="M-.48 -.010 L-.71 -.013 L-.71 .013 L-.48 .010Z" fill="#70412a" />
+                  <path
+                    d="M-.49 -.009 L-.52 0 L-.49 .009 M-.60 -.011 L-.63 0 L-.60 .011"
+                    fill="none"
+                    stroke="#bc9158"
+                    strokeWidth=".003"
+                  />
+                  <path d="M-.018 0 L-.006 0" stroke="#f3e5ca" strokeWidth=".009" />
+                  <path d="M-.006 0 L0 0" stroke="#76b9b6" strokeWidth=".01" />
+                  <path d="M-.722 0 L-.738 0" stroke="#211b18" strokeWidth=".026" />
+                </g>
+              </g>
+            </g>
+          </g>
+        )
+  );
   return (
     <div className="bar-pool-field">
+      <div className="bar-pool-table-stage">
       <svg
         ref={svg}
         viewBox="-.15 -.13 1.3 2.28"
@@ -760,7 +822,7 @@ export function PoolField({
                 d={`M${cue.x + Math.cos(displayAngle) * (barPool.R + 0.018)} ${cue.y + Math.sin(displayAngle) * (barPool.R + 0.018)} L${end.x} ${end.y}`}
               />
             )}
-            {hit && length <= 0.65 && (
+            {hit && length <= aimLength && (
               <path
                 d={`M${hit.x} ${hit.y} l${((hit.x - end.x) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18} ${((hit.y - end.y) / Math.hypot(hit.x - end.x, hit.y - end.y)) * 0.18}`}
               />
@@ -789,65 +851,10 @@ export function PoolField({
               <circle className="bar-pool-impact-flash" r=".02" fill="#fff6db" />
             </g>
           )}
-        {(stroking || !game.ballInHand) && (!disabled || stroking || (opponent && !!remoteAim)) && (
-          <g className="bar-pool-cue" transform={`translate(${cue.x} ${cue.y})`}>
-            <g
-              className="bar-pool-cue-angle"
-              style={{
-                transform: `rotate(${(displayAngle * 180) / Math.PI}deg)`,
-                transition: opponent && !stroking ? 'transform 280ms ease-out' : 'none',
-              }}
-            >
-              <g
-                key={stroking ? animationStart : 'aim'}
-                className={stroking ? 'bar-pool-stroke' : undefined}
-                style={
-                  {
-                    '--cue-contact': `${cuePull - barPool.R}px`,
-                    ...(stroking
-                      ? {
-                          animationDelay: `-${Math.min(strokeClock.current.delay, POOL_STROKE_MS + 500)}ms`,
-                        }
-                      : {}),
-                  } as CSSProperties
-                }
-              >
-                <g className="bar-pool-cue-body" transform={`translate(${-cuePull} 0)`}>
-                  {!disabled && !stroking && (
-                    <path
-                      className="bar-pool-cue-handle"
-                      d="M-.06 0 L-.74 0"
-                      stroke="transparent"
-                      strokeWidth=".18"
-                      pointerEvents="stroke"
-                      style={{ cursor: 'grab' }}
-                    />
-                  )}
-
-                  <path
-                    d="M0 -.004 L-.73 -.014 Q-.745 0 -.73 .014 L0 .004Z"
-                    fill="#261d16"
-                    stroke="#211a14"
-                    strokeWidth=".004"
-                  />
-                  <path d="M-.018 -.004 L-.48 -.010 L-.48 .010 L-.018 .004Z" fill="#dbb77b" />
-                  <path d="M-.035 -.002 L-.47 -.006" stroke="#f2d69e" strokeWidth=".002" />
-                  <path d="M-.48 -.010 L-.71 -.013 L-.71 .013 L-.48 .010Z" fill="#70412a" />
-                  <path
-                    d="M-.49 -.009 L-.52 0 L-.49 .009 M-.60 -.011 L-.63 0 L-.60 .011"
-                    fill="none"
-                    stroke="#bc9158"
-                    strokeWidth=".003"
-                  />
-                  <path d="M-.018 0 L-.006 0" stroke="#f3e5ca" strokeWidth=".009" />
-                  <path d="M-.006 0 L0 0" stroke="#76b9b6" strokeWidth=".01" />
-                  <path d="M-.722 0 L-.738 0" stroke="#211b18" strokeWidth=".026" />
-                </g>
-              </g>
-            </g>
-          </g>
-        )}
+        {cueGraphic}
       </svg>
+      <svg className="bar-pool-cue-overlay" viewBox="-.15 -.13 1.3 2.28" aria-hidden="true">{cueGraphic}</svg>
+      </div>
       {!pregame && <div className="bar-pool-controls">
         <label className="bar-pool-power bar-pool-power--pull">
           <span>

@@ -69,3 +69,11 @@ it('reduces cue rotation for a broad finger movement without jumping on pickup',
  pointer('pointerUp',table,98,200);
  expect(send.mock.lastCall?.[0].angle-initial).toBeCloseTo(-Math.PI/4*0.35,6);
 });
+it('renders the cue in a separate decorative layer sharing the table proportions',()=>{
+ const {container,table}=setup();
+ const overlay=container.querySelector('.bar-pool-cue-overlay')!;
+ expect(overlay).not.toBeNull();
+ expect(overlay.getAttribute('aria-hidden')).toBe('true');
+ expect(overlay.getAttribute('viewBox')).toBe(table.getAttribute('viewBox'));
+ expect(overlay.querySelector('.bar-pool-cue')).not.toBeNull();
+});
