@@ -1616,7 +1616,7 @@
 .bar-naval-grid + .bar-naval-toolbar:not(.bar-naval-toolbar--ready) { padding-top: 14px; padding-bottom: 8px; }
 
 .bar-naval-damage--sunk { background: none; box-shadow: none; border-radius: 0; width: 56%; height: 56%; left: 22%; top: 22%; }
-.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #c49b91; box-shadow: 0 0 2px #fff0ce99; transform: rotate(45deg); }
+.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #d87570; box-shadow: 0 0 2px #ffc9b588; transform: rotate(45deg); }
 .bar-naval-damage--sunk::after { transform: rotate(-45deg); }
 
 /* Anchor the naval controls near the bottom on tall screens. */
@@ -1794,8 +1794,7 @@
 
 .bar-naval-fleet-icon { position: relative; }
 .bar-naval-moves-left { position: absolute; right: -2px; bottom: -4px; font-size: 10px; line-height: 14px; min-width: 14px; border-radius: 7px; color: #edf7ff; background: #253844; text-align: center; box-shadow: 0 0 0 1px #bed5df88; }
-.bar-naval-damage--burning { background: radial-gradient(ellipse at 50% 80%, #ffbe48, #a43319 60%, transparent 72%); box-shadow: 0 0 6px #ff8c4080; }
-.bar-naval-damage--burning::before, .bar-naval-damage--burning::after { content: ''; position: absolute; bottom: 8%; left: 15%; width: 70%; height: 120%; border-radius: 65% 15% 60% 40%; background: linear-gradient(135deg, #ff572b 15%, #ffb333 65%, #fff2ac); transform-origin: 50% 100%; animation: naval-fire 700ms ease-in-out infinite alternate; }
+.bar-naval-damage--burning::before, .bar-naval-damage--burning::after { content: ''; position: absolute; bottom: 35%; left: 15%; width: 70%; height: 120%; border-radius: 65% 15% 60% 40%; background: linear-gradient(135deg, #ff572b 15%, #ffb333 65%, #fff2ac); transform-origin: 50% 100%; animation: naval-fire 700ms ease-in-out infinite alternate; }
 .bar-naval-damage--burning::after { left: 35%; width: 35%; height: 75%; background: #fff0a0; animation-delay: -350ms; animation-duration: 510ms; }
 @keyframes naval-fire { from { transform: rotate(-12deg) scale(.85, .9); } to { transform: rotate(9deg) scale(1.05, 1.2); } }
 .bar-naval-grid--airstrike { animation: naval-airstrike-contact 450ms ease-out both; transform-origin: center; }
@@ -1817,6 +1816,7 @@
 .bar-naval-vessel[data-sunk='true'] .bar-naval-hull { fill: #26323b; stroke: #62717c; }
 .bar-naval-vessel[data-sunk='true'] .bar-naval-cabin { fill: #39454e; stroke: #18232c; }
 .bar-naval-vessel[data-sunk='true'] .bar-naval-deck { stroke: #687781; }
-.bar-naval-damage--abandoned { width: 21%; height: 21%; left: 39.5%; top: 39.5%; }
+.bar-naval-damage--abandoned::before { width: 35%; height: 60%; left: 32.5%; }
+.bar-naval-damage--abandoned::after { width: 17.5%; height: 37.5%; left: 41.25%; }
 .bar-naval-vessel--wreck:not([data-sunk='true']) .bar-naval-hull { fill: #48545b; }
 .bar-naval-vessel--wreck { border-color: rgba(160, 175, 182, .3); }
