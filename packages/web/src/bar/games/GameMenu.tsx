@@ -228,7 +228,7 @@ export function GameMenu({
             : g.series.ready[player]
               ? 'Ждём соперника'
               : 'Проверь карты и продолжай';
-    if (g.series.phase === 'countdown') turn = 'Следующая раздача начинается…';
+    if (g.series.phase === 'countdown') turn = `Следующая раздача через ${Math.max(0, Math.ceil((g.series.nextAt - now) / 1000))}…`;
   }
   if (g.kind === 'battleship' && g.lastAction?.type === 'move' && !view.ready)
     turn = `Подлодка ${g.lastAction.player === player ? 'перемещена' : 'соперника переместилась'} · ${turn}`;

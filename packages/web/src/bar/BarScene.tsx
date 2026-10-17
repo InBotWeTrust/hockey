@@ -1,3 +1,4 @@
+import {useBarInvitation, type PendingBarInvitation} from './useBarInvitation.js';
 import {BarAvatarDock} from './BarAvatarDock.js';
 import { BarObjectGlow } from './BarObjectGlow.js';
 import { BarGameHotspots } from './BarGameHotspots.js';
@@ -72,7 +73,17 @@ export function BarScene({
   const slot = layout.slots[index]!;
   const profile = slot.occupantId ? layout.profiles[slot.occupantId] : null;
   const [terminalOpen, setTerminalOpen] = useState(false);
-  useEffect(()=>setTerminalOpen(false),[activeSlotId]);
+  const incomingInvitation=useBarInvitation(slot.occupantId==='online'&&!hideIdentity);
+  const [terminalInvitation,setTerminalInvitation]=useState<PendingBarInvitation|null>(null);
+  const openedInvitation=useRef<string|null>(null);
+  const terminalDismissed=useRef(false);
+  useEffect(()=>{setTerminalOpen(false);setTerminalInvitation(null);openedInvitation.current=null;terminalDismissed.current=false;},[activeSlotId]);
+  useEffect(()=>{
+    if(slot.occupantId!=='online'||!incomingInvitation||openedInvitation.current===incomingInvitation.id)return;
+    openedInvitation.current=incomingInvitation.id;
+    setTerminalInvitation(incomingInvitation);
+    if(!terminalDismissed.current)setTerminalOpen(true);
+  },[slot.occupantId,incomingInvitation]);
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const start = useRef<{ x: number; y: number } | null>(null);
   const doorPointer = useRef<{x: number; y: number; moved: boolean} | null>(null);
@@ -234,8 +245,8 @@ export function BarScene({
         <ChevronRight />
       </button>
       {!hideIdentity && slot.occupantId === 'online' && terminalOpen && <section className="bar-space__actions bar-space__actions--terminal" aria-label="Играть онлайн">
-        <div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div>
-        <BarGamesLobby embedded />
+        <div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>{terminalDismissed.current=true;setTerminalOpen(false);}}><X size={19} strokeWidth={1.5}/></button></div>
+        <BarGamesLobby key={terminalInvitation?.id ?? 'manual'} initial={terminalInvitation?.kind ?? 'cards'} embedded />
       </section>}
       <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
       <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity || terminalOpen}>

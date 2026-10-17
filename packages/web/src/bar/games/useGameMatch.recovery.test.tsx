@@ -33,3 +33,31 @@ it('retains an uncertain command and its retry even while polling succeeds',asyn
  expect(vi.mocked(gameApi.command).mock.calls[1]![1]).toEqual(first);
  expect(result.current.error).toBeNull();expect(result.current.uncertain).toBe(false);
 });
+it('freezes the displayed clock while paused and queues closing rules behind opening them',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(1000);
+ const initial={...view(),character:'veronika' as const};
+ vi.mocked(gameApi.read).mockResolvedValue(initial);
+ let resolve!:(v:BarGameSnapshot)=>void;
+ vi.mocked(gameApi.command).mockImplementationOnce(()=>new Promise(r=>{resolve=r;})).mockResolvedValue({...initial,rulesPaused:false,runtime:{...initial.runtime,revision:2}});
+ const {result}=renderHook(()=>useGameMatch('m'));await act(async()=>{});
+ act(()=>result.current.send({type:'rules-pause',paused:true}));
+ act(()=>result.current.send({type:'rules-pause',paused:false}));
+ await act(async()=>resolve({...initial,rulesPaused:true,runtime:{...initial.runtime,revision:1}}));
+ expect(vi.mocked(gameApi.command).mock.calls[1]![1].action).toEqual({type:'rules-pause',paused:false});
+ const frozen={...initial,rulesPaused:true,runtime:{...initial.runtime,revision:3}};
+ vi.mocked(gameApi.read).mockResolvedValue(frozen);
+ await act(async()=>{await vi.advanceTimersByTimeAsync(1000);});
+ expect(result.current.now).toBe(1000);
+});
+it('does not rewind the resumed clock when an old paused poll arrives later',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(1000);
+ const initial={...view(),character:'veronika' as const};
+ let resolveRead!:(v:BarGameSnapshot)=>void;
+ vi.mocked(gameApi.read).mockResolvedValueOnce(initial).mockImplementationOnce(()=>new Promise(r=>{resolveRead=r;}));
+ vi.mocked(gameApi.command).mockResolvedValue({...initial,rulesPaused:false,serverNow:2000,runtime:{...initial.runtime,revision:2}});
+ const {result}=renderHook(()=>useGameMatch('m'));await act(async()=>{});
+ await act(async()=>{await vi.advanceTimersByTimeAsync(500);});
+ await act(async()=>result.current.send({type:'rules-pause',paused:false}));
+ await act(async()=>resolveRead({...initial,rulesPaused:true,runtime:{...initial.runtime,revision:1}}));
+ expect(result.current.now).toBe(2000);expect(result.current.view?.rulesPaused).toBe(false);
+});

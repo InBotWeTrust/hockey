@@ -1436,7 +1436,7 @@
 
 /* Naval rules draw a separate board over the character/table scene. */
 .bar-game-screen--playing[data-game='battleship'] {
-  background: #102333;
+  background: #183e30 url('/bar/cards/table-v1.webp') center top/cover;
   color: #e9f2f8;
   height: 100dvh;
   min-height: 0;
@@ -1482,7 +1482,7 @@
 .bar-naval-cell[data-kind='carrier'] { background: #567ab5; }
 .bar-naval-cell[data-kind='submarine'] { background: #34a9af; }
 .bar-naval-cell[data-maneuver='true'] { outline: 2px solid #76e0da; outline-offset: -3px; }
-.bar-naval-cell[data-hit='true'] { background: #9f363d; }
+.bar-naval-cell[data-hit='true'] { background: transparent; }
 .bar-naval-cell[data-selected='true'] { background: #d0a53d; box-shadow: inset 0 0 0 2px white; }
 .bar-naval-toolbar {
   display: flex;
@@ -1616,7 +1616,7 @@
 .bar-naval-grid + .bar-naval-toolbar:not(.bar-naval-toolbar--ready) { padding-top: 14px; padding-bottom: 8px; }
 
 .bar-naval-damage--sunk { background: none; box-shadow: none; border-radius: 0; width: 56%; height: 56%; left: 22%; top: 22%; }
-.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #35272a; box-shadow: 0 0 2px #fff0ce88; transform: rotate(45deg); }
+.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #d87570; box-shadow: 0 0 2px #ffc9b588; transform: rotate(45deg); }
 .bar-naval-damage--sunk::after { transform: rotate(-45deg); }
 
 /* Anchor the naval controls near the bottom on tall screens. */
@@ -1791,3 +1791,41 @@
 .bar-game-result__score { display:flex; flex-wrap:wrap; justify-content:flex-start; align-items:baseline; gap:8px; margin:12px 0 16px; color:var(--ink); font-variant-numeric:tabular-nums; }
 .bar-game-result__score span { font-size:14px; font-weight:700; color:var(--muted); }
 .bar-game-result__score strong { font-size:24px; }
+
+.bar-ochko-field--series .bar-ochko-hand[aria-label="Карты соперника"] { padding-top: 30px; }
+.bar-ochko-field--series .bar-ochko-sum--opponent { top: 0; }
+.bar-naval-fleet-icon { position: relative; }
+.bar-naval-moves-left { position: absolute; right: -2px; bottom: -4px; font-size: 10px; line-height: 14px; min-width: 14px; border-radius: 7px; color: #edf7ff; background: #253844; text-align: center; box-shadow: 0 0 0 1px #bed5df88; }
+.bar-naval-damage--burning::before, .bar-naval-damage--burning::after { content: ''; position: absolute; bottom: 35%; left: 15%; width: 70%; height: 120%; border-radius: 65% 15% 60% 40%; background: linear-gradient(135deg, #ff572b 15%, #ffb333 65%, #fff2ac); transform-origin: 50% 100%; animation: naval-fire 700ms ease-in-out infinite alternate; }
+.bar-naval-damage--burning::after { left: 35%; width: 35%; height: 75%; background: #fff0a0; animation-delay: -350ms; animation-duration: 510ms; }
+@keyframes naval-fire { from { transform: rotate(-12deg) scale(.85, .9); } to { transform: rotate(9deg) scale(1.05, 1.2); } }
+.bar-naval-grid--airstrike { animation: naval-airstrike-contact 450ms ease-out both; transform-origin: center; }
+@keyframes naval-airstrike-contact { 0% { transform: translate(0, 5px) scale(.99); } 15% { transform: translate(-5px, -4px); } 30% { transform: translate(5px, 3px); } 50% { transform: translate(-4px, -2px); } 70% { transform: translate(3px, 1px); } 85% { transform: translate(-1px, 0); } 100% { transform: none; } }
+.bar-naval-review { margin: 16px 0; width: 100%; min-width: 0; }
+.bar-naval-review-toggle { display: inline-flex; align-items: center; gap: 8px; max-width: 100%; padding: 4px 0; border: 0; border-radius: 0; background: none; box-shadow: none; color: var(--ink); font: inherit; font-size: 14px; font-weight: 600; letter-spacing: normal; text-align: left; cursor: pointer; }
+.bar-naval-review-toggle:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+.bar-naval-review-toggle span { flex: none; font-size: 12px; opacity: .7; }
+.bar-naval-review .bar-naval-grid { width: 100%; max-width: 440px; margin: 16px auto 12px; }
+.bar-naval-review .bar-naval-board { aspect-ratio: 1; pointer-events: none; }
+.bar-naval-review .bar-naval-cell { min-width: 0; min-height: 0; }
+.bar-naval-vessel--trail { z-index: 2; }
+.bar-naval-vessel--trail svg { opacity: .35; }
+.bar-naval-position-number { position: absolute; left: 0; top: -7px; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #d7e8f2; border-radius: 50%; background: #263947; font-size: 10px; line-height: 1; color: white; }
+@media (prefers-reduced-motion: reduce) { .bar-naval-grid--airstrike, .bar-naval-damage--burning::before, .bar-naval-damage--burning::after { animation: none; } }
+
+.bar-naval-cell[data-sunk='true'], .bar-naval-cell[data-ship-color][data-sunk='true'][data-hit='true'] { background: transparent; }
+.bar-naval-vessel[data-sunk='true'] { border-color: rgba(133, 151, 162, .35); }
+.bar-naval-vessel[data-sunk='true'] .bar-naval-hull { fill: #26323b; stroke: #62717c; }
+.bar-naval-vessel[data-sunk='true'] .bar-naval-cabin { fill: #39454e; stroke: #18232c; }
+.bar-naval-vessel[data-sunk='true'] .bar-naval-deck { stroke: #687781; }
+.bar-naval-damage--abandoned::before { width: 35%; height: 60%; left: 32.5%; }
+.bar-naval-damage--abandoned::after { width: 17.5%; height: 37.5%; left: 41.25%; }
+.bar-naval-vessel--wreck:not([data-sunk='true']) .bar-naval-hull { fill: #48545b; }
+.bar-naval-vessel--wreck { border-color: rgba(160, 175, 182, .3); }
+.bar-naval-sub-parts { display: flex; align-items: center; gap: 4px; width: 100%; height: 100%; }
+.bar-naval-sub-part { position: relative; flex: 1; min-width: 0; height: 15px; }
+.bar-naval-sub-part[data-damaged='true'] .bar-naval-hull { fill: #40464b; stroke: #8d7773; }
+.bar-naval-fleet-icon--split { overflow: visible; }
+.bar-naval-vessel--trail { border-style: dashed; border-color: #bbd5e099; }
+.bar-naval-cell[data-airstrike='true'] .bar-naval-impact { animation-duration: 850ms; }
+@keyframes naval-airstrike-contact-next { 0% { transform: translate(0, 5px) scale(.99); } 15% { transform: translate(-5px, -4px); } 30% { transform: translate(5px, 3px); } 50% { transform: translate(-4px, -2px); } 70% { transform: translate(3px, 1px); } 85% { transform: translate(-1px, 0); } 100% { transform: none; } }

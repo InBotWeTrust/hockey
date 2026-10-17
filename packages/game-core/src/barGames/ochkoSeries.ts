@@ -24,6 +24,7 @@ export interface Series {
 export interface State extends OchkoState {
   series: Series;
   character: boolean;
+  roundPauseMs?: number;
   cheatBudget: number;
   cheatSeed: number;
   actualAward: number;
@@ -47,11 +48,13 @@ export function create(
   now: number,
   character: boolean,
   seed: number,
+  roundPauseMs?: number,
 ): State {
   const base = createOchkoFromDeck(cards, now);
   const chance = (seed >>> 0) % 100;
   const g: State = {
     ...base,
+    ...(roundPauseMs === undefined ? {} : {roundPauseMs}),
     winner: null,
     done: [false, false],
     golden: [false, false],
@@ -232,13 +235,15 @@ export function act(
     }
     if (g.character) {
       if (p !== 0) throw Error('Unavailable continuation');
-      return s.round === 4 ? finish(g) : advance(nextRound(g, now), now);
+      if(s.round===4)return finish(g);
+      if(g.roundPauseMs){s.phase='countdown';s.nextAt=now+g.roundPauseMs;return g;}
+      return advance(nextRound(g, now), now);
     }
     if (s.ready[p]) throw Error('Already ready');
     s.ready[p] = true;
     if (s.ready.every(Boolean)) {
       s.phase = 'countdown';
-      s.nextAt = now + 5000;
+      s.nextAt = now + (g.roundPauseMs ?? 5000);
     }
     return g;
   }

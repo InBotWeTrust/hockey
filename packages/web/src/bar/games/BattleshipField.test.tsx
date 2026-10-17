@@ -307,3 +307,82 @@ it('labels structurally disabled airstrikes and damaged-submarine maneuvers unav
  expect(screen.getByRole('button',{name:'Авианалёт Недоступен'})).toBeDisabled();
  expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
 });
+
+it.each([0,1] as const)('uses stronger airstrike shake and burning damage for actor %i', actor => {
+ const g=sea.start(sea.create(actor,4,true));g.airstrikeCharges![actor]=5;
+ const victim=g.fleets[1-actor]!.find(s=>s.kind==='carrier')!;
+ const hit=sea.attack(g,actor,Math.min(victim.x,10),Math.min(victim.y,10),true,false);
+ const {container}=render(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={1350} animationStart={1000}/>);
+ expect(container.querySelector('.bar-naval-grid--airstrike')).not.toBeNull();
+ expect(container.querySelector('.bar-naval-damage--burning')).not.toBeNull();
+});
+it('shows the opponent remaining submarine moves and removes the exhausted counter',()=>{
+ const game=sea.view(sea.start(sea.create(0,4)),0);
+ const {rerender}=render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(screen.getByLabelText('Манёвров соперника осталось: 2')).toBeInTheDocument();
+ rerender(<BattleshipField game={{...game,enemyMovesLeft:0}} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(screen.queryByLabelText(/Манёвров соперника осталось/)).toBeNull();
+});
+it('offers board-wide escape for a damaged modern submarine and renders its abandoned fire smaller',()=>{
+ const g=sea.start(sea.create(0,4,true,true));const sub=g.fleets[0].find(s=>s.kind==='submarine')!;sub.hits=[sea.cells(sub)[0]!];g.shots[1]=[{cell:sub.hits[0]!,hit:true}];
+ const send=vi.fn();const {container,rerender}=render(<BattleshipField game={sea.view(g,0)} player={0} disabled={false} locked={false} send={send}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
+ const board=screen.getByRole('group',{name:'Твой флот'});
+ fireEvent.click(board.querySelectorAll('button')[sea.cells(sub)[1]!]!);
+ expect(screen.getByRole('button',{name:'Манёвр Осталось 2'})).toBeEnabled();
+ expect(container.querySelectorAll('.bar-naval-move-arrow')).toHaveLength(0);
+ const destination=sea.moves(sea.view(g,0)).find(p=>Math.abs(p.x-sub.x)+Math.abs(p.y-sub.y)>3)!;
+ fireEvent.click(board.querySelectorAll('button')[sea.cell(destination.x,destination.y)]!);
+ fireEvent.click(screen.getByRole('button',{name:'Подтвердить'}));
+ expect(send).toHaveBeenCalledWith({type:'naval-move',...destination});
+ const moved=sea.move(g,0,destination.x,destination.y);
+ rerender(<BattleshipField game={sea.view(moved,0)} player={0} disabled locked={false} send={send}/>);
+ expect(container.querySelector('.bar-naval-damage--abandoned')).not.toBeNull();
+});
+it('uses filled dots around sunk ships in new-rule matches',()=>{
+ const game=sea.start(sea.create(0,4,true,true));const victim=game.fleets[1].find(s=>s.w*s.h===1)!;
+ const hit=sea.attack(game,0,victim.x,victim.y,false,false);
+ const {container}=render(<BattleshipField game={sea.view(hit,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(container.querySelector('.bar-naval-water')).toBeNull();
+ expect(container.querySelectorAll('.bar-naval-miss')).toHaveLength(sea.surroundingWater([victim]).length);
+});
+
+it('shows both submarine sections in the fleet row without exposing an enemy hit before escape',()=>{
+ const game=sea.start(sea.create(0,4,true,true));const sub=game.fleets[0].find(s=>s.kind==='submarine')!;sub.hits=[sea.cells(sub)[0]!];
+ const {rerender}=render(<BattleshipField game={sea.view(game,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(document.querySelectorAll('.bar-naval-sub-part')).toHaveLength(2);
+ rerender(<BattleshipField game={sea.view(game,1)} player={1} disabled={false} locked={false} send={()=>{}}/>);
+ expect(document.querySelector('.bar-naval-sub-parts')).toBeNull();
+ const target=sea.moves(sea.view(game,0))[0]!;const escaped=sea.move(game,0,target.x,target.y);
+ rerender(<BattleshipField game={sea.view(escaped,1)} player={1} disabled={false} locked={false} send={()=>{}}/>);
+ expect(document.querySelectorAll('.bar-naval-sub-part')).toHaveLength(2);
+ expect(document.querySelector('.bar-naval-sub-part[data-damaged="true"] .bar-naval-damage--burning')).not.toBeNull();
+});
+
+it('does not advertise an initial enemy maneuver in rescue-only matches',()=>{
+ const game=sea.start(sea.create(0,4,true,true,true));
+ render(<BattleshipField game={sea.view(game,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
+ expect(screen.queryByLabelText(/Манёвров соперника осталось/)).toBeNull();
+});
+it.each([0,1] as const)('reveals airstrike cells one by one for actor %i during the impact scene',actor=>{
+ const game=sea.start(sea.create(actor,4,true,true));game.airstrikeCharges![actor]=5;
+ game.fleets[1-actor]=[{id:'ship-8',kind:'standard',x:10,y:10,w:1,h:1,hits:[]}];
+ const {container,rerender}=render(<BattleshipField game={sea.view(game,0)} player={0} disabled locked={false} send={()=>{}} now={1000}/>);
+ const hit=sea.attack(game,actor,0,0,true,false);
+ for(const [elapsed,count] of [[0,1],[249,1],[250,2],[500,3],[750,4]]){
+  rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={2000+elapsed!} animationStart={2000}/>);
+  expect(container.querySelectorAll('.bar-naval-miss')).toHaveLength(count!);
+ }
+});
+it('keeps the later bomb cells hidden even when an earlier bomb sinks a ship beside them',()=>{
+ const game=sea.start(sea.create(0,4,true,true));game.airstrikeCharges![0]=5;
+ game.fleets[1]=[{id:'ship-4',kind:'standard',x:0,y:0,w:2,h:1,hits:[]}];
+ const {rerender}=render(<BattleshipField game={sea.view(game,0)} player={0} disabled locked={false} send={()=>{}} now={1000}/>);
+ const hit=sea.attack(game,0,0,0,true,false);
+ rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={2250} animationStart={2000}/>);
+ const board=screen.getByRole('group',{name:'Поле противника'});
+ expect(board.querySelectorAll('button')[12]!.querySelector('.bar-naval-miss')).toBeNull();
+ rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled locked={false} send={()=>{}} now={2500} animationStart={2000}/>);
+ expect(board.querySelectorAll('button')[12]!.querySelector('.bar-naval-miss')).not.toBeNull();
+});

@@ -219,3 +219,103 @@ it('does not extend a line beyond the size of the only remaining carrier',()=>{
  const remaining=sea.cells(carrier).filter(c=>!hits.includes(c));
  for(let seed=0;seed<20;seed++){const b=sea.bot(v,seed);expect(remaining).toContain(sea.cell(b.x,b.y));}
 });
+
+it('reveals the enemy fleet and numbered submarine trail only after the match ends', () => {
+  const g = sea.start(sea.create(1, 4));
+  const destination = sea.moves(sea.view(g, 1))[0]!;
+  const original = structuredClone(g.fleets[1].find(s => s.kind === 'submarine')!);
+  const moved = sea.move(g, 1, destination.x, destination.y);
+  const hidden = sea.view(moved, 0);
+  expect(hidden).not.toHaveProperty('submarineHistory');
+  expect(hidden).not.toHaveProperty('enemyReveal');
+  expect(hidden.enemyMovesLeft).toBe(1);
+  moved.winner = 0;
+  const final = sea.view(moved, 0);
+  expect(final.enemyReveal?.ships).toEqual(moved.fleets[1]);
+  expect(final.enemyReveal?.submarineTrail).toEqual([{ ...original, move: 1 }]);
+  final.enemyReveal!.ships[0]!.hits.push(999);
+  expect(moved.fleets[1][0]!.hits).not.toContain(999);
+});
+it('keeps missing legacy submarine history explicit and grants the last-ship third maneuver', () => {
+  const g = sea.start(sea.create(0, 4));
+  delete g.submarineHistory;
+  for (const s of g.fleets[1]) if (s.kind !== 'submarine') s.hits = sea.cells(s);
+  g.moves[1] = 2;
+  expect(sea.view(g, 0).enemyMovesLeft).toBe(1);
+  g.winner = 'draw';
+  expect(sea.view(g, 0).enemyReveal?.submarineTrail).toBeUndefined();
+});
+
+it('fills sunk borders with real blocked water and forbids modern submarines on shot cells', () => {
+ const g=sea.start(sea.create(0,4,true,true));
+ const victim=g.fleets[1].find(s=>s.w*s.h===1)!;
+ const hit=sea.attack(g,0,victim.x,victim.y,false,false);
+ for(const border of sea.surroundingWater([victim]))expect(hit.shots[0]).toContainEqual({cell:border,hit:false});
+ const sub=g.fleets[0].find(s=>s.kind==='submarine')!;
+ const destination=sea.moves(sea.view(g,0))[0]!;
+ g.shots[1].push({cell:sea.cell(destination.x,destination.y),hit:false});
+ expect(sea.moves(sea.view(g,0))).not.toContainEqual(destination);
+ expect(()=>sea.move(g,0,destination.x,destination.y)).toThrow();
+ expect(sub.hits).toEqual([]);
+});
+it('lets a damaged submarine detach one cell, keeps a wreck and sinks only on a fresh survivor hit',()=>{
+ const g=sea.start(sea.create(0,4,true,true));
+ const sub=g.fleets[0].find(s=>s.kind==='submarine')!;const wreck=sea.cells(sub)[0]!;sub.hits=[wreck];g.shots[1]=[{cell:wreck,hit:true}];
+ const choices=sea.moves(sea.view(g,0));expect(choices.length).toBeGreaterThan(4);
+ const destination=choices.find(p=>Math.abs(p.x-sub.x)+Math.abs(p.y-sub.y)>3)!;
+ g.shots[1].push({cell:sea.cell(destination.x,destination.y),hit:false});
+ expect(sea.moves(sea.view(g,0))).not.toContainEqual(destination);
+ g.shots[1].pop();
+ const moved=sea.move(g,0,destination.x,destination.y);
+ const survivor=moved.fleets[0].find(s=>s.kind==='submarine')!;
+ expect(survivor).toMatchObject({...destination,w:1,h:1,hits:[],wreck});
+ expect(moved.moves[0]).toBe(1);expect(moved.turn).toBe(1);
+ const laterMoves=sea.moves(sea.view(moved,0));
+ expect(laterMoves.length).toBeGreaterThan(0);
+ expect(laterMoves.every(p=>Math.abs(p.x-survivor.x)+Math.abs(p.y-survivor.y)===1)).toBe(true);
+ expect(sea.view(moved,1).enemyWrecks).toEqual([wreck]);
+ expect(sea.view(moved,1)).not.toHaveProperty('enemyReveal');
+ const botShot=sea.bot(sea.view(moved,1),3);
+ expect(sea.cell(botShot.x,botShot.y)).not.toBe(wreck);
+ const repeat=sea.attack(moved,1,wreck%12,Math.floor(wreck/12),false,false);
+ expect(repeat.turn).toBe(0);expect(repeat.fleets[0].find(s=>s.kind==='submarine')!.hits).toEqual([]);
+ repeat.turn=1;
+ const dead=sea.attack(repeat,1,survivor.x,survivor.y,false,false);
+ expect(sea.view(dead,1).enemySunk.some(s=>s.id==='submarine')).toBe(true);
+ expect(g.fleets[0].find(s=>s.kind==='submarine')!.w*g.fleets[0].find(s=>s.kind==='submarine')!.h).toBe(2);
+});
+it('never hunts beside an abandoned submarine wreck when only the survivor remains',()=>{
+ const g=sea.start(sea.create(1,4,true,true));const sub=g.fleets[1].find(s=>s.kind==='submarine')!;
+ sub.hits=[sea.cells(sub)[0]!];const wreck=sub.hits[0]!;
+ const destination=sea.moves(sea.view(g,1)).find(p=>Math.abs(p.x-sub.x)+Math.abs(p.y-sub.y)>3)!;
+ const moved=sea.move(g,1,destination.x,destination.y);
+ for(const ship of moved.fleets[1])if(ship.kind!=='submarine')ship.hits=sea.cells(ship);
+ const survivor=sea.cell(destination.x,destination.y);
+ const wreckShip={...sub,x:wreck%12,y:Math.floor(wreck/12),w:1,h:1};
+ const unknown=new Set([...sea.surroundingWater([wreckShip]),survivor]);
+ moved.shots[0]=Array.from({length:144},(_,cell)=>cell).filter(c=>!unknown.has(c)).map(cell=>({cell,hit:cell===wreck||moved.fleets[1].some(s=>s.hits.includes(cell))}));
+ moved.turn=0;
+ for(let seed=0;seed<32;seed++){
+  const target=sea.bot(sea.view(moved,0),seed);
+  expect(sea.cell(target.x,target.y)).toBe(survivor);
+ }
+});
+it('unlocks one rescue only after a hit followed by a miss and never grants another maneuver',()=>{
+ const g=sea.start(sea.create(1,4,true,true,true));
+ expect(sea.moves(sea.view(g,0))).toEqual([]);
+ const sub=g.fleets[0].find(s=>s.kind==='submarine')!;
+ const hit=sea.attack(g,1,sub.x,sub.y,false,false);
+ expect(sea.moves(sea.view(hit,0))).toEqual([]);
+ const missCell=Array.from({length:144},(_,c)=>c).find(c=>!hit.fleets[0].some(s=>sea.cells(s).includes(c)))!;
+ const missed=sea.attack(hit,1,missCell%12,Math.floor(missCell/12),false,false);
+ const target=sea.moves(sea.view(missed,0))[0]!;expect(target).toBeDefined();
+ const escaped=sea.move(missed,0,target.x,target.y);
+ expect(sea.moves(sea.view(escaped,0))).toEqual([]);
+ expect(sea.view(escaped,0).maneuverAvailable).toBe(false);
+ const again=sea.attack(escaped,1,missCell%12,Math.floor(missCell/12),false,false);
+ expect(sea.view(again,0).maneuverAvailable).toBe(false);
+ for(const ship of escaped.fleets[0])if(ship.kind!=='submarine')ship.hits=sea.cells(ship);
+ expect(sea.view(escaped,0).movesLeft).toBe(0);
+ expect(sea.view(escaped,1).enemyMovesLeft).toBe(0);
+ escaped.turn=0;expect(()=>sea.move(escaped,0,sub.x,sub.y)).toThrow();
+});
