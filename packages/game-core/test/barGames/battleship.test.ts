@@ -157,3 +157,65 @@ it('does not expose the enemy charge, mutates neither input, and keeps legacy sa
   carrier.hits=carrier.w===3?[sea.cell(carrier.x,carrier.y),sea.cell(carrier.x,carrier.y+1)]:[sea.cell(carrier.x,carrier.y),sea.cell(carrier.x+1,carrier.y)];
   expect(sea.view(current,0).canSalvo).toBe(false);
 });
+it('finishes the gap between collinear hits instead of hunting elsewhere',()=>{
+ const v=sea.view(sea.start(sea.create(0,4,true)),0);v.canSalvo=false;
+ v.shots[0]=[{cell:sea.cell(2,4),hit:true},{cell:sea.cell(4,4),hit:true}];
+ for(let seed=0;seed<20;seed++)expect(sea.bot(v,seed)).toMatchObject({x:3,y:4,salvo:false});
+});
+it('extends a discovered line and avoids already fired cells',()=>{
+ const v=sea.view(sea.start(sea.create(0,4,true)),0);v.canSalvo=false;
+ v.shots[0]=[{cell:sea.cell(4,4),hit:true},{cell:sea.cell(5,4),hit:true},{cell:sea.cell(3,4),hit:false}];
+ for(let seed=0;seed<20;seed++)expect(sea.bot(v,seed)).toMatchObject({x:6,y:4,salvo:false});
+});
+it('never targets sunk ships or their surrounding water, including when fresh water is exhausted',()=>{
+ const v=sea.view(sea.start(sea.create(0,4,true)),0);v.canSalvo=false;
+ const destroyed:sea.Ship={id:'ship-4',kind:'standard',x:4,y:4,w:2,h:1,hits:[sea.cell(4,4),sea.cell(5,4)]};
+ v.enemySunk=[destroyed];
+ const blocked=(x:number,y:number)=>x>=3&&x<=6&&y>=3&&y<=5;
+ for(const exhausted of [false,true]){
+ v.shots[0]=exhausted?Array.from({length:144},(_,c)=>({cell:c,hit:destroyed.hits.includes(c)})):destroyed.hits.map(cell=>({cell,hit:true}));
+ for(let seed=0;seed<40;seed++){const b=sea.bot(v,seed);expect(blocked(b.x,b.y)).toBe(false);}
+ }
+});
+it('keeps finishing damaged carriers without repeating hits even after a full long side is hit',()=>{
+ const v=sea.view(sea.start(sea.create(0,4,true)),0);v.canSalvo=false;
+ // A full long side must lead to the parallel side, never old hit cells.
+ v.shots[0]=[4,5,6].map(y=>({cell:sea.cell(4,y),hit:true}));
+ v.shots[0].push({cell:sea.cell(4,3),hit:false},{cell:sea.cell(4,7),hit:false});
+ for(let seed=0;seed<20;seed++){
+  const b=sea.bot(v,seed);
+  expect([3,5]).toContain(b.x);expect(b.y).toBeGreaterThanOrEqual(4);expect(b.y).toBeLessThanOrEqual(6);
+ }
+});
+it('searches deterministically without exposing hidden fleets and wastes no airstrike cells on known water',()=>{
+ const v=sea.view(sea.start(sea.create(0,4,true)),0);v.airstrikeCharge=5;v.canSalvo=true;
+ v.shots[0]=[{cell:sea.cell(5,5),hit:false},{cell:sea.cell(6,5),hit:true}];
+ for(let seed=0;seed<20;seed++){
+  const before=JSON.stringify(v),b=sea.bot(v,seed);expect(sea.bot(v,seed)).toEqual(b);expect(JSON.stringify(v)).toBe(before);
+  if(b.salvo)for(let dy=0;dy<2;dy++)for(let dx=0;dx<2;dx++)expect(v.shots[0].some(m=>m.cell===sea.cell(b.x+dx,b.y+dy))).toBe(false);
+ }
+});
+it('completes a fixed fleet search more efficiently than the legacy hunter without repeated shots',()=>{
+ const totals=[0,0];
+ for(const smart of [false,true])for(let seed=1;seed<=10;seed++){
+  let g=sea.start(sea.create(0,seed,true)),count=0;
+  const visited=new Set<number>();
+  while(g.winner===null&&count<200){
+   g.turn=0;const v=sea.view(g,0);v.canSalvo=false;
+   const b=sea.bot(v,seed*1000+count,smart),c=sea.cell(b.x,b.y);
+   if(smart)expect(visited.has(c)).toBe(false);
+   visited.add(c);g=sea.attack(g,0,b.x,b.y,false,false);count++;
+  }
+  expect(g.winner).toBe(0);totals[smart?1:0]!+=count;
+ }
+ expect(totals[1]!).toBeLessThan(totals[0]!*.9);
+});
+it('does not extend a line beyond the size of the only remaining carrier',()=>{
+ const g=sea.start(sea.create(0,4,true));
+ const carrier=g.fleets[1].find(s=>s.kind==='carrier')!;
+ for(const s of g.fleets[1])if(s!==carrier)s.hits=sea.cells(s);
+ const hits=sea.cells(carrier).filter(c=>carrier.w===3?Math.floor(c/12)===carrier.y:c%12===carrier.x);
+ const v=sea.view(g,0);v.canSalvo=false;v.shots[0]=hits.map(cell=>({cell,hit:true}));
+ const remaining=sea.cells(carrier).filter(c=>!hits.includes(c));
+ for(let seed=0;seed<20;seed++){const b=sea.bot(v,seed);expect(remaining).toContain(sea.cell(b.x,b.y));}
+});

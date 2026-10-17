@@ -34,7 +34,7 @@ export type BarGameAction =
   | { type: 'naval-attack'; x: number; y: number; salvo: boolean; vertical: boolean }
   | { type: 'naval-move'; x: number; y: number }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 15;
+export const ENGINE_VERSION = 16;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -58,6 +58,7 @@ function supportedVersion(version: number): boolean {
     version === 12 ||
     version === 13 ||
     version === 14 ||
+    version === 15 ||
     version === ENGINE_VERSION
   );
 }
@@ -456,7 +457,7 @@ export function advance(m: Runtime, now: number): Runtime {
       if (now < n.animationUntil) break;
       const at = n.animationUntil;
       if (n.game.kind === 'battleship') {
-        const b = sea.bot(sea.view(privateSea(n.game), 1), n.seed);
+        const b = sea.bot(sea.view(privateSea(n.game), 1), n.seed, n.engineVersion >= 16);
         n = command(n, 1, { type: 'naval-attack', ...b }, at);
       } else if (n.game.kind === 'checkers')
         n = perform(n, { type: 'checkers', path: checkers.bot(n.game) }, at, false);

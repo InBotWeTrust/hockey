@@ -255,7 +255,7 @@ export function attack(
   return n;
 }
 /** Receives only knowledge available to the acting player. */
-export function bot(v: View, seed: number) {
+function legacyBot(v: View, seed: number) {
   const rng = random(seed);
   const p = v.turn,
     known = v.shots[p],
@@ -312,4 +312,156 @@ export function bot(v: View, seed: number) {
     Math.floor(rng() * adjacent.length)
   ] ?? { x: c % 12, y: Math.floor(c / 12) };
   return { ...target, salvo: false, vertical: false };
+}
+
+/** Scores only placements consistent with public shots and the no-touch rule. */
+export function bot(v: View, seed: number, smart = true) {
+  if (!smart) return legacyBot(v, seed);
+  const rng = random(seed),
+    known = new Map(v.shots[v.turn].map((m) => [m.cell, m.hit]));
+  const blocked = new Set<number>();
+  for (const ship of v.enemySunk) {
+    for (
+      let y = Math.max(0, ship.y - 1);
+      y <= Math.min(11, ship.y + ship.h);
+      y++
+    )
+      for (
+        let x = Math.max(0, ship.x - 1);
+        x <= Math.min(11, ship.x + ship.w);
+        x++
+      )
+        blocked.add(cell(x, y));
+  }
+  const hits = [...known]
+    .filter(([c, hit]) => hit && !blocked.has(c))
+    .map(([c]) => c);
+  const fresh = Array.from({ length: 144 }, (_, c) => c).filter(
+    (c) => !blocked.has(c) && !known.has(c),
+  );
+  // Old water is reconsidered only after the search of untouched water is exhausted.
+  const targets = fresh.length
+    ? fresh
+    : Array.from({ length: 144 }, (_, c) => c).filter(
+        (c) => !blocked.has(c) && known.get(c) !== true,
+      );
+  const targetSet = new Set(targets),
+    scores = Array<number>(144).fill(0);
+  const remaining = shipTypes().filter(
+    (s) => !v.enemySunk.some((t) => t.id === s.id),
+  );
+  for (const template of remaining) {
+    const orientations =
+      template.w === template.h
+        ? [[template.w, template.h]]
+        : [
+            [template.w, template.h],
+            [template.h, template.w],
+          ];
+    for (const [w, h] of orientations as [number, number][]) {
+      for (let y = 0; y <= 12 - h; y++)
+        for (let x = 0; x <= 12 - w; x++) {
+          const footprint = cells({ ...template, x, y, w, h }),
+            occupied = new Set(footprint);
+          if (
+            footprint.some(
+              (c) =>
+                blocked.has(c) ||
+                (known.get(c) === false &&
+                  (fresh.length > 0 || template.kind !== "submarine")),
+            )
+          )
+            continue;
+          // A hit immediately outside a hypothetical ship would violate spacing.
+          if (
+            hits.some(
+              (c) =>
+                !occupied.has(c) &&
+                c % 12 >= x - 1 &&
+                c % 12 <= x + w &&
+                Math.floor(c / 12) >= y - 1 &&
+                Math.floor(c / 12) <= y + h,
+            )
+          )
+            continue;
+          const count = hits.filter((c) => occupied.has(c)).length;
+          const weight = count ? 100 * count * count : 1;
+          for (const c of footprint) if (targetSet.has(c)) scores[c]! += weight;
+        }
+    }
+  }
+  // Strong evidence: bridge gaps first, then extend a line before trying its sides.
+  for (let i = 0; i < hits.length; i++)
+    for (const b of hits.slice(i + 1)) {
+      const a = hits[i]!,
+        ax = a % 12,
+        ay = Math.floor(a / 12),
+        bx = b % 12,
+        by = Math.floor(b / 12);
+      if (ax !== bx && ay !== by) continue;
+      const distance = Math.abs(ax - bx) + Math.abs(ay - by);
+      if (distance > 3) continue;
+      const dx = Math.sign(bx - ax),
+        dy = Math.sign(by - ay);
+      const line = Array.from({ length: distance + 1 }, (_, j) =>
+        cell(ax + dx * j, ay + dy * j),
+      );
+      if (line.some((c) => blocked.has(c) || known.get(c) === false)) continue;
+      for (const c of line) if (targetSet.has(c) && scores[c]! > 0) scores[c]! += 10000;
+      for (const [x, y] of [
+        [ax - dx, ay - dy],
+        [bx + dx, by + dy],
+      ]) {
+        if (x! < 0 || x! >= 12 || y! < 0 || y! >= 12) continue;
+        const c = cell(x!, y!);
+        if (targetSet.has(c) && scores[c]! > 0) scores[c]! += 2000;
+      }
+    }
+  const ranked = targets
+    .map((c) => ({ c, score: scores[c]! + rng() * 0.01 }))
+    .sort((a, b) => b.score - a.score);
+  const best = ranked[0];
+  // In a valid unfinished match there is always an eligible cell.
+  if (!best) throw Error("No eligible naval target");
+  if (v.canSalvo) {
+    const width = v.airstrikeCharge === undefined ? 3 : 2,
+      height = 2;
+    const candidates: {
+      x: number;
+      y: number;
+      vertical: boolean;
+      score: number;
+    }[] = [];
+    for (const vertical of v.airstrikeCharge === undefined
+      ? [false, true]
+      : [false]) {
+      const w = vertical ? height : width,
+        h = vertical ? width : height;
+      for (let y = 0; y <= 12 - h; y++)
+        for (let x = 0; x <= 12 - w; x++) {
+          const area = Array.from({ length: w * h }, (_, i) =>
+            cell(x + (i % w), y + Math.floor(i / w)),
+          );
+          if (area.some((c) => !targetSet.has(c))) continue;
+          let score = 0;
+          for (let dy = 0; dy < h; dy++)
+            for (let dx = 0; dx < w; dx++) {
+              const c = cell(x + dx, y + dy);
+              if (targetSet.has(c)) score += scores[c]!;
+            }
+          candidates.push({ x, y, vertical, score: score + rng() * 0.01 });
+        }
+    }
+    candidates.sort((a, b) => b.score - a.score);
+    const salvo = candidates[0]!;
+    // Keep the turn when a single precise finishing shot is more useful.
+    if (salvo && salvo.score > best.score * 1.6)
+      return { x: salvo.x, y: salvo.y, vertical: salvo.vertical, salvo: true };
+  }
+  return {
+    x: best.c % 12,
+    y: Math.floor(best.c / 12),
+    vertical: false,
+    salvo: false,
+  };
 }
