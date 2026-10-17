@@ -1,3 +1,4 @@
+import {caretakerBlocked} from '../city/caretakerSchedule.js';
 import type {GameDockStatus} from '../city/gameDockStatus.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
@@ -282,7 +283,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
+      <CityMap maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
         onOpenDailyPlay={()=>navigate('/?view=daily')}
         onOpenTraining={()=>navigate('/?view=training')}
         onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
