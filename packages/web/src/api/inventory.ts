@@ -1,3 +1,4 @@
+import type { VisitorState } from '@hockey/game-core';
 import { apiFetch } from './apiFetch.js';
 import { showAmateurLevelRequiredError } from '../amateur/amateurAccess.js';
 import type { DuelInventoryResourceUnit, DuelInventoryTiming } from '@hockey/game-core';
@@ -74,6 +75,7 @@ export interface InventoryTransactionPage {
 }
 
 export interface InventoryState {
+  visitorCard?: VisitorState['card'];
   balances: {
     tokens: number;
     stars: number;

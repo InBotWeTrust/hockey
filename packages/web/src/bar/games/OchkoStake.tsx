@@ -1,3 +1,4 @@
+import { visitorChanged } from '../visitorApi.js';
 import { Star } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import type { BarGameSnapshot } from '@hockey/game-core';
@@ -53,6 +54,7 @@ export function OchkoStake({ onStarted }: { onStarted: (view: BarGameSnapshot) =
       pending.current = null;
       setUncertain(false);
     } catch (e) {
+      visitorChanged();
       setError(e instanceof Error ? e.message : 'Не удалось подтвердить ставку. Повтори отправку.');
       if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
         pending.current = null;

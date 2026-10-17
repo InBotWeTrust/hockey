@@ -1,3 +1,5 @@
+import { VisitorGameGate } from '../VisitorGameGate.js';
+import { visitorChanged } from '../visitorApi.js';
 import { useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CHARACTER_GAME, type GameCharacter } from '@hockey/game-core';
@@ -29,6 +31,7 @@ export function CharacterLaunch({
       const r = await gameApi.start(character, request.current);
       navigate(`/bar/games/match/${r.id}`);
     } catch (e) {
+      visitorChanged();
       setError(e instanceof Error ? e.message : 'Не удалось начать партию.');
     } finally {
       lock.current = false;
@@ -48,6 +51,7 @@ export function CharacterLaunch({
         alt={characterNames[character]}
       />
       <p className="modal-copy bonus-game-preview-modal__story">{gameCopy[kind].invite}</p>
+      <VisitorGameGate character={character} avatar={gameArt(kind, 'invite', character)}>
       {character === 'grigory' ? (
         <OchkoStake onStarted={(r) => navigate(`/bar/games/match/${r.id}`)} />
       ) : (
@@ -64,6 +68,7 @@ export function CharacterLaunch({
           </div>
         </>
       )}
+      </VisitorGameGate>
     </AccessibleModal>
   );
 }

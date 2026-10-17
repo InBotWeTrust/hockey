@@ -31,7 +31,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     await admin.query(`create schema ${schema}`);
     pool = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
     await pool.query(
-      "create table users(id uuid primary key,display_name text,avatar_url text,last_seen_at timestamptz,xp int not null default 100,experience int default 0,coins int default 0,account_kind text default 'player',blocked_at timestamptz)",
+      "create table users(id uuid primary key,display_name text,avatar_url text,last_seen_at timestamptz,xp int not null default 100,experience int default 0,coins int default 0,account_kind text default 'player',blocked_at timestamptz,timezone text default 'UTC')",
     );
     await pool.query(`create table user_currency_account(user_id uuid primary key references users(id), balance int not null default 0, reserved_balance int not null default 0);
       create table currency_ledger(id bigserial primary key,user_id uuid not null references users(id),reason text not null,available_delta int not null,reserved_delta int not null,balance_after int not null,reserved_after int not null,metadata jsonb not null default '{}',created_at timestamptz not null default now());`);
@@ -44,6 +44,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       '225_bar_armwrestling.sql',
       '226_bar_ochko_history.sql',
       '228_bar_battleship.sql',
+      '229_bar_visitor_card.sql',
     ])
       await pool.query(
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
@@ -72,7 +73,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     vi.spyOn(ochkoDeck, 'createPrivateOchko').mockImplementation((now,version=12,character=true) => version>=12?barOchkoSeries.create(Array.from({length:36},(_,i)=>35-i),now,character,0):barOchko.createOchko(1, now));
     await pool.query('update users set xp=100');
     await pool.query(
-      'truncate currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
+      'truncate bar_visitor_receipts,bar_visitor_accounts,currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
     );
   });
   it('schedules character arm matches and replays three seconds ahead', async () => {

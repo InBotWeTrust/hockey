@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { SqlDialoguePrivacy } from './dialoguePrivacy.js';
 import { readFile } from 'node:fs/promises';
 import { Pool } from 'pg';
@@ -11,26 +12,29 @@ const bob = '22222222-2222-4222-8222-222222222222';
 const turnId = '33333333-3333-4333-8333-333333333333';
 const match = { id: '44444444-4444-4444-8444-444444444444', character: 'maria' as const, result: 'loss' as const, startedAt: '2026-10-11T10:00:00.000Z', endedAt: '2026-10-11T10:01:00.000Z', surrendered: true, caughtCheats: 0 };
 describe.skipIf(!url)('dedicated bar memory database', () => {
-  const pool = new Pool({ connectionString: url });
+  const schema = 'bar_memory_' + randomUUID().replaceAll('-', '');
+  const admin = new Pool({ connectionString: url });
+  const pool = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
   beforeAll(async () => {
     const database = (await pool.query('select current_database() as name')).rows[0].name as string;
     if (!database.startsWith('uh_bar_memory_test_') && !database.endsWith('_test')) throw new Error('Dedicated bar test database required');
-    await pool.query('drop schema public cascade; create schema public; create table users(id uuid primary key)');
-    for (const file of ['199_bar_conversations.sql', '200_bar_character_memory.sql', '201_bar_dialogue_privacy.sql'])
+    await admin.query(`create schema ${schema}`);
+    await pool.query("create table users(id uuid primary key,timezone text default 'UTC'); create table bar_conflicts(user_id uuid,day date,intervening boolean,blocked_until timestamptz); create table bar_oleg_fights(id uuid,user_id uuid,status text,acknowledged boolean,created_at timestamptz)");
+    for (const file of ['199_bar_conversations.sql', '200_bar_character_memory.sql', '201_bar_dialogue_privacy.sql','229_bar_visitor_card.sql'])
       await pool.query(await readFile(new URL(`../../db/migrations/${file}`, import.meta.url), 'utf8'));
   });
   beforeEach(async () => {
     await pool.query('truncate users cascade; truncate bar_character_stories');
     await pool.query('insert into users values($1),($2)', [alice,bob]);
   });
-  afterAll(async () => { await pool.end(); });
+  afterAll(async () => { await pool.end(); await admin.query(`drop schema if exists ${schema} cascade`); await admin.end(); });
   it('commits the answer, told history and durable reflection job together', async () => {
     const store = new SqlConversationStore(pool);
     await store.reserve(alice,'maria',turnId,0);
     await store.complete(alice,'maria',{ id: turnId, user: 'Расскажи о проигрыше', assistant: 'Я однажды проиграла.', createdAt: new Date().toISOString() }, ['maria-first-loss']);
     expect((await pool.query('select story_id from bar_told_stories')).rows).toEqual([{ story_id: 'maria-first-loss' }]);
     expect((await pool.query('select target_revision from bar_memory_jobs')).rows).toEqual([{ target_revision: 1 }]);
-    await expect(store.complete(alice,'maria',{ id: turnId, user: 'Повтор', assistant: 'Повтор', createdAt: new Date().toISOString() })).rejects.toThrow('reservation_lost');
+    await expect(store.complete(alice,'maria',{ id: turnId, user: 'Повтор', assistant: 'Повтор', createdAt: new Date().toISOString() })).rejects.toMatchObject({code:'conversation_stale'});
     expect((await store.read(alice,'maria')).turns).toHaveLength(1);
   });
   it('stores a result once and rejects reassignment or modified retries', async () => {
@@ -172,6 +176,8 @@ describe.skipIf(!url)('dedicated bar memory database', () => {
     expect((await pool.query('select * from bar_memory_jobs')).rows).toHaveLength(0);
   });
   it('summarizes only the old prefix and resumes an expired worker lease', async () => {
+    // This memory test needs 24 turns; visitor quota boundaries have their own suite.
+    await pool.query(`update bar_visitor_settings set settings=jsonb_set(jsonb_set(settings,'{freeMessages}','100'),'{cardMessages}','100')`);
     const store = new SqlConversationStore(pool);
     for (let i=0;i<24;i++) {
       const id = `77777777-7777-4777-8777-${String(i).padStart(12,'0')}`;
