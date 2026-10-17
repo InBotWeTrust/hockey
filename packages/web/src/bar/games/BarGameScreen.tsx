@@ -212,7 +212,7 @@ export function GameTable({
         now={now}
         onExit={onExit}
         onRules={onRules}
-        notice={notice ?? (game.kind === 'battleship' && game.phase === 'setup' && !view.ready?.players.includes(player) ? navalHint : null)}
+        notice={notice ?? (game.kind === 'battleship' && !view.ready?.players.includes(player) ? navalHint : null)}
         onRetry={onRetry}
       />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>

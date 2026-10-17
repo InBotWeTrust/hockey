@@ -58,6 +58,7 @@ export function OchkoField({
       pregame ||
       disabled ||
       game.done[player] ||
+      (!!series && series.phase !== 'play') ||
       game.winner !== null ||
       now < game.dealUntil[player];
   return (
@@ -90,7 +91,7 @@ export function OchkoField({
           />
         ))}
       </div>
-      {!pregame && (!series || series.phase === 'play') && (
+      {!pregame && (!series || series.phase === 'play' || series.phase === 'reveal' || series.phase === 'countdown') && (
         <div className="bar-ochko-actions">
           <button
             className="btn btn--ghost"
