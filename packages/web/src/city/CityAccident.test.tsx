@@ -1,11 +1,11 @@
 import {render,screen} from '@testing-library/react';
 import {expect,it} from 'vitest';
 import {CityAccident} from './CityAccident.js';
-import {createAccident} from './accident.js';
+import {accidentWidth,createAccident} from './accident.js';
 it('shows damage after contact and keeps police in the remaining upper lane',()=>{
  const event=createAccident(1000,()=>.5);
  const view=render(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt}}/>);
- expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-accident-sedan');
+ expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain(`city-accident-${event.vehicleA}`);
  expect(screen.queryByTestId('accident-police')).toBeNull();
  view.rerender(<CityAccident incident={{event,phase:'police-wait',sampledAt:event.policeArrived}}/>);
  expect(screen.getByTestId('accident-police').style.getPropertyValue('--lane-bottom')).not.toBe(screen.getByTestId('accident-sedan').style.getPropertyValue('--lane-bottom'));
@@ -28,7 +28,22 @@ it('flashes a small contact burst between the two fronts only at the impact inst
  const event=createAccident(1000,()=>.5);
  const view=render(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt}}/>);
  const burst=screen.getByTestId('accident-contact-burst');
- expect(burst.style.left).toBe(`${event.impact+3.6}%`);expect(burst.children).toHaveLength(3);
+ expect(burst.style.left).toBe(`${event.impact+accidentWidth(event.vehicleA!)}%`);expect(burst.children).toHaveLength(3);
  view.rerender(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt+1000}}/>);
  expect(screen.queryByTestId('accident-contact-burst')).toBeNull();
+});
+
+it('keeps bus size and contact position through damage and supports legacy saved incidents',()=>{
+ const event={...createAccident(1000,()=>.5),vehicleA:'bus' as const,vehicleB:'suv' as const};
+ const view=render(<CityAccident incident={{event,phase:'approach',sampledAt:event.start}}/>);
+ expect(screen.getByTestId('accident-sedan').style.width).toBe('7%');
+ expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-traffic-bus-');
+ view.rerender(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt}}/>);
+ expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-accident-bus-');
+ expect(screen.getByTestId('accident-taxi').style.left).toBe(`${event.impact+7}%`);
+ const {vehicleA,vehicleB,...legacy}=event;
+ void vehicleA;void vehicleB;
+ view.rerender(<CityAccident incident={{event:legacy,phase:'waiting',sampledAt:event.collisionAt}}/>);
+ expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-accident-sedan-');
+ expect(screen.getByTestId('accident-taxi').querySelector('img')?.src).toContain('city-accident-taxi-');
 });
