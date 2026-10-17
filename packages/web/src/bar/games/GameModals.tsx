@@ -51,6 +51,10 @@ export function GameResult({
 }) {
   const game = view.runtime.game;
   const finalScores = game.kind === 'ochko' ? game.series?.totals ?? game.scores : null;
+  const technicalScore = game.kind === 'ochko' && game.series?.technical;
+  const challengePenalty = game.kind === 'ochko' && game.series && !technicalScore
+    ? Math.max(0, game.series.history.reduce((sum, round) => sum + round.awards[view.player], 0) - game.series.totals[view.player])
+    : 0;
   const winner = game.winner;
   const outcome = winner === 'draw' ? 'draw' : winner === view.player ? 'win' : 'loss';
   const title = outcome === 'draw' ? 'Ничья' : outcome === 'win' ? 'Победа' : 'Поражение';
@@ -98,7 +102,8 @@ export function GameResult({
           <strong>{view.stake.payout > view.stake.amount ? '+' : view.stake.payout < view.stake.amount ? '−' : ''}{Math.abs(view.stake.payout - view.stake.amount)}</strong>
         </div>
       )}
-      {finalScores && <p className="bar-game-result__score" aria-label="Итоговый счёт"><span>Счёт:</span><strong>{finalScores[view.player]} : {finalScores[view.player === 0 ? 1 : 0]}</strong>{game.kind === 'ochko' && !!game.series?.history.length && <span className="bar-game-result__rounds">({game.series.history.map(round => `${round.awards[view.player]}:${round.awards[view.player === 0 ? 1 : 0]}`).join(', ')})</span>}</p>}
+      {finalScores && <p className="bar-game-result__score" aria-label="Итоговый счёт"><span>{technicalScore ? 'Технический счёт:' : 'Счёт:'}</span><strong>{finalScores[view.player]} : {finalScores[view.player === 0 ? 1 : 0]}</strong>{game.kind === 'ochko' && !!game.series?.history.length && <span className="bar-game-result__rounds">({technicalScore ? 'раздачи: ' : ''}{game.series.history.map(round => `${round.awards[view.player]}:${round.awards[view.player === 0 ? 1 : 0]}`).join(', ')})</span>}</p>}
+      {challengePenalty > 0 && <p className="modal-copy">Штраф за проверку счёта: −{challengePenalty}</p>}
       <div className="modal-actions">
         {view.character ? (
           <>
