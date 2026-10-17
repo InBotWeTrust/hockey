@@ -13,3 +13,14 @@ it('shows damage after contact and keeps police in the remaining upper lane',()=
  view.rerender(<CityAccident incident={{event,phase:'departing',sampledAt:event.departAt}}/>);
  expect(screen.getByTestId('accident-sedan')).toHaveClass('is-leftward');expect(screen.getByTestId('accident-taxi')).not.toHaveClass('is-leftward');
 });
+it('bounces both rear ends only at fresh contact, never when restoring an old collision',()=>{
+ const event=createAccident(1000,()=>.5);
+ const view=render(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt}}/>);
+ expect(screen.getByTestId('accident-sedan')).toHaveClass('has-impact');
+ expect(screen.getByTestId('accident-taxi')).toHaveClass('has-impact');
+ expect(screen.getByTestId('accident-sedan').style.getPropertyValue('--impact-tilt')).toBe('1.5deg');
+ expect(screen.getByTestId('accident-taxi').style.getPropertyValue('--impact-tilt')).toBe('-1.5deg');
+ view.rerender(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt+5000}}/>);
+ expect(screen.getByTestId('accident-sedan')).not.toHaveClass('has-impact');
+ expect(screen.getByTestId('accident-taxi')).not.toHaveClass('has-impact');
+});

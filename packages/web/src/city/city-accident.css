@@ -7,3 +7,9 @@
 .city-police-beacons i+i{background:#ff514a;box-shadow:0 0 5px 2px #ff3838;animation-delay:-.4s}
 @keyframes city-police-flash{0%,35%{opacity:1}36%,100%{opacity:.12}}
 @media(prefers-reduced-motion:reduce){.city-police-beacons i{animation:none;opacity:.5}}
+
+/* Front wheels stay planted while the rear suspension briefly lifts and settles. */
+.city-incident .city-incident-car.has-impact{transform-origin:92% 85%;animation:city-incident-impact .45s ease-out var(--incident-delay) both}
+.city-incident .city-incident-car.has-impact.is-leftward{transform-origin:8% 85%}
+@keyframes city-incident-impact{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-.5px) rotate(var(--impact-tilt))}60%{transform:translateY(0) rotate(var(--impact-recoil))}}
+@media(prefers-reduced-motion:reduce){.city-incident .city-incident-car.has-impact{animation:none}}
