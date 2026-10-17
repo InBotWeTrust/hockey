@@ -30,8 +30,8 @@ export function useCaretakerVisit(owner:string|undefined,blocked:boolean):Careta
 }
 const locations={yard:{x:12,y:54.5},stadium:{x:44,y:65},pro:{x:86,y:65}};
 export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeof locations}){
- const point=kind==='flood'&&venue==='yard'?{x:8,y:57.2}:locations[venue];
+ const point=locations[venue];
  return <div className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
-  <div className="city-caretaker-step"><img src={kind==='flood'?'/sprites/city-grigory-flood-selected-v3.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
+  <div className="city-caretaker-step"><img src={kind==='flood'?'/sprites/city-grigory-flood-long-v4.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
  </div>;
 }
