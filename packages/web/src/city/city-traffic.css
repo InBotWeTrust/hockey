@@ -1,0 +1,17 @@
+.city-traffic{position:absolute;inset:0;z-index:1;pointer-events:none;overflow:hidden;user-select:none}
+.city-vehicle{position:absolute;left:-10%;bottom:var(--lane-bottom);width:3.6%;animation:city-drive var(--travel) linear both;pointer-events:none}
+.city-vehicle.is-bus{width:7%}.city-vehicle.is-leftward{left:110%;animation-name:city-drive-back}
+.city-vehicle>img{display:block;width:100%;filter:drop-shadow(0 2px 1px #0008)}.city-vehicle.is-leftward>img{transform:scaleX(-1)}
+@keyframes city-drive{from{left:-10%}to{left:110%}}@keyframes city-drive-back{from{left:110%}to{left:-10%}}
+.city-headlights{display:none;position:absolute;right:0;bottom:27%;width:34%;height:18%;background:linear-gradient(90deg,#fff5ba99,transparent);clip-path:polygon(0 40%,100% 0,100% 100%,0 60%);transform:translateX(95%);filter:blur(2px)}
+.city-taillights{display:none;position:absolute;left:1%;bottom:28%;width:3px;height:3px;background:#f44444;box-shadow:0 0 5px #f22}
+.is-leftward .city-headlights{right:auto;left:0;transform:translateX(-95%) scaleX(-1)}.is-leftward .city-taillights{left:auto;right:1%}
+.is-night .city-headlights,.is-night .city-taillights{display:block}.is-night .city-vehicle>img{filter:brightness(.65) drop-shadow(0 2px 1px #0008)}
+.city-exhaust{position:absolute;left:0;bottom:15%;width:1px;height:1px;z-index:-1}.is-leftward .city-exhaust{left:auto;right:0}
+.city-exhaust i{position:absolute;right:0;top:0;width:7px;height:4px;border-radius:50%;background:#e0e8ee52;filter:blur(1.2px);animation:city-exhaust 1.8s ease-out infinite;--drift:-18px}.city-exhaust i:nth-child(2){animation-delay:-.6s}.city-exhaust i:nth-child(3){animation-delay:-1.2s}.is-leftward .city-exhaust i{right:auto;left:0;--drift:18px}
+@keyframes city-exhaust{0%{opacity:0;transform:translate(0,0) scale(.45)}15%{opacity:.45}100%{opacity:0;transform:translate(var(--drift),-5px) scale(2.4)}}
+.city-plane{position:absolute;top:7%;left:-10%;width:2.8%;animation:city-plane-flight 55s linear both}.city-plane img{display:block;width:100%;position:relative;z-index:1}
+.city-plane::before,.city-plane::after{content:"";position:absolute;right:78%;width:360%;height:1px;background:linear-gradient(to right,transparent,#f0f7ff0a 20%,#f0f7ff3d);filter:blur(.7px);transform:rotate(-1deg);transform-origin:right center}.city-plane::before{top:52%}.city-plane::after{top:62%;width:330%;opacity:.65}.is-night .city-plane{filter:brightness(.55)}
+@keyframes city-plane-flight{from{left:-10%}to{left:110%}}
+.city-traffic.is-paused *{animation-play-state:paused!important}
+@media(prefers-reduced-motion:reduce){.city-traffic{display:none}}

@@ -10,7 +10,7 @@
 /* Character and the entire hose are one raster; no joined vector extension. */
 .city-caretaker--flood{animation:none;translate:var(--caretaker-edge-shift,0px) 0}
 .city-caretaker--flood .city-caretaker-step{position:relative;animation:none}
-.city-caretaker--flood img{position:absolute;left:50%;top:100%;width:auto;max-width:none;height:calc(var(--caretaker-height)*2.2);transform:translate(-91.7%,-83.2%)}
+.city-caretaker--flood img{position:absolute;left:50%;top:100%;width:auto;max-width:none;height:calc(var(--caretaker-height)*2.2);transform:translate(-91.7%,-73.5%)}
 
 .city-water{position:absolute;z-index:1;left:calc(50% + var(--caretaker-height)*.25);top:calc(100% - var(--caretaker-height)*.46);width:calc(var(--caretaker-height)*.4);height:calc(var(--caretaker-height)*.48);pointer-events:none}
 .city-water-stream{position:absolute;inset:0;clip-path:polygon(0 0,12% 0,100% 92%,80% 100%,40% 70%);background:repeating-linear-gradient(35deg,transparent 0 2px,#eafaffaa 3px,transparent 4px 6px);animation:city-water-flow .65s linear infinite}

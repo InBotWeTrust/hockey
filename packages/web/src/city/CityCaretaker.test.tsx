@@ -15,12 +15,12 @@ it('persists an interrupted visit and does not resume it after a game or page re
 it('uses both existing caretaker sprites and never intercepts map gestures',()=>{
  const view=render(<CityCaretaker kind="flood" venue="yard"/>);
  expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('svg')).toBeNull();
- expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')).toHaveAttribute('src','/sprites/city-grigory-flood-long-v4.webp');
+ expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')).toHaveAttribute('src','/sprites/city-grigory-flood-long-v6.webp');
  view.rerender(<CityCaretaker kind="scrape" venue="yard"/>);
  expect(screen.getByRole('img',{name:'Григорий чистит снег'}).querySelector('img')).toHaveAttribute('src','/sprites/rink-caretaker-scrape.webp');
 });
 
-it('keeps the hose outside the viewport after the map scrolls to its left edge',()=>{
+it('keeps the caretaker fixed to the world when the map scrolls',()=>{
  let imageLeft=150;
  const rect=(left:number)=>({left,right:left+400,top:0,bottom:100,x:left,y:0,width:400,height:100,toJSON:()=>({})}) as DOMRect;
  const natural=vi.spyOn(HTMLImageElement.prototype,'naturalWidth','get').mockReturnValue(1536);
@@ -32,8 +32,9 @@ it('keeps the hose outside the viewport after the map scrolls to its left edge',
   render(<div data-testid="viewport"><div><CityCaretaker kind="flood" venue="yard"/></div></div>);
   const image=screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')!;
   expect(image.getBoundingClientRect().left).toBeLessThanOrEqual(80);
+  const before=image.closest('.city-caretaker')!.getAttribute('style');
   imageLeft=250;fireEvent.scroll(screen.getByTestId('viewport'));
-  expect(image.getBoundingClientRect().left).toBeLessThanOrEqual(80);
+  expect(image.closest('.city-caretaker')!.getAttribute('style')).toBe(before);
  }finally{bounds.mockRestore();natural.mockRestore();}
 });
 
