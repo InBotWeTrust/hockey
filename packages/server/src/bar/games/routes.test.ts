@@ -87,3 +87,10 @@ it('accepts bounded arm input and Oleg, but never offers Grigory for free', () =
   expect(gameAction.safeParse({ ...input, support: 2 }).success).toBe(false);
   expect(gameAction.safeParse({ ...input, seq: 0 }).success).toBe(false);
 });
+it('accepts naval and round-scoped commands while rejecting invalid coordinates and rounds',()=>{
+ expect(computerCharacter.safeParse('timofey').success).toBe(true);
+ expect(gameAction.safeParse({type:'naval-attack',x:11,y:11,salvo:false,vertical:false}).success).toBe(true);
+ expect(gameAction.safeParse({type:'naval-attack',x:12,y:0,salvo:false,vertical:false}).success).toBe(false);
+ expect(gameAction.safeParse({type:'ochko-next',round:4}).success).toBe(true);
+ expect(gameAction.safeParse({type:'ochko-challenge',round:0}).success).toBe(false);
+});

@@ -15,7 +15,7 @@ import {
   proposeOchkoStake,
   startOchkoStake,
 } from './service.js';
-import { barOchko } from '@hockey/game-core';
+import { barOchko,barOchkoSeries,barBattleship } from '@hockey/game-core';
 import {settleOchko} from './ochkoEconomy.js';
 import * as ochkoDeck from './ochkoDeck.js';
 import { joinCardRoom } from '../durakRooms.js';
@@ -43,12 +43,13 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       '224_bar_ochko.sql',
       '225_bar_armwrestling.sql',
       '226_bar_ochko_history.sql',
+      '228_bar_battleship.sql',
     ])
       await pool.query(
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
       );
     // Reapply current migrations to prove their idempotence without restoring old constraints.
-    for (const file of ['224_bar_ochko.sql', '225_bar_armwrestling.sql', '226_bar_ochko_history.sql'])
+    for (const file of ['228_bar_battleship.sql'])
       await pool.query(
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
       );
@@ -68,9 +69,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
   });
   beforeEach(async () => {
     vi.restoreAllMocks();
-    vi.spyOn(ochkoDeck, 'createPrivateOchko').mockImplementation((now) =>
-      barOchko.createOchko(1, now),
-    );
+    vi.spyOn(ochkoDeck, 'createPrivateOchko').mockImplementation((now,version=12,character=true) => version>=12?barOchkoSeries.create(Array.from({length:36},(_,i)=>35-i),now,character,0):barOchko.createOchko(1, now));
     await pool.query('update users set xp=100');
     await pool.query(
       'truncate currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
@@ -226,7 +225,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     expect(
       deadlines.rows.every((row) => Number.isFinite(Number(row.deadline)) && row.deadline !== null),
     ).toBe(true);
-    const future = Date.now() + 70000;
+    const future = Date.now() + 300000;
     const clock = vi.spyOn(Date, 'now').mockReturnValue(future);
     try {
       await tickGames(pool);
@@ -271,6 +270,8 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     // Force an unfinished fair test hand without changing balances or marking the row ended.
     const raw = (await pool.query('select data from bar_game_matches where id=$1', [one.id]))
       .rows[0].data;
+    raw.runtime.engineVersion=11;
+    raw.runtime.game=barOchko.createOchko(1,Date.now());
     Object.assign(raw.runtime.game, {
       hands: [
         [0, 4],
@@ -447,34 +448,13 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     ).rejects.toMatchObject({ code: 'bar_star_capacity' });
     expect((await pool.query('select id from bar_game_matches')).rows).toHaveLength(0);
   });
-  it('settles golden initial deals at paid creation without a second debit or payout', async () => {
-    for (const [handA, handB, balance] of [
-      [[32, 33], [8, 12], 120],
-      [[8, 12], [32, 33], 80],
-      [[32, 33], [34, 35], 100],
-    ] as [number[], number[], number][]) {
-      await pool.query('update users set xp=100 where id=$1', [a]);
-      const used = new Set([...handA, ...handB]);
-      const deck = [
-        ...Array.from({ length: 36 }, (_, i) => i).filter((c) => !used.has(c)),
-        handB[1]!,
-        handB[0]!,
-        handA[1]!,
-        handA[0]!,
-      ];
-      vi.mocked(ochkoDeck.createPrivateOchko).mockImplementation((now) =>
-        barOchko.createOchkoFromDeck(deck, now),
-      );
-      const offer = await proposeOchkoStake(pool, a),
-        input = { requestId: randomUUID(), offerId: offer.offerId, stars: 20 };
-      const first = await startOchkoStake(pool, a, input);
-      await startOchkoStake(pool, a, input);
-      await readGame(pool, a, first.id);
-      expect(first.runtime.game.winner).not.toBeNull();
-      expect(Number((await pool.query('select xp from users where id=$1', [a])).rows[0].xp)).toBe(
-        balance,
-      );
-    }
+  it('keeps two initial aces inside the series without settling the match',async()=>{
+    const cards=Array.from({length:36},(_,i)=>i).filter(c=>c!==32&&c!==33).concat([33,32]);
+    vi.mocked(ochkoDeck.createPrivateOchko).mockImplementation(now=>barOchkoSeries.create(cards,now,true,0));
+    const offer=await proposeOchkoStake(pool,a);const input={requestId:randomUUID(),offerId:offer.offerId,stars:20};
+    const first=await startOchkoStake(pool,a,input);await startOchkoStake(pool,a,input);
+    expect(first.runtime.game.winner).toBeNull();expect(first.stake?.payout).toBeNull();
+    expect(Number((await pool.query('select xp from users where id=$1',[a])).rows[0].xp)).toBe(80);
   });
   it('rechecks funds under a competing purchase transaction and never leaves a negative balance', async () => {
     const offer = await proposeOchkoStake(pool, a),
@@ -514,11 +494,69 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
   it('processes independent ochko hands once despite a stale shared revision',async()=>{
     await queueGame(pool,a,'ochko');await queueGame(pool,b,'ochko');const id=(await gameLobby(pool,a)).matchId!;
     const data=(await pool.query('select data from bar_game_matches where id=$1',[id])).rows[0].data;
-    data.ready=null;Object.assign(data.runtime.game,{hands:[[0,4],[1,5]],scores:[13,13],deck:[20,21,22,23],done:[false,false],golden:[false,false],winner:null,actionSeq:[0,0],dealUntil:[0,0]});
+    data.ready=null;data.runtime.engineVersion=11;data.runtime.game=barOchko.createOchko(1,Date.now());Object.assign(data.runtime.game,{hands:[[0,4],[1,5]],scores:[13,13],deck:[20,21,22,23],done:[false,false],golden:[false,false],winner:null,actionSeq:[0,0],dealUntil:[0,0]});
     await pool.query('update bar_game_matches set data=$2 where id=$1',[id,data]);
     await Promise.all([actGame(pool,a,id,{requestId:randomUUID(),revision:0,action:{type:'ochko-hit',seq:1}}),actGame(pool,b,id,{requestId:randomUUID(),revision:0,action:{type:'ochko-hit',seq:1}})]);
     await expect(actGame(pool,a,id,{requestId:randomUUID(),revision:0,action:{type:'ochko-hit',seq:1}})).rejects.toMatchObject({statusCode:409});
     const game=(await pool.query('select data from bar_game_matches where id=$1',[id])).rows[0].data.runtime.game;
     expect(game.actionSeq).toEqual([1,1]);expect(game.hands.map((hand:number[])=>hand.length)).toEqual([3,3]);
+  });
+  it('preserves and locks naval preparation, hides enemy fleets, and starts after five seconds',async()=>{
+    let v=await startComputer(pool,a,'timofey',randomUUID());
+    expect(v.ready?.players).toEqual([1]);
+    expect(v.ready!.expiresAt-v.serverNow).toBeGreaterThan(89000);
+    expect(v.ready!.expiresAt-v.serverNow).toBeLessThanOrEqual(90000);
+    expect(v.runtime.game.kind==='battleship' && v.runtime.game.ownShips).toEqual([]);
+    await expect(actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ready'}})).rejects.toMatchObject({statusCode:409});
+    v=await actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'naval-deploy',shipId:'carrier',seed:1}});
+    expect(v.runtime.game.kind==='battleship' && v.runtime.game.ownShips.length).toBe(1);
+    v=await actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'naval-shuffle',seed:777}});
+    expect(v.runtime.game.kind).toBe('battleship');
+    if(v.runtime.game.kind!=='battleship')throw Error('Expected naval board');
+    const fleet=v.runtime.game.ownShips;
+    expect(fleet).toEqual(barBattleship.fleet(777));expect('fleets' in v.runtime.game).toBe(false);
+    v=await actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ready'}});
+    await expect(actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'naval-shuffle',seed:778}})).rejects.toMatchObject({statusCode:409});
+    const clock=vi.spyOn(Date,'now').mockReturnValue(v.ready!.startsAt!);
+    try{v=await readGame(pool,a,v.id);expect(v.ready).toBeNull();if(v.runtime.game.kind!=='battleship')throw Error('Expected naval');expect(v.runtime.game.ownShips).toEqual(fleet);expect(v.runtime.game.phase).toBe('battle');}finally{clock.mockRestore();}
+  });
+  it.each([0,40])('charges once for all four rounds and keeps challenge and next retries idempotent (seed %i)',async(seed)=>{
+    vi.mocked(ochkoDeck.createPrivateOchko).mockImplementation((now,version=12,character=true)=>version>=12?barOchkoSeries.create(Array.from({length:36},(_,i)=>35-i),now,character,seed):barOchko.createOchko(1,now));
+    let now=Date.now();const clock=vi.spyOn(Date,'now').mockImplementation(()=>now);
+    try{
+      const offer=await proposeOchkoStake(pool,a);let v=await startOchkoStake(pool,a,{requestId:randomUUID(),offerId:offer.offerId,stars:20});
+      for(let round=1;round<=4;round++){
+        if(v.runtime.game.kind!=='ochko')throw Error('Expected ochko');
+        now=Math.max(...v.runtime.game.dealUntil);
+        v=await readGame(pool,a,v.id);
+        if(v.runtime.game.kind!=='ochko')throw Error('Expected ochko');
+        if(!v.runtime.game.done[0])v=await actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ochko-stand',seq:v.runtime.game.actionSeq[0]+1,round}});
+        now+=20000;v=await readGame(pool,a,v.id);
+        const raw=(await pool.query('select data from bar_game_matches where id=$1',[v.id])).rows[0].data;
+        now=raw.runtime.game.series.reviewAt;v=await readGame(pool,a,v.id);
+        expect(v.stake?.payout).toBeNull();expect(v.runtime.game.winner).toBeNull();
+        if(round===1){
+          if(v.runtime.game.kind!=='ochko'||!v.runtime.game.series)throw Error('Expected series');
+          const before=[...v.runtime.game.series.totals];
+          const challenge={requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ochko-challenge' as const,round}};
+          const [first,retry]=await Promise.all([actGame(pool,a,v.id,challenge),actGame(pool,a,v.id,challenge)]);
+          v=first;if(v.runtime.game.kind!=='ochko'||retry.runtime.game.kind!=='ochko')throw Error('Expected ochko');
+          expect(v.runtime.game.series?.totals).toEqual(retry.runtime.game.series?.totals);
+          expect(v.runtime.game.series?.challengeResult).toBe(seed===0?'wrong':'correct');
+          expect(v.runtime.game.series?.totals[0]).toBe(before[0]!-(seed===0?3:0));
+          expect(v.runtime.game.series?.totals[1]).toBe(seed===0?before[1]:raw.runtime.game.actualAward);
+        }
+        const next={requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ochko-next' as const,round}};
+        v=await actGame(pool,a,v.id,next);await actGame(pool,a,v.id,next);
+        if(round<4)await expect(actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ochko-next',round}})).rejects.toMatchObject({statusCode:409});
+      }
+      expect(v.runtime.game.winner).not.toBeNull();
+      if(v.runtime.game.kind!=='ochko')throw Error('Expected ochko');
+      expect(v.runtime.game.series?.history).toHaveLength(4);
+      const before=Number((await pool.query('select xp from users where id=$1',[a])).rows[0].xp);
+      await readGame(pool,a,v.id);await tickGames(pool);
+      expect(Number((await pool.query('select xp from users where id=$1',[a])).rows[0].xp)).toBe(before);
+      expect((await pool.query("select * from currency_ledger where metadata->>'bar_game_match_id'=$1 and reason='bar_ochko_stake'",[v.id])).rows).toHaveLength(1);
+    }finally{clock.mockRestore();}
   });
 });

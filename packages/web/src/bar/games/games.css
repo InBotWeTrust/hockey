@@ -1104,7 +1104,9 @@
   width: clamp(52px, 19vw, 82px);
   height: auto;
   aspect-ratio: 2/3;
-  object-fit: contain;
+  object-fit: fill;
+  overflow: hidden;
+  clip-path: inset(0 round 6px);
   user-select: none;
   animation: bar-ochko-deal 350ms ease-out;
 }
@@ -1316,7 +1318,7 @@
   min-height: 0;
   box-sizing: border-box;
   gap: 8px;
-  padding-bottom: 0;
+  padding-bottom: 10px;
 }
 .bar-game-screen--playing[data-game='ochko'][data-character='grigory'] .bar-ochko-field {
   min-height: 0;
@@ -1430,4 +1432,253 @@
 .bar-dartboard-rotor { transition: transform 100ms linear; }
 @media (prefers-reduced-motion: reduce) {
   .bar-dartboard-rotor { transition: none; }
+}
+
+/* Naval rules draw a separate board over the character/table scene. */
+.bar-game-screen--playing[data-game='battleship'] {
+  background: #102333;
+  color: #e9f2f8;
+  height: 100dvh;
+  min-height: 0;
+}
+.bar-game-screen--playing[data-game='battleship'][data-character='timofey'] {
+  --naval-scene-height: clamp(560px, 90dvh, 760px);
+  background: linear-gradient(to bottom, #21140e 0, transparent 120px, transparent calc(var(--naval-scene-height) - 140px), #21140e calc(var(--naval-scene-height) + 40px)),
+    #21140e url('/bar/games/battleship-timofey-table-v1.webp') center 40px / max(100%, calc(var(--naval-scene-height) * 2 / 3)) auto no-repeat;
+}
+.bar-game-field--battleship {
+  flex: 1;
+  min-height: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  overflow: auto;
+}
+.bar-naval {
+  width: min(100%, 560px);
+  margin: auto;
+  padding-top: clamp(140px, calc(29dvh - 40px), 230px);
+}
+.bar-naval-board {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  aspect-ratio: 1;
+  width: min(100%, max(240px, calc(100dvh - 370px)));
+  margin: auto;
+  background: #1b3347;
+  border: 2px solid #93b8d0;
+  box-shadow: 0 8px 20px #0008;
+}
+.bar-naval-cell {
+  min-width: 0;
+  padding: 0;
+  border: 1px solid #64859a66;
+  background: transparent;
+  color: white;
+  font-size: clamp(14px, 5vw, 26px);
+  touch-action: manipulation;
+}
+.bar-naval-cell[data-ship='true'] { background: #71869b; }
+.bar-naval-cell[data-kind='carrier'] { background: #567ab5; }
+.bar-naval-cell[data-kind='submarine'] { background: #34a9af; }
+.bar-naval-cell[data-maneuver='true'] { outline: 2px solid #76e0da; outline-offset: -3px; }
+.bar-naval-cell[data-hit='true'] { background: #9f363d; }
+.bar-naval-cell[data-selected='true'] { background: #d0a53d; box-shadow: inset 0 0 0 2px white; }
+.bar-naval-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 4px 0;
+}
+.bar-naval-toolbar:first-child { min-height: 36px; align-items: center; }
+.bar-naval-toolbar .btn { min-height: 32px; font-size: 12px; padding: 6px 10px; }
+.bar-naval-toolbar p { margin: 0; font-size: 12px; }
+.bar-game-menu--series .game-scoreboard__metric--timer { padding: 1px 4px; gap: 0; }
+.bar-game-menu--series [role='timer'] .game-scoreboard__value { font-size: 20px; }
+.bar-ochko-clock-phase { font-size: 7px; line-height: 1; }
+@media (max-width: 600px) {
+  .bar-game-screen--playing[data-game='battleship'] { width: 100%; max-width: none; }
+}
+.bar-ochko-hand { position: relative; }
+.bar-ochko-sum { position: absolute; font-size: 22px; z-index: 2; text-shadow: 0 2px 4px #000; }
+.bar-ochko-sum--opponent { top: -30px; left: 0; color: #ff7474; }
+.bar-ochko-sum--self { bottom: -30px; right: 0; color: #82db9d; }
+.bar-game-screen--playing[data-game='ochko'][data-character='grigory'] .bar-ochko-field--series {
+  padding-top: max(12px, calc(58dvh - 140px));
+}
+.bar-ochko-field--series .bar-ochko-card {
+  animation-duration: 700ms;
+  animation-fill-mode: both;
+  width: min(19vw, 8.5dvh, 82px);
+  min-width: 0;
+  flex-shrink: 1;
+}
+.bar-ochko-field--series .bar-ochko-hand { flex-wrap: nowrap; }
+.bar-naval-grid {
+  display:grid;
+  grid-template-columns:18px minmax(0,1fr);
+  grid-template-rows:18px minmax(0,1fr);
+  aspect-ratio:1;
+  width:min(100%,max(240px,calc(100dvh - 370px)));
+  margin:auto;
+}
+.bar-naval-grid .bar-naval-board { width:100%; margin:0; box-sizing:border-box; grid-template-rows:repeat(12,minmax(0,1fr)); }
+.bar-naval-cell { min-height:0; line-height:1; }
+.bar-naval-columns,.bar-naval-rows { display:grid; color:#f4deb3; font-size:11px; line-height:1; text-align:center; align-items:center; }
+.bar-naval-columns { grid-template-columns:repeat(12,minmax(0,1fr)); }
+.bar-naval-rows { grid-template-rows:repeat(12,minmax(0,1fr)); }
+.bar-game-name-stack { display:flex; min-width:0; flex-direction:column; align-items:flex-end; }
+.bar-game-ready-label { color:#b9d8c3; font-size:9px; line-height:1.1; }
+.bar-naval-toolbar .btn[aria-pressed='true'] {
+  color:#fff8e5;
+  border-color:#f5cc79;
+  background:linear-gradient(135deg,#a96032dd,#63402ce6);
+  box-shadow:inset 0 0 0 1px #ffe0a855,0 2px 8px #0004;
+}
+.bar-naval-toolbar .btn:disabled { opacity:.35; box-shadow:none; cursor:not-allowed; }
+.bar-naval-toolbar .btn[aria-pressed='false'] { background:#241c19c9; border-color:#c4c7ce80; color:#e5e4df; }
+.bar-naval-toolbar .btn { padding:6px 8px; letter-spacing:.02em; }
+@media (max-width:360px) { .bar-naval-toolbar .btn { font-size:11px; padding:6px; letter-spacing:.01em; } }
+
+.bar-naval-grid { position: relative; }
+.bar-naval-board[data-setup='true'] { touch-action: none; user-select: none; -webkit-user-select: none; }
+.bar-naval-cell[data-drag-source='true'] { opacity: .3; }
+.bar-naval-cell[data-preview='valid'] { background: #4da67e !important; opacity: .85; }
+.bar-naval-cell[data-preview='invalid'] { background: #bb5050 !important; opacity: .85; }
+.bar-naval-rotate { position: absolute; z-index: 4; width: 36px; height: 36px; background: #263d4e; color: white; font-size: 26px; }
+
+.bar-game-notice-row .durak-turn-notice { text-wrap: balance; }
+.bar-naval:has(.bar-naval-reserve) { padding-top: clamp(28px, calc(29dvh - 162px), 108px); }
+.bar-naval-reserve { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 5px; margin: 0 0 8px 18px; }
+.bar-naval-reserve-ship { display:flex; align-items:center; justify-content:center; gap:5px; min-height:50px; box-sizing:border-box; padding:8px 4px; border:1px solid #78909e; border-radius:8px; background:#1b3347e8; color:#fff; font-size:10px; }
+.bar-naval-reserve-ship:disabled { opacity:.4; }
+.bar-naval-miniature { display:grid; gap:1px; flex-shrink:0; }
+.bar-naval-miniature i { width:7px; height:7px; background:#b2c6d2; }
+
+.bar-game-screen[data-game='battleship'] .game-scoreboard__metric--timer { padding-inline: 4px; }
+.bar-game-screen[data-game='battleship'] [role='timer'] .game-scoreboard__value { font-size: 20px; }
+
+/* The same ship palette is used in the reserve and on either visible fleet. */
+[data-ship-color='carrier'] { --naval-ship-color: #9682d6; }
+[data-ship-color='submarine'] { --naval-ship-color: #43bbc2; }
+[data-ship-color='standard-4'] { --naval-ship-color: #e6a35d; }
+[data-ship-color='standard-3'] { --naval-ship-color: #659ee0; }
+[data-ship-color='standard-2'] { --naval-ship-color: #79b878; }
+[data-ship-color='standard-1'] { --naval-ship-color: #d37eab; }
+.bar-naval-reserve-ship[data-ship-color] { border-color: var(--liquid-border); }
+.bar-naval-reserve-ship .bar-naval-miniature i { background: var(--naval-ship-color); }
+.bar-naval-cell[data-ship-color] { background: var(--naval-ship-color); }
+.bar-naval-cell[data-ship-color][data-selected='true'] { background: var(--naval-ship-color); box-shadow: inset 0 0 0 2px white; }
+.bar-naval-cell[data-ship-color][data-hit='true'] { background: var(--naval-ship-color); color: #5d101c; font-weight: 900; box-shadow: inset 0 0 0 2px #842733; }
+
+.bar-naval-toolbar--ready { padding-top: 14px; padding-bottom: 8px; }
+.bar-naval-toolbar--ready .btn { min-width: 132px; min-height: 46px; padding: 12px 28px; font-size: 16px; }
+
+.bar-naval-board { position: relative; }
+.bar-naval-cell[data-ship-color][data-selected='true'] { box-shadow: none; }
+.bar-naval-ship-outline { position: absolute; box-sizing: border-box; border: 2px solid white; pointer-events: none; z-index: 2; }
+
+.bar-game-screen[data-game='battleship'] .bar-game-menu .durak-menu__row { grid-template-columns: minmax(0, 1fr) 68px minmax(0, 1fr); }
+
+/* Center the board itself; reserve equal gutters around its coordinates. */
+.bar-naval-grid { box-sizing: border-box; padding-right: 18px; aspect-ratio: auto; grid-template-rows: 18px auto; }
+.bar-naval-reserve { margin-right: 18px; }
+
+.bar-naval-reserve-ship {
+  background: var(--liquid-card-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+  color: var(--liquid-ink);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+.bar-naval-reserve-ship:disabled { opacity: .5; border-color: var(--liquid-border-soft); }
+
+.bar-naval-cell { position: relative; }
+.bar-naval-cell[data-hit='true'], .bar-naval-cell[data-ship-color][data-hit='true'] { box-shadow: none; }
+.bar-naval-damage { position:absolute; width:42%; height:42%; left:29%; top:29%; border-radius:50%; background:radial-gradient(circle,#151b20 28%,#43292b 50%,#d68b61 65%,#f3c59a88 72%,transparent 75%); box-shadow:0 0 5px #100c0b99; }
+.bar-naval-miss { position:absolute; width:16%; height:16%; left:42%; top:42%; border-radius:50%; background:#d0e6ed; box-shadow:0 0 3px #d0e6ed66; }
+.bar-naval-impact { position:absolute; pointer-events:none; z-index:3; inset:10%; border-radius:50%; animation:naval-splash 1600ms ease-out both; border:2px solid #d6f5ff; background:radial-gradient(circle,#e8fbff99,transparent 65%); box-shadow:0 0 10px #91d4eb; }
+.bar-naval-cell[data-impact='hit'] .bar-naval-impact { border-color:#ffd09a; background:radial-gradient(circle,#fff4d6 5%,#ffb35d 25%,#d7593366 50%,transparent 70%); box-shadow:0 0 18px #ff994a; animation-name:naval-impact; }
+.bar-naval-cell[data-impact='sunk'] .bar-naval-impact { border-color:#ffdfac; background:radial-gradient(circle,#fff8df 8%,#ffc16b 25%,#e26e4277 50%,#3e363333 70%,transparent 75%); box-shadow:0 0 25px #ffc071; animation-name:naval-explosion; }
+@keyframes naval-splash { 0%{transform:scale(.15);opacity:1} 35%{opacity:.9} 100%{transform:scale(1.8);opacity:0} }
+@keyframes naval-impact { 0%{transform:scale(.2);opacity:1} 15%{transform:scale(1.2);opacity:1} 100%{transform:scale(1.7);opacity:0} }
+@keyframes naval-explosion { 0%{transform:scale(.2);opacity:1} 20%{transform:scale(1.9);opacity:1} 100%{transform:scale(2.6);opacity:0} }
+@media(prefers-reduced-motion:reduce) { .bar-naval-impact { animation-name:naval-impact-fade !important; } }
+@keyframes naval-impact-fade { from{opacity:.8} to{opacity:0} }
+
+.bar-naval-grid--hit { animation: bar-dartboard-contact 180ms ease-out both; transform-origin:center; }
+.bar-naval-grid--sunk { animation: bar-naval-sinking-contact 300ms ease-out both; transform-origin:center; }
+@keyframes bar-naval-sinking-contact { 0%{transform:translate(0,2px) scale(.995)} 25%{transform:translate(-2px,-2px)} 50%{transform:translate(2px,1px)} 75%{transform:translate(-1px,0)} 100%{transform:none} }
+@media(prefers-reduced-motion:reduce) { .bar-naval-grid--hit,.bar-naval-grid--sunk { animation:none; } }
+
+.bar-naval-grid + .bar-naval-toolbar:not(.bar-naval-toolbar--ready) { padding-top: 14px; padding-bottom: 8px; }
+
+.bar-naval-damage--sunk { background: none; box-shadow: none; border-radius: 0; width: 56%; height: 56%; left: 22%; top: 22%; }
+.bar-naval-damage--sunk::before,.bar-naval-damage--sunk::after { content: ''; position: absolute; left: 42%; top: 0; width: 16%; height: 100%; border-radius: 2px; background: #35272a; box-shadow: 0 0 2px #fff0ce88; transform: rotate(45deg); }
+.bar-naval-damage--sunk::after { transform: rotate(-45deg); }
+
+/* Anchor the naval controls near the bottom on tall screens. */
+.bar-game-field--battleship { display: flex; flex-direction: column; }
+.bar-naval { box-sizing: border-box; margin-top: auto; margin-bottom: 0; padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 12px); }
+.bar-game-screen[data-game='battleship'] .bar-game-notice-row .durak-turn-notice {
+  box-shadow: none;
+  isolation: isolate;
+  clip-path: inset(0 round 24px);
+}
+
+.bar-game-name-stack--self { align-items: flex-start; }
+
+.bar-game-menu--series .durak-menu__row { grid-template-columns: minmax(0, 1fr) 64px 48px minmax(0, 1fr); }
+.bar-game-menu--series .game-scoreboard__metric.bar-game-player--self { padding-right: 0; }
+.bar-game-menu--series .game-scoreboard__metric.bar-game-player--opponent { padding-left: 0; }
+.bar-game-menu--series .bar-ochko-round-metric { box-sizing:border-box; height:36px; padding:2px 3px; gap:2px; border-left:1px solid var(--liquid-border-soft); }
+.bar-game-menu--series .bar-ochko-round-metric .game-scoreboard__label { font-size:8px; line-height:1; }
+.bar-game-menu--series .bar-ochko-round-metric .game-scoreboard__value { font-size:18px; line-height:1; }
+.bar-game-menu--series .durak-menu__row { grid-template-areas: 'self timer round opponent'; }
+.bar-game-menu--series .durak-menu__row > .bar-ochko-round-metric { grid-area: round; }
+.bar-game-menu--series .durak-menu__row > .bar-game-player--opponent { grid-area: opponent; }
+
+.bar-game-menu--series .durak-menu__row { grid-template-columns: minmax(0, 1fr) 64px 64px minmax(0, 1fr); }
+.bar-game-menu--series .bar-ochko-round-metric { padding: 2px 8px; gap: 4px; }
+.bar-game-menu--series .game-scoreboard__metric--timer { gap: 3px; }
+.bar-game-menu--series .durak-menu__row > .bar-ochko-round-metric { padding: 2px 8px; }
+
+/* Keep a single proportional table stage, with a non-interactive cue above the UI. */
+.bar-game-field--billiards .bar-pool-table-stage { position:relative; flex:1; min-height:0; margin-top:-22px; margin-bottom:-28px; }
+.bar-pool-table-stage > svg { display:block; width:100%; height:100%; overflow:visible; touch-action:none; }
+.bar-pool-table-stage > svg:first-child .bar-pool-cue { opacity:0; }
+.bar-pool-table-stage > .bar-pool-cue-overlay { position:absolute; inset:0; z-index:20; overflow:visible; pointer-events:none; }
+.bar-pool-cue-overlay * { pointer-events:none !important; }
+.bar-game-field--billiards .bar-pool-controls { position:relative; z-index:2; }
+.bar-game-screen--playing[data-game='billiards'] > .bar-game-menu { position:relative; z-index:3; }
+.bar-game-field--billiards .bar-pool-table-stage { margin-inline: -14px; }
+/* Softly separate overlapping controls from the rail; the cue stays above. */
+.bar-game-field--billiards .bar-pool-controls::before {
+  content: '';
+  position: absolute;
+  inset: -12px -10px -16px;
+  z-index: -1;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  mask-image: linear-gradient(transparent, #000 30%, #000 80%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 30%, #000 80%, transparent);
+}
+.bar-game-field--billiards :is(.bar-pool-power, .bar-pool-spin-button) {
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.bar-game-screen--playing[data-game='billiards'] .bar-game-notice-row { position: relative; z-index: 0; }
+.bar-game-screen--playing[data-game='billiards'] .bar-game-notice-row::before {
+  content: '';
+  position: absolute;
+  inset: -10px -6px -4px;
+  z-index: -1;
+  pointer-events: none;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  mask-image: linear-gradient(transparent, #000 35%, #000 80%, transparent);
+  -webkit-mask-image: linear-gradient(transparent, #000 35%, #000 80%, transparent);
 }

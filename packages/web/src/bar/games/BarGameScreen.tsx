@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import type { BarGameSnapshot, BarGameAction } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { ArmwrestlingField } from './ArmwrestlingField.js';
+import { BattleshipField } from './BattleshipField.js';
 import { OchkoField } from './OchkoField.js';
 import { CharacterLaunch } from './CharacterLaunch.js';
 import { GameMenu } from './GameMenu.js';
@@ -27,10 +28,10 @@ export function BarGameScreen() {
   const view = match.view;
   const resultReady = useResultReady(
     id,
-    view?.kind,
+    view?.runtime.game.kind === 'ochko' && view.runtime.game.series ? 'ochko-series' : view?.kind,
     view?.runtime.game.winner !== null && !!view,
     match.now,
-    view?.runtime.animationUntil ?? 0,
+    view?.runtime.game.kind === 'battleship' && view.runtime.game.lastAction?.type === 'attack' ? Math.max(view.runtime.animationUntil, view.runtime.animationStart + 1600) : view?.runtime.animationUntil ?? 0,
   );
   useEffect(() => {
     setHelp(false);
@@ -113,7 +114,13 @@ export function BarGameScreen() {
             <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
           )}
           {stakeOpen && <CharacterLaunch character="grigory" close={() => setStakeOpen(false)} />}
-          {help && <GameHelp kind={view.kind} engineVersion={view.runtime.engineVersion} close={() => setHelp(false)} />}
+          {help && (
+            <GameHelp
+              kind={view.kind}
+              engineVersion={view.runtime.engineVersion}
+              close={() => setHelp(false)}
+            />
+          )}
           {exit && (
             <AccessibleModal
               title="Выйти из партии?"
@@ -162,6 +169,7 @@ export function GameTable({
   notice?: string | null | undefined;
   onRetry?: (() => void) | undefined;
 }) {
+  const [navalHint, setNavalHint] = useState<string | null>(null);
   const { runtime: m, player } = view;
   const game = m.game;
   const animation = now < m.animationUntil;
@@ -187,6 +195,16 @@ export function GameTable({
     );
     balls = m.poolFrames[index]!;
   }
+  const readyButton =
+    view.ready && !view.ready.cancelled && view.ready.startsAt === null ? (
+      <button
+        className="btn btn--cta"
+        disabled={disabled || view.ready.players.includes(player) || (game.kind === 'battleship' && game.ownShips.length !== 12)}
+        onClick={() => send({ type: 'ready' })}
+      >
+        {view.ready.players.includes(player) ? 'Вы готовы' : 'Готов'}
+      </button>
+    ) : null;
   return (
     <>
       <GameMenu
@@ -194,7 +212,7 @@ export function GameTable({
         now={now}
         onExit={onExit}
         onRules={onRules}
-        notice={notice}
+        notice={notice ?? (game.kind === 'battleship' && game.phase === 'setup' && !view.ready?.players.includes(player) ? navalHint : null)}
         onRetry={onRetry}
       />
       <div className={`bar-game-field bar-game-field--${view.kind}`}>
@@ -230,8 +248,22 @@ export function GameTable({
             pregame={!!view.ready}
             send={send}
           />
+        ) : game.kind === 'battleship' ? (
+          <BattleshipField
+            game={game}
+            player={player}
+            disabled={view.ready ? disabled || view.ready.startsAt !== null : !active}
+            locked={!!view.ready?.players.includes(player)}
+            send={send}
+            readyAction={readyButton}
+            countdown={view.ready?.startsAt != null}
+            onHint={setNavalHint}
+            now={now}
+            animationStart={m.animationStart}
+          />
         ) : game.kind === 'ochko' ? (
           <OchkoField
+            character={!!view.character}
             pregame={!!view.ready}
             game={game}
             player={player}
@@ -253,16 +285,8 @@ export function GameTable({
             pregame={!!view.ready}
           />
         )}
-        {view.ready && !view.ready.cancelled && view.ready.startsAt === null && (
-          <div className="bar-game-ready-actions durak-ready-actions">
-            <button
-              className="btn btn--cta"
-              disabled={disabled || view.ready.players.includes(player)}
-              onClick={() => send({ type: 'ready' })}
-            >
-              {view.ready.players.includes(player) ? 'Вы готовы' : 'Готов'}
-            </button>
-          </div>
+        {game.kind !== 'battleship' && readyButton && (
+          <div className="bar-game-ready-actions durak-ready-actions">{readyButton}</div>
         )}
       </div>
     </>

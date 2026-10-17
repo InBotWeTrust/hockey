@@ -7,6 +7,6 @@ it('assigns one game per character and leaves the other characters without games
   expect(barActionsFor('arsenich')).toEqual(['checkers']);
   expect(barActionsFor('grigory')).toEqual(['ochko']);
   expect(barActionsFor('oleg')).toEqual(['armwrestling']);
-  for (const id of ['timofey', 'igor'] as const)
-    expect(barActionsFor(id)).toEqual([]);
+  expect(barActionsFor('timofey')).toEqual(['battleship']);
+  expect(barActionsFor('igor')).toEqual([]);
 });

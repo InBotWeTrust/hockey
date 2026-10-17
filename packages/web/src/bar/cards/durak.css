@@ -1621,3 +1621,8 @@
 }
 .durak-room-player__identity { flex: 1; min-width: 0; }
 .durak-room-invite-cancel { flex: none; margin-left: auto; align-self: center; }
+
+/* Shared readiness under the player name in every bar game. */
+.bar-game-name-stack { display:flex; min-width:0; flex-direction:column; align-items:flex-end; }
+.bar-game-name-stack--self { align-items:flex-start; }
+.bar-game-ready-label { color:#b9d8c3; font-size:9px; line-height:1.1; }

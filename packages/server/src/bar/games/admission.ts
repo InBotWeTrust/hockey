@@ -2,6 +2,7 @@ import type { PoolClient } from 'pg';
 import { createPrivateOchko } from './ochkoDeck.js';
 import {
   advance,
+  barBattleship,
   createMatch,
   type Runtime,
   type GameReady,
@@ -43,8 +44,9 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
   if (ready) {
     if (ready.startsAt !== null && now >= ready.startsAt) {
       const prior = row.data.runtime;
-      row.data.runtime = createMatch(row.kind, row.data.starter, ready.startsAt, false, prior.seed);
-      if (row.kind === 'ochko') row.data.runtime.game = createPrivateOchko(ready.startsAt);
+      row.data.runtime = createMatch(row.kind, row.data.starter, ready.startsAt, row.character!==null, prior.seed,prior.engineVersion);
+      if (row.kind === 'ochko') row.data.runtime.game = createPrivateOchko(ready.startsAt,prior.engineVersion,row.character!==null);
+      if(row.kind==='battleship')row.data.runtime.game=barBattleship.start(prior.game as unknown as barBattleship.State) as unknown as typeof prior.game;
       row.data.runtime.revision = prior.revision + 1;
       row.data.ready = null;
     } else if (ready.startsAt === null && now >= ready.expiresAt) {

@@ -1,0 +1,234 @@
+import { render, screen, fireEvent } from '@testing-library/react';
+import { expect, it, vi } from 'vitest';
+import { barBattleship as sea } from '@hockey/game-core';
+import { BattleshipField } from './BattleshipField.js';
+it('selects a cell before sending a confirmed shot and never exposes a live enemy ship', () => {
+  const game = sea.view(sea.start(sea.create(0, 4)), 0),
+    send = vi.fn();
+  render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send} />);
+  const board = screen.getByRole('group', { name: 'Поле противника' });
+  const cells = board.querySelectorAll('button');
+  expect(board.querySelectorAll('[data-ship="true"]')).toHaveLength(0);
+  fireEvent.click(cells[15]!);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
+  expect(send).toHaveBeenCalledWith({
+    type: 'naval-attack',
+    x: 3,
+    y: 1,
+    salvo: false,
+    vertical: false,
+  });
+});
+it('locks all fleet changes after readiness', () => {
+  const send = vi.fn();
+  render(
+    <BattleshipField game={sea.view(sea.create(0, 4), 0)} player={0} disabled locked send={send} />,
+  );
+  expect(screen.queryByRole('button', { name: 'Случайно' })).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('group', { name: 'Твой флот' }).querySelector('button')!);
+  expect(send).not.toHaveBeenCalled();
+});
+it('highlights legal submarine maneuvers and confirms one separately', () => {
+  const game = sea.view(sea.start(sea.create(0, 4)), 0),
+    send = vi.fn();
+  render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Мой флот' }));
+  const sub = game.ownShips.find((s) => s.kind === 'submarine')!;
+  fireEvent.click(
+    screen.getByRole('group', { name: 'Твой флот' }).querySelectorAll('button')[
+      sub.y * 12 + sub.x
+    ]!,
+  );
+  fireEvent.click(screen.getByRole('button', { name: 'Манёвр (2)' }));
+  const dest = sea.moves(game)[0]!;
+  const board = screen.getByRole('group', { name: 'Твой флот' });
+  expect(board.querySelectorAll('[data-maneuver="true"]').length).toBeGreaterThan(0);
+  fireEvent.click(board.querySelectorAll('button')[dest.y * 12 + dest.x]!);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
+  expect(send).toHaveBeenCalledWith({ type: 'naval-move', ...dest });
+});
+it('blocks fleet edits while a preparation command is pending', () => {
+  const send = vi.fn();
+  render(
+    <BattleshipField
+      game={sea.view(sea.create(0, 4), 0)}
+      player={0}
+      disabled
+      locked={false}
+      send={send}
+    />,
+  );
+  expect(screen.queryByRole('button', { name: 'Случайно' })).not.toBeInTheDocument();
+});
+it('labels all twelve columns and rows around the playable grid', () => {
+  const { container } = render(
+    <BattleshipField
+      game={sea.view(sea.start(sea.create(0, 4)), 0)}
+      player={0}
+      disabled={false}
+      locked={false}
+      send={() => {}}
+    />,
+  );
+  expect(container.querySelector('.bar-naval-columns')?.textContent).toBe('АБВГДЕЖЗИКЛМ');
+  expect(container.querySelector('.bar-naval-rows')?.children).toHaveLength(12);
+  expect(
+    screen.getByRole('group', { name: 'Поле противника' }).querySelectorAll('button'),
+  ).toHaveLength(144);
+});
+it('disables attacks on the own board and enables maneuver only for a selected submarine', () => {
+  const game = sea.view(sea.start(sea.create(0, 4)), 0);
+  render(
+    <BattleshipField game={game} player={0} disabled={false} locked={false} send={() => {}} />,
+  );
+  const own = screen.getByRole('button', { name: 'Мой флот' }),
+    enemy = screen.getByRole('button', { name: 'Противник' });
+  expect(enemy).toHaveAttribute('aria-pressed', 'true');
+  fireEvent.click(own);
+  expect(own).toHaveAttribute('aria-pressed', 'true');
+  expect(enemy).toHaveAttribute('aria-pressed', 'false');
+  expect(screen.getByRole('button', { name: 'Выстрел' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Залп' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Манёвр (2)' })).toBeDisabled();
+  const sub = game.ownShips.find((s) => s.kind === 'submarine')!;
+  fireEvent.click(
+    screen.getByRole('group', { name: 'Твой флот' }).querySelectorAll('button')[
+      sub.y * 12 + sub.x
+    ]!,
+  );
+  expect(screen.getByRole('button', { name: 'Манёвр (2)' })).toBeEnabled();
+  fireEvent.click(enemy);
+  expect(screen.getByRole('button', { name: 'Манёвр (2)' })).toBeDisabled();
+  expect(screen.getByRole('button', { name: 'Выстрел' })).toBeEnabled();
+});
+it('keeps an invalid placement selected and explains why rotation is blocked', () => {
+  const game = sea.view(sea.create(0, 4), 0),
+    send = vi.fn(),
+    onHint = vi.fn();
+  render(
+    <BattleshipField
+      game={game}
+      player={0}
+      disabled={false}
+      locked={false}
+      send={send}
+      onHint={onHint}
+    />,
+  );
+  const ship = game.ownShips.find((s) => s.kind === 'carrier')!;
+  const buttons = screen.getByRole('group', { name: 'Твой флот' }).querySelectorAll('button');
+  fireEvent.click(buttons[ship.y * 12 + ship.x]!);
+  fireEvent.click(buttons[143]!);
+  expect(send).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Повернуть корабль' })).toBeEnabled();
+  expect(onHint).toHaveBeenLastCalledWith(expect.stringContaining('Корабли'));
+});
+it('hides rotation when the selected ship cannot turn in its current position', () => {
+ const game=sea.view(sea.create(0,4),0), send=vi.fn();
+ const ship=game.ownShips.find(s=>s.w!==s.h&&!sea.validPlacement(game.ownShips.map(t=>t.id===s.id?{...t,w:t.h,h:t.w}:t)))!;
+ render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send}/>);
+ fireEvent.click(screen.getByRole('group',{name:'Твой флот'}).querySelectorAll('button')[ship.y*12+ship.x]!);
+ expect(screen.queryByRole('button',{name:'Повернуть корабль'})).not.toBeInTheDocument();
+ expect(send).not.toHaveBeenCalled();
+});
+it('preserves the grabbed cell, snaps invalid drops, and cancels without sending', () => {
+  vi.stubGlobal('PointerEvent', MouseEvent);
+  const game = sea.view(sea.create(0, 4), 0), send = vi.fn();
+  render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={send} />);
+  const board = screen.getByRole('group', {name:'Твой флот'});
+  vi.spyOn(board,'getBoundingClientRect').mockReturnValue({left:0,top:0,width:120,height:120,right:120,bottom:120,x:0,y:0,toJSON:()=>({})});
+  Object.assign(board,{setPointerCapture:vi.fn()});
+  const ship=game.ownShips.find(s=>s.kind==='carrier')!;
+  const start={clientX:(ship.x+1)*10+5,clientY:ship.y*10+5,button:0};
+  fireEvent.pointerDown(board,start);
+  fireEvent.pointerMove(board,{clientX:5,clientY:5});
+  expect(send).not.toHaveBeenCalled();
+  expect(board.querySelector('[data-preview]')).not.toBeNull();
+  fireEvent.pointerCancel(board);
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.pointerDown(board,start);
+  fireEvent.pointerMove(board,{clientX:15,clientY:5});
+  fireEvent.pointerUp(board,{clientX:15,clientY:5});
+  expect(send).toHaveBeenCalledTimes(1);
+  const legal = Array.from({length:144},(_,i)=>({x:i%12,y:Math.floor(i/12)})).filter(p=>sea.validFleet(game.ownShips.map(s=>s.id===ship.id?{...s,...p}:s))).sort((a,b)=>(a.x*a.x+a.y*a.y)-(b.x*b.x+b.y*b.y));
+  expect(send).toHaveBeenCalledWith({type:'naval-configure',shipId:ship.id,...legal[0],vertical:ship.h>ship.w});
+  vi.unstubAllGlobals();
+});
+it('shows reserves on an empty board and deploys one selected ship', () => {
+ const g=sea.create(0,4);g.fleets[0]=[];const send=vi.fn();
+ const {rerender}=render(<BattleshipField game={sea.view(g,0)} player={0} disabled={false} locked={false} send={send}/>);
+ expect(screen.getByRole('group',{name:'Твой флот'}).querySelector('[data-ship="true"]')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Авианосец ×1'}));
+ expect(send).toHaveBeenCalledWith(expect.objectContaining({type:'naval-deploy',shipId:'carrier'}));
+ const next=sea.deploy(g,0,'carrier',1);
+ rerender(<BattleshipField game={sea.view(next,0)} player={0} disabled={false} locked={false} send={send}/>);
+ expect(screen.getByRole('button',{name:'Авианосец ×0'})).toBeDisabled();
+ expect(screen.getByRole('button',{name:'Повернуть корабль'})).toBeEnabled();
+});
+it('keeps only readiness below the board and does not mark anchor cells as available water', () => {
+ const game=sea.view(sea.create(0,4),0);
+ const {container}=render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={()=>{}} readyAction={<button>Готов</button>}/>);
+ fireEvent.click(screen.getByRole('group',{name:'Твой флот'}).querySelector('[data-ship="true"]')!);
+ expect(container.querySelector('[data-maneuver="true"]')).toBeNull();
+ expect(screen.queryByRole('button',{name:'Случайно'})).not.toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:/^Повернуть$/})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Повернуть корабль'})).toBeEnabled();
+});
+it('uses the same six ship color keys in the reserve and on both visible fleets without exposing live enemies', () => {
+ const g=sea.create(0,4);const game=sea.view(g,0);
+ const {container,rerender}=render(<BattleshipField game={game} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ const keys=Array.from(container.querySelectorAll('.bar-naval-reserve-ship')).map(e=>e.getAttribute('data-ship-color'));
+ expect(new Set(keys).size).toBe(6);expect(keys).not.toContain(null);
+ for(const ship of game.ownShips){const key=ship.kind==='standard'?`standard-${Math.max(ship.w,ship.h)}`:ship.kind;expect(container.querySelectorAll(`.bar-naval-cell[data-ship-color="${key}"]`).length).toBeGreaterThan(0);}
+ const battle=sea.start(g);battle.fleets[1][0]!.hits=sea.cells(battle.fleets[1][0]!);
+ rerender(<BattleshipField game={sea.view(battle,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Противник'}));
+ expect(container.querySelectorAll('.bar-naval-cell[data-ship-color="carrier"]')).toHaveLength(6);
+ expect(container.querySelectorAll('.bar-naval-cell[data-ship="true"]')).toHaveLength(6);
+});
+it('shows the own fleet for the opponent turn and impact, then returns to targeting', () => {
+ const g=sea.start(sea.create(0,4)),send=vi.fn();
+ const {rerender,container}=render(<BattleshipField game={sea.view(g,0)} player={0} disabled={false} locked={false} send={send} now={1000} animationStart={0}/>);
+ const after=sea.attack(g,0,0,0,false,false);
+ rerender(<BattleshipField game={sea.view(after,0)} player={0} disabled locked={false} send={send} now={2700} animationStart={1000}/>);
+ expect(screen.getByRole('group',{name:'Твой флот'})).toBeInTheDocument();
+ const miss=Array.from({length:144},(_,i)=>i).find(c=>!g.fleets[0].some(s=>sea.cells(s).includes(c)))!;
+ const reply=sea.attack(after,1,miss%12,Math.floor(miss/12),false,false);
+ rerender(<BattleshipField game={sea.view(reply,0)} player={0} disabled locked={false} send={send} now={2000} animationStart={2000}/>);
+ expect(screen.getByRole('group',{name:'Твой флот'})).toBeInTheDocument();
+ expect(container.querySelector('[data-impact="miss"]')).not.toBeNull();
+ rerender(<BattleshipField game={sea.view(reply,0)} player={0} disabled={false} locked={false} send={send} now={3700} animationStart={2000}/>);
+ expect(screen.getByRole('group',{name:'Поле противника'})).toBeInTheDocument();
+ expect(container.querySelector('[data-impact]')).toBeNull();
+});
+it.each([0,1] as const)('shakes for player %i hits and shows a stronger impact for sinking', actor=>{
+ const g=sea.start(sea.create(actor,4));const victim=g.fleets[1-actor]!.find(s=>s.w*s.h>1)!;
+ const {container,rerender}=render(<BattleshipField game={sea.view(sea.attack(g,actor,victim.x,victim.y,false,false),0)} player={0} disabled locked={false} send={()=>{}} now={1000} animationStart={1000}/>);
+ expect(container.querySelector('.bar-naval-grid--hit')).not.toBeNull();
+ expect(container.querySelector('[data-impact="hit"]')).not.toBeNull();
+ victim.hits=sea.cells(victim).slice(1);
+ const sunk=sea.attack(g,actor,victim.x,victim.y,false,false);
+ rerender(<BattleshipField game={sea.view(sunk,0)} player={0} disabled locked={false} send={()=>{}} now={2000} animationStart={2000}/>);
+ expect(container.querySelector('.bar-naval-grid--sunk')).not.toBeNull();
+ expect(container.querySelector('[data-impact="sunk"]')).not.toBeNull();
+});
+it('stays on the opponent board after a continuing hit and ignores a manual view from the previous action',()=>{
+ const g=sea.start(sea.create(0,4)),ship=g.fleets[1][0]!;
+ const {rerender}=render(<BattleshipField game={sea.view(g,0)} player={0} disabled={false} locked={false} send={()=>{}} now={1000} animationStart={0}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
+ const hit=sea.attack(g,0,ship.x,ship.y,false,false);
+ rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled={false} locked={false} send={()=>{}} now={2000} animationStart={2000}/>);
+ expect(screen.getByRole('group',{name:'Поле противника'})).toBeInTheDocument();
+ rerender(<BattleshipField game={sea.view(hit,0)} player={0} disabled={false} locked={false} send={()=>{}} now={3601} animationStart={2000}/>);
+ expect(screen.getByRole('group',{name:'Поле противника'})).toBeInTheDocument();
+});
+it('marks every sunk cell with a cross while keeping partial damage round',()=>{
+ const g=sea.start(sea.create(0,4));const sunk=g.fleets[0][0]!,damaged=g.fleets[0][1]!;
+ sunk.hits=sea.cells(sunk);damaged.hits=[sea.cells(damaged)[0]!];
+ const {container}=render(<BattleshipField game={sea.view(g,0)} player={0} disabled={false} locked={false} send={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Мой флот'}));
+ expect(container.querySelectorAll('.bar-naval-damage--sunk')).toHaveLength(6);
+ expect(container.querySelectorAll('.bar-naval-damage:not(.bar-naval-damage--sunk)')).toHaveLength(1);
+});

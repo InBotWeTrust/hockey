@@ -105,6 +105,7 @@ export function OnlineDurakScreen() {
                 ? 'Ждём готовности соперника'
                 : 'Подтвердите готовность',
           ready: r.selfReady,
+          opponentReady: r.opponentReady,
           countdown: r.startsAt !== null,
           cancelled: r.cancelled,
           pending,

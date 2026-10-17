@@ -1,12 +1,12 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { createMatch, type BarGameId, type BarGameSnapshot } from '@hockey/game-core';
+import { createMatch, publicRuntime, type BarGameId, type BarGameSnapshot } from '@hockey/game-core';
 import { GameTable } from './BarGameScreen.js';
 afterEach(cleanup);
 function snapshot(kind: BarGameId, players: (0 | 1)[] = [], startsAt: number | null = null): BarGameSnapshot {
   return { id: 'ready', kind, character: null, player: 0,
     participants: [{userId:'a',displayName:'Игрок',avatarUrl:null},{userId:'b',displayName:'Соперник',avatarUrl:null}],
-    runtime:createMatch(kind,0,0,false,1), serverNow:0,
+    runtime:kind==='battleship'?publicRuntime(createMatch(kind,0,0,false,1),0):createMatch(kind,0,0,false,1), serverNow:0,
     ready:{players,startsAt,expiresAt:60000,cancelled:false} };
 }
 it.each(['darts','checkers','billiards'] as const)('confirms readiness on the %s field',kind=>{
@@ -31,4 +31,31 @@ it('waits after local confirmation and counts down from five after both',()=>{
  rerender(<GameTable view={snapshot('billiards',[0,1],5000)} now={0} disabled={false} send={()=>{}}/>);
  expect(screen.getByRole('status')).toHaveTextContent('Начинаем через 5');
  expect(screen.queryByRole('button',{name:'Готов'})).toBeNull();
+});
+it('keeps naval placement instructions in the shared notice and readiness under the opponent name',()=>{
+ render(<GameTable view={snapshot('battleship',[1])} now={0} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Выбери корабль сверху и расставь весь флот');expect(screen.queryByText('Соперник готов')).not.toBeInTheDocument();expect(screen.getByText('Готов',{selector:'.bar-game-ready-label'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Случайно'})).not.toBeInTheDocument();
+});
+it('shows a persistent ninety-second naval setup clock in the menu',()=>{
+ const v=snapshot('battleship',[1]);v.ready!.expiresAt=90000;
+ const {rerender}=render(<GameTable view={v} now={0} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('timer')).toHaveTextContent('1:30');
+ expect(screen.getByRole('timer')).toHaveTextContent('Расстановка');
+ rerender(<GameTable view={v} now={17000} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('timer')).toHaveTextContent('1:13');
+});
+it.each(['darts','checkers','billiards','ochko','armwrestling','battleship'] as const)('shows confirmed readiness under both names in %s',kind=>{
+ const {container,rerender}=render(<GameTable view={snapshot(kind,[0,1])} now={0} disabled={false} send={()=>{}}/>);
+ expect(container.querySelectorAll('.bar-game-ready-label')).toHaveLength(2);
+ rerender(<GameTable view={snapshot(kind,[])} now={0} disabled={false} send={()=>{}}/>);
+ expect(container.querySelectorAll('.bar-game-ready-label')).toHaveLength(0);
+});
+it('keeps battle controls visible but disabled throughout the naval launch countdown',()=>{
+ const {container,rerender}=render(<GameTable view={snapshot('battleship',[0,1],5000)} now={1000} disabled={false} send={()=>{}}/>);
+ expect(container.querySelector('.bar-naval-reserve')).toBeNull();
+ for(const name of ['Мой флот','Противник','Выстрел','Залп','Манёвр (2)','Подтвердить']) expect(screen.getByRole('button',{name})).toBeDisabled();
+ const v=snapshot('battleship');v.ready=null;
+ if(v.runtime.game.kind==='battleship')v.runtime.game.phase='battle';
+ rerender(<GameTable view={v} now={5001} disabled={false} send={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Выстрел'})).toBeEnabled();
 });

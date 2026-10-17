@@ -95,6 +95,7 @@ export function DurakTable({
   pregame?: {
     text: string;
     ready: boolean;
+    opponentReady?: boolean;
     countdown: boolean;
     cancelled: boolean;
     pending: boolean;
@@ -190,7 +191,7 @@ export function DurakTable({
                   size={28}
                   alt="Твой аватар"
                 />
-                <CardPlayerName name={user?.displayName ?? 'Игрок'} count={pregame ? undefined : game.hands[0].length} />
+                <div className="bar-game-name-stack bar-game-name-stack--self"><CardPlayerName name={user?.displayName ?? 'Игрок'} count={pregame ? undefined : game.hands[0].length} />{pregame?.ready && !pregame.cancelled && <small className="bar-game-ready-label">Готов</small>}</div>
               </div>
             </div>
             <div
@@ -212,7 +213,7 @@ export function DurakTable({
             </div>
             <div className="game-scoreboard__metric">
               <div className="durak-menu__identity durak-menu__identity--opponent">
-                <CardPlayerName name={opponent?.displayName ?? computer.name} count={pregame ? undefined : game.hands[1].length} countFirst />
+                <div className="bar-game-name-stack"><CardPlayerName name={opponent?.displayName ?? computer.name} count={pregame ? undefined : game.hands[1].length} countFirst />{pregame?.opponentReady && !pregame.cancelled && <small className="bar-game-ready-label">Готов</small>}</div>
                 <UserAvatar
                   avatarUrl={
                     online ? (opponent?.avatarUrl ?? undefined) : opponentArt(opponentId, 'avatar')
