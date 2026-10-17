@@ -36,3 +36,23 @@ it('keeps the hose outside the viewport after the map scrolls to its left edge',
   expect(image.getBoundingClientRect().left).toBeLessThanOrEqual(80);
  }finally{bounds.mockRestore();natural.mockRestore();}
 });
+
+it('keeps an expired visit on the mounted map but hides it after leaving and returning',()=>{
+ vi.useFakeTimers();const now=new Date(2026,9,17,12).getTime();vi.setSystemTime(now);
+ localStorage.setItem('city-caretaker-v1:player',JSON.stringify({day:caretakerDay(now),visits:[{start:now-1000,end:now+180000,kind:'flood'}]}));
+ const hook=renderHook(()=>useCaretakerVisit('player',false));expect(hook.result.current).toBe('flood');
+ act(()=>vi.advanceTimersByTime(300000));expect(hook.result.current).toBe('flood');
+ act(()=>window.dispatchEvent(new Event('focus')));expect(hook.result.current).toBe('flood');
+ hook.unmount();const returned=renderHook(()=>useCaretakerVisit('player',false));expect(returned.result.current).toBeNull();
+});
+it('still hides a retained expired visit immediately when training begins',()=>{
+ vi.useFakeTimers();const now=new Date(2026,9,17,12).getTime();vi.setSystemTime(now);
+ localStorage.setItem('city-caretaker-v1:player',JSON.stringify({day:caretakerDay(now),visits:[{start:now-1000,end:now+180000,kind:'flood'}]}));
+ const hook=renderHook(({blocked})=>useCaretakerVisit('player',blocked),{initialProps:{blocked:false}});
+ act(()=>vi.advanceTimersByTime(300000));expect(hook.result.current).toBe('flood');
+ hook.rerender({blocked:true});expect(hook.result.current).toBeNull();hook.rerender({blocked:false});expect(hook.result.current).toBeNull();
+});
+it('adds animated water only to flooding',()=>{
+ const view=render(<CityCaretaker kind="flood" venue="yard"/>);expect(screen.getByTestId('caretaker-water')).toBeInTheDocument();
+ view.rerender(<CityCaretaker kind="scrape" venue="yard"/>);expect(screen.queryByTestId('caretaker-water')).not.toBeInTheDocument();
+});

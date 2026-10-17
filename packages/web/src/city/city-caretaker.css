@@ -11,3 +11,14 @@
 .city-caretaker--flood{animation:none;translate:var(--caretaker-edge-shift,0px) 0}
 .city-caretaker--flood .city-caretaker-step{position:relative;animation:none}
 .city-caretaker--flood img{position:absolute;left:50%;top:100%;width:auto;max-width:none;height:calc(var(--caretaker-height)*2.2);transform:translate(-91.7%,-83.2%)}
+
+.city-water{position:absolute;z-index:1;left:calc(50% + var(--caretaker-height)*.25);top:calc(100% - var(--caretaker-height)*.46);width:calc(var(--caretaker-height)*.4);height:calc(var(--caretaker-height)*.48);pointer-events:none}
+.city-water-stream{position:absolute;inset:0;clip-path:polygon(0 0,12% 0,100% 92%,80% 100%,40% 70%);background:repeating-linear-gradient(35deg,transparent 0 2px,#eafaffaa 3px,transparent 4px 6px);animation:city-water-flow .65s linear infinite}
+.city-water i{position:absolute;left:75%;top:90%;width:1.5px;height:1.5px;border-radius:50%;background:#e8faff;--dx:4px;--dy:-4px;animation:city-water-splash .9s ease-out infinite}
+.city-water i:nth-of-type(2){--dx:-4px;--dy:-3px;animation-delay:-.18s}
+.city-water i:nth-of-type(3){--dx:6px;--dy:-2px;animation-delay:-.36s}
+.city-water i:nth-of-type(4){--dx:-2px;--dy:-6px;animation-delay:-.54s}
+.city-water i:nth-of-type(5){--dx:3px;--dy:-5px;animation-delay:-.72s}
+@keyframes city-water-flow{0%{background-position:0 0;opacity:.25}50%{opacity:.65}100%{background-position:2px 6px;opacity:.25}}
+@keyframes city-water-splash{0%{transform:translate(0,0) scale(.4);opacity:0}20%{opacity:.8}70%{transform:translate(var(--dx),var(--dy)) scale(.8);opacity:.5}100%{transform:translate(var(--dx),2px) scale(.3);opacity:0}}
+@media(prefers-reduced-motion:reduce){.city-water{display:none}}
