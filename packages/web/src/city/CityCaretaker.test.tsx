@@ -14,7 +14,8 @@ it('persists an interrupted visit and does not resume it after a game or page re
 });
 it('uses both existing caretaker sprites and never intercepts map gestures',()=>{
  const view=render(<CityCaretaker kind="flood" venue="yard"/>);
- expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')).toHaveAttribute('src','/sprites/city-grigory-flood-hose-v1.webp');
+ expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('svg')).toBeNull();
+ expect(screen.getByRole('img',{name:'Григорий заливает лёд'}).querySelector('img')).toHaveAttribute('src','/sprites/city-grigory-flood-unified-v2.webp');
  view.rerender(<CityCaretaker kind="scrape" venue="yard"/>);
  expect(screen.getByRole('img',{name:'Григорий чистит снег'}).querySelector('img')).toHaveAttribute('src','/sprites/rink-caretaker-scrape.webp');
 });

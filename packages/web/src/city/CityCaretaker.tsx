@@ -32,9 +32,6 @@ const locations={yard:{x:12,y:54.5},stadium:{x:44,y:65},pro:{x:86,y:65}};
 export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeof locations}){
  const point=locations[venue];
  return <div className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
-  {kind==='flood'&&<svg className="city-caretaker-ground-hose" viewBox="0 0 1000 300" preserveAspectRatio="none" aria-hidden="true">
-   <path d="M-5000 65 C-3500 85 -1800 45 -600 65 S-120 80 0 65 C180 85 340 70 490 52 S640 15 720 12 C780 10 820 26 870 18 S950 4 1000 0" fill="none" stroke="#233e35" strokeWidth="1.35" strokeLinecap="round" vectorEffect="non-scaling-stroke"/>
-  </svg>}
-  <div className="city-caretaker-step"><img src={kind==='flood'?'/sprites/city-grigory-flood-hose-v1.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
+  <div className="city-caretaker-step"><img src={kind==='flood'?'/sprites/city-grigory-flood-unified-v2.webp':'/sprites/rink-caretaker-scrape.webp'} alt="" draggable={false}/></div>
  </div>;
 }
