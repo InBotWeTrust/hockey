@@ -24,3 +24,17 @@ it('puts the final cumulative score below stars, including player-one orientatio
  expect(score).toHaveTextContent('(14:4, 16:5, 15:6, 11:6)');
  expect(stars.compareDocumentPosition(score)&Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
+it.each([
+ {technical:true,totals:[21,0] as [number,number],awards:[18,20] as [number,number],label:'Технический счёт:',penalty:false},
+ {technical:false,totals:[15,20] as [number,number],awards:[18,20] as [number,number],label:'Счёт:',penalty:true},
+])('distinguishes historical awards from a technical result or challenge penalty: %j',({technical,totals,awards,label,penalty})=>{
+ const runtime=createMatch('ochko',0,0,true,1);
+ if(runtime.game.kind!=='ochko'||!runtime.game.series)throw Error('Expected series');
+ runtime.game.winner=technical?0:1;
+ Object.assign(runtime.game.series,{totals,technical,phase:'finished',history:[{round:1,hands:[[],[]],awards,challenged:penalty}]});
+ const view:BarGameSnapshot={id:'adjusted',kind:'ochko',character:'grigory',player:0,participants:[{userId:'a',displayName:'Игрок',avatarUrl:null},{userId:'g',displayName:'Григорий',avatarUrl:null}],runtime,ready:null,serverNow:0};
+ render(<GameResult view={view} replay={()=>{}} back={()=>{}}/>);
+ expect(screen.getByLabelText('Итоговый счёт')).toHaveTextContent(label);
+ if(technical)expect(screen.getByLabelText('Итоговый счёт')).toHaveTextContent('раздачи: 18:20');
+ if(penalty)expect(screen.getByText('Штраф за проверку счёта: −3')).toBeInTheDocument();
+});
