@@ -1436,7 +1436,7 @@
 
 /* Naval rules draw a separate board over the character/table scene. */
 .bar-game-screen--playing[data-game='battleship'] {
-  background: #102333;
+  background: #183e30 url('/bar/cards/table-v1.webp') center top/cover;
   color: #e9f2f8;
   height: 100dvh;
   min-height: 0;
