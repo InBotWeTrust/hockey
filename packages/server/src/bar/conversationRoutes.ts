@@ -35,6 +35,7 @@ export interface ConversationTurn {
   fightId?: string;
   event?: 'physical';
   emotion?:CharacterEmotion;
+  farewell?: string;
 }
 export interface ConversationRecord {
   revision: number;
@@ -47,7 +48,7 @@ export type Reservation =
   | { kind: 'busy' | 'stale' | 'limit' };
 export interface ConversationStore {
   read(user: string, character: Character): Promise<ConversationRecord>;
-  reserve(user: string, character: Character, id: string, revision: number): Promise<Reservation>;
+  reserve(user: string, character: Character, id: string, revision: number, free?: boolean): Promise<Reservation>;
   complete(user: string, character: Character, turn: ConversationTurn, usedStoryIds?: string[], conflict?: ConflictEffect): Promise<ConversationRecord>;
   release(user: string, character: Character, id: string): Promise<void>;
 }
@@ -230,7 +231,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
         'Собеседник пока не отвечает. Попробуй позже.',
         503,
       );
-    const reserved = await store.reserve(user, character, id, revision);
+    const reserved = await store.reserve(user, character, id, revision, !!parsed.data.conflictAction);
     if (reserved.kind === 'duplicate') {
       if (reserved.record.turns.find((t) => t.id === id)?.user !== content)
         throw new AppError('conversation_stale', 'Обнови разговор.', 409);

@@ -1,3 +1,4 @@
+import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import {DistrictPageHeader} from '../components/DistrictPageHeader.js';
 import { SocialProfile } from '../social/SocialProfile.js';
@@ -244,6 +245,7 @@ function EquipmentPanel({
               {recoveryItem?.title ?? 'Нет в запасе'}
             </span>
           </button>
+          <VisitorCardSlot {...(inventory?.visitorCard ? { card: inventory.visitorCard } : {})} />
         </span>
       </div>
     </section>

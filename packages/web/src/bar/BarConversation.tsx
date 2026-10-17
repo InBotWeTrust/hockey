@@ -1,3 +1,4 @@
+import { useVisitor, visitorChanged, visitorTime } from './visitorApi.js';
 import { apiFetch } from '../api/apiFetch.js';
 import { BarMemoryControls } from './BarMemoryControls.js';
 import { useEffect, useRef, useState } from 'react';
@@ -23,6 +24,7 @@ export function BarConversation({
   onClose,
   onUpdate,
   onWaiting,
+  onVisitorShop,
 }: {
   character: BarCharacter;
   name: string;
@@ -31,7 +33,10 @@ export function BarConversation({
   onClose: () => void;
   onUpdate: (data: ConversationSnapshot) => void;
   onWaiting?: (waiting:boolean)=>void;
+  onVisitorShop?: () => void;
 }) {
+  const visitor = useVisitor();
+  const noMessages = !!visitor.data && visitor.data.state.messages.remaining + visitor.data.state.messages.paid === 0;
   const [data, setData] = useState<ConversationSnapshot | null>(null);
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
@@ -121,6 +126,10 @@ export function BarConversation({
       if (alive.current) setLocalMessages(items => items.filter(item => item.localId !== localId && !snapshot.turns.some(turn => turn.id === item.message.id)));
     } catch (cause) {
       if (!alive.current) return;
+      if (cause instanceof ApiError && cause.code === 'conversation_limit') {
+        setLocalMessages(items => items.filter(item => item.localId !== localId));
+        return;
+      }
       setLocalMessages(items => items.map(item => item.localId === localId ? {...item, failed: true} : item));
       if (cause instanceof ApiError && cause.status === 409) {
         setError('Разговор изменился в другом окне. Обнови его перед отправкой.');
@@ -145,6 +154,7 @@ export function BarConversation({
         );
       // The visible local bubble owns retry; the composer can clear immediately.
     } finally {
+      visitorChanged();
       inFlight.current = false;
       if (alive.current) setSending(false);
     }
@@ -217,6 +227,7 @@ export function BarConversation({
                   <div className={turn.speaker==='oleg'&&character!=='oleg'&&turn.intervention?'bar-conversation__intervention':undefined}>
                     {turn.speaker==='oleg'&&character!=='oleg'&&turn.intervention&&<div className="bar-conversation__speaker"><img src="/bar/cards/oleg-avatar-v2.webp" alt="Олег"/><strong>Олег</strong></div>}
                     <p aria-label={`Сообщение ${turn.speaker==='oleg'?'Олег':name}`} className="glass bar-conversation__bubble">{turn.assistant}</p>
+                    {turn.farewell && <p className="glass bar-conversation__bubble">{turn.farewell}</p>}
                   </div>
                 </div>
               ))}
@@ -240,6 +251,10 @@ export function BarConversation({
             )}
           </div>
         )}
+        {visitor.data && <div className="visitor-quota">
+          <span>Сообщений сегодня: {visitor.data.state.messages.remaining}. В запасе: {visitor.data.state.messages.paid}.</span>
+          {noMessages && <><p>Сообщения закончились. Обновятся {visitorTime(visitor.data.state.resetAt)}.</p><button className="btn btn--cta" onClick={() => { onClose(); if (onVisitorShop) onVisitorShop(); else window.location.assign('/bar?visitorShop=1'); }}>К Игорю</button></>}
+        </div>}
         <div className="bar-chat-input bar-conversation__composer">
           {interventionActive ? <div className="bar-conversation__conflict-actions">
             <p>Если пойдёшь на конфликт, начнётся драка с Олегом.</p>
@@ -252,7 +267,7 @@ export function BarConversation({
             onClearReply={() => {}}
             onSend={(content) => { void send(content); }}
             placeholder="Сообщение..."
-            disabled={!data || loading || sending || !!data.pending}
+            disabled={!data || loading || sending || !!data.pending || noMessages}
           />}
         </div>
         </>}

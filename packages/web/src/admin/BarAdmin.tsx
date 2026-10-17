@@ -1,3 +1,4 @@
+import { VisitorSettings } from './VisitorSettings.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   barOccupants,
@@ -35,7 +36,8 @@ export function BarAdmin() {
   const mounted = useRef(true);
   const loadGeneration = useRef(0);
   const dragged = useRef<string | null>(null);
-  const dirty = !!draft && JSON.stringify(draft) !== JSON.stringify(saved);
+  const [visitorDirty, setVisitorDirty] = useState(false);
+  const dirty = visitorDirty || !!draft && JSON.stringify(draft) !== JSON.stringify(saved);
   const load = useCallback(async () => {
     const generation = ++loadGeneration.current;
     setLoading(true);
@@ -166,6 +168,7 @@ export function BarAdmin() {
   const index = layout.slots.findIndex((s) => s.id === slot.id);
   return (
     <section className="bar-admin">
+      <VisitorSettings onDirty={setVisitorDirty} />
       {reloadOpen && (
         <UnsavedBarDialog
           title="Загрузить сохранённую расстановку?"

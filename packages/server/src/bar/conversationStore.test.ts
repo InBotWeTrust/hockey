@@ -1,3 +1,4 @@
+import { defaultVisitorSettings } from './visitorRules.js';
 import type { Pool } from 'pg';
 import { expect, it } from 'vitest';
 import { SqlConversationStore } from './conversationStore.js';
@@ -7,6 +8,10 @@ it('keeps a slow conversation reserved beyond 60 seconds without leaving it busy
   const db = {
     release() {},
     async query(sql: string) {
+      if (sql.startsWith('select clock_timestamp')) return {rows:[{at:new Date(now).toISOString()}]};
+      if (sql.startsWith('select * from bar_visitor_accounts')) return {rows:[{purchased_at:null,expires_at:null,paid_messages:0,messages_used:0,games_used:{},day_started_at:new Date(0),reset_at:new Date(86400000)}]};
+      if (sql.startsWith('select revision,settings')) return {rows:[{revision:1,settings:defaultVisitorSettings}]};
+      if (sql.startsWith('insert into bar_visitor_receipts')) return {rows:[{id:'reserved'}]};
       if (sql.startsWith('select revision,turns'))
         return { rows: [{ revision: 0, turns: [], pending: expiresAt > now }] };
       if (sql.startsWith('select 1 from bar_conversations'))

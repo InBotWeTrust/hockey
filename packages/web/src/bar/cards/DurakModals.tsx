@@ -1,3 +1,4 @@
+import { VisitorGameGate } from '../VisitorGameGate.js';
 import { X } from 'lucide-react';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { computerOpponent, opponentArt, type ComputerOpponentId } from './computerOpponents.js';
@@ -62,11 +63,13 @@ export function DurakLaunchModal({
           ? 'Мария составит тебе компанию за карточным столом. Обычный подкидной дурак: 36 карт, без ставок. Избавься от всех карт раньше соперницы.'
           : `Подкидной дурак: 36 карт, без ставок. ${opponent.description}`}
       </p>
+      <VisitorGameGate character={opponentId} avatar={opponentArt(opponentId, 'avatar')}>
       <div className="modal-actions">
         <button className="modal-primary btn btn--cta" onClick={onPlay}>
           Играть
         </button>
       </div>
+      </VisitorGameGate>
     </AccessibleModal>
   );
 }
@@ -103,6 +106,7 @@ export function DurakResultModal({
             ? opponent.loss
             : '«Все карты ушли в отбой. Сыграем ещё?»'}
       </p>
+      <VisitorGameGate character={opponentId} avatar={opponentArt(opponentId, 'avatar')}>
       <div className="modal-actions">
         <button className="btn btn--ghost" onClick={onBack}>
           Вернуться в бар
@@ -111,6 +115,7 @@ export function DurakResultModal({
           Повторить
         </button>
       </div>
+      </VisitorGameGate>
     </AccessibleModal>
   );
 }

@@ -39,6 +39,6 @@ export const gameApi = {
     apiFetch('/bar/games/invites', post({ kind, userId })),
   respond: (id: string, action: 'accept' | 'decline' | 'cancel') =>
     apiFetch<{ matchId: string | null }>(`/bar/games/invites/${id}`, post({ action })),
-  localCards: (id: string, leave = false) =>
-    apiFetch('/bar/games/local-cards', post({ id, leave })),
+  localCards: (id: string, leave = false, finish = false) =>
+    apiFetch('/bar/games/local-cards', post({ id, leave, finish })),
 };

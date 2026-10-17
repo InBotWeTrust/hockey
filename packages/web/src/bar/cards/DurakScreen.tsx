@@ -61,8 +61,8 @@ function ComputerGame({
   const controller = useDurakGame(initialGame, opponentId, save);
   const lease=useLocalCardLease();
   const result=controller.game.result;
-  useEffect(()=>{if(result!==null)void lease?.release().catch(()=>{});},[result]);
-  const restart=()=>{if(!lease){controller.restart();return;}void lease.reserve().then(()=>controller.restart()).catch(()=>{});};
+  useEffect(()=>{if(result!==null)void lease?.release(true).catch(()=>{});},[result]);
+  const restart=()=>{if(!lease){controller.restart();return;}void lease.reserve(true).then(()=>controller.restart()).catch(()=>{});};
   return (
     <>
     {unsaved && <div className="bar-card-history-error" role="alert">

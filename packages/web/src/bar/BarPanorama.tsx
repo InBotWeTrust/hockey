@@ -1,3 +1,4 @@
+import { VisitorShop } from './VisitorShop.js';
 import { useBarActivity } from './barActivity.js';
 import {useAuthStore} from '../auth/authStore.js';
 import {claimDailyGreeting,hasDailyGreeting,localDay,nextLocalMidnight} from './dailyGreeting.js';
@@ -16,6 +17,7 @@ import { barCharacters, fetchConversation, sendPhysicalIncident, type BarCharact
 export function BarPanorama() {
   const navigate = useNavigate();
   const location = useLocation();
+  const [visitorShop, setVisitorShop] = useState(false);
   const activityCounts = useBarActivity();
   const account=useAuthStore(state=>state.user?.id)??'preview';
   const [day,setDay]=useState(localDay);
@@ -36,6 +38,13 @@ export function BarPanorama() {
   const [layout, setLayout] = useState(createDefaultBarLayout);
   const [layoutReady,setLayoutReady]=useState(false);
   const [slot, setSlot] = useState(() => sessionStorage.getItem('bar-active-slot') || 'bar-8');
+  useEffect(() => {
+    if (layoutReady && new URLSearchParams(location.search).get('visitorShop') === '1') {
+      const igor = layout.slots.find(s => s.occupantId === 'igor');
+      if (igor) setSlot(igor.id);
+      setConversation(null); setVisitorShop(true);
+    }
+  }, [location.search, layoutReady, layout]);
   const [opponent, setOpponent] = useState<ComputerOpponentId | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -155,7 +164,8 @@ export function BarPanorama() {
   };
   return (
     <>
-      <BarScene activityCounts={activityCounts}
+      <BarScene
+        onVisitorShop={() => setVisitorShop(true)} activityCounts={activityCounts}
         layout={layout}
         onStaffRoom={(id) => {sessionStorage.setItem('bar-staff-return-slot', id); sessionStorage.setItem('bar-active-slot', id); navigate('/bar/staff-room');}}
         characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
@@ -180,9 +190,11 @@ export function BarPanorama() {
           ) : undefined
         }
       />
+      {visitorShop && <VisitorShop onClose={() => { setVisitorShop(false); if (location.search.includes('visitorShop')) navigate('/bar', { replace: true }); }} />}
       {conversation && (
         <BarConversation
           key={`${conversation}:${conversationVersion}`}
+          onVisitorShop={() => navigate('/bar?visitorShop=1')}
           character={conversation}
           name={layout.profiles[conversation].name}
           avatar={layout.profiles[conversation].avatar}

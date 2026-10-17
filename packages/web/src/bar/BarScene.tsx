@@ -37,6 +37,7 @@ export function BarScene({
   preview = false,
   notice,
   onTalk,
+  onVisitorShop,
   conversationStarted = false,
   hideIdentity = false,
   onPhysicalIncident,
@@ -53,6 +54,7 @@ export function BarScene({
   preview?: boolean;
   notice?: React.ReactNode;
   onTalk?: (character: BarCharacter) => void;
+  onVisitorShop?: () => void;
   conversationStarted?: boolean;
   hideIdentity?: boolean;
   onPhysicalIncident?: (character: BarCharacter) => void;
@@ -237,6 +239,7 @@ export function BarScene({
         <div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>setTerminalOpen(false)}><X size={19} strokeWidth={1.5}/></button></div>
         <BarGamesLobby embedded />
       </section>}
+      {!preview && !hideIdentity && slot.occupantId === 'igor' && <button className="btn btn--cta" style={{ position: 'absolute', bottom: 'calc(190px + var(--app-safe-bottom, 0px))', left: '50%', transform: 'translateX(-50%)', zIndex: 6 }} onClick={onVisitorShop}>Карта и сообщения</button>}
       <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
       <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity || terminalOpen}>
         {isUnfinished(slot.occupantId) ? (
