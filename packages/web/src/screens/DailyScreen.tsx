@@ -7908,7 +7908,7 @@ function RhythmSeriesValues({series,label}: {series:readonly number[];label:stri
       {groups.length === 0 ? '—' : groups.map(([length,count])=>(
         <span role="listitem" key={length} style={{display:'inline-flex',alignItems:'baseline',gap:3,whiteSpace:'nowrap'}}>
           <span>{length}</span>
-          {count>1 && <span style={{fontSize:10,fontWeight:650}}>×{count}</span>}
+          <span style={{fontSize:10,fontWeight:650}}>×{count}</span>
         </span>
       ))}
     </span>

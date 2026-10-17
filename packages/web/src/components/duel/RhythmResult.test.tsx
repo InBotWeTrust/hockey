@@ -57,7 +57,7 @@ it('groups repeated series by length and separates each player in the result', (
   render(<DuelResultCard match={groupedMatch} />);
   const own = screen.getByRole('list', {name:'Вы'});
   const opponent = screen.getByRole('list', {name:'Соперник'});
-  expect(within(own).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['6×3','4×2','2']);
-  expect(within(opponent).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['5','3×2']);
-  expect(within(own).queryByText('×1')).not.toBeInTheDocument();
+  expect(within(own).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['6×3','4×2','2×1']);
+  expect(within(opponent).getAllByRole('listitem').map(item=>item.textContent)).toEqual(['5×1','3×2']);
+  expect(within(own).getByText('×1')).toBeInTheDocument();
 });

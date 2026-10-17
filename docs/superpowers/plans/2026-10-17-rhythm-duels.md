@@ -22,4 +22,4 @@ Remove the two-segment progress bar and its caption entirely. Rhythm condition n
 
 Follow-up caption clarification: the first goal of each new series shows `ГОЛ` with `Серия началась`; a confirmed second goal shows `Серия 2`. Unconfirmed single goals still contribute zero points.
 
-Result display follow-up: replace the combined series line with two rows labeled `Вы` and `Соперник`, without a separate series heading. Group repeated lengths descending as `6 ×3`; use a smaller multiplier and omit `×1`. Scoring is unchanged.
+Result display follow-up: replace the combined series line with two rows labeled `Вы` and `Соперник`, without a separate series heading. Group repeated lengths descending as `6 ×3`; use a smaller multiplier and show `×1` for single occurrences. Scoring is unchanged.
