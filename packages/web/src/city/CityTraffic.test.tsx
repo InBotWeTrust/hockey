@@ -24,7 +24,7 @@ it('starts off-map after a quiet interval and removes completed traffic',()=>{
  view.unmount();expect(vi.getTimerCount()).toBe(0);
 });
 it('does not spawn while the page is hidden',()=>{
- vi.useFakeTimers();const hidden=vi.spyOn(document,'hidden','get').mockReturnValue(true);
+ vi.useFakeTimers();vi.spyOn(Math,'random').mockReturnValue(.6);const hidden=vi.spyOn(document,'hidden','get').mockReturnValue(true);
  const view=render(<CityTraffic night={true}/>);
  act(()=>vi.advanceTimersByTime(20*60_000));expect(screen.queryByTestId('city-vehicle')).toBeNull();
  hidden.mockReturnValue(false);fireEvent(document,new Event('visibilitychange'));

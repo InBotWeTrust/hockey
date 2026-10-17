@@ -14,8 +14,8 @@ export function CityAccident({incident}:{incident:VisibleAccident}){
  </div>;
  const duration=(event.collisionAt-event.start)/1000;
  return <div className="city-incident" data-testid="city-accident" data-phase={phase} key={`${event.start}:${phase}:${sampledAt}`}>
-  {actor('sedan',approach?-10:event.impact,approach?event.impact:depart?-10:event.impact,approach?duration:(event.impact+10)/event.speedA,event.lane,approach?trafficAssets.sedan:accidentAssets.sedan,depart)}
-  {actor('taxi',approach?110:event.impact+accidentCarWidth,approach?event.impact+accidentCarWidth:depart?110:event.impact+accidentCarWidth,approach?duration:(110-event.impact-accidentCarWidth)/event.speedB,event.lane,approach?trafficAssets.taxi:accidentAssets.taxi,!depart)}
-  {['police-approach','police-wait','departing'].includes(phase)&&actor('police',phase==='police-approach'?-10:event.impact,phase==='police-approach'?event.impact:depart?110:event.impact,phase==='police-approach'?(event.policeArrived-event.policeStart)/1000:(110-event.impact)/event.policeSpeed,event.policeLane,accidentAssets.police,false,true)}
+  {actor('sedan',approach?-10:event.impact,approach?event.impact:depart?-10:event.impact,approach?duration:(event.impact+10)/event.departSpeedA,event.lane,approach?trafficAssets.sedan:accidentAssets.sedan,depart)}
+  {actor('taxi',approach?110:event.impact+accidentCarWidth,approach?event.impact+accidentCarWidth:depart?110:event.impact+accidentCarWidth,approach?duration:(110-event.impact-accidentCarWidth)/event.departSpeedB,event.lane,approach?trafficAssets.taxi:accidentAssets.taxi,!depart)}
+  {['police-approach','police-wait','departing'].includes(phase)&&actor('police',phase==='police-approach'?-10:event.impact,phase==='police-approach'?event.impact:depart?110:event.impact,phase==='police-approach'?(event.policeArrived-event.policeStart)/1000:(110-event.impact)/event.departPoliceSpeed,event.policeLane,accidentAssets.police,false,true)}
  </div>;
 }

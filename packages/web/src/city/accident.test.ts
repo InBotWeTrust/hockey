@@ -30,3 +30,13 @@ it('computes the contact point from unequal independent approach speeds',()=>{
  const t=event.collisionAt/1000;
  expect(-10+event.speedA*t+3.6).toBeCloseTo(110-event.speedB*t,6);
 });
+it('gives all three vehicles distinct random departure speeds and waits for the last exit',()=>{
+ for(const value of [0,.4,.99]){
+  const event=createAccident(1000,()=>value);
+  const speeds=[event.departSpeedA,event.departSpeedB,event.departPoliceSpeed];
+  expect(speeds.every(speed=>Number.isFinite(speed)&&speed>0)).toBe(true);
+  expect(new Set(speeds).size).toBe(3);
+  const last=Math.max((event.impact+10)/event.departSpeedA,(110-event.impact-3.6)/event.departSpeedB,(110-event.impact)/event.departPoliceSpeed);
+  expect(event.end-event.departAt).toBeCloseTo(last*1000,5);
+ }
+});
