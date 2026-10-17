@@ -13,13 +13,14 @@ export function CityAccident({incident}:{incident:VisibleAccident}){
  },[event.start]);
  if(phase==='done')return null;
  const stage=accidentStageAt(event,sampledAt),elapsed=Math.max(0,(sampledAt-stage.start)/1000),depart=phase==='departing',approach=phase==='approach';
- const actor=(id:string,from:number,to:number,duration:number,lane:0|1,src:string,leftward:boolean,police=false)=><div key={id} data-testid={`accident-${id}`} className={`city-vehicle city-incident-car${leftward?' is-leftward':''}${police?' is-police':''}${from!==to?' is-moving':''}`} style={{'--lane-bottom':`${bottoms[lane]}%`,'--incident-from':`${from}%`,'--incident-to':`${to}%`,'--incident-duration':`${duration}s`,'--incident-delay':`${-elapsed}s`,left:`${from}%`,zIndex:lane+1} as CSSProperties}>
+ const actor=(id:string,from:number,to:number,duration:number,lane:0|1,src:string,leftward:boolean,police=false)=><div key={id} data-testid={`accident-${id}`} className={`city-vehicle city-incident-car${leftward?' is-leftward':''}${police?' is-police':''}${from!==to?' is-moving':''}${phase==='waiting'&&elapsed<.45&&!police?' has-impact':''}`} style={{'--lane-bottom':`${bottoms[lane]}%`,'--impact-tilt':leftward?'-1.5deg':'1.5deg','--impact-recoil':leftward?'.35deg':'-.35deg','--incident-from':`${from}%`,'--incident-to':`${to}%`,'--incident-duration':`${duration}s`,'--incident-delay':`${-elapsed}s`,left:`${from}%`,zIndex:lane+1} as CSSProperties}>
   <img src={src} alt="" draggable={false}/><i className="city-headlights"/><i className="city-taillights"/>{police&&<span className="city-police-beacons"><i/><i/></span>}
  </div>;
  const duration=(event.collisionAt-event.start)/1000;
  return <div className="city-incident" data-testid="city-accident" data-phase={phase} key={`${event.start}:${phase}:${sampledAt}`}>
   {actor('sedan',approach?-10:event.impact,approach?event.impact:depart?-10:event.impact,approach?duration:(event.impact+10)/event.departSpeedA,event.lane,approach?trafficAssets.sedan:accidentAssets.sedan,depart)}
   {actor('taxi',approach?110:event.impact+accidentCarWidth,approach?event.impact+accidentCarWidth:depart?110:event.impact+accidentCarWidth,approach?duration:(110-event.impact-accidentCarWidth)/event.departSpeedB,event.lane,approach?trafficAssets.taxi:accidentAssets.taxi,!depart)}
+  {phase==='waiting'&&elapsed<.24&&<span className="city-contact-burst" data-testid="accident-contact-burst" aria-hidden="true" style={{left:`${event.impact+accidentCarWidth}%`,bottom:`calc(${bottoms[event.lane]}% + 1.5%)`,'--incident-delay':`${-elapsed}s`,zIndex:event.lane+2} as CSSProperties}><i/><i/><i/></span>}
   {['police-approach','police-wait','departing'].includes(phase)&&actor('police',phase==='police-approach'?-10:event.impact,phase==='police-approach'?event.impact:depart?110:event.impact,phase==='police-approach'?(event.policeArrived-event.policeStart)/1000:(110-event.impact)/event.departPoliceSpeed,event.policeLane,accidentAssets.police,false,true)}
  </div>;
 }
