@@ -1811,3 +1811,9 @@
 .bar-naval-vessel--trail svg { opacity: .35; }
 .bar-naval-vessel--trail b { position: absolute; left: 0; top: -7px; display: grid; place-items: center; width: 16px; height: 16px; border: 1px solid #d7e8f2; border-radius: 50%; background: #263947; font-size: 10px; line-height: 1; color: white; }
 @media (prefers-reduced-motion: reduce) { .bar-naval-grid--airstrike, .bar-naval-damage--burning::before, .bar-naval-damage--burning::after { animation: none; } }
+
+.bar-naval-cell[data-sunk='true'], .bar-naval-cell[data-ship-color][data-sunk='true'][data-hit='true'] { background: transparent; }
+.bar-naval-vessel[data-sunk='true'] { border-color: rgba(133, 151, 162, .35); }
+.bar-naval-vessel[data-sunk='true'] .bar-naval-hull { fill: #26323b; stroke: #62717c; }
+.bar-naval-vessel[data-sunk='true'] .bar-naval-cabin { fill: #39454e; stroke: #18232c; }
+.bar-naval-vessel[data-sunk='true'] .bar-naval-deck { stroke: #687781; }

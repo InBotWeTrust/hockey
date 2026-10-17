@@ -370,6 +370,7 @@ export function BattleshipField({
                 }
                 data-impact={impact ? impact.hit ? destroyed ? 'sunk' : 'hit' : 'miss' : undefined}
                 data-hit={!!hit}
+                data-sunk={destroyed}
                 data-miss={mark && !mark.hit}
                 data-inferred-water={!hit && inferredWater.has(c)}
                 data-selected={isSelected(x, y) || ship?.id === selected}
@@ -387,7 +388,7 @@ export function BattleshipField({
               </button>
             );
           })}
-          {ships.map(ship=><span key={`vessel-${ship.id}`} className="bar-naval-vessel" data-side={showOwn?'self':'enemy'} data-ship-color={shipColor(ship)} aria-hidden="true" style={{left:`${ship.x/12*100}%`,top:`${ship.y/12*100}%`,width:`${ship.w/12*100}%`,height:`${ship.h/12*100}%`}}><ShipGraphic ship={ship}/></span>)}
+          {ships.map(ship=><span key={`vessel-${ship.id}`} className="bar-naval-vessel" data-sunk={sea.cells(ship).every(cell => ship.hits.includes(cell))} data-side={showOwn?'self':'enemy'} data-ship-color={shipColor(ship)} aria-hidden="true" style={{left:`${ship.x/12*100}%`,top:`${ship.y/12*100}%`,width:`${ship.w/12*100}%`,height:`${ship.h/12*100}%`}}><ShipGraphic ship={ship}/></span>)}
           {!setup && showOwn && submarineSelected && !disabled && sea.moves(game).map(pos=>{
             const sub=game.ownShips.find(s=>s.kind==='submarine')!;
             const dx=pos.x-sub.x,dy=pos.y-sub.y;

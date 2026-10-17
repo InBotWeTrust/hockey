@@ -20,12 +20,12 @@ export function NavalResult({ game, player }: { game: sea.View; player: 0 | 1 })
             const mark = game.shots[player].find(m => m.cell === cell);
             const hit = ship?.hits.includes(cell) || mark?.hit;
             const destroyed = !!ship && sea.cells(ship).every(c => ship.hits.includes(c));
-            return <span key={cell} className="bar-naval-cell" data-hit={!!hit} aria-label={`${letters[cell%12]} ${Math.floor(cell/12)+1}${hit?' попадание':mark?' промах':''}`}>
+            return <span key={cell} className="bar-naval-cell" data-hit={!!hit} data-sunk={destroyed} aria-label={`${letters[cell%12]} ${Math.floor(cell/12)+1}${hit?' попадание':mark?' промах':''}`}>
               {hit ? <span className={`bar-naval-damage${destroyed?' bar-naval-damage--sunk':' bar-naval-damage--burning'}`}/> : mark ? <span className="bar-naval-miss"/> : null}
             </span>;
           })}
           {reveal.submarineTrail?.map((ship, index, trail) => <span key={ship.move} className="bar-naval-vessel bar-naval-vessel--trail" style={position(ship)} aria-label={`Подлодка до манёвра ${ship.move}`}><ShipGraphic ship={ship}/><b style={{ left: trail.slice(0, index).filter(previous => previous.x === ship.x && previous.y === ship.y).length * 18 }}>{ship.move}</b></span>)}
-          {reveal.ships.map(ship => <span key={ship.id} className="bar-naval-vessel" style={position(ship)} aria-hidden="true"><ShipGraphic ship={ship}/></span>)}
+          {reveal.ships.map(ship => <span key={ship.id} className="bar-naval-vessel" data-sunk={sea.cells(ship).every(cell => ship.hits.includes(cell))} style={position(ship)} aria-hidden="true"><ShipGraphic ship={ship}/></span>)}
         </div>
       </div>
       <p className="modal-copy">{game.phase === 'setup' ? 'Игра закончилась до завершения расстановки. Показаны размещённые корабли.' : 'Твои попадания и промахи, все корабли соперника. Огонь - подбит, крест - потоплен.'}</p>
