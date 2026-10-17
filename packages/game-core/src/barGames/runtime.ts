@@ -14,7 +14,7 @@ export type BarGameAction =
   | { type: 'ochko-hit' | 'ochko-stand'; seq: number }
   | ({ type: 'arm-input' } & arm.ArmInput)
   | { type: 'surrender' };
-export const ENGINE_VERSION = 10;
+export const ENGINE_VERSION = 11;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -33,6 +33,7 @@ function supportedVersion(version: number): boolean {
     version === 7 ||
     version === 8 ||
     version === 9 ||
+    version === 10 ||
     version === ENGINE_VERSION
   );
 }
@@ -174,7 +175,7 @@ function perform(m: Runtime, action: BarGameAction, now: number, manual: boolean
       action.gesture,
       n.engineVersion >= 4 ? darts.SWIPE_GAIN : darts.LEGACY_SWIPE_GAIN,
     );
-    n.game = darts.hit(m.game, n.lastDart, n.engineVersion >= 9);
+    n.game = darts.hit(m.game, n.lastDart, n.engineVersion >= 9 && n.engineVersion <= 10, n.engineVersion >= 9);
     n.feedback = {
       type: 'dart',
       actor: p,
@@ -365,7 +366,7 @@ export function advance(m: Runtime, now: number): Runtime {
           y: -Math.cos(angle) * radius + (random(copy) - 0.5) * 0.15,
         };
         if (n.engineVersion >= 5) {
-          const targetPoint = darts.rotatePoint(darts.botTarget(n.game.scores[1], n.engineVersion >= 9), n.engineVersion >= 9 ? n.game.boardAngle ?? 0 : 0);
+          const targetPoint = darts.rotatePoint(darts.botTarget(n.game.scores[1], n.engineVersion >= 9 && n.engineVersion <= 10), n.engineVersion >= 9 ? n.game.boardAngle ?? 0 : 0);
           const imprecise = random(copy) < 0.25;
           point.x = targetPoint.x + (random(copy) - 0.5) * (imprecise ? 0.2 : 0.028);
           point.y = targetPoint.y + (random(copy) - 0.5) * (imprecise ? 0.16 : 0.025);

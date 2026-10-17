@@ -7,18 +7,18 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for obstacle-aware pool AI', () => {
-    expect(GAME_CORE_VERSION).toBe(101);
+  it('is bumped for single-out darts with per-dart busts', () => {
+    expect(GAME_CORE_VERSION).toBe(102);
   });
 });
 
 describe('shot core compatibility', () => {
   it('preserves sessions from the bar-only releases', () => {
-    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100])
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101])
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 102, NaN])
+    for (const version of [77, 87, 103, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });
