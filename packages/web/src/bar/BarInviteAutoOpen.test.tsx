@@ -41,6 +41,7 @@ const lobby = {
   serverNow: 100,
 };
 beforeEach(() => {
+  vi.mocked(cardLobby).mockResolvedValue({matchId:null,searching:false,invites:[],serverNow:100});
   vi.mocked(gameApi.lobby).mockResolvedValue(lobby);
 });
 afterEach(() => {
@@ -162,4 +163,13 @@ it('opens the cards tab for an incoming card-game invitation',async()=>{
  render(<MemoryRouter><BarScene {...props} activeSlotId={online}/></MemoryRouter>);
  await waitFor(()=>expect(screen.getByRole('tab',{name:'Карты'})).toHaveAttribute('aria-selected','true'));
  expect(await screen.findByRole('button',{name:'Закрыть терминал'})).toBeInTheDocument();
+});
+it('respects manual close while the initial invitation request is still pending',async()=>{
+ let resolve!:(s:typeof lobby)=>void;
+ vi.mocked(gameApi.lobby).mockImplementation(()=>new Promise(r=>{resolve=r;}));
+ render(<MemoryRouter><BarScene {...props} activeSlotId={online}/></MemoryRouter>);
+ fireEvent.click(screen.getByRole('button',{name:'Найти соперников'}));
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть терминал'}));
+ await act(async()=>{resolve(lobby);});
+ expect(screen.queryByRole('button',{name:'Закрыть терминал'})).not.toBeInTheDocument();
 });
