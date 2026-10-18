@@ -15,5 +15,5 @@ export const barObjects:readonly BarObject[]=[
  {id:'battleship',character:'timofey',label:'Играть в морской бой с Тимофеем',action:'battleship',left:61.8,top:33.8,width:2.2,height:9,glow:{x:63.5,y:36.5}},
  {id:'billiards-door',character:'veronika',label:'Играть в бильярд с Вероникой',action:'billiards',left:70.9,top:18.3,width:5,height:14.2,glow:{x:73.5,y:21.3}},
  {id:'club-cards',character:'igor',label:'Клубные карты',left:87.6,top:35.6,width:2.2,height:6.6,glow:{x:88.7,y:38.9}},
- {id:'newspapers',character:'igor',label:'Газеты',left:91.2,top:38,width:1.9,height:4.5,glow:{x:92.1,y:40.2}},
+ {id:'scoreboard',character:'igor',label:'Спортивный счёт',left:87,top:13,width:2,height:8,glow:{x:88,y:17}},
 ];
