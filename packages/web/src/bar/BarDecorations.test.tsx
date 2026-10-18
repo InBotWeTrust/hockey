@@ -7,16 +7,16 @@ it('keeps architectural doors in the panorama when Veronika moves', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-2', 'veronika');
   const view = render(<BarScene layout={layout} activeSlotId="bar-2" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
   expect(view.container.querySelector('[data-bar-backdrop="veronika"]')).toBeNull();
-  expect(view.container.querySelector('.bar-space__background--middle')?.getAttribute('src')).toMatch(/middle-.*-v7.webp$/);
+  expect(view.container.querySelector('[data-bar-wall="middle"] img')?.getAttribute('src')).toMatch(/middle-.*-v1.png$/);
   expect(view.container.querySelector('[data-bar-decoration="veronika"]')).toBeNull();
 });
 it('keeps the eastern panorama framing fixed between Igor and broadcasts', () => {
   const layout = createDefaultBarLayout();
   const props = {layout, onSelectSlot: vi.fn(), onAction: vi.fn()};
   const view = render(<BarScene {...props} activeSlotId="bar-9"/>);
-  const before = (view.container.querySelector('.bar-space__background--east') as HTMLElement).style.objectPosition;
+  const before = (view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition;
   view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
-  expect((view.container.querySelector('.bar-space__background--east') as HTMLElement).style.objectPosition).toBe(before);
+  expect((view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition).toBe(before);
 });
 
 it('uses baked background details without overlays and opens the door only at the last page', () => {

@@ -1,3 +1,4 @@
+import {BarInteriorBackdrop} from './BarInteriorBackdrop.js';
 import {useHorizontalPan} from './useHorizontalPan.js';
 import {useBarInvitation, type PendingBarInvitation} from './useBarInvitation.js';
 import {BarAvatarDock} from './BarAvatarDock.js';
@@ -13,7 +14,6 @@ import {
   type BarAction,
 } from '@hockey/game-core';
 import { CharacterEmotionFigure } from './CharacterEmotionFigure.js';
-import {barParts, barInterior} from './barArtwork.js';
 import {useBarLighting} from './barLighting.js';
 import type {CharacterExpression} from './characterEmotion.js';
 import { CharacterGesture } from './characterGesture.js';
@@ -153,17 +153,9 @@ export function BarScene({
         }}>
       <div className="bar-space__world">
       <div ref={track} className="bar-space__track">
-        {lighting.previous && barParts.map((part, i) => <img key={`previous-${part}`} className={`bar-space__background bar-space__background--${part}`} src={barInterior(part, lighting.previous!)} alt="" draggable={false} style={{left: `${i * 40}%`}}/>)}
-        {barParts.map((part, i) => (
-          <img
-            key={`${part}-${lighting.phase}`}
-            className={`bar-space__background bar-space__background--${part}${lighting.previous ? ' bar-space__background--enter' : ''}`}
-            src={barInterior(part, lighting.phase)}
-            alt=""
-            draggable={false}
-            style={{ left: `${i * 40}%` }}
-          />
-        ))}
+        <BarInteriorBackdrop phase={lighting.phase} previous={lighting.previous}/>
+        {!hideIdentity && <BarObjectGlow character={slot.occupantId}/>}
+        {!hideIdentity && <BarGameHotspots onAction={act}/>}
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
           const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);
@@ -201,8 +193,6 @@ export function BarScene({
             </div>
           );
         })}
-        {!hideIdentity && <BarObjectGlow character={slot.occupantId} />}
-        {!hideIdentity && <BarGameHotspots onAction={act} />}
       {index === layout.slots.length - 1 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
         onClick={()=>{if(ready(layout.slots.length-1))onStaffRoom(slot.id);}}/>}
       </div>
