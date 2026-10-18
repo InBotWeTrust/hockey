@@ -169,3 +169,15 @@ it('only shows the admin shortcut for admins and preserves menu attention counte
  view.rerender(<CityMap {...base} level="beginner" isAdmin adminCount={0}/>);
  expect(screen.queryByLabelText(/События администратора/)).not.toBeInTheDocument();
 });
+
+it('keeps vehicle lights on at sunset and night, and off in daylight',()=>{
+ vi.useFakeTimers();
+ try{
+  for(const hour of [12,19,23]){
+   vi.setSystemTime(new Date(2026,9,18,hour));
+   const view=render(<CityMap {...base} level="beginner"/>);
+   expect(view.container.querySelector('.city-traffic')?.classList.contains('is-night')).toBe(hour!==12);
+   view.unmount();
+  }
+ }finally{vi.useRealTimers();}
+});

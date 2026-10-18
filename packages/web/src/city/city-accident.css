@@ -20,3 +20,12 @@
 .city-contact-burst i:nth-child(3){transform:rotate(90deg) translateX(2px)}
 @keyframes city-contact-crack{0%{opacity:0;transform:scale(.4)}20%{opacity:.8;transform:scale(.8)}100%{opacity:0;transform:scale(1.6)}}
 @media(prefers-reduced-motion:reduce){.city-contact-burst{display:none}}
+
+/* Hazard lamps are small amber sources, not flashing headlight beams. */
+.city-incident .has-hazards .city-headlights,.city-incident .has-hazards .city-taillights{display:block;bottom:27%;width:3px;height:3px;border-radius:50%;background:#ffc052;box-shadow:0 0 4px 1px #ffad3599;clip-path:none;filter:none;transform:none;animation:city-hazard-flash 1s steps(1,end) var(--hazard-delay) infinite}
+.city-incident .has-hazards .city-headlights{right:1%;left:auto}
+.city-incident .has-hazards .city-taillights{left:1%;right:auto}
+.city-incident .has-hazards.is-leftward .city-headlights{left:1%;right:auto}
+.city-incident .has-hazards.is-leftward .city-taillights{right:1%;left:auto}
+@keyframes city-hazard-flash{0%,45%{opacity:1}46%,100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.city-incident .has-hazards .city-headlights,.city-incident .has-hazards .city-taillights{animation:none;opacity:.65}}
