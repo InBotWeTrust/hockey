@@ -1,8 +1,9 @@
+import {useHorizontalPan} from './useHorizontalPan.js';
 import {useBarInvitation, type PendingBarInvitation} from './useBarInvitation.js';
 import {BarAvatarDock} from './BarAvatarDock.js';
 import { BarObjectGlow } from './BarObjectGlow.js';
 import { BarGameHotspots } from './BarGameHotspots.js';
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, X } from 'lucide-react';
 import {
   barActionsFor,
@@ -85,9 +86,26 @@ export function BarScene({
     if(!terminalDismissed.current)setTerminalOpen(true);
   },[slot.occupantId,incomingInvitation]);
   const [failedImages, setFailedImages] = useState<string[]>([]);
-  const start = useRef<{ x: number; y: number } | null>(null);
-  const doorPointer = useRef<{x: number; y: number; moved: boolean} | null>(null);
-  const suppressDoorClick = useRef(false);
+  const viewport = useRef<HTMLDivElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const positioned = useRef(false);
+  const currentIndex = useRef(index);currentIndex.current=index;
+  const pan = useHorizontalPan(viewport, () => gesture.cancel());
+  const pageWidth = () => (track.current?.clientWidth ?? 0) / layout.slots.length;
+  const centered = (i:number) => !pageWidth() || Math.abs((viewport.current?.scrollLeft ?? 0)-i*pageWidth()) <= 4;
+  const center = (i:number, behavior:ScrollBehavior='smooth') => {
+    viewport.current?.scrollTo?.({left:i*pageWidth(),behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':behavior});
+  };
+  const select = (id:string) => {const i=layout.slots.findIndex(s=>s.id===id);if(i<0)return;gesture.cancel();center(i);onSelectSlot(id);};
+  const ready = (i:number) => {if(i!==index||!centered(i)){select(layout.slots[i]!.id);return false;}return true;};
+  const act = (action:BarAction,id:BarOccupantId) => {const i=layout.slots.findIndex(s=>s.occupantId===id);if(i>=0&&ready(i))onAction(action,id);};
+  useLayoutEffect(()=>{center(index,positioned.current?'smooth':'auto');positioned.current=true;},[index,layout.slots.length]);
+  useEffect(()=>{
+    const el=viewport.current;if(!el||typeof ResizeObserver==='undefined')return;
+    let width=el.clientWidth,height=el.clientHeight;
+    const observer=new ResizeObserver(()=>{if(width===el.clientWidth&&height===el.clientHeight)return;width=el.clientWidth;height=el.clientHeight;gesture.cancel();center(currentIndex.current,'auto');});
+    observer.observe(el);return()=>observer.disconnect();
+  },[]);
   const panel = useRef<HTMLElement>(null);
   const [panelHeight, setPanelHeight] = useState(190);
   useEffect(() => {
@@ -100,49 +118,11 @@ export function BarScene({
     observer.observe(el);
     return () => observer.disconnect();
   }, [profile]);
-  const move = (delta: number) =>
-    onSelectSlot(layout.slots[Math.max(0, Math.min(9, index + delta))]!.id);
-  const finish = (x: number, y: number) => {
-    const origin = start.current;
-    start.current = null;
-    if (!origin) return;
-    const dx = x - origin.x;
-    if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(y - origin.y) * 1.3) move(dx < 0 ? 1 : -1);
-  };
+  const move = (delta:number) => select(layout.slots[Math.max(0,Math.min(layout.slots.length-1,index+delta))]!.id);
   return (
     <main
       className={`bar-space${preview ? ' bar-space--preview' : ''}`}
       style={{ '--bar-page': index, '--bar-panel-height': `${panelHeight}px` } as CSSProperties}
-      onTouchStart={(e) => {
-        if ((e.target as HTMLElement).closest('button, .bar-avatar-dock')) return;
-        const t = e.touches[0];
-        if (t) start.current = { x: t.clientX, y: t.clientY };
-      }}
-      onTouchEnd={(e) => {
-        const t = e.changedTouches[0];
-        if (t) finish(t.clientX, t.clientY);
-      }}
-      onTouchCancel={() => {
-        start.current = null;
-      }}
-      onPointerMove={(e) => gesture.move(e.pointerId,e.clientX,e.clientY)}
-      onContextMenu={(e) => { if ((e.target as Element).closest('[data-bar-character]')) e.preventDefault(); }}
-      onPointerDown={(e) => {
-        const hit=(e.target as Element).closest('[data-bar-character]')?.getAttribute('data-bar-character') as BarCharacter | null;
-        if (hit && !hideIdentity) { target.current=hit; gesture.down(e.pointerId,e.clientX,e.clientY); e.currentTarget.setPointerCapture?.(e.pointerId); } else gesture.cancel();
-        if (e.pointerType === 'mouse' && !(e.target as HTMLElement).closest('button')) {
-          start.current = { x: e.clientX, y: e.clientY };
-          e.currentTarget.setPointerCapture?.(e.pointerId);
-        }
-      }}
-      onPointerUp={(e) => {
-        gesture.up(e.pointerId);
-        if (e.pointerType === 'mouse') finish(e.clientX, e.clientY);
-      }}
-      onPointerCancel={() => {
-        gesture.cancel();
-        start.current = null;
-      }}
       onKeyDown={(e) => {
         if (e.key === 'ArrowLeft') {
           e.preventDefault();
@@ -154,7 +134,25 @@ export function BarScene({
         }
       }}
     >
-      <div className="bar-space__track">
+      <div ref={viewport} className="bar-space__viewport" aria-label="Панорама бара" tabIndex={0}
+        {...pan}
+        onContextMenu={e=>{if((e.target as Element).closest('[data-bar-character]'))e.preventDefault();}}
+        onPointerDown={e=>{
+          if(e.button!==0||e.isPrimary===false)return;
+          const hit=(e.target as Element).closest('[data-bar-character]') as HTMLElement|null;
+          const id=hit?.getAttribute('data-bar-character') as BarCharacter|null;
+          if(id&&!hideIdentity&&!(e.target as Element).closest('[role="button"],button')&&centered(index)&&id===slot.occupantId){target.current=id;gesture.down(e.pointerId,e.clientX,e.clientY);}else gesture.cancel();
+        }}
+        onPointerMove={e=>gesture.move(e.pointerId,e.clientX,e.clientY)}
+        onPointerUp={e=>gesture.up(e.pointerId)}
+        onPointerCancel={()=>gesture.cancel()}
+        onClick={e=>{
+          const figure=(e.target as Element).closest('[data-bar-slot]');
+          const id=figure?.getAttribute('data-bar-slot');
+          if(id){const i=layout.slots.findIndex(s=>s.id===id);if(i>=0)ready(i);}
+        }}>
+      <div className="bar-space__world">
+      <div ref={track} className="bar-space__track">
         {lighting.previous && barParts.map((part, i) => <img key={`previous-${part}`} className={`bar-space__background bar-space__background--${part}`} src={barInterior(part, lighting.previous!)} alt="" draggable={false} style={{left: `${i * 40}%`}}/>)}
         {barParts.map((part, i) => (
           <img
@@ -172,7 +170,7 @@ export function BarScene({
           const figureScale = s.scale * (s.occupantId === 'broadcasts' || shrinkCharacter ? 0.9 : 1);
           const figureTop = s.y + (shrinkCharacter ? s.scale * 10 * (1 - s.y / 100) : 0);
           return (
-            <div key={s.id} className="bar-space__figure" style={{ left: `${i * 10}%` }}>
+            <div key={s.id} className="bar-space__figure" data-bar-slot={s.id} style={{ left: `${i * 10}%` }}>
               {isUnfinished(s.occupantId) ? <CharacterSilhouette /> : isBarAssetPath(composition) && (
                 <CharacterEmotionFigure
                   key={s.occupantId}
@@ -196,24 +194,20 @@ export function BarScene({
                 />
               )}
 
-              {onPhysicalIncident && !hideIdentity && s.id===activeSlotId && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
-                <CharacterHitArea onGame={s.occupantId === 'oleg' ? () => onAction('armwrestling','oleg') : undefined} onSwipe={move} character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
+              {!hideIdentity && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
+                <CharacterHitArea onGame={s.occupantId === 'oleg' && s.id===activeSlotId ? () => act('armwrestling','oleg') : undefined} character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
+              {!hideIdentity && (s.occupantId==='online'||s.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={s.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={e=>{e.stopPropagation();if(!ready(i))return;if(s.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
             </div>
           );
         })}
         {!hideIdentity && <BarObjectGlow character={slot.occupantId} />}
-        {!hideIdentity && <BarGameHotspots onAction={onAction} onSwipe={move} />}
+        {!hideIdentity && <BarGameHotspots onAction={act} />}
       {index === layout.slots.length - 1 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
-        onPointerDown={e => {e.stopPropagation(); suppressDoorClick.current = false; doorPointer.current = {x: e.clientX, y: e.clientY, moved: false}; e.currentTarget.setPointerCapture?.(e.pointerId);}}
-        onPointerMove={e => {e.stopPropagation(); const p = doorPointer.current; if (p && Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12) p.moved = true;}}
-        onPointerUp={e => {e.stopPropagation(); const p = doorPointer.current; doorPointer.current = null; if (!p) return; suppressDoorClick.current = p.moved || Math.hypot(e.clientX - p.x, e.clientY - p.y) > 12; const dx = e.clientX - p.x; if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(e.clientY - p.y) * 1.3) move(dx < 0 ? 1 : -1);}}
-        onPointerCancel={() => {doorPointer.current = null; suppressDoorClick.current = true;}}
-        onTouchStart={e => e.stopPropagation()} onTouchEnd={e => e.stopPropagation()}
-        onClick={() => {if (suppressDoorClick.current) {suppressDoorClick.current = false; return;} onStaffRoom(slot.id);}}/>}
-
+        onClick={()=>{if(ready(layout.slots.length-1))onStaffRoom(slot.id);}}/>}
       </div>
-      {!hideIdentity && (slot.occupantId==='online'||slot.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={slot.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={()=>{if(slot.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
+      </div>
+      </div>
       <header className="bar-space__header bonus-games-catalog__header">
         {onBack && (
           <button className="icon-btn catalog-header-back" aria-label="Назад" onClick={onBack}>
@@ -271,7 +265,7 @@ export function BarScene({
           <h2>Свободное место</h2>
         )}
       </section>
-      {!hideIdentity && <BarAvatarDock layout={layout} activeSlotId={activeSlotId} activityCounts={activityCounts} onSelectSlot={onSelectSlot}/>}
+      {!hideIdentity && <BarAvatarDock layout={layout} activeSlotId={activeSlotId} activityCounts={activityCounts} onSelectSlot={select}/>}
       </div>
     </main>
   );
