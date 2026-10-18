@@ -1,3 +1,4 @@
+import { useGameInvites } from './gameInviteStore.js';
 import type {
   BarGameId,
   GameCharacter,
@@ -37,8 +38,12 @@ export const gameApi = {
     ),
   invite: (kind: BarGameId, userId: string) =>
     apiFetch('/bar/games/invites', post({ kind, userId })),
-  respond: (id: string, action: 'accept' | 'decline' | 'cancel') =>
-    apiFetch<{ matchId: string | null }>(`/bar/games/invites/${id}`, post({ action })),
+  respond: async (id: string, action: 'accept' | 'decline' | 'cancel') => {
+    const owner = useGameInvites.getState().owner;
+    const result = await apiFetch<{ matchId: string | null }>(`/bar/games/invites/${id}`, post({ action }));
+    if (owner) useGameInvites.getState().remove(owner, id);
+    return result;
+  },
   localCards: (id: string, leave = false) =>
     apiFetch('/bar/games/local-cards', post({ id, leave })),
 };
