@@ -5,9 +5,22 @@ import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from './matchCourt.js';
 
-const expectedUrl = '/sprites/amateur-central-indoor-00eb88ddee05.webp';
+const expectedUrl = '/sprites/amateur-central-indoor-dc575ddb17a8.webp';
 
 describe('Central indoor amateur match artwork', () => {
+  it('continues textured ice to the bottom instead of repeating the resize letterbox', async () => {
+    const { data, info } = await sharp(path.join('public', expectedUrl)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    for (let y = info.height - 11; y < info.height; y++) {
+      const values = Array.from({ length: info.width - 40 }, (_, x) => {
+        const i = (y * info.width + x + 20) * info.channels;
+        return (data[i]! + data[i + 1]! + data[i + 2]!) / 3;
+      });
+      const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+      const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+      expect(Math.sqrt(variance), `ice texture at row ${y}`).toBeGreaterThan(4);
+      expect(mean, `ice brightness at row ${y}`).toBeLessThan(225);
+    }
+  });
   it('uses one content-versioned background for ordinary daily, duel and tournament courts', () => {
     expect(AMATEUR_DAILY_COURT_BACKGROUND).toBe(expectedUrl);
     expect(AMATEUR_TOURNAMENT_COURT_BACKGROUND).toBe(expectedUrl);
@@ -19,7 +32,7 @@ describe('Central indoor amateur match artwork', () => {
     expect(metadata.format).toBe('webp');
     expect([metadata.width, metadata.height]).toEqual([1212, 2000]);
     expect(bytes.length).toBeLessThanOrEqual(350 * 1024);
-    expect(createHash('sha256').update(bytes).digest('hex').slice(0, 12)).toBe('00eb88ddee05');
+    expect(createHash('sha256').update(bytes).digest('hex').slice(0, 12)).toBe('dc575ddb17a8');
   });
 
   it('bakes the agreed nine-source-pixel lift into the end line without actor offsets', async () => {
