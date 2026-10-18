@@ -178,7 +178,7 @@ it('does not overwrite a newer conversation emotion with a delayed entry read',a
   expect(view.container.querySelector('img[src="/bar/emotions/maria/empathy-v1.webp"]')).not.toBeNull();
  }finally{vi.stubGlobal('Image',image);}
 });
-it('greets again after swiping back from an opened conversation at the same revision',async()=>{
+it('greets again after selecting back from an opened conversation at the same revision',async()=>{
  const image=globalThis.Image;
  vi.stubGlobal('Image',class{onload:(()=>void)|null=null;onerror:null=null;set src(_value:string){queueMicrotask(()=>this.onload?.());}});
  try{
@@ -190,12 +190,9 @@ it('greets again after swiping back from an opened conversation at the same revi
   fireEvent.click(screen.getByRole('button',{name:/^(Разговор|Продолжить разговор)$/}));
   await screen.findByText('Привет!');
   fireEvent.click(screen.getByRole('button',{name:'Закрыть разговор'}));
-  const scene=view.container.querySelector('main')!;
-  fireEvent.touchStart(scene,{touches:[{clientX:300,clientY:300}]});
-  fireEvent.touchEnd(scene,{changedTouches:[{clientX:100,clientY:300}]});
+  fireEvent.click(await screen.findByRole('button',{name:/^Арсенич$/}));
   await screen.findByRole('heading',{name:'Арсенич'});
-  fireEvent.touchStart(scene,{touches:[{clientX:100,clientY:300}]});
-  fireEvent.touchEnd(scene,{changedTouches:[{clientX:300,clientY:300}]});
+  fireEvent.click(screen.getByRole('button',{name:/^Мария$/}));
   await waitFor(()=>expect(view.container.querySelector('svg[data-current][data-frame="/bar/emotions/maria/greeting-v1.webp"]')).not.toBeNull());
  }finally{vi.stubGlobal('Image',image);}
 });

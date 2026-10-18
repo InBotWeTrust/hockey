@@ -3,11 +3,12 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { createDefaultBarLayout, moveBarOccupant } from '@hockey/game-core';
 import { MemoryRouter } from 'react-router-dom';
 import { BarScene } from './BarScene.js';
+function pointer(target:Element,type:string,x:number){const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);}
 it('navigates by avatar click and suppresses clicks after dragging the dock', () => {
  const select=vi.fn();render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()}/>);
  const avatar=screen.getByRole('button',{name:'Арсенич'}),nav=screen.getByRole('navigation',{name:'Места в баре'});
- fireEvent.click(avatar);expect(select).toHaveBeenCalledWith('bar-4');select.mockClear();
- fireEvent.pointerDown(nav,{clientX:10,clientY:0});fireEvent.pointerMove(nav,{clientX:80,clientY:0});fireEvent.pointerUp(nav);fireEvent.click(avatar);expect(select).not.toHaveBeenCalled();
+ fireEvent.click(avatar,{detail:1});expect(select).toHaveBeenCalledWith('bar-4');select.mockClear();
+ pointer(nav,'pointerdown',10);pointer(nav,'pointermove',80);pointer(nav,'pointerup',80);fireEvent.click(avatar,{detail:1});expect(select).not.toHaveBeenCalled();
 });
 it('hides the dock during conversation',()=>{
  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" hideIdentity onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
@@ -92,13 +93,13 @@ it('navigates when clicking a marker with its preview already open', () => {
   fireEvent.click(marker);
   expect(select).toHaveBeenCalledWith('bar-2');
 });
-it('detects character taps, ignores background and cancels a swipe', () => {
+it('detects character taps, ignores background and cancels a drag', () => {
  const incident=vi.fn(),select=vi.fn();
  const {container,rerender}=render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()} onPhysicalIncident={incident}/>);
- const main=container.querySelector('main')!,hit=container.querySelector('[data-bar-character="maria"]')!;
+ const main=container.querySelector('.bar-space__viewport')!,hit=container.querySelector('[data-bar-character="maria"]')!;
  const pointer=(target:Element,type:string,x=0)=>{const event=new MouseEvent(type,{bubbles:true,clientX:x});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);};
  pointer(hit,'pointerdown');pointer(main,'pointerup');pointer(hit,'pointerdown');pointer(main,'pointermove',60);pointer(main,'pointerup',60);
- expect(incident).not.toHaveBeenCalled();expect(select).toHaveBeenCalledWith('bar-2');
+ expect(incident).not.toHaveBeenCalled();expect(select).not.toHaveBeenCalled();
  for(let i=0;i<3;i++){pointer(main,'pointerdown');pointer(main,'pointerup');}expect(incident).not.toHaveBeenCalled();
  for(let i=0;i<3;i++){pointer(hit,'pointerdown');pointer(main,'pointerup');}expect(incident).toHaveBeenCalledWith('maria');expect(incident).toHaveBeenCalledTimes(1);
  rerender(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" hideIdentity onSelectSlot={select} onAction={vi.fn()} onPhysicalIncident={incident}/>);
