@@ -16,7 +16,7 @@ import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useCardHistoryDelivery } from '../bar/cards/cardHistoryDelivery.js';
-import { BottomNav, isBottomNavVisible, isOpenRinkRoute } from '../components/BottomNav.js';
+import { isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
@@ -343,13 +343,6 @@ function AppExperience(): JSX.Element {
   useEffect(() => {
     if (user !== null) preloadCriticalArtwork();
   }, [user]);
-  const bottomNavVisible =
-    location.pathname !== '/dev/tournament-result-preview' &&
-    location.pathname !== '/dev/daily-period-preview' &&
-    location.pathname !== '/dev/monthly-rating-reward-preview' &&
-    (!MARKSMANSHIP_CONSTRUCTOR_ENABLED ||
-      location.pathname !== '/profile/marksmanship-constructor') &&
-    isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const weeklyStartModalEnabled =
@@ -388,7 +381,7 @@ function AppExperience(): JSX.Element {
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
-        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
+        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
@@ -669,7 +662,6 @@ function AppExperience(): JSX.Element {
             </Routes>
           </Suspense>
         </div>
-        {bottomNavVisible && <BottomNav />}
       </div>
     </>
   );
