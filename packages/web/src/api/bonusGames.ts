@@ -37,7 +37,7 @@ export type EnduranceQualificationRules = {
   goalWindowMs: number;
 };
 export type BonusQualificationRules =
-  | {type: 'rhythm_in_time'; targetPoints: number; minimumSeries: number; activeTimeMs: number}
+  | {type: 'rhythm_in_time'; breakOnMiss?: boolean; targetPoints: number; minimumSeries: number; activeTimeMs: number}
   | {
       type: 'goals_from_shots';
       targetGoals: number;

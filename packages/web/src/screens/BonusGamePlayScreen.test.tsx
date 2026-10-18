@@ -2180,3 +2180,45 @@ it('keeps the final Rhythm flight active across the siren until its result close
  act(()=>{props.onResultVisibilityChange(false);});
  props=playViewProbe.mock.calls.at(-1)![0];expect(props.active).toBe(false);expect(props.holdSceneAfterResult).toBe(true);
 });
+
+it.each([2,4,7])('expires Rhythm notice after two traversals and turns green only at threshold %i',minimumSeries=>{
+ const base=attempt();const frequency=base.rules.periods.find(p=>p.period_number===base.current_period)!.shooter_frequency;
+ const shots=Array.from({length:minimumSeries-1},(_,i)=>({travel:1+i*.1,goal:true}));
+ setStore({attempt:{...base,rhythm_shots:shots,rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',targetPoints:56,minimumSeries,activeTimeMs:180000}}}});renderScreen();
+ expect(screen.getByRole('status')).toHaveClass('initial-training-feedback-notice--warning');
+ let props=playViewProbe.mock.calls.at(-1)![0];
+ const last=shots.at(-1)!.travel;
+ act(()=>props.onSceneClock(0,(last+2)*1000/(2*frequency)));
+ expect(screen.getByRole('status')).toBeInTheDocument();
+ act(()=>props.onSceneClock(0,(last+2.001)*1000/(2*frequency)));
+ expect(screen.queryByRole('status')).toBeNull();
+ props=playViewProbe.mock.calls.at(-1)![0];
+ act(()=>{props.onShotResolved({shotIndex:minimumSeries,input:{tapTime:10000,shooterMotionTime:(last+2.01)*1000/(2*frequency)},result:{type:'goal'}});props.onResultVisibilityChange(true);});
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+ expect(screen.getByRole('status')).toHaveClass('initial-training-feedback-notice--warning');
+});
+it.each([2,4,7])('marks a qualifying Rhythm series of %i green',minimumSeries=>{
+ const base=attempt();setStore({attempt:{...base,rhythm_shots:Array.from({length:minimumSeries},(_,i)=>({travel:1+i*.1,goal:true})),rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',targetPoints:56,minimumSeries,activeTimeMs:180000}}}});renderScreen();
+ expect(screen.getByRole('status')).toHaveClass('initial-training-feedback-notice');
+ expect(screen.getByRole('status')).not.toHaveClass('initial-training-feedback-notice--warning');
+});
+
+it('hides an expired qualifying Rhythm series without subtracting its credited score',()=>{
+ const base=attempt();const frequency=base.rules.periods.find(p=>p.period_number===base.current_period)!.shooter_frequency;
+ setStore({attempt:{...base,rhythm_shots:[{travel:1,goal:true},{travel:1.2,goal:true}],rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',targetPoints:20,minimumSeries:2,activeTimeMs:180000}}}});renderScreen();
+ let props=playViewProbe.mock.calls.at(-1)![0];
+ expect(props.scoreboardModel({timer:'02:50'}).rows[0].metrics[0].value).toBe('2');
+ act(()=>props.onSceneClock(0,3.201*1000/(2*frequency)));
+ expect(screen.queryByRole('status')).toBeNull();
+ props=playViewProbe.mock.calls.at(-1)![0];
+ expect(props.scoreboardModel({timer:'02:48'}).rows[0].metrics[0].value).toBe('2');
+});
+
+it('starts a new strict bonus series after two goals, a miss and another goal',()=>{
+ const base=attempt();
+ setStore({attempt:{...base,rhythm_shots:[{travel:0,goal:true},{travel:.5,goal:true},{travel:.7,goal:false},{travel:.8,goal:true}],rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',breakOnMiss:true,targetPoints:20,minimumSeries:2,activeTimeMs:180000}}}});renderScreen();
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+ expect(screen.getByRole('status')).toHaveClass('initial-training-feedback-notice--warning');
+ const props=playViewProbe.mock.calls.at(-1)![0];
+ expect(props.scoreboardModel({timer:'02:50'}).rows[0].metrics[0].value).toBe('2');
+});

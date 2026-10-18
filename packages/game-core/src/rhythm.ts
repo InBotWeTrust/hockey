@@ -23,6 +23,7 @@ export function projectRhythm(input: {
   travel: number;
   version?: 1 | 2;
   minimumSeries?: number;
+  breakOnMiss?: boolean;
 }): RhythmProjection {
   if (input.version !== 1) return projectConfirmedRhythm(input);
   let score = 0,
@@ -59,6 +60,7 @@ function projectConfirmedRhythm(input: {
   shots: readonly RhythmShot[];
   travel: number;
   minimumSeries?: number;
+  breakOnMiss?: boolean;
 }): RhythmProjection {
   const minimum = input.minimumSeries ?? 2;
   if (!Number.isInteger(minimum) || minimum < 2 || minimum > 1000) throw new Error("invalid rhythm minimum series");
@@ -72,7 +74,10 @@ function projectConfirmedRhythm(input: {
   };
   for (const shot of input.shots) {
     if (shot.travel - lastGoalTravel > 2) endSeries();
-    if (!shot.goal) continue;
+    if (!shot.goal) {
+      if (input.breakOnMiss) endSeries();
+      continue;
+    }
     if (currentSeries === 0) currentSeries = 1;
     else {
       currentSeries++;
