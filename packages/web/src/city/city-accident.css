@@ -7,3 +7,28 @@
 .city-police-beacons i+i{background:#ff514a;box-shadow:0 0 5px 2px #ff3838;animation-delay:-.4s}
 @keyframes city-police-flash{0%,35%{opacity:1}36%,100%{opacity:.12}}
 @media(prefers-reduced-motion:reduce){.city-police-beacons i{animation:none;opacity:.5}}
+
+/* Front wheels stay planted while the rear suspension briefly lifts and settles. */
+.city-incident .city-incident-car.has-impact{transform-origin:92% 85%;animation:city-incident-impact .45s ease-out var(--incident-delay) both}
+.city-incident .city-incident-car.has-impact.is-leftward{transform-origin:8% 85%}
+@keyframes city-incident-impact{0%,100%{transform:translateY(0) rotate(0)}25%{transform:translateY(-.5px) rotate(var(--impact-tilt))}60%{transform:translateY(0) rotate(var(--impact-recoil))}}
+@media(prefers-reduced-motion:reduce){.city-incident .city-incident-car.has-impact{animation:none}}
+
+.city-contact-burst{position:absolute;width:1px;height:1px;pointer-events:none;animation:city-contact-crack .24s ease-out var(--incident-delay) both}
+.city-contact-burst i{position:absolute;left:0;top:0;width:4px;height:1px;border-radius:1px;background:rgba(255,244,209,.85);transform-origin:left center;transform:rotate(-135deg) translateX(2px)}
+.city-contact-burst i:nth-child(2){transform:rotate(-45deg) translateX(2px)}
+.city-contact-burst i:nth-child(3){transform:rotate(90deg) translateX(2px)}
+@keyframes city-contact-crack{0%{opacity:0;transform:scale(.4)}20%{opacity:.8;transform:scale(.8)}100%{opacity:0;transform:scale(1.6)}}
+@media(prefers-reduced-motion:reduce){.city-contact-burst{display:none}}
+
+/* Hazard lamps are small amber sources, not flashing headlight beams. */
+.city-incident .has-hazards .city-headlights,.city-incident .has-hazards .city-taillights{display:block;bottom:27%;width:3px;height:3px;border-radius:50%;background:#ffc052;box-shadow:0 0 4px 1px #ffad3599;clip-path:none;filter:none;transform:none;animation:city-hazard-flash 1s steps(1,end) var(--hazard-delay) infinite}
+.city-incident .has-hazards .city-headlights{right:1%;left:auto}
+.city-incident .has-hazards .city-taillights{left:1%;right:auto}
+.city-incident .has-hazards.is-leftward .city-headlights{left:1%;right:auto}
+.city-incident .has-hazards.is-leftward .city-taillights{right:1%;left:auto}
+@keyframes city-hazard-flash{0%,45%{opacity:1}46%,100%{opacity:0}}
+@media(prefers-reduced-motion:reduce){.city-incident .has-hazards .city-headlights,.city-incident .has-hazards .city-taillights{animation:none;opacity:.65}}
+
+/* This sprite has extra transparent space below the rear lamp. */
+.city-incident .is-police .city-taillights{left:4.5%;right:auto;top:47.5%;bottom:auto;width:2px;height:2px;border-radius:50%;transform:translate(-50%,-50%);background:#ed4545;box-shadow:0 0 2px #f445}

@@ -1,4 +1,4 @@
-import { BonusRecordsModal, formatBonusRecord } from '../profile/BonusRecordsModal.js';
+import { BonusRecordsModal, formatBonusPreviewRecord } from '../profile/BonusRecordsModal.js';
 import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -71,6 +71,7 @@ const skillLabels: Record<BonusSkillCode, string> = {
   accuracy: 'Точность',
   marksmanship: 'Меткость',
   endurance: 'Выносливость',
+    rhythm: 'Ритм',
   challenge: 'Испытания',
 };
 
@@ -145,7 +146,7 @@ export function BonusGamesScreen(): JSX.Element {
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
     if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
-    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
+    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'rhythm' || stored === 'challenge'
       ? stored
       : 'speed';
   });
@@ -522,8 +523,8 @@ export function BonusGamesScreen(): JSX.Element {
           ) : null}
           {previewGame.skill_code !== 'challenge' && <div className="bonus-records-entry">
             <dl className="bonus-records-entry__summary">
-              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Не установлен' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Не установлен'}</dd></div>
-              <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusRecord(previewGame.skill_code, previewRecords.data.rows[0]) : 'Ещё не установлен'}</dd></div>
+              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Не установлен' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Не установлен'}</dd></div>
+              <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.rows[0]) : 'Ещё не установлен'}</dd></div>
             </dl>
             <div className="bonus-records-entry__action-row">
             <p className="modal-copy bonus-records-entry__note bonus-records-entry__description">{previewGame.is_completed ? <>За новый рекорд – звёзды и&nbsp;опыт</> : <>За новый рекорд – звёзды и&nbsp;опыт. Рекорды откроются после&nbsp;прохождения.</>}</p>

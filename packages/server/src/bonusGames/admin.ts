@@ -95,6 +95,7 @@ const approvedHockeyCityMediaSlugs = [
 ] as const;
 
 const approvedNhlCityMediaSlugs = [
+  'raleigh', 'columbus', 'buffalo', 'miami', 'ottawa', 'tampa', 'st-louis', 'saint-paul', 'anaheim', 'san-jose',
   'toronto',
   'montreal',
   'boston',
@@ -181,7 +182,7 @@ const title = z.string().trim().min(1).max(120);
 const mediaUrl = z.string().trim().max(2048);
 const statusSchema = z.enum(['draft', 'active', 'archived']);
 const accessTypeSchema = z.enum(['free', 'paid']);
-const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship', 'endurance', 'challenge']);
+const skillCodeSchema = z.enum(['speed', 'accuracy', 'marksmanship', 'endurance', 'rhythm', 'challenge']);
 
 const arenaCreateSchema = z
   .object({

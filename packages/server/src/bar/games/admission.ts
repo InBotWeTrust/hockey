@@ -14,6 +14,7 @@ import { settleOchko } from './ochkoEconomy.js';
 import { AppError } from '../../plugins/errors.js';
 export interface MatchData {
   runtime: Runtime;
+  rulesClock?: { elapsed: number; pausedAt: number | null };
   ready: GameReady | null;
   starter: 0 | 1;
   stake?: { amount: number; payout: number | null };
@@ -43,8 +44,14 @@ export async function persist(client: PoolClient, row: MatchRow, now: number) {
   ]);
   row.ended_at = ended ? new Date(now) : null;
 }
+export function matchTime(row: MatchRow, now: number): number {
+  const clock = row.character ? row.data.rulesClock : undefined;
+  return clock ? (clock.pausedAt ?? now) - clock.elapsed : now;
+}
 export async function reconcile(client: PoolClient, row: MatchRow, now: number): Promise<MatchRow> {
-  if (row.ended_at) return row;
+  if (row.ended_at || (row.character && row.data.rulesClock?.pausedAt != null)) return row;
+  const wallNow = now;
+  now = matchTime(row, now);
   const ready = row.data.ready;
   if (ready) {
     if (ready.startsAt !== null && now >= ready.startsAt) {
@@ -56,7 +63,7 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
       row.data.ready = null;
     } else if (ready.startsAt === null && now >= ready.expiresAt) {
       ready.cancelled = true;
-      await persist(client, row, now);
+      await persist(client, row, wallNow);
       return row;
     } else return row;
   }
@@ -80,7 +87,7 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
       revision: before.revision + 1,
     };
   }
-  if (row.data.runtime !== before || ready) await persist(client, row, now);
+  if (row.data.runtime !== before || ready) await persist(client, row, wallNow);
   return row;
 }
 export async function assertNewGamesFree(client: PoolClient, user: string, now: number) {

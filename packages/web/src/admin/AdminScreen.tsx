@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   BarChart3,
   Bell,
@@ -956,6 +957,9 @@ export function AdminScreen(): JSX.Element {
       }}
     >
       <header className="admin-screen__toolbar">
+        <a className="icon-btn" href="/sections?home=1" aria-label="На карту" title="На карту">
+          <ArrowLeft size={20} />
+        </a>
         <div className="section-label admin-screen__current-section">
           Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Обзор'}
         </div>

@@ -1,3 +1,7 @@
+import { useCardInvites } from '../bar/cards/cardInvites.js';
+import { useGameInvites } from '../bar/games/gameInviteStore.js';
+import { GameInvites } from '../bar/games/GameInvites.js';
+import { gameApi } from '../bar/games/api.js';
 import * as adminApi from '../admin/api.js';
 import { useChatStore } from '../chat/chatStore.js';
 import { chatKeys } from '../lib/queryKeys.js';
@@ -291,6 +295,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 describe('SectionsScreen', () => {
   beforeEach(() => {
     localStorage.clear();
+    useCardInvites.getState().setIncoming([]);
+    useGameInvites.getState().reset(null);
     useAuthStore.setState({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -322,6 +328,21 @@ describe('SectionsScreen', () => {
     await screen.findByRole('heading',{name:'Стадион «Центральный»'});
     expect(screen.queryByRole('button',{name:'Открыть админку'})).not.toBeInTheDocument();
     expect(attention).not.toHaveBeenCalled();
+  });
+  it('counts incoming invitations from every bar game on the bar circle',async()=>{
+    mockSectionsApi();
+    const kinds=['darts','billiards','checkers','ochko','armwrestling','battleship'] as const;
+    vi.spyOn(gameApi,'lobby').mockResolvedValue({matchId:null,searching:null,expiresAt:null,serverNow:Date.now(),invites:kinds.map((kind,index)=>({id:`game-${index}`,kind,senderId:'other',receiverId:'u1',senderName:'Соперник',receiverName:'Игрок',status:'pending',matchId:null,expiresAt:Date.now()+60000}))});
+    renderSections();
+    render(<MemoryRouter><GameInvites/></MemoryRouter>);
+    await screen.findByText('Приглашает сыграть в дартс');
+    expect(await screen.findByLabelText('Приглашения в бар: 6')).toHaveTextContent('6');
+    act(()=>useCardInvites.getState().setIncoming([{id:'card',sender_id:'other',receiver_id:'u1',sender_name:'Игрок',receiver_name:'Игрок',status:'pending',match_id:null,expires_at:new Date(Date.now()+60000).toISOString()}]));
+    expect(screen.getByLabelText('Приглашения в бар: 7')).toHaveTextContent('7');
+    vi.spyOn(gameApi,'respond').mockResolvedValue({matchId:null});
+    await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Отклонить'})));
+    expect(screen.getByLabelText('Приглашения в бар: 6')).toHaveTextContent('6');
+    expect(screen.getByText('Приглашает сыграть в бильярд')).toBeVisible();
   });
   it('updates district badges from the shared navigation caches',async()=>{
     mockSectionsApi({achievementsUnclaimedCount:2});

@@ -4,7 +4,11 @@ export function lockerRoomBackgroundClass(level: CompetitionLevel | undefined): 
   return `locker-room-bg--${level ?? 'professional'}`;
 }
 
-export function arenaBackgroundClass(level: CompetitionLevel | undefined): string {
+export function arenaBackgroundClass(
+  level: CompetitionLevel | undefined,
+  isTraining = false,
+): string {
+  if (level === 'amateur' && isTraining) return 'arena-bg--beginner';
   return `arena-bg--${level ?? 'professional'}`;
 }
 

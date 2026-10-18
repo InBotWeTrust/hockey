@@ -1,0 +1,386 @@
+{
+  "version": "20261018-rhythm-cities-v1",
+  "sourceSession": "01a0f3c3-c972-7fc1-a81b-ab1bd47f21d0",
+  "cities": [
+    {
+      "slug": "raleigh",
+      "name": "Северная Каролина",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/raleigh.webp",
+          "sha256": "cb42af66e00d355c37f2af49ea59b41523c445d7f27fffc6882a86c9e2ffab87",
+          "sourcePngSha256": "3c5b8ae9ae495a1da1d79a66369cd3625dce19216f862985692e4c513ebbcc32",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 535416
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/raleigh-ready.webp",
+          "sha256": "91d7069962555722d6641d74b45d8a35d0ef78c8b89dafee615ecd4c15003796",
+          "sourcePngSha256": "5fe397b1868c4fd0c726ceb805447cd8e8942b7f3243cbd2ea5a58a050a6afd4",
+          "width": 500,
+          "height": 500,
+          "bytes": 49650
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/raleigh-save.webp",
+          "sha256": "eb3f4c7c1ed07216a1d344a75f010a873017b2635c9615e6684cd4bc0c9dc931",
+          "sourcePngSha256": "335e1b7ebd992f7b1b450f937e580a51344ef95cda4349ddf3e49c23a06d213f",
+          "width": 500,
+          "height": 500,
+          "bytes": 51848
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/raleigh.webp",
+          "sha256": "74bd83183d1cb23a6af5d39d8da2052fecdcaadcd70c2ce69bbfb6c40597bb61",
+          "sourcePngSha256": "864c8d49c8a3ad6b13490c78ecfb40048f25db2b126f2dda93f21a957270e0ca",
+          "width": 600,
+          "height": 600,
+          "bytes": 146828
+        }
+      }
+    },
+    {
+      "slug": "columbus",
+      "name": "Коламбус",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/columbus.webp",
+          "sha256": "edc4671273c6b64130da762302953ba37053e7eda18e19b4010c416a32c73d56",
+          "sourcePngSha256": "4e32e1a38a02a7e5155b45cad6308e2f4c653065a5e6c446206da8606d87123b",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 575126
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/columbus-ready.webp",
+          "sha256": "5c178719b88eaef9da58f42374aab0f33ddb44df16acc328ff0045305e2fb8c8",
+          "sourcePngSha256": "4812a952075a6f7260fd86fc4342a199982ac8a67048b721b12c468fffe43419",
+          "width": 500,
+          "height": 500,
+          "bytes": 50552
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/columbus-save.webp",
+          "sha256": "cea4d1cb38156bcdf6c4f1c4abdea7e1cf2d1179e64c11d3c442c2c870c74e3e",
+          "sourcePngSha256": "026d6988158f944ef4421861c86faa1e0ea9b0965e87f7f0308c31f3dbdd2a28",
+          "width": 500,
+          "height": 500,
+          "bytes": 55412
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/columbus.webp",
+          "sha256": "4c01380ce6e09fec5b553a9762f8e20f55d8f16a2e287d260d16ddd1b56bdbd2",
+          "sourcePngSha256": "228b1d5484ff20a683746a4e8dba2602f9333fc6662197c767a0277817a287a0",
+          "width": 600,
+          "height": 600,
+          "bytes": 102320
+        }
+      }
+    },
+    {
+      "slug": "buffalo",
+      "name": "Баффало",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/buffalo.webp",
+          "sha256": "cfeff11eeb1e50c1958b98eb65ccb00f4ffd00076531d4c778d7d30efad8edd7",
+          "sourcePngSha256": "a5e09781fa3d6efa5770620d41a0bb1f37420c7b50d6d4a1bb3b8fe5ab3ad534",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 523070
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/buffalo-ready.webp",
+          "sha256": "40ef639b6dbacf138ba8117ca892f1d2f29165904fb504c204cfa3a38bb76295",
+          "sourcePngSha256": "8f9cd0ac2bf79ca572a172b1f1c65ae91945dc4ef1bd75ee8cd8567f8b9a7be1",
+          "width": 500,
+          "height": 500,
+          "bytes": 51196
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/buffalo-save.webp",
+          "sha256": "02e8b7bdbc69d6586401382d262e7508c6aba41894512b5dd60290c612f31f7f",
+          "sourcePngSha256": "ea10f7e34cd2146cebbdaad7a6e6d6b711f668e4af6ccbafe538e6fd904f4f59",
+          "width": 500,
+          "height": 500,
+          "bytes": 54926
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/buffalo.webp",
+          "sha256": "07e02adbc5c59f0e82d68a62dfc5bd45238b0f384e194a8624d9160d9a554037",
+          "sourcePngSha256": "fc36f33d854dc7bbf648f4536392d49596773e2099e4c7b14eff678e0b3799da",
+          "width": 600,
+          "height": 600,
+          "bytes": 103828
+        }
+      }
+    },
+    {
+      "slug": "miami",
+      "name": "Майами",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/miami.webp",
+          "sha256": "c0dabeead9e0c2f74cb18afa2d86d5bd84a42d22f4ae7fc676ba79d0c9dcb1c6",
+          "sourcePngSha256": "4f6dba55cca18c6a958b9d3a40a676ba8054197344f8f707b7e61ba4b59b0424",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 495246
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/miami-ready.webp",
+          "sha256": "16cc442fc392dba8db176531d1188cdaf28a32fab6c26340f32b906737632a80",
+          "sourcePngSha256": "1ea7a42edf728b34900d815c9f0f5e5d5cf95bebdadd2cb73a9f6ff9c144cbc3",
+          "width": 500,
+          "height": 500,
+          "bytes": 51500
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/miami-save.webp",
+          "sha256": "63b343b3cda3a6b65f7ee88b59c14e61c6ad167045d3a6ae3466b5a99cf8bf10",
+          "sourcePngSha256": "9625f2e751700e88ad11da3265548ea48af647992447b58bb6f8cfd308b5357e",
+          "width": 500,
+          "height": 500,
+          "bytes": 55698
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/miami.webp",
+          "sha256": "a6a74893523bb89da1927cdbbde85b9f2f67654306d63b2ae445f21295543893",
+          "sourcePngSha256": "c3b2d8917c3640c974e5f74bf5a8f818ac701abade6d045af8e37e1ef86af425",
+          "width": 600,
+          "height": 600,
+          "bytes": 108672
+        }
+      }
+    },
+    {
+      "slug": "ottawa",
+      "name": "Оттава",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/ottawa.webp",
+          "sha256": "e65b76f7f34b16f23572898edaeca8e83ffaf0609a4fca910b4926e7f358e7ae",
+          "sourcePngSha256": "5faa44a0d4fd49dc6855e37682cd44605700e7f81d2e92b9ffbe806dbe69d852",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 509338
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/ottawa-ready.webp",
+          "sha256": "d0ec4c3d27dcd714bbf266a51d949d9239a49897af285ee99e082f07196e5571",
+          "sourcePngSha256": "ddb7f5c7b7621ef8b373b94850a223ce13fe4103b05d92d345cd829d8dd173c2",
+          "width": 500,
+          "height": 500,
+          "bytes": 48658
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/ottawa-save.webp",
+          "sha256": "4f406675eacdb394e68a3faea0f9758ced891725d1d83971426de59870b6314a",
+          "sourcePngSha256": "616113fc5a9ae69e69b6836824ec0b3299ef259e74c37c13daf39f1d3c6ce0f7",
+          "width": 500,
+          "height": 500,
+          "bytes": 52756
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/ottawa.webp",
+          "sha256": "0b7d75031fa247f56c9ae04a3bd1b8ce216daa9b87cc014494a0389da7de49ac",
+          "sourcePngSha256": "1ac824b308d3fd03043c027b47218e88f802f9d66708017ccb84009c4fbbe044",
+          "width": 600,
+          "height": 600,
+          "bytes": 101074
+        }
+      }
+    },
+    {
+      "slug": "tampa",
+      "name": "Тампа",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/tampa.webp",
+          "sha256": "beccfa9ab7faeddb003b495c7132eb73c5a8a43aa4e1b0402bb2be9fb958bae9",
+          "sourcePngSha256": "f581eda465ebbdc9fe3a7dbd9653b2bfb2a71737e2a96d2b212a370c042ca92c",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 550942
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/tampa-ready.webp",
+          "sha256": "3474bb5e70ee1fa612b5afe3afd2c719999ea8f35c2295b6ab718267feec401b",
+          "sourcePngSha256": "7956c2951f8497bf42bdfe2fdb9b3837966d8298fa7489e14114fc2b3083d0cb",
+          "width": 500,
+          "height": 500,
+          "bytes": 49980
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/tampa-save.webp",
+          "sha256": "a5c7e32b0f033ebdbc58621618d4ff91eed3314625a0fe1bf0314d9482a1b6ae",
+          "sourcePngSha256": "d16f27699d78873b8576483cd139caa7fa8bd03238f9e3fed07918f90d2c2966",
+          "width": 500,
+          "height": 500,
+          "bytes": 54094
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/tampa.webp",
+          "sha256": "0cf0156ff91e0620dd3e2cdbb989711e2ba0da5ff86a1f2df0637bbbb70cce65",
+          "sourcePngSha256": "d9a062ec15b6a534d001ac8b1d3faecc8aa7351175830bf4093921efa4c0adc3",
+          "width": 600,
+          "height": 600,
+          "bytes": 104802
+        }
+      }
+    },
+    {
+      "slug": "st-louis",
+      "name": "Сент-Луис",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/st-louis.webp",
+          "sha256": "a4988d1874a6a3021e3b8fefceaadefd4510cd796a434af381069c44d211ebd8",
+          "sourcePngSha256": "2f8a5bed14810f1fa17f14fcc3c7968bcea68be04ae77d5860d5d87c2d96ad44",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 504482
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/st-louis-ready.webp",
+          "sha256": "e1d75150e9c15388705cbb1ecdf91c225b3f279cfaef500fd67da61061198af7",
+          "sourcePngSha256": "594c10c7af081119b38a513c8d465ae729e77bfebaf8bd78a64f98d5a72e2f14",
+          "width": 500,
+          "height": 500,
+          "bytes": 52976
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/st-louis-save.webp",
+          "sha256": "cd16cd7160a553126b439ea6309e4f1ab24632a88a037c1aa97f67581d09ff33",
+          "sourcePngSha256": "576a86a45f0eca8fa0eedff76e7839056d77bd4bf8af059414198d5e61c3dbc5",
+          "width": 500,
+          "height": 500,
+          "bytes": 55022
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/st-louis.webp",
+          "sha256": "25a8c60788890ab21c1b62fc99b503281afb2ad7b1755cf937247678798dfc31",
+          "sourcePngSha256": "a023b250a4454be30bb9d8c0f52f7e77fc8d417015b752e81b94f53033249e8a",
+          "width": 600,
+          "height": 600,
+          "bytes": 111454
+        }
+      }
+    },
+    {
+      "slug": "saint-paul",
+      "name": "Миннесота",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/saint-paul.webp",
+          "sha256": "e9e1af74b49c96c8915ec686dab20f489783b828f3f244b31686b1a79a08a0fc",
+          "sourcePngSha256": "2ce2e27178c8443a2a72f2154559d06dd170ffe00e0f7edbf73f7c24337ced37",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 481488
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/saint-paul-ready.webp",
+          "sha256": "1c58bf4d0b5c9b6be14cb5fe662e19bd76544c243fd8ed1d3a165b60a37a58ca",
+          "sourcePngSha256": "f0515b0d5171b76a58158fb3fdccbb6e9fb1d226cfd3509d613450f21f90c2d8",
+          "width": 500,
+          "height": 500,
+          "bytes": 51428
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/saint-paul-save.webp",
+          "sha256": "1d65183fd500dd15a18f772c5a51acb9e19b96b7306ae588aa5241782fe0d765",
+          "sourcePngSha256": "d61c198ccac0a5162ddc82ddf6a1eca9a1441d6f5c192262f14b61c2194e6307",
+          "width": 500,
+          "height": 500,
+          "bytes": 55294
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/saint-paul.webp",
+          "sha256": "cc7d4e944dabc8c0950401ad72a924f726366feb6521000e4ace63c0278e0ff4",
+          "sourcePngSha256": "4918cbc36a7273f1312f04bf37f8d26515d5e98481e860a6ded4b82b2fa28d63",
+          "width": 600,
+          "height": 600,
+          "bytes": 111536
+        }
+      }
+    },
+    {
+      "slug": "anaheim",
+      "name": "Анахайм",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/anaheim.webp",
+          "sha256": "22d1ff5f7fb4a89c45912c9fd717cf62cbc8cb329de1f527f1fa8332783cd4fe",
+          "sourcePngSha256": "ed9f879c8fba5a4e708a985cf4f2b6d44d7c3da5bc452166fb695b7f8dc60f90",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 416272
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/anaheim-ready.webp",
+          "sha256": "9559366f5e16bc324380a2dc3be94cfafb53ee8724f22be06fd0e8ee5d4994d2",
+          "sourcePngSha256": "744436be56d4cc3b972a891d139c2c79cc369235cb818a918093af2cd0344b05",
+          "width": 500,
+          "height": 500,
+          "bytes": 49640
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/anaheim-save.webp",
+          "sha256": "ab929b384302034f0b57b6dc4cf2d614322270b876d7f1bd8addc3787724f081",
+          "sourcePngSha256": "cdb934316a73a49318bdb8936ac0cf6a2ed7403e9a440e66910d4fc356f935a7",
+          "width": 500,
+          "height": 500,
+          "bytes": 52710
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/anaheim.webp",
+          "sha256": "2c3d0558c93cb1733db5da8c7d19863023783b0ff8736099be0effad9db1c849",
+          "sourcePngSha256": "661c7365710698f8d2aa31ac456c5b07051adf39602686cf7df669ba3455244b",
+          "width": 600,
+          "height": 600,
+          "bytes": 98722
+        }
+      }
+    },
+    {
+      "slug": "san-jose",
+      "name": "Сан-Хосе",
+      "assets": {
+        "arena": {
+          "url": "/bonus-games/nhl-cities/arenas/san-jose.webp",
+          "sha256": "4638942e16d8523254cd9d52ec4fe5399458c717d00b698baf14e4f32860c77b",
+          "sourcePngSha256": "f0839c23b295aad54701ce81722ff96f7b39027df63b3849ac9a931a2f9e01d8",
+          "width": 1212,
+          "height": 2000,
+          "bytes": 558324
+        },
+        "ready": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/san-jose-ready.webp",
+          "sha256": "5e5b59cd132a274032ad171616609c585042eb18ed1894bf12f79ebc30f84051",
+          "sourcePngSha256": "7827c77f33a1e45987b1897be305b8c0853aa1d01159b0fc7cc156128a6d8e44",
+          "width": 500,
+          "height": 500,
+          "bytes": 48238
+        },
+        "save": {
+          "url": "/bonus-games/nhl-cities/goalkeepers/san-jose-save.webp",
+          "sha256": "94e869184c65c802add6e3363241d7b23a47b49ab7652422fbd2503801b88be8",
+          "sourcePngSha256": "943f4ec5b8157efbd50053ad594fc117a5d0871e0b731e924f32d29ba6996415",
+          "width": 500,
+          "height": 500,
+          "bytes": 51378
+        },
+        "preview": {
+          "url": "/bonus-games/nhl-cities/previews/san-jose.webp",
+          "sha256": "a7ed0194f53a68f2a4fe6301f51240f9f0f3eab59591f8385282bf6956c5016d",
+          "sourcePngSha256": "04a7df6bdde4983755adb31dffabe6e0069b6aaf4f02fb12c2b859a69d511164",
+          "width": 600,
+          "height": 600,
+          "bytes": 113706
+        }
+      }
+    }
+  ]
+}

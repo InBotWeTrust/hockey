@@ -27,6 +27,12 @@ export function BarGameScreen() {
   const [replayRequest, setReplayRequest] = useState(() => crypto.randomUUID());
   const back = () => navigate('/bar', { replace: true });
   const view = match.view;
+  const rulesOpen = help || !!view?.rulesPaused;
+  const closeHelp = () => {
+    if (match.uncertain) { match.retry(); return; }
+    if (view?.character && view.runtime.game.winner === null) match.send({ type: 'rules-pause', paused: false });
+    setHelp(false);
+  };
   const resultReady = useResultReady(
     id,
     view?.runtime.game.kind === 'ochko' && view.runtime.game.series ? 'ochko-series' : view?.kind,
@@ -89,12 +95,15 @@ export function BarGameScreen() {
           <GameTable
             view={view}
             now={match.now}
-            disabled={match.busy || match.armBlocked || help || exit}
+            disabled={match.busy || match.armBlocked || rulesOpen || exit}
             send={match.send}
             onExit={() =>
               view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)
             }
-            onRules={() => setHelp(true)}
+            onRules={() => {
+              if (view.character && view.runtime.game.winner === null) match.send({ type: 'rules-pause', paused: true });
+              else setHelp(true);
+            }}
             notice={match.error ?? replayError}
             onRetry={match.uncertain ? match.retry : undefined}
           />
@@ -116,11 +125,13 @@ export function BarGameScreen() {
             <GameResult view={view} replay={() => void replay()} back={back} busy={replaying} />
           )}
           {stakeOpen && <CharacterLaunch character="grigory" close={() => setStakeOpen(false)} />}
-          {help && (
+          {rulesOpen && (
             <GameHelp
               kind={view.kind}
               engineVersion={view.runtime.engineVersion}
-              close={() => setHelp(false)}
+              close={closeHelp}
+              notice={match.error}
+              onRetry={match.uncertain ? match.retry : undefined}
             />
           )}
           {exit && (

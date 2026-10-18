@@ -7,6 +7,7 @@ import { z } from 'zod';
 const requiredGoalStreakSchema = z.number().int().min(1).max(1_000).optional();
 
 const qualificationRulesSchema = z.discriminatedUnion('type', [
+  z.object({type:z.literal('rhythm_in_time'),breakOnMiss:z.boolean().optional(),targetPoints:z.number().int().min(1).max(1000000),minimumSeries:z.number().int().min(2).max(1000),activeTimeMs:z.number().int().min(1000).max(86400000)}).strict(),
   z
     .object({
       type: z.literal('goals_from_shots'),
@@ -80,11 +81,15 @@ interface BonusSkillPeriodRule {
 }
 
 export function validateBonusSkillRules(
-  skillCode: 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge',
+  skillCode: 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'rhythm' | 'challenge',
   rules: BonusQualificationRules,
   periods: BonusSkillPeriodRule[],
   useInventory = false,
 ): void {
+  if (skillCode === 'rhythm') {
+    if (rules.type !== 'rhythm_in_time' || periods.length !== 1 || periods[0]!.shotsLimit !== null || periods[0]!.durationMs !== rules.activeTimeMs || useInventory) throw new Error('invalid Rhythm bonus rules');
+    return;
+  }
   if (skillCode === 'challenge') {
     const delegatedSkill = rules.type === 'goals_in_time'
       ? 'speed'
@@ -202,12 +207,12 @@ export function evaluateBonusQualification(
   }
   const accuracyPercent = state.shotsTaken === 0 ? 0 : (state.goals / state.shotsTaken) * 100;
   const primaryMet =
-    rules.type === 'points_in_time'
+    (rules.type === 'points_in_time' || rules.type === 'rhythm_in_time')
       ? state.totalPoints >= rules.targetPoints && state.activeElapsedMs <= rules.activeTimeMs
       : state.goals >= rules.targetGoals &&
         (rules.type !== 'goals_in_time' || state.activeElapsedMs <= rules.activeTimeMs);
   const requiredGoalStreak =
-    rules.type === 'points_in_time' ? undefined : rules.requiredGoalStreak;
+    (rules.type === 'points_in_time' || rules.type === 'rhythm_in_time') ? undefined : rules.requiredGoalStreak;
   const streakMet =
     requiredGoalStreak === undefined || state.bestGoalStreak >= requiredGoalStreak;
 

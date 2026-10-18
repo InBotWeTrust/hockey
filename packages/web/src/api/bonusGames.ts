@@ -30,13 +30,14 @@ export type BonusGameCardState =
 export type BonusAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
 export type BonusGoaliePattern = 'linear' | 'sine' | 'dash';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'rhythm' | 'challenge';
 export type EnduranceQualificationRules = {
   type: 'survive_goal_windows';
   activeTimeMs: number;
   goalWindowMs: number;
 };
 export type BonusQualificationRules =
+  | {type: 'rhythm_in_time'; breakOnMiss?: boolean; targetPoints: number; minimumSeries: number; activeTimeMs: number}
   | {
       type: 'goals_from_shots';
       targetGoals: number;
@@ -189,7 +190,7 @@ export interface BonusAttemptRules {
   challenge_environment?: BonusChallengeEnvironmentRules | null;
 }
 
-export interface BonusRecordMetrics { elapsedMs: number; shots: number; goals: number; points: number }
+export interface BonusRecordMetrics { bestSeries?: number; elapsedMs: number; shots: number; goals: number; points: number }
 export interface BonusRecordResult extends BonusRecordMetrics { personalImproved: boolean; globalImproved: boolean; personalBest: BonusRecordMetrics; place: number; stars: number; experience: number }
 export interface BonusRecordPlayer extends BonusRecordMetrics { place: number; userId: string; displayName: string; avatarUrl: string | null }
 export interface BonusRecordPage { rows: BonusRecordPlayer[]; currentUser: BonusRecordPlayer | null; skillCode: BonusSkillCode; nextOffset: number | null }
@@ -216,6 +217,7 @@ export interface BonusGameAttempt {
   current_period_shots_taken: number;
   goals: number;
   total_points: number;
+  rhythm_shots?: Array<{travel:number;goal:boolean}>;
   current_goal_streak: number;
   best_goal_streak: number;
   preview_required: boolean;

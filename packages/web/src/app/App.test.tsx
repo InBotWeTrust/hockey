@@ -369,6 +369,8 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
+    expect(document.querySelector('.app-shell--bottom-nav-visible')).toBeNull();
     const ambientLights = screen.getByTestId('arena-ambient-lights');
     expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
     expect(ambientLights.children).toHaveLength(10);
@@ -392,10 +394,7 @@ describe('App routing + auth', () => {
 
     expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/profile/achievements');
-    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(window.location.pathname).toBe('/profile');
@@ -421,10 +420,7 @@ describe('App routing + auth', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Челленджи' }));
 
     expect(window.location.pathname).toBe('/profile/achievements/weekly-challenge');
-    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
   });
 
   it('loads a bonus attempt detail on the authenticated play route', async () => {
@@ -515,6 +511,11 @@ describe('App routing + auth', () => {
 });
 
 describe('app backdrop variants', () => {
+  it('uses the beginner yard for amateur training only', () => {
+    expect(arenaBackgroundClass('amateur', true)).toBe('arena-bg--beginner');
+    expect(arenaBackgroundClass('amateur', false)).toBe('arena-bg--amateur');
+    expect(arenaBackgroundClass('professional', true)).toBe('arena-bg--professional');
+  });
   it('maps every competition level to matching arena and locker-room backgrounds', () => {
     for (const level of ['beginner', 'amateur', 'professional'] as const) {
       expect(arenaBackgroundClass(level)).toBe(`arena-bg--${level}`);

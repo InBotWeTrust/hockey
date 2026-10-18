@@ -2,20 +2,36 @@ import {fireEvent, render, screen} from '@testing-library/react';
 import {createDefaultBarLayout, moveBarOccupant} from '@hockey/game-core';
 import {expect, it, vi} from 'vitest';
 import {BarScene} from './BarScene.js';
+function pointer(target:Element,type:string,x:number){const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);}
+it('opens the visitor shop from Igor club cards and ignores a drag across them', () => {
+  const shop = vi.fn(), action = vi.fn();
+  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={action} onVisitorShop={shop}/>);
+  const cards = screen.getByRole('button', {name: 'Клубные карты'});
+  fireEvent.click(cards);
+  expect(shop).toHaveBeenCalledTimes(1);
+  expect(action).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', {name: 'Карта и сообщения'})).not.toBeInTheDocument();
+  shop.mockClear();
+  pointer(cards, 'pointerdown', 200);
+  pointer(cards, 'pointermove', 300);
+  pointer(cards, 'pointerup', 300);
+  fireEvent.click(cards, {detail: 1});
+  expect(shop).not.toHaveBeenCalled();
+});
 it('keeps architectural doors in the panorama when Veronika moves', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-2', 'veronika');
   const view = render(<BarScene layout={layout} activeSlotId="bar-2" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
   expect(view.container.querySelector('[data-bar-backdrop="veronika"]')).toBeNull();
-  expect(view.container.querySelector('.bar-space__background--middle')?.getAttribute('src')).toMatch(/middle-.*-v7.webp$/);
+  expect(view.container.querySelector('[data-bar-wall="middle"] img')?.getAttribute('src')).toMatch(/middle-.*-v[23].webp$/);
   expect(view.container.querySelector('[data-bar-decoration="veronika"]')).toBeNull();
 });
 it('keeps the eastern panorama framing fixed between Igor and broadcasts', () => {
   const layout = createDefaultBarLayout();
   const props = {layout, onSelectSlot: vi.fn(), onAction: vi.fn()};
   const view = render(<BarScene {...props} activeSlotId="bar-9"/>);
-  const before = (view.container.querySelector('.bar-space__background--east') as HTMLElement).style.objectPosition;
+  const before = (view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition;
   view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
-  expect((view.container.querySelector('.bar-space__background--east') as HTMLElement).style.objectPosition).toBe(before);
+  expect((view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition).toBe(before);
 });
 
 it('uses baked background details without overlays and opens the door only at the last page', () => {
@@ -28,31 +44,33 @@ it('uses baked background details without overlays and opens the door only at th
   fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
   expect(open).toHaveBeenCalledWith('bar-10');
 });
-it('swipes across the service door without opening it', () => {
+it('drags across the service door without opening it or selecting a page', () => {
   const layout = createDefaultBarLayout();
   const open = vi.fn(), select = vi.fn();
   render(<BarScene layout={layout} activeSlotId="bar-10" onSelectSlot={select} onAction={vi.fn()} onStaffRoom={open}/>);
   const door = screen.getByRole('button', {name: 'Открыть служебную дверь'});
-  fireEvent.pointerDown(door, {pointerId: 1, pointerType: 'mouse', clientX: 200, clientY: 200});
-  fireEvent.pointerMove(door, {pointerId: 1, pointerType: 'mouse', clientX: 300, clientY: 200});
-  fireEvent.pointerUp(door, {pointerId: 1, pointerType: 'mouse', clientX: 300, clientY: 200});
-  fireEvent.click(door);
+  pointer(door,'pointerdown',200);
+  pointer(door,'pointermove',300);
+  pointer(door,'pointerup',300);
+  fireEvent.click(door,{detail:1});
   expect(open).not.toHaveBeenCalled();
-  expect(select).toHaveBeenCalledWith('bar-9');
+  expect(select).not.toHaveBeenCalled();
 });
 
-it('opens each background game with its own character and ignores a swipe', () => {
+it('opens each centered background game with its own character and ignores a drag', () => {
   const action = vi.fn();
-  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={action}/>);
+  const layout=createDefaultBarLayout();
+  const view=render(<BarScene layout={layout} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={action}/>);
   for (const [name, kind, character] of [['Играть в дартс с Дарьей','darts','daria'],['Играть в очко с Григорием','ochko','grigory'],['Играть в карты с Марией','cards','maria'],['Играть в шашки с Арсеничем','checkers','arsenich'],['Играть в бильярд с Вероникой','billiards','veronika']] as const) {
+    view.rerender(<BarScene layout={layout} activeSlotId={layout.slots.find(s=>s.occupantId===character)!.id} onSelectSlot={vi.fn()} onAction={action}/>);
     fireEvent.click(screen.getByRole('button', {name}));
     expect(action).toHaveBeenLastCalledWith(kind, character);
   }
   action.mockClear();
+  view.rerender(<BarScene layout={layout} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={action}/>);
   const hit = screen.getByRole('button', {name:'Играть в дартс с Дарьей'});
-  fireEvent.pointerDown(hit, {pointerId:1,clientX:100,clientY:100});
-  fireEvent.pointerUp(hit, {pointerId:1,clientX:180,clientY:100});
-  fireEvent.click(hit);
+  pointer(hit,'pointerdown',100);pointer(hit,'pointermove',180);pointer(hit,'pointerup',180);
+  fireEvent.click(hit,{detail:1});
   expect(action).not.toHaveBeenCalled();
 });
 
@@ -73,15 +91,16 @@ it('shows activity badges on online and character circles and removes zero count
  expect(view.container.querySelector('.bar-avatar-dock__badge')).toBeNull();
 });
 
-it('highlights only the selected character object and never the hidden door',()=>{
+it('keeps object hints available across selections and never highlights the hidden door',()=>{
  const props={layout:createDefaultBarLayout(),onSelectSlot:vi.fn(),onAction:vi.fn()};
  const view=render(<BarScene {...props} activeSlotId="bar-1"/>);
  expect(view.container.querySelector('[data-bar-object-glow="daria"]')).not.toBeNull();
- expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(1);
+ expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(11);
  view.rerender(<BarScene {...props} activeSlotId="bar-9"/>);
  expect(view.container.querySelector('[data-bar-object-glow="igor"]')).not.toBeNull();
  view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
- expect(view.container.querySelector('[data-bar-object-glow]')).toBeNull();
+ expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(11);
+ expect(view.container.querySelector('.bar-space__service-door-hit [data-bar-object-glow]')).toBeNull();
 });
 it('opens armwrestling from Oleg bicep without triggering the character incident',()=>{
  const action=vi.fn(),incident=vi.fn();

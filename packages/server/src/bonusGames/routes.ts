@@ -258,6 +258,7 @@ function toAttemptHttpDto(attempt: BonusGameAttemptDTO, now: Date) {
     ...(attempt.currentPeriodPanelEvents ? {current_period_panel_events:attempt.currentPeriodPanelEvents}:{}),
     ...(attempt.currentPeriodCleanupEvents ? { current_period_cleanup_events: attempt.currentPeriodCleanupEvents } : {}),
     ...(attempt.currentPeriodShotPauses ? { current_period_shot_pauses: attempt.currentPeriodShotPauses } : {}),
+    rhythm_shots: attempt.rhythmShots,
     goals: attempt.goals,
     total_points: attempt.totalPoints,
     current_goal_streak: attempt.currentGoalStreak,
@@ -388,6 +389,7 @@ export const bonusGameRoutes: FastifyPluginAsync<BonusGameRouteOptions> = async 
             remaining: attemptAllowances.marksmanship.remaining,
             resets_at: attemptAllowances.marksmanship.resetsAt,
           },
+          rhythm: {skill_code:attemptAllowances.rhythm.skillCode,daily_limit:attemptAllowances.rhythm.dailyLimit,used:attemptAllowances.rhythm.used,remaining:attemptAllowances.rhythm.remaining,resets_at:attemptAllowances.rhythm.resetsAt},
           endurance: {
             skill_code: attemptAllowances.endurance.skillCode,
             daily_limit: attemptAllowances.endurance.dailyLimit,

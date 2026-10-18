@@ -16,7 +16,7 @@ export function enduranceQualificationLines(
 
 function streakSuffix(rules: BonusQualificationRules): string {
   return rules.type === 'points_in_time' ||
-    rules.type === 'survive_goal_windows' ||
+    rules.type === 'survive_goal_windows' || rules.type === 'rhythm_in_time' ||
     rules.requiredGoalStreak === undefined
     ? ''
     : ` · серия ${rules.requiredGoalStreak}`;
@@ -32,6 +32,7 @@ function formatQualificationPoints(
 }
 
 export function qualificationDescription(rules: BonusQualificationRules): string {
+  if (rules.type === 'rhythm_in_time') return `${rules.targetPoints} шайб за ${formatTime(rules.activeTimeMs)} · серии от ${rules.minimumSeries}`;
   if (rules.type === 'survive_goal_windows') {
     return enduranceQualificationLines(rules).join(' · ');
   }
@@ -54,6 +55,7 @@ export function qualificationProgress(
     bestStreak: number;
   },
 ): string {
+  if (rules.type === 'rhythm_in_time') return `${state.totalPoints ?? 0}/${rules.targetPoints}`;
   if (rules.type === 'survive_goal_windows') {
     return `ГОЛЫ ${state.goals}`;
   }

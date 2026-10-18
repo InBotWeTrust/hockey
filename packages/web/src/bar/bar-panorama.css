@@ -5,19 +5,20 @@
   background: #21160e;
   isolation: isolate;
   --bar-scene-page-width: min(100vw, 47dvh);
-  touch-action: pan-y;
+  touch-action: auto;
 }
+.bar-space__viewport {position:absolute;inset:0;z-index:-2;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;}
+.bar-space__viewport::-webkit-scrollbar {display:none;}
+.bar-space__world {position:relative;height:100%;width:calc(var(--bar-scene-page-width) * 9 + 100%);}
 .bar-space__track {
   position: absolute;
   inset: 0 auto 0 0;
   width: calc(var(--bar-scene-page-width) * 10);
-  left: calc(50% - var(--bar-scene-page-width) / 2);
-  z-index: -2;
-  transform: translateX(calc(var(--bar-page) * -10%));
-  transition: transform 650ms cubic-bezier(0.22, 0.61, 0.36, 1);
+  left: calc((100vw - var(--bar-scene-page-width)) / 2);
+
   pointer-events: none;
 }
-.bar-space__service-door-hit {position:absolute;left:99.4%;top:5%;width:.6%;height:35%;pointer-events:auto;border:0;padding:0;background:transparent;box-shadow:none;border-radius:0;touch-action:pan-y;}
+.bar-space__service-door-hit {position:absolute;left:99.4%;top:5%;width:.6%;height:35%;pointer-events:auto;border:0;padding:0;background:transparent;box-shadow:none;border-radius:0;touch-action:pan-x;}
 @media (orientation:portrait) {.bar-space__service-door-hit {left:99.5%;top:25%;width:.5%;height:25%;}}
 .bar-space__service-door-hit:focus-visible {outline:2px solid var(--text-primary);outline-offset:2px;}
 .bar-space__background {
@@ -519,10 +520,10 @@
 .bar-space .bar-space__actions:not(.bar-space__actions--terminal) { top:auto; }
 .bar-space .bar-space__actions--terminal { left:12px; right:12px; top:calc(76px + var(--app-safe-top,0px)); bottom:calc(100px + var(--bar-nav-reserve)); max-height:none; padding:12px; border-radius:24px; border:1px solid rgba(225,235,255,.25); background:rgba(27,29,36,.85); backdrop-filter:blur(24px); }
 .bar-terminal-close { display:block; margin-left:auto; margin-bottom:8px; }
-.bar-space__object-hit { position:absolute; z-index:3; inset:12% 12% 8%; border:0; background:transparent; cursor:pointer; }
+.bar-space__object-hit { pointer-events:auto; position:absolute; z-index:3; inset:12% 12% 8%; border:0; background:transparent; cursor:pointer; }
 .bar-space__object-hit:focus-visible { outline:2px solid #cde8ff; border-radius:24px; }
 
-.bar-space > .bar-space__object-hit { top:112px; bottom:calc(210px + var(--bar-nav-reserve)); left:15%; right:15%; }
+.bar-space__figure > .bar-space__object-hit { top:0; bottom:15px; left:15%; right:15%; }
 
 .bar-bottom-chrome { position:absolute; z-index:12; bottom:calc(12px + var(--bar-nav-reserve) + env(safe-area-inset-bottom)); left:12px; right:12px; border-radius:26px; border:1px solid rgba(225,235,255,.27); background:linear-gradient(115deg,rgba(43,53,69,.78),rgba(61,30,17,.8)); backdrop-filter:blur(24px) saturate(130%); }
 .bar-bottom-chrome[hidden] { display:none; }
@@ -590,7 +591,7 @@
 html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-space) { background:#21160e; }
 
 .bar-space__game-hotspots {position:absolute;top:0;width:40%;height:100%;pointer-events:none;overflow:hidden;}
-.bar-space__game-hotspots rect {pointer-events:auto;cursor:pointer;touch-action:pan-y;}
+.bar-space__game-hotspots rect {pointer-events:auto;cursor:pointer;touch-action:pan-x;}
 .bar-space__game-hotspots rect:focus-visible {outline:2px solid var(--text-primary);}
 
 .bar-avatar-dock__badge {position:absolute;z-index:2;top:-4px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:rgb(220,38,38);color:white;font:800 10px/18px system-ui;text-align:center;box-shadow:0 0 0 1px rgba(218,230,246,.8);pointer-events:none;}
@@ -618,3 +619,12 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-space__header .catalog-header-back svg {width:16px;height:16px;}
 
 .bar-space__character-hit .bar-space__bicep-hit { pointer-events: all; cursor: pointer; }
+
+/* Object targets follow the actual panorama, below the character silhouettes. */
+.bar-space__game-hotspot {position:absolute;z-index:1;pointer-events:auto;touch-action:pan-x;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;}
+.bar-space__game-hotspot:focus-visible {outline:2px solid var(--text-primary);outline-offset:2px;}
+.bar-space__figure {z-index:2;}
+.bar-space__object-glow--point {z-index:1;width:40px;height:40px;overflow:visible;margin:-20px 0 0 -20px;}
+.bar-space__service-door-hit {z-index:3;left:99.2%;width:.8%;top:20%;height:42%;}
+
+.bar-space__object-glow--foreground {z-index:3;}

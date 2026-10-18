@@ -11,7 +11,7 @@ import type { BonusQualificationRules } from './qualification.js';
 import type { PeriodLoadoutSnapshot } from '../inventory/periodLoadout.js';
 
 export type BonusGameStatus = 'draft' | 'active' | 'archived';
-export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
+export type BonusSkillCode = 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'rhythm' | 'challenge';
 export type BonusGameAccessType = 'free' | 'paid';
 export type BonusGameAttemptStatus = 'active' | 'completed' | 'failed' | 'abandoned';
 export type BonusGameAttemptState = 'idle' | 'period_active' | 'break_active' | 'closed';
@@ -236,6 +236,7 @@ export interface BonusGameAttemptRow {
   shots_taken: number;
   goals: number;
   total_points: number;
+  rhythm_shots: Array<{travel:number;goal:boolean}>;
   current_goal_streak: number;
   best_goal_streak: number;
   preview_acknowledged_at: Date | null;
@@ -340,6 +341,7 @@ export interface BonusGameDTO {
 }
 
 export interface BonusGameAttemptDTO {
+  rhythmShots?: Array<{travel:number;goal:boolean}>;
   record?: BonusRecordResult | null;
   id: string;
   gameId: string;
