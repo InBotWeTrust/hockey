@@ -65,3 +65,33 @@ it('replaces old one-or-two-visit schedules with five persisted windows',()=>{
  const saved=localStorage.getItem('city-caretaker-v2:player')!;expect(JSON.parse(saved).visits).toHaveLength(5);hook.unmount();
  const restored=renderHook(()=>useCaretakerVisit('player',false));expect(localStorage.getItem('city-caretaker-v2:player')).toBe(saved);restored.unmount();
 });
+
+it('always floods the outdoor ice regardless of the player home venue',()=>{
+ for(const venue of ['yard','stadium','pro'] as const){
+  const view=render(<CityCaretaker kind="flood" venue={venue}/>);
+  const figure=screen.getByRole('img',{name:'Григорий заливает лёд'});
+  expect(figure.style.left).toBe('10.5%');
+  expect(figure.style.top).toBe('54.5%');
+  view.unmount();
+ }
+});
+
+it('scales flooding with the map height and updates it when the map resizes',()=>{
+ let worldHeight=800;
+ const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(function(this:HTMLElement){
+  const height=this.dataset.testid==='caretaker-world'?worldHeight:0;
+  return {x:0,y:0,left:0,top:0,right:2400,bottom:height,width:2400,height,toJSON:()=>({})} as DOMRect;
+ });
+ const original=globalThis.ResizeObserver;
+ let resize:ResizeObserverCallback|undefined;
+ globalThis.ResizeObserver=class {constructor(callback:ResizeObserverCallback){resize=callback;}observe(){}unobserve(){}disconnect(){}} as typeof ResizeObserver;
+ try{
+  const view=render(<div><div data-testid="caretaker-world"><CityCaretaker kind="flood" venue="pro"/></div></div>);
+  const figure=screen.getByRole('img',{name:'Григорий заливает лёд'});
+  expect(figure.style.getPropertyValue('--caretaker-height')).toBe('48px');
+  worldHeight=1200;
+  act(()=>resize?.([],{} as ResizeObserver));
+  expect(figure.style.getPropertyValue('--caretaker-height')).toBe('72px');
+  view.unmount();
+ }finally{rect.mockRestore();globalThis.ResizeObserver=original;}
+});
