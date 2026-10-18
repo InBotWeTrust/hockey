@@ -2222,3 +2222,18 @@ it('starts a new strict bonus series after two goals, a miss and another goal',(
  const props=playViewProbe.mock.calls.at(-1)![0];
  expect(props.scoreboardModel({timer:'02:50'}).rows[0].metrics[0].value).toBe('2');
 });
+
+it.each([0,1,3,5])('shows current Rhythm series %i against the level threshold on the scoreboard',length=>{
+ const base=attempt();
+ setStore({attempt:{...base,rhythm_shots:Array.from({length},(_,i)=>({travel:i*.1,goal:true})),rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',breakOnMiss:true,targetPoints:28,minimumSeries:3,activeTimeMs:180000}}}});renderScreen();
+ const props=playViewProbe.mock.calls.at(-1)![0];
+ expect(props.scoreboardModel({timer:'02:46'}).rows[0].metrics.map((m:{label:string;value:string})=>[m.label,m.value])).toEqual([
+ ['СЧЁТ',String(length>=3?length:0)],['НУЖНО','28'],['СЕРИЯ',`${length}/3`],['ВРЕМЯ','02:46'],
+ ]);
+ if(length>0){
+  const frequency=base.rules.periods.find(p=>p.period_number===base.current_period)!.shooter_frequency;
+  act(()=>props.onSceneClock(0,((length-1)*.1+2.01)*1000/(frequency*2)));
+  const next=playViewProbe.mock.calls.at(-1)![0];
+  expect(next.scoreboardModel({timer:'02:44'}).rows[0].metrics.find((m:{id:string})=>m.id==='series').value).toBe('0/3');
+ }
+});

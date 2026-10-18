@@ -1225,7 +1225,7 @@ export function BonusGamePlayScreen(): JSX.Element {
                   bestStreak: attempt.best_goal_streak,
               })
         }
-        scoreboardModel={rhythmRules ? ({timer})=>({rows:[{id:'summary',metrics:[{id:'score',label:'СЧЁТ',value:String(rhythmProjection?.score??attempt.total_points)},{id:'target',label:'НУЖНО',value:String(rhythmRules.targetPoints)},{id:'time',label:'ВРЕМЯ',value:timer,tone:'timer'}]}]}) : enduranceScoreboardModel ?? marksmanshipScoreboardModel}
+        scoreboardModel={rhythmRules ? ({timer})=>({rows:[{id:'summary',metrics:[{id:'score',label:'СЧЁТ',value:String(rhythmProjection?.score??attempt.total_points)},{id:'target',label:'НУЖНО',value:String(rhythmRules.targetPoints)},{id:'series',label:'СЕРИЯ',value:`${rhythmProjection?.currentSeries??0}/${rhythmRules.minimumSeries}`},{id:'time',label:'ВРЕМЯ',value:timer,tone:'timer'}]}]}) : enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
           rhythmRules && rhythmNotice && !isTerminal && rhythmExpired!==attempt.id ? <FittedNotice fit role="status" className={`duel-stumble-notice initial-training-feedback-notice initial-training-feedback-notice--scoreboard${rhythmProjection!.currentSeries < rhythmRules.minimumSeries ? ' initial-training-feedback-notice--warning' : ''}`}>{rhythmNotice}</FittedNotice> : showEnduranceTimer ? (
             <EnduranceTimer windowMs={enduranceRules!.goalWindowMs} remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
