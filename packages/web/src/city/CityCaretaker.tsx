@@ -35,13 +35,16 @@ export function useCaretakerVisit(owner:string|undefined,blocked:boolean):Careta
 }
 const locations={yard:{x:12,y:54.5},stadium:{x:44,y:65},pro:{x:86,y:65}};
 export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeof locations}){
- const point=kind==='flood'&&venue==='yard'?{x:10.5,y:54.5}:locations[venue];
+ // Flooding belongs to the visible outdoor rink, not the player's indoor home venue.
+ const point=kind==='flood'?{x:10.5,y:54.5}:locations[venue];
  const figure=useRef<HTMLDivElement>(null),sprite=useRef<HTMLImageElement>(null);
  useLayoutEffect(()=>{
   const root=figure.current,image=sprite.current,world=root?.parentElement,viewport=world?.parentElement;
   if(kind!=='flood'||!root||!image||!world||!viewport)return;
   let shift=0;
   const update=()=>{
+   const worldHeight=world.getBoundingClientRect().height;
+   if(worldHeight>0)root.style.setProperty('--caretaker-height',`${worldHeight*.06}px`);
    if(!image.naturalWidth)return;
    const unshiftedLeft=image.getBoundingClientRect().left-world.getBoundingClientRect().left+shift;
    shift=Math.max(0,unshiftedLeft+20);
@@ -50,7 +53,7 @@ export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeo
   update();image.addEventListener('load',update);
   const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(update);
   observer?.observe(viewport);observer?.observe(world);observer?.observe(image);
-  return()=>{observer?.disconnect();image.removeEventListener('load',update);root.style.removeProperty('--caretaker-edge-shift');};
+  return()=>{observer?.disconnect();image.removeEventListener('load',update);root.style.removeProperty('--caretaker-edge-shift');root.style.removeProperty('--caretaker-height');};
  },[kind,venue]);
  return <div ref={figure} className={`city-caretaker city-caretaker--${kind}`} style={{left:`${point.x}%`,top:`${point.y}%`}} role="img" aria-label={kind==='flood'?'Григорий заливает лёд':'Григорий чистит снег'}>
   {kind==='flood'&&<span className="city-water" data-testid="caretaker-water" aria-hidden="true"><span className="city-water-stream"/>{[0,1,2,3,4].map(index=><i key={index}/>)}</span>}

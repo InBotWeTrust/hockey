@@ -1,28 +1,33 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { BarGameInvite } from '@hockey/game-core';
+import { useGameInvites } from './gameInviteStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 export function GameInvites() {
   const user = useAuthStore((s) => s.user?.id);
   const navigate = useNavigate();
-  const [invite, setInvite] = useState<BarGameInvite | null>(null),
-    [error, setError] = useState<string | null>(null),
+  const invite = useGameInvites(state => state.owner === user ? state.incoming[0] ?? null : null);
+  const [error, setError] = useState<string | null>(null),
     [busy, setBusy] = useState(false);
   const lock = useRef(false);
+  const generation = useRef(0);
   useEffect(() => {
-    setInvite(null);
+    const epoch = ++generation.current;
+    useGameInvites.getState().reset(user ?? null);
+    setError(null);
     if (!user) return;
     let alive = true,
       reading = false;
     const refresh = async () => {
+      useGameInvites.getState().prune(user);
       if (reading || document.hidden || lock.current) return;
       reading = true;
+      const revision = useGameInvites.getState().revision;
       try {
         const s = await gameApi.lobby();
-        if (alive)
-          setInvite(s.invites.find((i) => i.receiverId === user && i.status === 'pending') ?? null);
+        if (alive && generation.current === epoch && !lock.current)
+          useGameInvites.getState().replace(user, s.invites, revision);
       } catch {
         /* Next poll retries. */
       } finally {
@@ -31,23 +36,29 @@ export function GameInvites() {
     };
     void refresh();
     const t = setInterval(() => void refresh(), 3000);
+    const onReturn = () => void refresh();
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener('focus', onReturn);
     return () => {
       alive = false;
       clearInterval(t);
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener('focus', onReturn);
     };
   }, [user]);
   const respond = async (action: 'accept' | 'decline') => {
-    if (!invite || lock.current) return;
+    if (!invite || !user || lock.current) return;
     lock.current = true;
     setBusy(true);
     setError(null);
     try {
       const r = await gameApi.respond(invite.id, action);
       if (useAuthStore.getState().user?.id !== user) return;
-      setInvite(null);
+      useGameInvites.getState().remove(user, invite.id);
       if (r.matchId) navigate(`/bar/games/match/${r.matchId}`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Приглашение недоступно.');
+      if (useAuthStore.getState().user?.id === user)
+        setError(e instanceof Error ? e.message : 'Приглашение недоступно.');
     } finally {
       lock.current = false;
       setBusy(false);

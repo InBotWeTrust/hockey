@@ -1,3 +1,4 @@
+import { useGameInvites } from '../bar/games/gameInviteStore.js';
 import {caretakerBlocked} from '../city/caretakerSchedule.js';
 import type {GameDockStatus} from '../city/gameDockStatus.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
@@ -94,6 +95,7 @@ export function SectionsScreen(): JSX.Element {
   const userId = user?.id;
   const { totalUnread, gameActionCount } = useNavigationActivity(Boolean(user));
   const cardInviteCount = useCardInvites(state => state.incoming.length);
+  const gameInviteCount = useGameInvites(state => state.owner === userId ? state.incoming.length : 0);
   const [storedBonusProgress] = useState(() => readStoredBonusProgress(userId));
   const weeklyChallenge = useQuery({
     queryKey: weeklyChallengeKeys.current,
@@ -288,7 +290,7 @@ export function SectionsScreen(): JSX.Element {
         onOpenTraining={()=>navigate('/?view=training')}
         onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
         onOpenAmateurMatch={id=>navigate(`/?view=amateur&match=${encodeURIComponent(id)}&play=1`)}
-      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount} onNavigate={navigate}/>
+      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount+gameInviteCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (
