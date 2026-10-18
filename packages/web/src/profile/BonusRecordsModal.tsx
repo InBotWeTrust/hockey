@@ -12,6 +12,13 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { TournamentStandingsTable } from '../tournament/TournamentStandingsTable.js';
 
 export { formatRecordDuration as formatBonusDuration } from '../lib/recordDuration.js';
+export function formatBonusPreviewRecord(
+  skill: string,
+  result: { elapsedMs: number; shots: number; goals: number; bestSeries?: number },
+): string {
+  return skill === 'rhythm' ? formatBonusDuration(result.elapsedMs) : formatBonusRecord(skill, result);
+}
+
 export function formatBonusRecord(
   skill: string,
   result: { elapsedMs: number; shots: number; goals: number; bestSeries?: number },

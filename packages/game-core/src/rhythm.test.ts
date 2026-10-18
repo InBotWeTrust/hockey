@@ -131,3 +131,13 @@ it('credits a configurable minimum series retroactively without changing duel de
   expect(projectRhythm({shots,travel:8.01,minimumSeries:7}).series).toEqual([7]);
   expect(projectRhythm({shots:shots.slice(0,2),travel:1}).score).toBe(2);
 });
+
+it('breaks strict bonus series on any non-goal without losing credited points',()=>{
+ const goals=[{travel:0,goal:true},{travel:.5,goal:true}];
+ const missed=[...goals,{travel:.7,goal:false}];
+ expect(projectRhythm({shots:missed,travel:.7,breakOnMiss:true})).toMatchObject({score:2,currentSeries:0,series:[2]});
+ expect(projectRhythm({shots:[...missed,{travel:.8,goal:true}],travel:.8,breakOnMiss:true})).toMatchObject({score:2,currentSeries:1,series:[2]});
+ expect(projectRhythm({shots:goals,travel:2.5,breakOnMiss:true}).currentSeries).toBe(2);
+ expect(projectRhythm({shots:goals,travel:2.501,breakOnMiss:true}).currentSeries).toBe(0);
+ expect(projectRhythm({shots:missed,travel:.7}).currentSeries).toBe(2);
+});

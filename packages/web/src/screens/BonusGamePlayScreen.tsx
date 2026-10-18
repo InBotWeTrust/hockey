@@ -614,6 +614,7 @@ export function BonusGamePlayScreen(): JSX.Element {
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
   const rhythmPendingRef=useRef<{index:number;travel:number;goal:boolean}|null>(null);
+  const [rhythmWindowTravel, setRhythmWindowTravel] = useState<{attemptId:string;index:number;travel:number}|null>(null);
   const [rhythmVisible,setRhythmVisible]=useState<{attemptId:string;index:number;travel:number;goal:boolean}|null>(null);
   const [rhythmExpired,setRhythmExpired]=useState<string|null>(null);
   const [rhythmAnimating,setRhythmAnimating]=useState(false);
@@ -1069,8 +1070,8 @@ export function BonusGamePlayScreen(): JSX.Element {
   const rhythmRules=attempt.rules.qualification_rules.type==='rhythm_in_time'?attempt.rules.qualification_rules:null;
   const rhythmHistory=(attempt.rhythm_shots??[]).slice(0,rhythmVisible?.attemptId===attempt.id?rhythmVisible.index:undefined);
   if(rhythmVisible?.attemptId===attempt.id && rhythmHistory.length<rhythmVisible.index) rhythmHistory.push({travel:rhythmVisible.travel,goal:rhythmVisible.goal});
-  const rhythmProjection=rhythmRules?projectRhythm({shots:rhythmHistory,travel:rhythmHistory.at(-1)?.travel??0,minimumSeries:rhythmRules.minimumSeries}):null;
-  const rhythmNotice=rhythmHistory.at(-1)?.goal ? (rhythmProjection!.currentSeries>1?`Серия ${rhythmProjection!.currentSeries}`:'Серия началась'):null;
+  const rhythmProjection=rhythmRules?projectRhythm({shots:rhythmHistory,travel:rhythmWindowTravel?.attemptId===attempt.id && rhythmWindowTravel.index===rhythmHistory.length ? rhythmWindowTravel.travel : rhythmHistory.at(-1)?.travel??0,minimumSeries:rhythmRules.minimumSeries,breakOnMiss:rhythmRules.breakOnMiss??false}):null;
+  const rhythmNotice=rhythmHistory.at(-1)?.goal && rhythmProjection!.currentSeries>0 ? (rhythmProjection!.currentSeries>1?`Серия ${rhythmProjection!.currentSeries}`:'Серия началась'):null;
 
   const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
   const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
@@ -1226,7 +1227,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         }
         scoreboardModel={rhythmRules ? ({timer})=>({rows:[{id:'summary',metrics:[{id:'score',label:'СЧЁТ',value:String(rhythmProjection?.score??attempt.total_points)},{id:'target',label:'НУЖНО',value:String(rhythmRules.targetPoints)},{id:'time',label:'ВРЕМЯ',value:timer,tone:'timer'}]}]}) : enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
-          rhythmRules && rhythmNotice && !isTerminal && rhythmExpired!==attempt.id ? <FittedNotice fit role="status" className="duel-stumble-notice initial-training-feedback-notice--scoreboard">{rhythmNotice}</FittedNotice> : showEnduranceTimer ? (
+          rhythmRules && rhythmNotice && !isTerminal && rhythmExpired!==attempt.id ? <FittedNotice fit role="status" className={`duel-stumble-notice initial-training-feedback-notice initial-training-feedback-notice--scoreboard${rhythmProjection!.currentSeries < rhythmRules.minimumSeries ? ' initial-training-feedback-notice--warning' : ''}`}>{rhythmNotice}</FittedNotice> : showEnduranceTimer ? (
             <EnduranceTimer windowMs={enduranceRules!.goalWindowMs} remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
               tone={enduranceTimerTone(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)} />
           ) : marksmanshipScoreParts?.length ? (
@@ -1266,6 +1267,12 @@ export function BonusGamePlayScreen(): JSX.Element {
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
         scoreboardEndsAt={scoreboardEndsAt}
+        onSceneClock={rhythmRules ? (_scene, shooter) => {
+          const travel = shooter * rule.shooter_frequency * 2 / 1000;
+          if (rhythmProjection!.currentSeries > 0 && travel - rhythmProjection!.lastGoalTravel > 2 + 1e-9) {
+            setRhythmWindowTravel({attemptId:attempt.id,index:rhythmHistory.length,travel});
+          }
+        } : undefined}
         onTimerExpired={isPeriodActive && !isEndurance ? rhythmRules ? ()=>{if(rhythmExpired===attempt.id)return;setRhythmExpired(attempt.id);if(!rhythmAnimating) void refreshAttempt();} : refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {

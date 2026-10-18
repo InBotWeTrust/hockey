@@ -1,7 +1,7 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BonusRecordsModal, formatBonusRecord } from './BonusRecordsModal.js';
+import { BonusRecordsModal, formatBonusRecord, formatBonusPreviewRecord } from './BonusRecordsModal.js';
 import { fetchBonusRecords } from '../api/bonusGames.js';
 vi.mock('../api/bonusGames.js', () => ({ fetchBonusRecords: vi.fn() }));
 const fetch = vi.mocked(fetchBonusRecords);
@@ -117,4 +117,11 @@ describe('bonus records modal', () => {
     expect(screen.getByText('Я')).toBeInTheDocument();
     await waitFor(() => expect(fetch).toHaveBeenCalledWith('game', 0));
   });
+});
+
+it('shows only centisecond time for Rhythm preview records while retaining ranking details',()=>{
+ const record={elapsedMs:73120,shots:32,goals:20,bestSeries:6};
+ expect(formatBonusPreviewRecord('rhythm',record)).toBe('1 мин 13,12 сек');
+ expect(formatBonusRecord('rhythm',record)).toContain('серия 6');
+ expect(formatBonusPreviewRecord('speed',record)).toBe(formatBonusRecord('speed',record));
 });

@@ -21,9 +21,9 @@ it.skipIf(!hasIntegrationEnv)('seeds ten immutable levels with Classic speeds an
  expect(rows.every(r=>r.slug.startsWith('rhythm-')&&r.preview_artwork_url.includes('/bonus-games/nhl-cities/previews/'))).toBe(true);
  expect(rows.map(r=>r.target_goals)).toEqual([20,24,28,32,36,40,44,48,52,56]);
  const classic=(await pool.query("select p from amateur_duel_template t cross join lateral jsonb_array_elements(t.period_speed_presets) p where duel_kind='classic' and deleted_at is null and p->>'periodNumber'='1' order by is_active desc,created_at desc limit 1")).rows[0].p;
- for(const r of rows){expect(r.use_inventory).toBe(false);expect(r.period_rules[0].durationMs).toBe(180000);expect(r.period_rules[0].shooterFrequency).toBe(classic.shooterFrequency);}
+ for(const r of rows){expect(r.period_rules[0].puckSpeedPerMs).toBe(1.25);expect(r.qualification_rules.breakOnMiss).toBe(true);expect(r.use_inventory).toBe(false);expect(r.period_rules[0].durationMs).toBe(180000);expect(r.period_rules[0].shooterFrequency).toBe(classic.shooterFrequency);}
 });
-it.skipIf(!hasIntegrationEnv)('validates real shots, counts threshold series, preserves misses and settles once',async()=>{
+it.skipIf(!hasIntegrationEnv)('validates real shots, counts threshold series, breaks series on misses and settles once',async()=>{
  const user=await findOrCreateTelegramUser(pool,{providerUid:'local-bonus-rhythm-regression',displayName:'Local Rhythm'});
  await pool.query('update users set level=2 where id=$1',[user.id]);
  const game=(await pool.query("select id from bonus_game where skill_code='rhythm' order by sort_order limit 1")).rows[0];
@@ -53,8 +53,9 @@ it.skipIf(!hasIntegrationEnv)('validates real shots, counts threshold series, pr
   const request={userId:user.id,attemptId:state.id,claimedShotIndex:index,input:shotInput,claimedResult:result,now:new Date(now.getTime()+t+(index-1)*1000)};
   const response=await submitBonusShot(pool,request);state=response.attempt;
   history.push({travel:shotInput.shooterMotionTime*rule.shooterFrequency*2/1000,goal:result==='goal'});
-  const projected=projectRhythm({shots:history,travel:history.at(-1)!.travel,minimumSeries:2});
+  const projected=projectRhythm({shots:history,travel:history.at(-1)!.travel,minimumSeries:2,breakOnMiss:true});
   expect(state.totalPoints).toBe(projected.score);
+  expect(state.currentGoalStreak).toBe(projected.currentSeries);
   expect(state.goals).toBe(history.filter(s=>s.goal).length);
   if(!duplicateChecked){const retry=await submitBonusShot(pool,request);expect(retry.attempt.shotsTaken).toBe(index);duplicateChecked=true;}
  }

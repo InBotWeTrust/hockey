@@ -1456,7 +1456,7 @@ export async function submitBonusShot(
             travel: (shotInput.shooterMotionTime ?? input.input.shooterTapTime) * rule.shooterFrequency * 2 / 1000,
             goal: serverResult === 'goal',
           }] : [];
-          const rhythm = qualificationRules.type === 'rhythm_in_time' ? projectRhythm({shots:rhythmShots,travel:rhythmShots.at(-1)!.travel,minimumSeries:qualificationRules.minimumSeries}) : null;
+          const rhythm = qualificationRules.type === 'rhythm_in_time' ? projectRhythm({shots:rhythmShots,travel:rhythmShots.at(-1)!.travel,minimumSeries:qualificationRules.minimumSeries,breakOnMiss:qualificationRules.breakOnMiss??false}) : null;
           const awardedPoints = rhythm ? rhythm.score - Number(attempt.total_points) : classification?.awardedPoints ?? 0;
           const scoreDetails = classification !== null && qualificationRules.type === 'points_in_time'
             ? toMarksmanshipScoreDetails(classification, qualificationRules.scoring)
