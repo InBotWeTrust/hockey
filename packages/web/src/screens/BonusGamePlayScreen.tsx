@@ -1,3 +1,5 @@
+import {projectRhythm, getBonusChallengeShooterMotionTime as rhythmMotionTime} from '@hockey/game-core';
+import {FittedNotice} from '../game/FittedNotice.js';
 import { EnduranceTimer, enduranceTimerTone } from '../components/EnduranceTimer.js';
 import { MarksmanshipScoreNotice, formatMarksmanshipPoints, marksmanshipResultPresentation } from '../components/MarksmanshipScoreNotice.js';
 import { ChallengeFinale } from '../game/ChallengeFinale.js';
@@ -367,6 +369,15 @@ export function BonusResult({
           />
           <BonusResultMetric label="В среднем на гол" value={averageEnduranceGoalText} />
         </div>
+      ) : attempt.rules.qualification_rules.type==='rhythm_in_time' ? (
+        <div className="bonus-game-result-metrics" aria-label="Результат Ритма">
+          <BonusResultMetric label="Засчитано" value={String(attempt.total_points)}/>
+          <BonusResultMetric label="Цель" value={String(attempt.rules.qualification_rules.targetPoints)}/>
+          <BonusResultMetric label="Лучшая серия" value={String(attempt.best_goal_streak)}/>
+          <BonusResultMetric label="Попадания" value={`${accuracy}%`}/>
+          <BonusResultMetric label="Голы" value={String(attempt.goals)}/>
+          <BonusResultMetric label="Броски" value={String(attempt.shots_taken)}/>
+        </div>
       ) : marksmanshipRules ? (
         <div
           className="bonus-game-result-metrics"
@@ -602,6 +613,10 @@ export function BonusGamePlayScreen(): JSX.Element {
   const abandon = useBonusGameStore((state) => state.abandon);
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const rhythmPendingRef=useRef<{index:number;travel:number;goal:boolean}|null>(null);
+  const [rhythmVisible,setRhythmVisible]=useState<{attemptId:string;index:number;travel:number;goal:boolean}|null>(null);
+  const [rhythmExpired,setRhythmExpired]=useState<string|null>(null);
+  const [rhythmAnimating,setRhythmAnimating]=useState(false);
   const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -648,6 +663,10 @@ export function BonusGamePlayScreen(): JSX.Element {
   }, [acknowledgePreview, attempt?.id, attempt?.preview_required, attempt?.status, inFlight]);
 
   useEffect(() => {
+    rhythmPendingRef.current = null;
+    setRhythmVisible(null);
+    setRhythmExpired(null);
+    setRhythmAnimating(false);
     predictedMarksmanshipRef.current = null;
     earliestMarksmanshipTapRef.current = 0;
     marksmanshipGoalInputsRef.current = [];
@@ -755,6 +774,11 @@ export function BonusGamePlayScreen(): JSX.Element {
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
+  useEffect(() => {
+    if (!attempt || rhythmExpired !== attempt.id || rhythmAnimating || attempt.status !== 'active') return;
+    const timer = window.setInterval(() => { void refreshAttempt(); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [attempt?.id, attempt?.status, rhythmExpired, rhythmAnimating, refreshAttempt]);
   const activeEnduranceAttempt =
     attempt?.status === 'active' &&
     attempt.state === 'period_active' &&
@@ -1042,6 +1066,12 @@ export function BonusGamePlayScreen(): JSX.Element {
       ? attempt.rules.qualification_rules
       : null;
   const isMarksmanship = marksmanshipRules !== null;
+  const rhythmRules=attempt.rules.qualification_rules.type==='rhythm_in_time'?attempt.rules.qualification_rules:null;
+  const rhythmHistory=(attempt.rhythm_shots??[]).slice(0,rhythmVisible?.attemptId===attempt.id?rhythmVisible.index:undefined);
+  if(rhythmVisible?.attemptId===attempt.id && rhythmHistory.length<rhythmVisible.index) rhythmHistory.push({travel:rhythmVisible.travel,goal:rhythmVisible.goal});
+  const rhythmProjection=rhythmRules?projectRhythm({shots:rhythmHistory,travel:rhythmHistory.at(-1)?.travel??0,minimumSeries:rhythmRules.minimumSeries}):null;
+  const rhythmNotice=rhythmHistory.at(-1)?.goal ? (rhythmProjection!.currentSeries>1?`Серия ${rhythmProjection!.currentSeries}`:'Серия началась'):null;
+
   const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
   const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
   const enduranceRules =
@@ -1128,7 +1158,8 @@ export function BonusGamePlayScreen(): JSX.Element {
         maintenanceMode={isBreak ? 'scrape' : 'flood'}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
-        active={isPeriodActive}
+        active={isPeriodActive && (!rhythmRules || rhythmExpired!==attempt.id || rhythmAnimating)}
+        holdSceneAfterResult={!!rhythmRules && (rhythmExpired===attempt.id || isTerminal)}
         seed={attempt.attempt_seed}
         goalieId={null}
         goalieConfig={goalieConfig}
@@ -1143,7 +1174,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         cyberpunkEnvironment={cyberRules?{rules:cyberRules,taps:attempt.current_period_panel_events??[]}:undefined}
         scoreboardDimmed={Boolean(cyberRules && cyberUiNow?.scene.outage)}
         rinkUnderlay={cyberRules&&cyberUiNow?<CyberpunkEffects scene={cyberUiNow.scene} layer="ice"/>:undefined}
-        shooterMotionTime={cyberRules ? (time,local)=>{const r=cyberRuntimeRef.current!;r.time=time;r.pauses=[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))];return cyberpunkShooterMotion(challengeEnvironment!,time,speedOverrides.shooterFreq,r.pauses);} : skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
+        shooterMotionTime={attempt.rules.skill_code==='rhythm' ? (time,local)=>rhythmMotionTime({},time,speedOverrides.shooterFreq,[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))]) : cyberRules ? (time,local)=>{const r=cyberRuntimeRef.current!;r.time=time;r.pauses=[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))];return cyberpunkShooterMotion(challengeEnvironment!,time,speedOverrides.shooterFreq,r.pauses);} : skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
         canStartAction={cyberRules || challengeEnvironment?.beach?.interactive ? () => {
           const state = useBonusGameStore.getState();
           return !state.inFlight && !state.needsReconcile && !state.pendingShot;
@@ -1183,7 +1214,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
         scoreboardNotice={
-          isEndurance || isMarksmanship
+          isEndurance || isMarksmanship || rhythmRules
             ? undefined
             : qualificationProgress(attempt.rules.qualification_rules, {
                   goals: attempt.goals,
@@ -1193,9 +1224,9 @@ export function BonusGamePlayScreen(): JSX.Element {
                   bestStreak: attempt.best_goal_streak,
               })
         }
-        scoreboardModel={enduranceScoreboardModel ?? marksmanshipScoreboardModel}
+        scoreboardModel={rhythmRules ? ({timer})=>({rows:[{id:'summary',metrics:[{id:'score',label:'СЧЁТ',value:String(rhythmProjection?.score??attempt.total_points)},{id:'target',label:'НУЖНО',value:String(rhythmRules.targetPoints)},{id:'time',label:'ВРЕМЯ',value:timer,tone:'timer'}]}]}) : enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
-          showEnduranceTimer ? (
+          rhythmRules && rhythmNotice && !isTerminal && rhythmExpired!==attempt.id ? <FittedNotice fit role="status" className="duel-stumble-notice initial-training-feedback-notice--scoreboard">{rhythmNotice}</FittedNotice> : showEnduranceTimer ? (
             <EnduranceTimer windowMs={enduranceRules!.goalWindowMs} remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
               tone={enduranceTimerTone(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)} />
           ) : marksmanshipScoreParts?.length ? (
@@ -1206,6 +1237,8 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotButtonLabel={
           needsReconcile
             ? 'ПРОВЕРЯЕМ...'
+            : rhythmRules && rhythmExpired === attempt.id && !isTerminal
+              ? 'ПОДВОДИМ ИТОГИ'
             : isTerminal
               ? 'ИГРА ЗАВЕРШЕНА'
               : isBreak
@@ -1233,7 +1266,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
         scoreboardEndsAt={scoreboardEndsAt}
-        onTimerExpired={isPeriodActive && !isEndurance ? refreshAttempt : undefined}
+        onTimerExpired={isPeriodActive && !isEndurance ? rhythmRules ? ()=>{if(rhythmExpired===attempt.id)return;setRhythmExpired(attempt.id);if(!rhythmAnimating) void refreshAttempt();} : refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
           if (input.shooterTapTime === undefined) return null;
@@ -1270,6 +1303,16 @@ export function BonusGamePlayScreen(): JSX.Element {
                 : {}),
             },
           );
+          if (rhythmRules && rhythmPendingRef.current?.index === shotIndex && (!result || result.isCurrent?.() !== false)) {
+            if (!result || result.attempt.current_period_shots_taken < shotIndex) {
+              rhythmPendingRef.current = null;
+              setRhythmVisible(null);
+            } else if (result.serverResult !== claimedResult) {
+              const confirmed = result.attempt.rhythm_shots?.[shotIndex - 1];
+              rhythmPendingRef.current = confirmed ? {index:shotIndex,...confirmed} : null;
+              setRhythmVisible(confirmed ? {attemptId:attempt.id,index:shotIndex,...confirmed} : null);
+            }
+          }
           if (!mountedRef.current) applyPendingShot();
           const resultPresentation =
             result && isMarksmanship
@@ -1300,7 +1343,11 @@ export function BonusGamePlayScreen(): JSX.Element {
             : null;
         }}
         onShotResolved={
-          isMarksmanship
+          rhythmRules ? context=>{
+            setRhythmAnimating(true);
+            rhythmPendingRef.current={index:context.shotIndex,travel:(context.input.shooterMotionTime??context.input.shooterTapTime??0)*rule.shooter_frequency*2/1000,goal:context.result.type==='goal'};
+            return {details:[]};
+          } : isMarksmanship
             ? (context) => {
                 const classification = classifyMarksmanshipShot({
                   shotInput: context.input,
@@ -1337,6 +1384,10 @@ export function BonusGamePlayScreen(): JSX.Element {
         }
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
         onResultVisibilityChange={(visible) => {
+          if(rhythmRules) {
+            if(visible && rhythmPendingRef.current) setRhythmVisible({attemptId:attempt.id,...rhythmPendingRef.current});
+            if(!visible){setRhythmAnimating(false);if(rhythmExpired===attempt.id)void refreshAttempt();}
+          }
           if (isEndurance && isPeriodActive) handleEnduranceResultVisibility(visible);
           if (!isMarksmanship) return;
           marksmanshipResultVisibleRef.current = visible;

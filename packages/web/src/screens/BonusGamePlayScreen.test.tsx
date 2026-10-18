@@ -2143,3 +2143,40 @@ it.each(['completed', 'failed'] as const)('shows cyberpunk story within the ordi
   expect(screen.getByRole('button', { name: 'К бонусным играм' })).toBeEnabled();
   expect(screen.queryByRole('button', { name: 'Дальше' })).toBeNull();
 });
+
+
+it('shows Rhythm score and contact notice without a modal subtitle, then hides it on a miss',async()=>{
+ const base=attempt();
+ const rhythm={...base,rhythm_shots:[],rules:{...base.rules,skill_code:'rhythm' as const,use_inventory:false,qualification_rules:{type:'rhythm_in_time' as const,targetPoints:20,minimumSeries:2,activeTimeMs:180000}}};
+ setStore({attempt:rhythm});renderScreen();
+ let props=playViewProbe.mock.calls.at(-1)![0];
+ expect(props.scoreboardModel({timer:'03:00'}).rows[0].metrics[0].value).toBe('0');
+ act(()=>{expect(props.onShotResolved({shotIndex:1,input:{tapTime:1000,shooterTapTime:1000},result:{type:'goal'}})).toEqual({details:[]});props.onResultVisibilityChange(true);});
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+ props=playViewProbe.mock.calls.at(-1)![0];
+ act(()=>{props.onShotResolved({shotIndex:2,input:{tapTime:1200,shooterTapTime:1100},result:{type:'miss'}});props.onResultVisibilityChange(true);});
+ expect(screen.queryByText('Серия началась')).not.toBeInTheDocument();
+});
+
+it('removes the provisional Rhythm notice when the shot request is rejected',async()=>{
+ const base=attempt();setStore({attempt:{...base,rhythm_shots:[],rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',targetPoints:20,minimumSeries:2,activeTimeMs:180000}}},submitShot:vi.fn(async()=>null)});renderScreen();
+ const props=playViewProbe.mock.calls.at(-1)![0];
+ act(()=>{props.onShotResolved({shotIndex:1,input:{tapTime:1000,shooterTapTime:1000},result:{type:'goal'}});props.onResultVisibilityChange(true);});
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+ await act(async()=>{await props.submitShot({shotIndex:1,input:{tapTime:1000,shooterTapTime:1000},claimedResult:'goal'});});
+ expect(screen.queryByText('Серия началась')).not.toBeInTheDocument();
+});
+
+it('keeps the final Rhythm flight active across the siren until its result closes',()=>{
+ const base=attempt();setStore({attempt:{...base,rhythm_shots:[],rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',targetPoints:20,minimumSeries:2,activeTimeMs:180000}}}});renderScreen();
+ // PlayView calls this synchronously at launch, before puck.playShot/contact.
+ let props=playViewProbe.mock.calls.at(-1)![0];
+ act(()=>{props.onShotResolved({shotIndex:1,input:{tapTime:179800,shooterTapTime:179800},result:{type:'goal'}});});
+ props=playViewProbe.mock.calls.at(-1)![0];
+ act(()=>{props.onTimerExpired();});
+ props=playViewProbe.mock.calls.at(-1)![0];expect(props.active).toBe(true);
+ act(()=>{props.onResultVisibilityChange(true);});
+ props=playViewProbe.mock.calls.at(-1)![0];expect(props.active).toBe(true);
+ act(()=>{props.onResultVisibilityChange(false);});
+ props=playViewProbe.mock.calls.at(-1)![0];expect(props.active).toBe(false);expect(props.holdSceneAfterResult).toBe(true);
+});
