@@ -94,7 +94,9 @@ export function shopArtworkUrls(
       ? []
       : [
           SHOP_CATEGORY_META[selectedCategory].backgroundUrl,
-          ...inventory.items[selectedCategory].map(artworkForInventoryItem),
+          ...(selectedCategory === 'bar'
+            ? ['/shop/products/bar-card-v1.webp', '/shop/products/bar-messages-10-v1.webp', '/shop/products/bar-messages-30-v1.webp', '/shop/products/bar-messages-100-v1.webp']
+            : inventory.items[selectedCategory].map(artworkForInventoryItem)),
         ];
   return [
     ...new Set([

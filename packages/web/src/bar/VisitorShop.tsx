@@ -1,28 +1,48 @@
 import { X } from 'lucide-react';
-import { useAuthStore } from '../auth/authStore.js';
 import { useEffect, useRef, useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import type { VisitorProduct, VisitorState } from '@hockey/game-core';
+import { useAuthStore } from '../auth/authStore.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
+import { fetchMyInventory } from '../api/inventory.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
+import { ShopProductCard } from '../shop/ShopProductCard.js';
+import { ShopPurchaseModal } from '../shop/ShopPurchaseModal.js';
 import { useVisitor, visitorChanged, visitorTime } from './visitorApi.js';
-import { VISITOR_CARD_ART } from './VisitorCardSlot.js';
+import { visitorProductArtwork, visitorProductTitle } from './visitorArtwork.js';
 import './visitor-card.css';
+
+type Purchase = {
+  id: string;
+  productId: string;
+  currency: 'coins' | 'stars';
+  expectedPrice: number;
+  expectedRevision: number;
+};
+function readPending(key: string): Purchase | null {
+  try {
+    return JSON.parse(sessionStorage.getItem(key) ?? 'null') as Purchase | null;
+  } catch {
+    return null;
+  }
+}
 export function VisitorShop({ onClose }: { onClose?: () => void }) {
   const owner = useAuthStore((state) => state.user?.id) ?? 'preview';
+  // Remount account-owned purchase state if the signed-in account changes.
+  return <VisitorCatalog key={owner} owner={owner} {...(onClose ? { onClose } : {})} />;
+}
+function VisitorCatalog({ owner, onClose }: { owner: string; onClose?: () => void }) {
   const requestKey = `bar-visitor-purchase:${owner}`;
   const { data, error, refresh } = useVisitor();
+  const inventory = useQuery({ queryKey: ['inventory', 'me'], queryFn: fetchMyInventory });
   const queryClient = useQueryClient();
+  const pending = useRef<Purchase | null>(readPending(requestKey));
+  const [selectedId, setSelectedId] = useState<string | null>(pending.current?.productId ?? null);
+  const [details, setDetails] = useState<VisitorProduct | null>(null);
   const [notice, setNotice] = useState('');
-  const [selected, setSelected] = useState<{
-    product: VisitorProduct;
-    currency: 'coins' | 'stars';
-  } | null>(null);
+  const [purchaseError, setPurchaseError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const confirmation = useRef<HTMLButtonElement | null>(null);
-  useEffect(() => {
-    if (selected) confirmation.current?.focus();
-  }, [selected]);
+  const busyRef = useRef(false);
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -30,41 +50,35 @@ export function VisitorShop({ onClose }: { onClose?: () => void }) {
       mounted.current = false;
     };
   }, []);
-  const pending = useRef<{
-    id: string;
-    productId: string;
-    currency: 'coins' | 'stars';
-    expectedPrice: number;
-    expectedRevision: number;
-  } | null>(
-    (() => {
-      try {
-        return JSON.parse(sessionStorage.getItem(requestKey) ?? 'null');
-      } catch {
-        return null;
-      }
-    })(),
-  );
-  useEffect(() => {
-    if (data && pending.current && !selected) {
-      const product = data.settings.products.find((p) => p.id === pending.current?.productId);
-      if (product) setSelected({ product, currency: pending.current.currency });
-    }
-  }, [data, selected]);
-  const buy = async () => {
-    if (!data || !selected || busy) return;
+  const selected = data?.settings.products.find((product) => product.id === selectedId);
+  const coins = inventory.data?.balances.tokens ?? 0;
+  const stars = inventory.data?.balances.stars ?? 0;
+  const select = (product: VisitorProduct) => {
+    setDetails(null);
+    setPurchaseError(null);
+    setSelectedId(pending.current?.productId ?? product.id);
+  };
+  const buy = async (currency: 'coins' | 'stars') => {
+    if (
+      !data ||
+      !selected ||
+      busyRef.current ||
+      (pending.current && pending.current.currency !== currency)
+    )
+      return;
+    busyRef.current = true;
     setBusy(true);
-    setNotice('');
+    setPurchaseError(null);
     const input = pending.current ?? {
       id: crypto.randomUUID(),
-      productId: selected.product.id,
-      currency: selected.currency,
-      expectedPrice: selected.product[selected.currency],
+      productId: selected.id,
+      currency,
+      expectedPrice: selected[currency],
       expectedRevision: data.revision,
     };
     pending.current = input;
-    sessionStorage.setItem(requestKey, JSON.stringify(input));
     try {
+      sessionStorage.setItem(requestKey, JSON.stringify(input));
       await apiFetch<VisitorState>('/bar/visitor/purchases', {
         method: 'POST',
         body: JSON.stringify(input),
@@ -72,7 +86,7 @@ export function VisitorShop({ onClose }: { onClose?: () => void }) {
       pending.current = null;
       sessionStorage.removeItem(requestKey);
       if (!mounted.current) return;
-      setSelected(null);
+      setSelectedId(null);
       setNotice('Покупка готова. Можно продолжать!');
       visitorChanged();
       await Promise.all([
@@ -81,24 +95,28 @@ export function VisitorShop({ onClose }: { onClose?: () => void }) {
         refresh(),
       ]);
     } catch (cause) {
-      setNotice(cause instanceof Error ? cause.message : 'Покупка не прошла. Попробуй ещё раз.');
+      if (!mounted.current) return;
+      setPurchaseError(
+        cause instanceof Error ? cause.message : 'Покупка не прошла. Попробуй ещё раз.',
+      );
       if (cause instanceof ApiError && cause.status < 500) {
         pending.current = null;
         sessionStorage.removeItem(requestKey);
-        setSelected(null);
         await refresh();
       }
     } finally {
-      setBusy(false);
+      busyRef.current = false;
+      if (mounted.current) setBusy(false);
     }
   };
+  const copy = (product: VisitorProduct) =>
+    product.kind === 'messages'
+      ? `В запас добавится ${product.amount} сообщений для всех персонажей. Остаток не сгорает.`
+      : data?.state.card.active
+        ? `Добавим ${data.settings.cardDays} дней к оставшемуся сроку карты.`
+        : `Карта начнёт действовать сразу на ${data?.settings.cardDays ?? 30} дней. Экипировать её не нужно.`;
   const content = (
-    <section className="visitor-shop" aria-label="Товары бара">
-      <img
-        className="visitor-card-art"
-        src={VISITOR_CARD_ART}
-        alt="Карта посетителя 4-го периода"
-      />
+    <section className="inventory-category-catalog" aria-label="Товары бара">
       {error && (
         <p role="alert">
           Не удалось загрузить товары.{' '}
@@ -107,111 +125,125 @@ export function VisitorShop({ onClose }: { onClose?: () => void }) {
           </button>
         </p>
       )}
-      {!data && !error && <p role="status">Загружаем товары…</p>}
-      {data && (
-        <>
-          <p>
-            {data.state.card.active
-              ? `Карта действует до ${visitorTime(data.state.card.expiresAt!)}.`
-              : 'Карта открывает больше общения и игр с персонажами.'}
-          </p>
-          <p>
-            Сообщений сегодня: {data.state.messages.remaining}. В запасе: {data.state.messages.paid}
-            .
-          </p>
-          <p>
-            {data.settings.freeMessages} сообщений и {data.settings.freeGames} игры в день без
-            карты. С картой {data.settings.cardMessages} сообщений и по {data.settings.cardGames}{' '}
-            игры с каждым. Ставки в «Очко» оплачиваются отдельно.
-          </p>
-          <div className="visitor-products">
-            {data.settings.products.map((product) => (
-              <article key={product.id} className="glass visitor-product">
-                <h3>
-                  {product.kind === 'card'
-                    ? `${data.state.card.purchased ? 'Продлить карту' : 'Карта посетителя'} на ${data.settings.cardDays} дней`
-                    : `${product.amount} сообщений`}
-                </h3>
-                <p>
-                  {product.kind === 'card'
-                    ? 'Продление добавляется к оставшемуся сроку.'
-                    : 'Для всех персонажей. Остаток не сгорает.'}
-                </p>
-                <div className="modal-actions">
-                  {(['coins', 'stars'] as const).map((currency) => (
-                    <button
-                      key={currency}
-                      className="btn btn--ghost"
-                      disabled={busy || !!pending.current}
-                      onClick={() => {
-                        pending.current = null;
-                        setSelected({ product, currency });
-                        setNotice('');
-                      }}
-                    >
-                      {product[currency].toLocaleString('ru-RU')}{' '}
-                      {currency === 'coins' ? 'монет' : 'звёзд'}
-                    </button>
-                  ))}
-                </div>
-              </article>
-            ))}
-          </div>
-        </>
-      )}
-      {notice && <p role="status">{notice}</p>}
-      {selected && (
-        <div className="visitor-confirm" aria-label="Подтверждение покупки">
-          <p>
-            Купить «{selected.product.title}» за{' '}
-            {selected.product[selected.currency].toLocaleString('ru-RU')}{' '}
-            {selected.currency === 'coins' ? 'монет' : 'звёзд'}?
-          </p>
-          <div className="modal-actions">
-            <button
-              className="btn btn--cta"
-              disabled={busy}
-              ref={confirmation}
-              onClick={() => void buy()}
-            >
-              {busy ? 'Покупаем…' : 'Подтвердить покупку'}
-            </button>
-            <button
-              className="btn btn--ghost"
-              disabled={busy || !!pending.current}
-              onClick={() => setSelected(null)}
-            >
-              Отмена
-            </button>
-          </div>
-        </div>
-      )}
-      {onClose && (
-        <div className="modal-actions">
-          <button className="btn btn--ghost" disabled={busy} onClick={onClose}>
-            Вернуться
+      {!data && !error && <p className="modal-copy">Загружаем товары…</p>}
+      {inventory.isError && (
+        <p role="alert">
+          Не удалось загрузить баланс.{' '}
+          <button className="btn btn--ghost" onClick={() => void inventory.refetch()}>
+            Повторить
           </button>
-        </div>
+        </p>
+      )}
+      <div
+        className="inventory-shop-grid"
+        style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)', gap: 8 }}
+      >
+        {data?.settings.products.map((product) => (
+          <ShopProductCard
+            key={product.id}
+            title={visitorProductTitle(product)}
+            artworkUrl={visitorProductArtwork(product)}
+            description={
+              product.kind === 'card'
+                ? `${data.settings.cardDays} дней`
+                : 'Запас без срока действия'
+            }
+            coinPrice={product.coins}
+            starPrice={product.stars}
+            canBuy={
+              pending.current?.productId === product.id ||
+              coins >= product.coins ||
+              stars >= product.stars
+            }
+            coinAffordable={coins >= product.coins}
+            isBuying={busy && selectedId === product.id}
+            onDetails={() => setDetails(product)}
+            onBuy={() => select(product)}
+          />
+        ))}
+      </div>
+      {notice && (
+        <p role="status" className="modal-copy">
+          {notice}
+        </p>
       )}
     </section>
   );
-  return onClose ? (
-    <AccessibleModal
-      title="Стойка Игоря"
-      cardClassName="visitor-shop-modal"
-      closeBlocked={busy}
-      headerAction={
-        <button className="icon-btn" aria-label="Закрыть" disabled={busy} onClick={onClose}>
-          <X size={18} />
-        </button>
-      }
-      onRequestClose={() => {
-        if (!busy) onClose();
-      }}
-    >
-      {content}
-    </AccessibleModal>
-  ) : (
-    content
+  return (
+    <>
+      {onClose ? (
+        <AccessibleModal
+          title="Стойка Игоря"
+          cardClassName="visitor-shop-modal"
+          closeBlocked={busy}
+          onRequestClose={() => {
+            if (!busyRef.current) onClose();
+          }}
+          headerAction={
+            <button className="icon-btn" aria-label="Закрыть" disabled={busy} onClick={onClose}>
+              <X size={18} />
+            </button>
+          }
+        >
+          {content}
+        </AccessibleModal>
+      ) : (
+        content
+      )}
+      {details && (
+        <AccessibleModal
+          title={visitorProductTitle(details)}
+          copy={copy(details)}
+          backdropStyle={{ zIndex: 420 }}
+          cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
+          onRequestClose={() => setDetails(null)}
+          headerAction={
+            <button className="icon-btn" aria-label="Закрыть" onClick={() => setDetails(null)}>
+              <X size={15} />
+            </button>
+          }
+        >
+          <img
+            className="visitor-product-art"
+            src={visitorProductArtwork(details)}
+            alt={visitorProductTitle(details)}
+          />
+          {details.kind === 'card' && data && (
+            <p className="modal-copy">
+              С картой {data.settings.cardMessages} сообщений в день и по {data.settings.cardGames}{' '}
+              игры с каждым персонажем.
+              {data.state.card.active && data.state.card.expiresAt
+                ? ` Карта действует до ${visitorTime(data.state.card.expiresAt)}.`
+                : ''}
+            </p>
+          )}
+          <div className="modal-actions">
+            <button className="modal-primary btn--cta" onClick={() => select(details)}>
+              Купить
+            </button>
+          </div>
+        </AccessibleModal>
+      )}
+      {selected && (
+        <ShopPurchaseModal
+          title={`Купить «${visitorProductTitle(selected)}»?`}
+          copy={copy(selected)}
+          coinPrice={selected.coins}
+          starPrice={selected.stars}
+          canBuyCoins={
+            pending.current ? pending.current.currency === 'coins' : coins >= selected.coins
+          }
+          canBuyStars={
+            pending.current ? pending.current.currency === 'stars' : stars >= selected.stars
+          }
+          isSaving={busy}
+          error={purchaseError}
+          onClose={() => {
+            if (!busyRef.current) setSelectedId(null);
+          }}
+          onConfirm={(currency) => void buy(currency)}
+        />
+      )}
+    </>
   );
 }

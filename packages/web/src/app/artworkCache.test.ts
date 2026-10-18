@@ -142,6 +142,7 @@ describe('preloadArtwork', () => {
       '/shop/categories/skates.webp',
       '/shop/categories/nutrition.webp',
       '/shop/categories/recovery.webp',
+        '/shop/categories/bar-v1.webp',
       '/shop/backgrounds/recovery.webp',
       '/inventory/recovery.webp?v=20260911-locker-equipment-v2',
     ]);
