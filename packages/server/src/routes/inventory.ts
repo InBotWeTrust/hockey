@@ -1,3 +1,4 @@
+import type { VisitorState } from '@hockey/game-core';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
@@ -47,6 +48,7 @@ interface InventoryItemRow {
 }
 
 interface InventoryState {
+  visitorCard: VisitorState['card'];
   balances: {
     tokens: number;
     stars: number;
@@ -227,7 +229,7 @@ function transactionFlow(amounts: InventoryTransactionAmountDto[]): TransactionF
 }
 
 function transactionCategory(reason: string): TransactionCategory {
-  if (reason === 'inventory_purchase' || reason === 'recovery_kit_use') return 'inventory';
+  if (reason === 'inventory_purchase' || reason === 'bar_purchase' || reason === 'recovery_kit_use') return 'inventory';
   if (
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_reward' ||
@@ -539,7 +541,9 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     return active?.id ?? null;
   };
 
+  const card = (await client.query<{ purchased: boolean; active: boolean; expires_at: Date | null }>("select purchased_at is not null as purchased,coalesce(expires_at>clock_timestamp(),false) as active,expires_at from bar_visitor_accounts where user_id=$1", [userId])).rows[0];
   return {
+    visitorCard: { purchased: card?.purchased ?? false, active: card?.active ?? false, expiresAt: card?.expires_at?.toISOString() ?? null },
     balances: {
       tokens: Number(account.balance),
       stars: Number(account.stars),

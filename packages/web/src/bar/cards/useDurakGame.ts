@@ -1,3 +1,4 @@
+import { useAuthStore } from '../../auth/authStore.js';
 import { useEffect, useRef, useState } from 'react';
 import {
   activePlayer,
@@ -27,10 +28,18 @@ export function useDurakGame(
   opponentId: ComputerOpponentId = 'maria',
   onComplete?: (match: CompletedCardGame) => void,
 ): DurakController {
+  const owner = useAuthStore(state => state.user?.id);
+  const storageKey = !initial && owner && opponentId === 'maria' ? `bar-maria-game:${owner}` : null;
   const completion = useRef(onComplete);
   completion.current = onComplete;
   const session = useRef({ id: crypto.randomUUID(), startedAt: new Date().toISOString(), surrendered: false, caughtCheats: 0, reported: initial?.result !== null && initial?.result !== undefined });
-  const [game, setGame] = useState(() => initial ?? createGame());
+  const [game, setGame] = useState(() => {
+    if (storageKey) {
+      try { const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as Game | null; if (saved && Array.isArray(saved.hands) && saved.hands.length === 2 && saved.revision >= 0) return saved; } catch { /* A damaged local snapshot starts a new party. */ }
+    }
+    return initial ?? createGame();
+  });
+  useEffect(() => { if (storageKey) sessionStorage.setItem(storageKey, JSON.stringify(game)); }, [game, storageKey]);
   const [generation, setGeneration] = useState(0);
   const [remainingSeconds, setRemaining] = useState<number | null>(null);
   const pendingCheat = useRef<{ before: Game; staged: Game } | null>(null);

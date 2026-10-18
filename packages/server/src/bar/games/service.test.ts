@@ -3,6 +3,7 @@ import type { Pool } from 'pg';
 import type { barBattleship as sea } from '@hockey/game-core';
 import { createMatch, type BarGameId } from '@hockey/game-core';
 import { readGame, actGame, startComputer } from './service.js';
+import { defaultVisitorSettings } from '../visitorRules.js';
 afterEach(() => {
   vi.useRealTimers();
 });
@@ -163,6 +164,12 @@ it('does not discard an arm surrender merely because a heartbeat won the race',a
 it('preserves the current round pause when starting a private character game', async () => {
   let stored: { runtime: { engineVersion: number; game: { roundPauseMs?: number } } } | undefined;
   const query = vi.fn(async (sql: string, args: unknown[] = []) => {
+    if (sql.startsWith('select * from bar_visitor_accounts')) return { rows: [{
+      purchased_at: null, expires_at: null, paid_messages: 0, messages_used: 0,
+      games_used: {}, day_started_at: new Date(), reset_at: new Date(Date.now() + 86400000),
+    }] };
+    if (sql.startsWith('select revision,settings from bar_visitor_settings'))
+      return { rows: [{ revision: 1, settings: defaultVisitorSettings }] };
     if (sql.startsWith('insert into bar_game_matches')) stored = JSON.parse(args[5] as string);
     return { rows: [] };
   });

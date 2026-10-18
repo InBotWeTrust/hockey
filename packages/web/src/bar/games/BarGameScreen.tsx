@@ -1,3 +1,4 @@
+import { visitorChanged } from '../visitorApi.js';
 import { POOL_STROKE_MS } from '@hockey/game-core';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -70,6 +71,7 @@ export function BarGameScreen() {
           : await gameApi.start(view.character, replayRequest, view.id);
       navigate(`/bar/games/match/${next.id}`, { replace: true });
     } catch {
+      visitorChanged();
       setReplayError('Не удалось начать новую партию. Попробуй ещё раз.');
       setReplaying(false);
     }

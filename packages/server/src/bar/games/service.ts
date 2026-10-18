@@ -1,3 +1,4 @@
+import { admitVisitorGame } from '../visitorService.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import {
@@ -130,6 +131,7 @@ async function create(
 ) {
   await assertFree(c, a, now);
   if (b) await assertFree(c, b, now);
+  if (character) await admitVisitorGame(c, a, character, id, now);
   const row: MatchRow = {
     id,
     kind,
@@ -435,13 +437,14 @@ export const respondGame = (
     ]);
     return { matchId };
   });
-export const localCards = (pool: Pool, user: string, id: string, leave = false) =>
+export const localCards = (pool: Pool, user: string, id: string, leave = false, finish = false) =>
   tx(pool, async (c, now) => {
     const existing = await c.query<{ session_id: string }>(
       'select session_id from bar_local_card_sessions where user_id=$1 and expires_at>$2',
       [user, new Date(now)],
     );
     if (leave) {
+      if (finish) await c.query("update bar_visitor_receipts set payload='{\"finished\":true}' where user_id=$1 and id=$2 and kind='game' and character_id='maria'", [user, id]);
       await c.query('delete from bar_local_card_sessions where user_id=$1 and session_id=$2', [
         user,
         id,
@@ -454,6 +457,7 @@ export const localCards = (pool: Pool, user: string, id: string, leave = false) 
       await assertFree(c, user, now);
       await clearAdmission(c, [user]);
     }
+    await admitVisitorGame(c, user, 'maria', id, now);
     await c.query(
       'insert into bar_local_card_sessions(user_id,session_id,expires_at) values($1,$2,$3) on conflict(user_id) do update set session_id=excluded.session_id,expires_at=excluded.expires_at',
       [user, id, new Date(now + 120000)],

@@ -187,9 +187,9 @@ export const barGameRoutes: FastifyPluginAsync = async (app) => {
   );
   app.post('/bar/games/local-cards', auth, (req) => {
     const b = z
-      .object({ id: z.string().uuid(), leave: z.boolean().default(false) })
+      .object({ id: z.string().uuid(), leave: z.boolean().default(false), finish: z.boolean().default(false) })
       .parse(req.body);
-    return service.localCards(app.pg, req.user.id, b.id, b.leave);
+    return service.localCards(app.pg, req.user.id, b.id, b.leave, b.finish);
   });
   let running = false;
   const timer = setInterval(() => {

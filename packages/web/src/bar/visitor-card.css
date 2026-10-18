@@ -1,0 +1,85 @@
+.visitor-card-art {
+  display: block;
+  width: min(100%, 340px);
+  height: auto;
+  margin: 8px auto 16px;
+}
+.visitor-shop {
+  width: 100%;
+  min-width: 0;
+}
+.visitor-shop p {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.visitor-products {
+  display: grid;
+  gap: 12px;
+}
+.visitor-product {
+  padding: 14px;
+  border-radius: 16px;
+}
+.visitor-product h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.visitor-product .modal-actions {
+  flex-wrap: wrap;
+}
+.visitor-confirm {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid currentColor;
+  border-radius: 12px;
+}
+.visitor-card-slot--expired {
+  opacity: 0.45;
+  filter: grayscale(1);
+  cursor: default;
+}
+.visitor-card-slot .profile-loadout-slot__image img {
+  object-fit: contain;
+}
+.visitor-quota {
+  font-size: 12px;
+  line-height: 1.5;
+  margin: 6px 0;
+}
+.visitor-refusal {
+  padding: 12px;
+  border-radius: 14px;
+  margin: 10px 0;
+}
+.visitor-refusal img {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.visitor-settings {
+  margin-bottom: 20px;
+  padding: 16px;
+  border-radius: 16px;
+}
+.visitor-settings label {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 0;
+  font-size: 14px;
+}
+.visitor-settings input {
+  width: 110px;
+  max-width: 40%;
+}
+
+.modal-card.visitor-shop-modal {
+  width: min(100%, 420px);
+  max-height: calc(
+    var(--app-viewport-height, 100dvh) - 40px - var(--app-safe-top, 0px) -
+      var(--app-safe-bottom, 0px)
+  );
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}

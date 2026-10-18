@@ -3,6 +3,21 @@ import {createDefaultBarLayout, moveBarOccupant} from '@hockey/game-core';
 import {expect, it, vi} from 'vitest';
 import {BarScene} from './BarScene.js';
 function pointer(target:Element,type:string,x:number){const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);}
+it('opens the visitor shop from Igor club cards and ignores a drag across them', () => {
+  const shop = vi.fn(), action = vi.fn();
+  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={action} onVisitorShop={shop}/>);
+  const cards = screen.getByRole('button', {name: 'Клубные карты'});
+  fireEvent.click(cards);
+  expect(shop).toHaveBeenCalledTimes(1);
+  expect(action).not.toHaveBeenCalled();
+  expect(screen.queryByRole('button', {name: 'Карта и сообщения'})).not.toBeInTheDocument();
+  shop.mockClear();
+  pointer(cards, 'pointerdown', 200);
+  pointer(cards, 'pointermove', 300);
+  pointer(cards, 'pointerup', 300);
+  fireEvent.click(cards, {detail: 1});
+  expect(shop).not.toHaveBeenCalled();
+});
 it('keeps architectural doors in the panorama when Veronika moves', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-2', 'veronika');
   const view = render(<BarScene layout={layout} activeSlotId="bar-2" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);

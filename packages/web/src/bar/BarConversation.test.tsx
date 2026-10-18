@@ -1,3 +1,4 @@
+import { VISITOR_CHANGED } from './visitorApi.js';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor, act, within } from '@testing-library/react';
 import { BarConversation } from './BarConversation.js';
@@ -216,4 +217,18 @@ it('omits empty greetings and duplicate Oleg identity in his own conversation',a
  expect(screen.getAllByLabelText('Сообщение Олег')).toHaveLength(1);
  expect(screen.queryByRole('img',{name:'Олег'})).not.toBeInTheDocument();
  expect(screen.queryByLabelText('Твоё сообщение')).not.toBeInTheDocument();
+});
+
+it('refreshes visitor stock immediately after a failed answer is refunded', async () => {
+  const changed=vi.fn(); window.addEventListener(VISITOR_CHANGED,changed);
+  vi.mocked(sendConversation).mockRejectedValueOnce(new Error('offline'));
+  try {
+    render(<BarConversation character="maria" name="Maria" onClose={()=>{}} onUpdate={()=>{}} />);
+    await screen.findByText(snapshot.greeting);
+    const input=await screen.findByPlaceholderText('\u0421\u043e\u043e\u0431\u0449\u0435\u043d\u0438\u0435...');
+    fireEvent.change(input,{target:{value:'Hello'}});
+    fireEvent.click(screen.getByRole('button',{name:'\u041e\u0442\u043f\u0440\u0430\u0432\u0438\u0442\u044c'}));
+    await waitFor(()=>expect(sendConversation).toHaveBeenCalled());
+    await waitFor(()=>expect(changed).toHaveBeenCalled());
+  } finally {window.removeEventListener(VISITOR_CHANGED,changed);}
 });

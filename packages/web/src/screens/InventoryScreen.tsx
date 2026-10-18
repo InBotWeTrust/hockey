@@ -1,3 +1,5 @@
+import { useState as useVisitorShopState } from 'react';
+import { VisitorShop } from '../bar/VisitorShop.js';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -179,6 +181,7 @@ export function InventoryScreen(): JSX.Element {
   const paymentInFlightRef = useRef<string | null>(null);
   const [paymentPackageId, setPaymentPackageId] = useState<string | null>(null);
   const [receiptPackage, setReceiptPackage] = useState<CoinPackage | null>(null);
+  const [barGoodsOpen, setBarGoodsOpen] = useVisitorShopState(false);
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -434,6 +437,7 @@ export function InventoryScreen(): JSX.Element {
         </div>
 
         {selectedCategory === null && <ShopTabs activeTab={activeTab} onChange={changeTab} />}
+        {selectedCategory === null && activeTab === 'goods' && <section className="glass visitor-product"><button className="btn btn--ghost" onClick={() => setBarGoodsOpen(value => !value)}>Бар</button>{barGoodsOpen && <VisitorShop />}</section>}
 
         {(isPaymentReturn || returnedPaymentResult !== null) && (
           <PaymentReturnNotice

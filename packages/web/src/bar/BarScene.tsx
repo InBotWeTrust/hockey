@@ -39,6 +39,7 @@ export function BarScene({
   preview = false,
   notice,
   onTalk,
+  onVisitorShop,
   conversationStarted = false,
   hideIdentity = false,
   onPhysicalIncident,
@@ -55,6 +56,7 @@ export function BarScene({
   preview?: boolean;
   notice?: React.ReactNode;
   onTalk?: (character: BarCharacter) => void;
+  onVisitorShop?: () => void;
   conversationStarted?: boolean;
   hideIdentity?: boolean;
   onPhysicalIncident?: (character: BarCharacter) => void;
@@ -155,7 +157,7 @@ export function BarScene({
       <div ref={track} className="bar-space__track">
         <BarInteriorBackdrop phase={lighting.phase} previous={lighting.previous}/>
         {!hideIdentity && <BarObjectGlow/>}
-        {!hideIdentity && <BarGameHotspots onAction={act}/>}
+        {!hideIdentity && <BarGameHotspots onAction={act} {...(!preview && onVisitorShop ? {onVisitorShop:()=>{const i=layout.slots.findIndex(s=>s.occupantId==='igor');if(i>=0&&ready(i))onVisitorShop();}} : {})}/>}
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
           const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);

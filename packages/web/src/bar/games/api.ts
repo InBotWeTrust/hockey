@@ -44,6 +44,6 @@ export const gameApi = {
     if (owner) useGameInvites.getState().remove(owner, id);
     return result;
   },
-  localCards: (id: string, leave = false) =>
-    apiFetch('/bar/games/local-cards', post({ id, leave })),
+  localCards: (id: string, leave = false, finish = false) =>
+    apiFetch('/bar/games/local-cards', post({ id, leave, finish })),
 };

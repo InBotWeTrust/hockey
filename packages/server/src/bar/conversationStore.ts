@@ -1,3 +1,6 @@
+import { randomInt } from 'node:crypto';
+import { reserveVisitorMessage, completeVisitorMessage, refundVisitorReceipt, visitorState, visitorTransaction } from './visitorService.js';
+import { visitorPhrase } from '@hockey/game-core';
 import type { Pool } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import type { ConflictEffect } from './conflict.js';
@@ -34,6 +37,7 @@ export class SqlConversationStore implements ConversationStore {
     character: Character,
     id: string,
     revision: number,
+    free = false,
   ): Promise<Reservation> {
     const db = await this.pool.connect();
     try {
@@ -64,11 +68,7 @@ export class SqlConversationStore implements ConversationStore {
         );
         if (busy.rows.length) result = { kind: 'busy' };
         else {
-          const quota = await db.query(
-            `insert into bar_conversation_usage(user_id,day,requests) values($1,current_date,1) on conflict(user_id,day) do update set requests=bar_conversation_usage.requests+1 where bar_conversation_usage.requests<100 returning requests`,
-            [user],
-          );
-          if (!quota.rows.length) result = { kind: 'limit' };
+          if (!await reserveVisitorMessage(db, user, character, id, free)) result = { kind: 'limit' };
           else {
             await db.query(
               `update bar_conversations set pending_id=$3,pending_until=now()+interval '150 seconds' where user_id=$1 and character_id=$2`,
@@ -99,6 +99,12 @@ export class SqlConversationStore implements ConversationStore {
       await db.query('begin');
       await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`bar-conversation:${user}`]);
       await assertBarAccess(db,user);
+      await completeVisitorMessage(db, user, turn.id);
+      const access = await visitorState(db, user, Date.now());
+      if (!turn.intervention && access.messages.remaining + access.messages.paid === 0) {
+        const previous = (await db.query<{turns: ConversationTurn[]}>('select turns from bar_conversations where user_id=$1 and character_id=$2', [user, character])).rows[0]?.turns ?? [];
+        turn = {...turn, farewell: visitorPhrase(character, 'messages', previous.filter(t => t.farewell).at(-1)?.farewell, randomInt(0x1000000) / 0x1000000)};
+      }
       if(conflict&&conflict.kind!=='none') {
         const changed=await db.query(`insert into bar_conflicts(user_id,day,warnings,intervening)
           select id,$2::date,$3,$4 from users where id=$1 and (now() at time zone coalesce(timezone,'UTC'))::date=$2::date
@@ -139,9 +145,9 @@ export class SqlConversationStore implements ConversationStore {
     } finally { db.release(); }
   }
   async release(user: string, character: Character, id: string) {
-    await this.pool.query(
-      `update bar_conversations set pending_id=null,pending_until=null where user_id=$1 and character_id=$2 and pending_id=$3`,
-      [user, character, id],
-    );
+    await visitorTransaction(this.pool, user, async db => {
+      await refundVisitorReceipt(db, user, id, 'message');
+      await db.query(`update bar_conversations set pending_id=null,pending_until=null where user_id=$1 and character_id=$2 and pending_id=$3`, [user, character, id]);
+    });
   }
 }

@@ -1,3 +1,4 @@
+import { refundVisitorReceipt } from '../visitorService.js';
 import type { PoolClient } from 'pg';
 import { createPrivateOchko } from './ochkoDeck.js';
 import {
@@ -31,7 +32,11 @@ export interface MatchRow {
 }
 export async function persist(client: PoolClient, row: MatchRow, now: number) {
   const ended = row.data.ready ? row.data.ready.cancelled : row.data.runtime.game.winner !== null;
-  if (ended) await settleOchko(client, row, now);
+  if (ended) {
+    await settleOchko(client, row, now);
+    if (row.character && (row.data.ready?.cancelled || row.data.runtime.reason === 'technical'))
+      await refundVisitorReceipt(client, row.player_a, row.id, 'game');
+  }
   await client.query('update bar_game_matches set data=$2,ended_at=$3 where id=$1', [
     row.id,
     JSON.stringify(row.data),
@@ -67,10 +72,11 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
     row.data.runtime = advance(before, now);
   } catch (error) {
     if (
-      row.kind !== 'ochko' ||
-      !row.data.stake ||
-      !(error instanceof Error) ||
-      error.message !== 'Unsupported game version'
+      !row.character &&
+      (row.kind !== 'ochko' ||
+        !row.data.stake ||
+        !(error instanceof Error) ||
+        error.message !== 'Unsupported game version')
     )
       throw error;
     row.data.runtime = {
