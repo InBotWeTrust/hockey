@@ -43,4 +43,3 @@ describe('Central indoor amateur match artwork', () => {
     }
   });
 });
-
