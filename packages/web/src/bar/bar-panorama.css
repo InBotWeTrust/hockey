@@ -626,3 +626,5 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-space__figure {z-index:2;}
 .bar-space__object-glow--point {z-index:1;width:40px;height:40px;overflow:visible;margin:-20px 0 0 -20px;}
 .bar-space__service-door-hit {z-index:3;left:99.2%;width:.8%;top:20%;height:42%;}
+
+.bar-space__object-glow--foreground {z-index:3;}

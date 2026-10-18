@@ -80,11 +80,11 @@ it('keeps object hints available across selections and never highlights the hidd
  const props={layout:createDefaultBarLayout(),onSelectSlot:vi.fn(),onAction:vi.fn()};
  const view=render(<BarScene {...props} activeSlotId="bar-1"/>);
  expect(view.container.querySelector('[data-bar-object-glow="daria"]')).not.toBeNull();
- expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(9);
+ expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(11);
  view.rerender(<BarScene {...props} activeSlotId="bar-9"/>);
  expect(view.container.querySelector('[data-bar-object-glow="igor"]')).not.toBeNull();
  view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
- expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(9);
+ expect(view.container.querySelectorAll('[data-bar-object-glow]')).toHaveLength(11);
  expect(view.container.querySelector('.bar-space__service-door-hit [data-bar-object-glow]')).toBeNull();
 });
 it('opens armwrestling from Oleg bicep without triggering the character incident',()=>{

@@ -159,8 +159,8 @@ export function BarScene({
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
           const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);
-          const figureScale = s.scale * (s.occupantId === 'broadcasts' || shrinkCharacter ? 0.9 : 1);
-          const figureTop = s.y + (s.occupantId === 'broadcasts' ? 10 : 0) + (shrinkCharacter ? s.scale * 10 * (1 - s.y / 100) : 0);
+          const figureScale = s.scale * (s.occupantId === 'veronika' ? 0.86 : s.occupantId === 'broadcasts' || shrinkCharacter ? 0.9 : 1);
+          const figureTop = s.y + (s.occupantId === 'broadcasts' ? 10 : 0) + (shrinkCharacter ? s.scale * (s.occupantId === 'veronika' ? 14 : 10) * (1 - s.y / 100) : 0);
           return (
             <div key={s.id} className="bar-space__figure" data-bar-slot={s.id} style={{ left: `${i * 10}%` }}>
               {isUnfinished(s.occupantId) ? <CharacterSilhouette /> : isBarAssetPath(composition) && (
