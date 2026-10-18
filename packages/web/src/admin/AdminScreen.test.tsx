@@ -400,6 +400,12 @@ describe('AdminScreen', () => {
     vi.restoreAllMocks();
   });
 
+  it('offers a map exit without the retired dock', () => {
+    setupCoinPackages();
+    renderAdmin();
+    expect(screen.getByRole('link', { name: 'На карту' })).toHaveAttribute('href', '/sections?home=1');
+  });
+
   function setupCoinPackages(includeSecondPackage = false) {
     useAuthStore.getState().setSession({
       accessToken: 'a',

@@ -369,6 +369,8 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
+    expect(document.querySelector('.app-shell--bottom-nav-visible')).toBeNull();
     const ambientLights = screen.getByTestId('arena-ambient-lights');
     expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
     expect(ambientLights.children).toHaveLength(10);
@@ -392,10 +394,7 @@ describe('App routing + auth', () => {
 
     expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/profile/achievements');
-    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(window.location.pathname).toBe('/profile');
@@ -421,10 +420,7 @@ describe('App routing + auth', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Челленджи' }));
 
     expect(window.location.pathname).toBe('/profile/achievements/weekly-challenge');
-    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
   });
 
   it('loads a bonus attempt detail on the authenticated play route', async () => {
