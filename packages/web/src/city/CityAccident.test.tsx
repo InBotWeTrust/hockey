@@ -47,3 +47,20 @@ it('keeps bus size and contact position through damage and supports legacy saved
  expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-accident-sedan-');
  expect(screen.getByTestId('accident-taxi').querySelector('img')?.src).toContain('city-accident-taxi-');
 });
+
+it('flashes both crash participants only while stopped, with a clock preserved across phases',()=>{
+ const event=createAccident(1000,()=>.5);
+ const view=render(<CityAccident incident={{event,phase:'approach',sampledAt:event.start}}/>);
+ expect(screen.getByTestId('accident-sedan')).not.toHaveClass('has-hazards');
+ for(const [phase,time] of [['waiting',event.collisionAt+100],['police-approach',event.policeStart+100],['police-wait',event.policeArrived+100]] as const){
+  view.rerender(<CityAccident incident={{event,phase,sampledAt:time}}/>);
+  for(const id of ['sedan','taxi']){
+   const car=screen.getByTestId(`accident-${id}`);
+   expect(car).toHaveClass('has-hazards');
+   expect(car.style.getPropertyValue('--hazard-delay')).toBe(`${-((time-event.collisionAt)%1000)/1000}s`);
+  }
+  const police=screen.queryByTestId('accident-police');if(police)expect(police).not.toHaveClass('has-hazards');
+ }
+ view.rerender(<CityAccident incident={{event,phase:'departing',sampledAt:event.departAt}}/>);
+ for(const id of ['sedan','taxi'])expect(screen.getByTestId(`accident-${id}`)).not.toHaveClass('has-hazards');
+});

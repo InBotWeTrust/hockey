@@ -189,3 +189,15 @@ it('collapses the entire navigation into a map button and remembers it per playe
  expect(screen.getByRole('navigation',{name:'Места района'})).toBeVisible();
  localStorage.clear();
 });
+
+it('keeps vehicle lights on at sunset and night, and off in daylight',()=>{
+ vi.useFakeTimers();
+ try{
+  for(const hour of [12,19,23]){
+   vi.setSystemTime(new Date(2026,9,18,hour));
+   const view=render(<CityMap {...base} level="beginner"/>);
+   expect(view.container.querySelector('.city-traffic')?.classList.contains('is-night')).toBe(hour!==12);
+   view.unmount();
+  }
+ }finally{vi.useRealTimers();}
+});
