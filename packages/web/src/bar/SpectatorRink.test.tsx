@@ -74,8 +74,8 @@ afterEach(() => {
 });
 describe('spectator scene lifecycle', () => {
   it.each([
-    ['duel', '/sprites/amateur-daily-court.webp'],
-    ['tournament', '/sprites/amateur-tournament-court.webp'],
+    ['duel', '/sprites/amateur-central-indoor-00eb88ddee05.webp'],
+    ['tournament', '/sprites/amateur-central-indoor-00eb88ddee05.webp'],
   ] as const)('uses the current %s match court', (kind, src) => {
     const view = render(<SpectatorRink player={player} buffer={new ReplayBuffer()} kind={kind} />);
     expect(view.container.querySelector('.bar-rink-background')).toHaveAttribute('src', src);

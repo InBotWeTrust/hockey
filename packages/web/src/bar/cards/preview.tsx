@@ -5,7 +5,7 @@ import { BarAdmin } from '../../admin/BarAdmin.js';
 import { installRoomPreview } from './previewRooms.js';
 import { DurakRoomScreen } from './DurakRoomScreen.js';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BottomNav, isOpenRinkRoute } from '../../components/BottomNav.js';
+import { isOpenRinkRoute } from '../../components/BottomNav.js';
 import { CardInviteToast } from './CardInviteToast.js';
 import { useLocation } from 'react-router-dom';
 import { createGame, type Game } from './rules.js';
@@ -126,7 +126,6 @@ function PreviewChrome() {
   return invitationDemo ? (
     <>
       <CardInviteToast previewUserId="demo-player" suppressed={isOpenRinkRoute(route)} />
-      <BottomNav preview={!isOpenRinkRoute(route)} />
     </>
   ) : null;
 }
