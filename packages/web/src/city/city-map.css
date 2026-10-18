@@ -19,3 +19,14 @@
 .district-game-anchor{position:absolute;z-index:4;width:clamp(260px,78vw,320px);max-width:calc(100vw - 32px);--city-panel-open-top:calc(12px + var(--app-safe-top,0px));top:var(--city-panel-open-top);transform:translateX(-50%)}
 
 .district-game-status{position:absolute;z-index:2;bottom:0;left:50%;transform:translateX(-50%);white-space:nowrap;font:700 10px/14px var(--font-mono,monospace);font-variant-numeric:tabular-nums;color:#fff;background:rgba(12,18,26,.96);padding:0 4px;border-radius:5px;pointer-events:none}
+
+.district-navigation-toggle.icon-btn{position:absolute;top:0;left:50%;right:auto;transform:translateX(-50%);width:48px;height:20px;min-width:48px;min-height:20px;padding:0;border:0;background:transparent;box-shadow:none;color:inherit;z-index:3}
+.district-navigation-handle{display:block;width:28px;height:3px;border-radius:3px;background:currentColor;opacity:.5}
+.district-navigation-toggle svg{width:17px;height:17px;stroke-width:1.5}
+.district-panel:not(.district-panel--collapsed){padding-top:20px}
+.district-panel--collapsed{right:auto;width:56px;height:56px;padding:0;border-radius:50%;overflow:visible}
+.district-panel--collapsed .district-navigation-toggle.icon-btn{position:relative;inset:auto;transform:none;width:100%;height:100%;border:0;border-radius:50%;background:transparent;box-shadow:none}
+.district-panel--collapsed .district-navigation-toggle svg{width:25px;height:25px}
+.district-panel--collapsed .district-badge{top:-3px;right:-3px}
+.district-panel--collapsed .district-game-status{bottom:-2px}
+.district-navigation-toggle{-webkit-tap-highlight-color:transparent;touch-action:manipulation}

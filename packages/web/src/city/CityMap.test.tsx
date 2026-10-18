@@ -169,3 +169,35 @@ it('only shows the admin shortcut for admins and preserves menu attention counte
  view.rerender(<CityMap {...base} level="beginner" isAdmin adminCount={0}/>);
  expect(screen.queryByLabelText(/События администратора/)).not.toBeInTheDocument();
 });
+
+it('collapses the entire navigation into a map button and remembers it per player',()=>{
+ localStorage.clear();sessionStorage.clear();
+ const view=render(<CityMap {...base} level="beginner"/>);
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Банк'}));
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть навигацию'}));
+ expect(screen.queryByRole('navigation',{name:'Места района'})).toBeNull();
+ expect(screen.queryByRole('heading',{name:'Банк'})).toBeNull();
+ expect(screen.getByRole('button',{name:'Показать навигацию'})).toHaveAttribute('aria-expanded','false');
+ view.unmount();
+ const returned=render(<CityMap {...base} level="beginner"/>);
+ expect(screen.getByRole('button',{name:'Показать навигацию'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Показать навигацию'}));
+ expect(screen.getByRole('heading',{name:'Банк'})).toBeVisible();
+ expect(screen.getByRole('navigation',{name:'Места района'})).toBeVisible();
+ returned.unmount();
+ render(<CityMap {...base} owner="another-player" level="beginner"/>);
+ expect(screen.getByRole('navigation',{name:'Места района'})).toBeVisible();
+ localStorage.clear();
+});
+
+it('keeps vehicle lights on at sunset and night, and off in daylight',()=>{
+ vi.useFakeTimers();
+ try{
+  for(const hour of [12,19,23]){
+   vi.setSystemTime(new Date(2026,9,18,hour));
+   const view=render(<CityMap {...base} level="beginner"/>);
+   expect(view.container.querySelector('.city-traffic')?.classList.contains('is-night')).toBe(hour!==12);
+   view.unmount();
+  }
+ }finally{vi.useRealTimers();}
+});
