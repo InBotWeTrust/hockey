@@ -4,7 +4,7 @@
   "cities": [
     {
       "slug": "raleigh",
-      "name": "Роли",
+      "name": "Северная Каролина",
       "assets": {
         "arena": {
           "url": "/bonus-games/nhl-cities/arenas/raleigh.webp",
@@ -270,7 +270,7 @@
     },
     {
       "slug": "saint-paul",
-      "name": "Сент-Пол",
+      "name": "Миннесота",
       "assets": {
         "arena": {
           "url": "/bonus-games/nhl-cities/arenas/saint-paul.webp",
