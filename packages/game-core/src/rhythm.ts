@@ -22,6 +22,7 @@ export function projectRhythm(input: {
   shots: readonly RhythmShot[];
   travel: number;
   version?: 1 | 2;
+  minimumSeries?: number;
 }): RhythmProjection {
   if (input.version !== 1) return projectConfirmedRhythm(input);
   let score = 0,
@@ -57,13 +58,16 @@ export function projectRhythm(input: {
 function projectConfirmedRhythm(input: {
   shots: readonly RhythmShot[];
   travel: number;
+  minimumSeries?: number;
 }): RhythmProjection {
+  const minimum = input.minimumSeries ?? 2;
+  if (!Number.isInteger(minimum) || minimum < 2 || minimum > 1000) throw new Error("invalid rhythm minimum series");
   let score = 0;
   let currentSeries = 0;
   let lastGoalTravel = 0;
   const finished: number[] = [];
   const endSeries = () => {
-    if (currentSeries >= 2) finished.push(currentSeries);
+    if (currentSeries >= minimum) finished.push(currentSeries);
     currentSeries = 0;
   };
   for (const shot of input.shots) {
@@ -72,7 +76,7 @@ function projectConfirmedRhythm(input: {
     if (currentSeries === 0) currentSeries = 1;
     else {
       currentSeries++;
-      score += currentSeries === 2 ? 2 : 1;
+      score += currentSeries === minimum ? minimum : currentSeries > minimum ? 1 : 0;
     }
     lastGoalTravel = shot.travel;
   }
@@ -80,7 +84,7 @@ function projectConfirmedRhythm(input: {
   return {
     score,
     currentSeries,
-    series: [...finished, ...(currentSeries >= 2 ? [currentSeries] : [])].sort((a, b) => b - a),
+    series: [...finished, ...(currentSeries >= minimum ? [currentSeries] : [])].sort((a, b) => b - a),
     remainingTraversals: Math.max(0, 2 - (input.travel - lastGoalTravel)),
     lastGoalTravel,
   };

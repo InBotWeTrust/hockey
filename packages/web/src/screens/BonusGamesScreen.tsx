@@ -71,6 +71,7 @@ const skillLabels: Record<BonusSkillCode, string> = {
   accuracy: 'Точность',
   marksmanship: 'Меткость',
   endurance: 'Выносливость',
+    rhythm: 'Ритм',
   challenge: 'Испытания',
 };
 
@@ -145,7 +146,7 @@ export function BonusGamesScreen(): JSX.Element {
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
     if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
-    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'challenge'
+    return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'rhythm' || stored === 'challenge'
       ? stored
       : 'speed';
   });

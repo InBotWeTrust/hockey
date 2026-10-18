@@ -122,3 +122,12 @@ describe('Rhythm movement integral', () => {
     expect(sample.motionAt(end + 300)).toBe(sample.motionAt(end));
   });
 });
+
+it('credits a configurable minimum series retroactively without changing duel defaults', () => {
+  const shots = [0,1,2,3,4,5,6].map(travel => ({travel, goal:true}));
+  expect(projectRhythm({shots:shots.slice(0,6),travel:5,minimumSeries:7}).score).toBe(0);
+  expect(projectRhythm({shots,travel:6,minimumSeries:7}).score).toBe(7);
+  expect(projectRhythm({shots:[...shots,{travel:6.5,goal:false}],travel:6.5,minimumSeries:7}).currentSeries).toBe(7);
+  expect(projectRhythm({shots,travel:8.01,minimumSeries:7}).series).toEqual([7]);
+  expect(projectRhythm({shots:shots.slice(0,2),travel:1}).score).toBe(2);
+});
