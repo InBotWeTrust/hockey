@@ -515,6 +515,11 @@ describe('App routing + auth', () => {
 });
 
 describe('app backdrop variants', () => {
+  it('uses the beginner yard for amateur training only', () => {
+    expect(arenaBackgroundClass('amateur', true)).toBe('arena-bg--beginner');
+    expect(arenaBackgroundClass('amateur', false)).toBe('arena-bg--amateur');
+    expect(arenaBackgroundClass('professional', true)).toBe('arena-bg--professional');
+  });
   it('maps every competition level to matching arena and locker-room backgrounds', () => {
     for (const level of ['beginner', 'amateur', 'professional'] as const) {
       expect(arenaBackgroundClass(level)).toBe(`arena-bg--${level}`);

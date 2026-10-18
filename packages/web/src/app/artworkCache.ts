@@ -10,6 +10,7 @@ import {
 } from '../screens/inventoryShopCategories.js';
 import type { CompetitionLevel, ProfileData } from '../screens/profileTypes.js';
 import { arenaCourtImage, arenaVideoCubeImage } from '../screens/lockerRoomBackground.js';
+import { AMATEUR_DAILY_COURT_BACKGROUND } from '../game/matchCourt.js';
 
 const CRITICAL_ARTWORK = [
   '/backgrounds/arena-beginner-reference-v8.webp',
@@ -138,6 +139,7 @@ export function startupArtworkUrls(level: CompetitionLevel): readonly string[] {
   if (!urls.includes('/sprites/app-arena-ice.webp')) {
     urls.push('/sprites/app-arena-ice.webp');
   }
+  if (level !== 'beginner') urls.push(AMATEUR_DAILY_COURT_BACKGROUND);
   return urls;
 }
 

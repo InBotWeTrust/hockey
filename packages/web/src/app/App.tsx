@@ -372,7 +372,10 @@ function AppExperience(): JSX.Element {
     enabled: user !== null && hasArenaBackdrop,
   });
   const levelBackdropClassName = hasArenaBackdrop
-    ? arenaBackgroundClass(profileQuery.data?.competitionLevel)
+    ? arenaBackgroundClass(
+        profileQuery.data?.competitionLevel,
+        location.pathname === '/' && new URLSearchParams(location.search).get('view') === 'training',
+      )
     : '';
 
   return (
