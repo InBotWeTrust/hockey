@@ -16,13 +16,13 @@ it('has all versioned current backgrounds, outcomes, decorations and staff room 
   for (const path of paths) expect(existsSync(resolve('public', path.slice(1))), path).toBe(true);
 });
 
-it('versions all corrected wall lighting variants while retaining approved day and floor assets', () => {
+it('versions all corrected wall lighting variants while retaining approved day walls and using clean floor assets', () => {
   expect(barInterior('west', 'day')).toBe('/bar/city-v4/west-day-v3.webp');
   expect(barInterior('middle', 'day')).toBe('/bar/city-v4/middle-day-v3.webp');
   expect(barInterior('east', 'day')).toBe('/bar/city-v4/east-day-v3.webp');
   for (const phase of ['morning', 'sunset', 'night'] as const) {
     for (const part of barParts) expect(barInterior(part, phase)).toBe(`/bar/city-v4/${part}-${phase}-v2.webp`);
-    expect(barFloor(phase)).toBe(`/bar/city-v4/master-${phase}-v1.webp`);
+    expect(barFloor(phase)).toBe(`/bar/city-v4/master-${phase}-v2.webp`);
   }
-  expect(barFloor('day')).toBe('/bar/city-v4/day-master-v1.webp');
+  expect(barFloor('day')).toBe('/bar/city-v4/day-master-v2.webp');
 });
