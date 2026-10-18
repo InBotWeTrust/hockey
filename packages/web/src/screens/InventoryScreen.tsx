@@ -1,4 +1,6 @@
-import { useState as useVisitorShopState } from 'react';
+import { ShopProductCard } from '../shop/ShopProductCard.js';
+import { ShopPurchaseModal } from '../shop/ShopPurchaseModal.js';
+import { useVisitor } from '../bar/visitorApi.js';
 import { VisitorShop } from '../bar/VisitorShop.js';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
@@ -181,7 +183,7 @@ export function InventoryScreen(): JSX.Element {
   const paymentInFlightRef = useRef<string | null>(null);
   const [paymentPackageId, setPaymentPackageId] = useState<string | null>(null);
   const [receiptPackage, setReceiptPackage] = useState<CoinPackage | null>(null);
-  const [barGoodsOpen, setBarGoodsOpen] = useVisitorShopState(false);
+  const visitor = useVisitor(activeTab === 'goods');
   const inventoryQuery = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -318,9 +320,9 @@ export function InventoryScreen(): JSX.Element {
     setSearchParams,
   ]);
   const hasSelectedCategoryItems =
-    selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
+    selectedCategory !== null && (selectedCategory === 'bar' || (inventory?.items[selectedCategory].length ?? 0) > 0);
   const hasShopItems = SHOP_CATEGORY_ORDER.some(
-    (category) => (inventory?.items[category].length ?? 0) > 0,
+    (category) => category === 'bar' ? (visitor.data?.settings.products.length ?? 0) > 0 : (inventory?.items[category].length ?? 0) > 0,
   );
 
   const openCategory = (category: ShopCategory): void => {
@@ -437,7 +439,6 @@ export function InventoryScreen(): JSX.Element {
         </div>
 
         {selectedCategory === null && <ShopTabs activeTab={activeTab} onChange={changeTab} />}
-        {selectedCategory === null && activeTab === 'goods' && <section className="glass visitor-product"><button className="btn btn--ghost" onClick={() => setBarGoodsOpen(value => !value)}>Бар</button>{barGoodsOpen && <VisitorShop />}</section>}
 
         {(isPaymentReturn || returnedPaymentResult !== null) && (
           <PaymentReturnNotice
@@ -458,9 +459,11 @@ export function InventoryScreen(): JSX.Element {
           <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
             Загрузка...
           </div>
+        ) : activeTab === 'goods' && selectedCategory === 'bar' ? (
+          <VisitorShop />
         ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
           <InventoryEmptyState category />
-        ) : activeTab === 'goods' && selectedCategory !== null ? (
+        ) : activeTab === 'goods' && selectedCategory !== null && selectedCategory !== 'bar' ? (
           <GoodsCategoryCatalog
             category={selectedCategory}
             inventory={inventory}
@@ -477,7 +480,7 @@ export function InventoryScreen(): JSX.Element {
             <div className="section-label" style={{ margin: '0 0 0 0' }}>
               Товары
             </div>
-            <GoodsCategoryOverview inventory={inventory} onOpenCategory={openCategory} />
+            <GoodsCategoryOverview inventory={inventory} barProductCount={visitor.data?.settings.products.length ?? 0} onOpenCategory={openCategory} />
           </section>
         ) : activeTab === 'bank' ? (
           <BankTab
@@ -555,16 +558,18 @@ export function InventoryScreen(): JSX.Element {
 
 function GoodsCategoryOverview({
   inventory,
+  barProductCount,
   onOpenCategory,
 }: {
   inventory: InventoryState | undefined;
+  barProductCount: number;
   onOpenCategory: (category: ShopCategory) => void;
 }): JSX.Element {
   return (
     <div className="inventory-category-grid">
       {SHOP_CATEGORY_ORDER.map((category) => {
         const meta = SHOP_CATEGORY_META[category];
-        const count = uniqueShopItems(inventory?.items[category] ?? []).length;
+        const count = category === 'bar' ? barProductCount : uniqueShopItems(inventory?.items[category] ?? []).length;
         return (
           <button
             key={category}
@@ -597,7 +602,7 @@ function GoodsCategoryCatalog({
   onDetails,
   onBuy,
 }: {
-  category: ShopCategory;
+  category: Exclude<ShopCategory, 'bar'>;
   inventory: InventoryState | undefined;
   tokens: number;
   stars: number;
@@ -901,134 +906,7 @@ function InventoryProductCard({
   onDetails: () => void;
   onBuy: () => void;
 }): JSX.Element {
-  return (
-    <article
-      className="glass inventory-product-card"
-      style={{
-        minWidth: 0,
-        minHeight: 116,
-        padding: 10,
-        borderRadius: 22,
-        display: 'grid',
-        gridTemplateColumns: '94px minmax(0, 1fr) auto',
-        alignItems: 'center',
-        gap: 12,
-        overflow: 'hidden',
-      }}
-    >
-      <button
-        type="button"
-        onClick={onDetails}
-        aria-label={`Подробнее о ${item.title}`}
-        style={{
-          minWidth: 0,
-          height: 94,
-          border: '1px solid rgba(255,255,255,0.78)',
-          padding: 0,
-          overflow: 'hidden',
-          background: 'var(--liquid-inset-bg)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 8px 14px rgba(15,23,42,0.08)',
-          cursor: 'pointer',
-        }}
-      >
-        <img
-          src={artworkForInventoryItem(item)}
-          alt=""
-          style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
-        />
-      </button>
-      <button
-        type="button"
-        onClick={onDetails}
-        aria-label={`Открыть ${item.title}`}
-        style={{
-          minWidth: 0,
-          border: 0,
-          padding: 0,
-          background: 'transparent',
-          color: 'inherit',
-          display: 'grid',
-          gap: 5,
-          alignContent: 'start',
-          textAlign: 'left',
-          cursor: 'pointer',
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            minWidth: 0,
-            color: 'var(--ink)',
-            fontWeight: 950,
-            lineHeight: 1.1,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-          }}
-        >
-          {item.title}
-        </h2>
-        <div
-          style={{
-            minHeight: '2.4em',
-            color: 'var(--muted)',
-            fontWeight: 800,
-            lineHeight: 1.2,
-          }}
-        >
-          {purchaseBundleLabel(item)}
-        </div>
-        <div
-          aria-label={`${numberText(item.currencyPrice)} монет или ${numberText(inventoryStarPrice(item))} звёзд`}
-          style={{
-            fontSize: 13,
-            fontWeight: 950,
-            lineHeight: 1.1,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            whiteSpace: 'nowrap',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          <span style={{ color: rewardColor('coin'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <CircleDollarSign size={14} fill="none" stroke="currentColor" aria-hidden="true" />
-            {numberText(item.currencyPrice)}
-          </span>
-          <span style={{ color: 'var(--muted)', fontSize: 11 }}>или</span>
-          <span style={{ color: rewardColor('star'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <Star size={13} fill="currentColor" aria-hidden="true" />
-            {numberText(inventoryStarPrice(item))}
-          </span>
-        </div>
-      </button>
-      <button
-        type="button"
-        className="btn btn--cta"
-        disabled={!canBuy || isBuying}
-        onClick={onBuy}
-        aria-label={
-          !coinAffordable && canBuy
-            ? `Выбрать способ покупки ${item.title}`
-            : canBuy
-            ? `Купить ${item.title} за ${numberText(item.currencyPrice)} монет`
-            : `Не хватает монет на ${item.title}`
-        }
-        style={{
-          minWidth: 86,
-          minHeight: 38,
-          padding: '0 12px',
-          fontSize: 12,
-          opacity: !canBuy ? 0.5 : undefined,
-          cursor: !canBuy ? 'not-allowed' : undefined,
-        }}
-      >
-        {isBuying ? 'Покупка...' : canBuy ? 'Купить' : 'Не хватает'}
-      </button>
-    </article>
-  );
+  return <ShopProductCard title={item.title} artworkUrl={artworkForInventoryItem(item)} description={purchaseBundleLabel(item)} coinPrice={item.currencyPrice} starPrice={inventoryStarPrice(item)} canBuy={canBuy} coinAffordable={coinAffordable} isBuying={isBuying} onDetails={onDetails} onBuy={onBuy}/>;
 }
 
 function InventoryEmptyState({ category = false }: { category?: boolean }): JSX.Element {
@@ -1173,47 +1051,7 @@ function PurchaseConfirmModal({
   onClose: () => void;
   onConfirm: (currency: 'coins' | 'stars') => void;
 }): JSX.Element {
-  return (
-    <AccessibleModal
-      title={`Купить ${item.kind === 'stick' ? 'клюшку ' : item.kind === 'skates' ? 'коньки ' : ''}«${item.title}»?`}
-      copy={`В инвентарь добавится ${purchaseBundleLabel(item)}.`}
-      onRequestClose={onClose}
-      closeBlocked={isSaving}
-      backdropStyle={{ zIndex: 430 }}
-      cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
-      headerAction={
-        <button type="button" className="icon-btn" aria-label="Закрыть" disabled={isSaving} onClick={onClose}>
-          <X size={15} />
-        </button>
-      }
-    >
-      <div style={{ display: 'grid', gap: 14 }}>
-        {error !== null && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
-            {error}
-          </div>
-        )}
-        <div style={{ display: 'grid', gap: 8 }}>
-          <button
-            type="button"
-            className="modal-primary btn--cta"
-            onClick={() => onConfirm('coins')}
-            disabled={isSaving || !canBuyCoins}
-          >
-            {isSaving ? 'Покупка...' : `Купить за ${numberText(item.currencyPrice)} монет`}
-          </button>
-          <button
-            type="button"
-            className="modal-primary btn--cta"
-            onClick={() => onConfirm('stars')}
-            disabled={isSaving || !canBuyStars}
-          >
-            {isSaving ? 'Покупка...' : `Купить за ${numberText(inventoryStarPrice(item))} звёзд`}
-          </button>
-        </div>
-      </div>
-    </AccessibleModal>
-  );
+  return <ShopPurchaseModal title={`Купить ${item.kind === 'stick' ? 'клюшку ' : item.kind === 'skates' ? 'коньки ' : ''}«${item.title}»?`} copy={`В инвентарь добавится ${purchaseBundleLabel(item)}.`} coinPrice={item.currencyPrice} starPrice={inventoryStarPrice(item)} canBuyCoins={canBuyCoins} canBuyStars={canBuyStars} isSaving={isSaving} error={error} onClose={onClose} onConfirm={onConfirm}/>;
 }
 
 function ReceiptEmailModal({

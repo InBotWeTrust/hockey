@@ -6922,6 +6922,34 @@ button.profile-story-series-card {
   min-width: 0;
 }
 
+.inventory-shop-grid {
+  container-type: inline-size;
+}
+
+@container (max-width: 330px) {
+  .inventory-product-card {
+    grid-template-columns: 72px minmax(0, 1fr) 68px !important;
+    gap: 8px !important;
+    padding: 8px !important;
+  }
+  .inventory-product-card > button:first-child {
+    height: 72px !important;
+  }
+  .inventory-product-card > button:last-child {
+    min-width: 68px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+  }
+  .inventory-product-card__price {
+    font-size: 12px !important;
+    gap: 3px !important;
+    flex-wrap: wrap;
+  }
+  .inventory-product-card h2 {
+    -webkit-line-clamp: 3 !important;
+  }
+}
+
 .inventory-product-card > button:first-child {
   height: 96px;
   border-radius: 18px;

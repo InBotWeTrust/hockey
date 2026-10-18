@@ -433,6 +433,7 @@ describe('InventoryScreen', () => {
         '/shop/categories/skates.webp',
         '/shop/categories/nutrition.webp',
         '/shop/categories/recovery.webp',
+        '/shop/categories/bar-v1.webp',
         '/shop/backgrounds/recovery.webp',
         '/inventory/recovery-15.webp?v=20260911-locker-equipment-v2',
         '/inventory/recovery-30.webp?v=20260911-locker-equipment-v2',
@@ -507,7 +508,7 @@ describe('InventoryScreen', () => {
     expect(screen.queryByText('Товары', { selector: '.section-label' })).toBeNull();
   });
 
-  it('delivers decorative WebP artwork in the four shop category cards', async () => {
+  it('delivers decorative WebP artwork in all five shop category cards', async () => {
     mockInventoryFetch(inventoryWithItems);
     const { container } = renderInventory();
 
@@ -516,12 +517,13 @@ describe('InventoryScreen', () => {
     const categoryImages = container.querySelectorAll<HTMLImageElement>(
       '.inventory-category-card img',
     );
-    expect(categoryImages).toHaveLength(4);
+    expect(categoryImages).toHaveLength(5);
     expect([...categoryImages].map((image) => image.getAttribute('src'))).toEqual([
       '/shop/categories/sticks.webp',
       '/shop/categories/skates.webp',
       '/shop/categories/nutrition.webp',
       '/shop/categories/recovery.webp',
+        '/shop/categories/bar-v1.webp',
     ]);
     for (const image of categoryImages) expect(image).toHaveAttribute('alt', '');
   });

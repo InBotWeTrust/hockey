@@ -4,34 +4,13 @@
   height: auto;
   margin: 8px auto 16px;
 }
-.visitor-shop {
-  width: 100%;
-  min-width: 0;
-}
-.visitor-shop p {
-  font-size: 14px;
-  line-height: 1.5;
-}
-.visitor-products {
-  display: grid;
-  gap: 12px;
-}
-.visitor-product {
-  padding: 14px;
-  border-radius: 16px;
-}
-.visitor-product h3 {
-  margin: 0;
-  font-size: 16px;
-}
-.visitor-product .modal-actions {
-  flex-wrap: wrap;
-}
-.visitor-confirm {
-  margin-top: 16px;
-  padding: 12px;
-  border: 1px solid currentColor;
-  border-radius: 12px;
+.visitor-product-art {
+  display: block;
+  width: min(100%, 180px);
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 18px;
+  margin: 0 auto 14px;
 }
 .visitor-card-slot--expired {
   opacity: 0.45;
