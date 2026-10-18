@@ -21,7 +21,8 @@ it('highlights Igor membership cards and wall scoreboard, but never the staff do
  expect(container.querySelector('[data-bar-object="club-cards"] [data-bar-object-glow="igor"]')).not.toBeNull();
  expect(container.querySelector('[data-bar-object="scoreboard"] [data-bar-object-glow="igor"]')).not.toBeNull();
  rerender(<BarScene {...props} activeSlotId="bar-10"/>);
- expect(container.querySelector('[data-bar-object-glow]')).toBeNull();
+ expect(container.querySelectorAll('[data-bar-object-glow="igor"]')).toHaveLength(2);
+ expect(container.querySelector('.bar-space__service-door-hit [data-bar-object-glow]')).toBeNull();
  expect(screen.getByRole('button',{name:'Открыть служебную дверь'})).toBeInTheDocument();
 });
 
@@ -37,6 +38,12 @@ it('shows a pulse for every character game zone', () => {
 it('places the TV cabinet lower so its rear feet reach the floor', () => {
  const {container} = render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-10" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
  const image = container.querySelector('[data-bar-slot="bar-10"] img') as HTMLImageElement;
- expect(image.style.top).toBe('56%');
+ expect(image.style.top).toBe('60%');
  expect(image.style.width).toBe('90%');
+});
+it('keeps all game hints visible while scrolling away from the selected character', () => {
+ const {container} = render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
+ for (const character of ['daria', 'grigory', 'maria', 'arsenich', 'oleg', 'timofey', 'veronika']) {
+  expect(container.querySelector(`[data-bar-object-glow="${character}"]`), character).not.toBeNull();
+ }
 });

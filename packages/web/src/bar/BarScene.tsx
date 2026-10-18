@@ -154,13 +154,13 @@ export function BarScene({
       <div className="bar-space__world">
       <div ref={track} className="bar-space__track">
         <BarInteriorBackdrop phase={lighting.phase} previous={lighting.previous}/>
-        {!hideIdentity && <BarObjectGlow character={slot.occupantId}/>}
+        {!hideIdentity && <BarObjectGlow/>}
         {!hideIdentity && <BarGameHotspots onAction={act}/>}
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
           const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);
           const figureScale = s.scale * (s.occupantId === 'broadcasts' || shrinkCharacter ? 0.9 : 1);
-          const figureTop = s.y + (s.occupantId === 'broadcasts' ? 6 : 0) + (shrinkCharacter ? s.scale * 10 * (1 - s.y / 100) : 0);
+          const figureTop = s.y + (s.occupantId === 'broadcasts' ? 10 : 0) + (shrinkCharacter ? s.scale * 10 * (1 - s.y / 100) : 0);
           return (
             <div key={s.id} className="bar-space__figure" data-bar-slot={s.id} style={{ left: `${i * 10}%` }}>
               {isUnfinished(s.occupantId) ? <CharacterSilhouette /> : isBarAssetPath(composition) && (
@@ -187,7 +187,7 @@ export function BarScene({
               )}
 
               {!hideIdentity && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
-                <CharacterHitArea onGame={s.occupantId === 'oleg' && s.id===activeSlotId ? () => act('armwrestling','oleg') : undefined} character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
+                <CharacterHitArea onGame={s.occupantId === 'oleg' ? () => act('armwrestling','oleg') : undefined} character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
               {!hideIdentity && (s.occupantId==='online'||s.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={s.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={e=>{e.stopPropagation();if(!ready(i))return;if(s.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
             </div>
