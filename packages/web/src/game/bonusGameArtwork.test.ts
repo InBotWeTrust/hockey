@@ -23,3 +23,14 @@ describe('catalogBonusGameArtwork', () => {
     );
   });
 });
+
+it('versions all new Rhythm city images without invalidating existing city caches', async () => {
+  const {versionBonusGameGoalkeeper} = await import('./bonusGameArtwork.js');
+  for (const slug of ['raleigh','columbus','buffalo','miami','ottawa','tampa','st-louis','saint-paul','anaheim','san-jose']) {
+    for(const kind of ['arenas','previews'])
+      expect(versionBonusGameArtwork(`/bonus-games/nhl-cities/${kind}/${slug}.webp`)).toContain('?v=20261018-rhythm-cities-v1');
+    for(const pose of ['ready','save'])
+      expect(versionBonusGameGoalkeeper(`/bonus-games/nhl-cities/goalkeepers/${slug}-${pose}.webp`)).toContain('?v=20261018-rhythm-cities-v1');
+  }
+  expect(versionBonusGameGoalkeeper('/bonus-games/nhl-cities/goalkeepers/toronto-ready.webp')).toContain('20261001-nhl-city-tours-v1');
+});

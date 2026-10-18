@@ -95,6 +95,7 @@ const approvedHockeyCityMediaSlugs = [
 ] as const;
 
 const approvedNhlCityMediaSlugs = [
+  'raleigh', 'columbus', 'buffalo', 'miami', 'ottawa', 'tampa', 'st-louis', 'saint-paul', 'anaheim', 'san-jose',
   'toronto',
   'montreal',
   'boston',

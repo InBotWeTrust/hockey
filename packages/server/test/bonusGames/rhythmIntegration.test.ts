@@ -17,6 +17,8 @@ afterAll(async()=>{await pool?.end();});
 it.skipIf(!hasIntegrationEnv)('seeds ten immutable levels with Classic speeds and matching rewards',async()=>{
  const rows=(await pool.query("select * from bonus_game where skill_code='rhythm' order by sort_order")).rows;
  expect(rows.map(r=>r.qualification_rules.minimumSeries)).toEqual([2,2,3,3,4,4,5,5,6,7]);
+ expect(rows.map(r=>r.title)).toEqual(['Роли','Коламбус','Баффало','Майами','Оттава','Тампа','Сент-Луис','Сент-Пол','Анахайм','Сан-Хосе']);
+ expect(rows.every(r=>r.slug.startsWith('rhythm-')&&r.preview_artwork_url.includes('/bonus-games/nhl-cities/previews/'))).toBe(true);
  expect(rows.map(r=>r.target_goals)).toEqual([20,24,28,32,36,40,44,48,52,56]);
  const classic=(await pool.query("select p from amateur_duel_template t cross join lateral jsonb_array_elements(t.period_speed_presets) p where duel_kind='classic' and deleted_at is null and p->>'periodNumber'='1' order by is_active desc,created_at desc limit 1")).rows[0].p;
  for(const r of rows){expect(r.use_inventory).toBe(false);expect(r.period_rules[0].durationMs).toBe(180000);expect(r.period_rules[0].shooterFrequency).toBe(classic.shooterFrequency);}
