@@ -7,7 +7,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
-it.each([0, 5, 6, 9, 10, 17, 18, 20, 21, 23])(
+it.each([0, 5, 6, 9, 10, 17, 18, 20, 21, 22, 23])(
   'uses the map lighting schedule at hour %s',
   (hour) => {
     const time = cityTimeOfDay(new Date(2026, 9, 19, hour));
@@ -41,7 +41,7 @@ it('preloads new lighting, ignores stale loads and stops its clock on leaving th
   });
   expect(hook.result.current.time).toBe('day');
   act(() => {
-    vi.setSystemTime(new Date(2026, 9, 19, 21));
+    vi.setSystemTime(new Date(2026, 9, 19, 22));
     window.dispatchEvent(new Event('focus'));
   });
   await act(async () => pending[0]!());

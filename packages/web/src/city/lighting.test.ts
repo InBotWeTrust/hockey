@@ -5,7 +5,7 @@ import {cityImage, cityTimeOfDay, useCityImage} from './lighting.js';
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
 describe('device-local city lighting',()=>{
- for(const [hour,minute,expected] of [[5,59,'night'],[6,0,'morning'],[9,59,'morning'],[10,0,'day'],[17,59,'day'],[18,0,'sunset'],[20,59,'sunset'],[21,0,'night'],[23,59,'night']] as const){
+ for(const [hour,minute,expected] of [[5,59,'night'],[6,0,'night'],[6,59,'night'],[7,0,'morning'],[9,59,'morning'],[10,0,'day'],[17,59,'day'],[18,0,'sunset'],[20,59,'sunset'],[21,0,'sunset'],[21,59,'sunset'],[22,0,'night'],[23,59,'night']] as const){
   it(`${hour}:${minute} is ${expected}`,()=>expect(cityTimeOfDay(new Date(2026,9,15,hour,minute))).toBe(expected));
  }
  it('uses device local hours rather than UTC hours',()=>{
@@ -25,7 +25,7 @@ it('selects the matching distinct background for every phase and density',()=>{
 });
 
 it('changes phases only after decode and avoids loading again within a phase',async()=>{
- vi.useFakeTimers();vi.setSystemTime(new Date(2026,9,16,5,59,59));
+ vi.useFakeTimers();vi.setSystemTime(new Date(2026,9,16,6,59,59));
  const pending:(()=>void)[]=[];
  const decode=vi.fn(()=>new Promise<void>(resolve=>pending.push(resolve)));
  vi.stubGlobal('Image',class{src='';decode=decode;});
@@ -35,7 +35,7 @@ it('changes phases only after decode and avoids loading again within a phase',as
  expect(result.current).toContain('city-night-');
  await act(async()=>pending[0]!());
  expect(result.current).toContain('city-morning-');
- for(const [i,hour,phase] of [[1,10,'day'],[2,18,'sunset'],[3,21,'night']] as const){
+ for(const [i,hour,phase] of [[1,10,'day'],[2,18,'sunset'],[3,22,'night']] as const){
   act(()=>{vi.setSystemTime(new Date(2026,9,16,hour));window.dispatchEvent(new Event('focus'));});
   await act(async()=>pending[i]!());
   expect(result.current).toContain(`city-${phase}-`);
