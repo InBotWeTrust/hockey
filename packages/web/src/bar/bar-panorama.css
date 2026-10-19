@@ -625,7 +625,9 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-space__game-hotspot:focus-visible {outline:2px solid var(--text-primary);outline-offset:2px;}
 .bar-space__figure {z-index:2;}
 .bar-space__object-glow--point {z-index:1;width:40px;height:40px;overflow:visible;margin:-20px 0 0 -20px;}
-.bar-space__service-door-hit {z-index:3;left:16.1%;width:.8%;top:18%;height:14%;}
+/* Only the exposed doorway above the television opens the office. */
+.bar-space__service-door-hit {z-index:3;left:12.6%;width:4.3%;top:15%;height:15%;}
+.bar-space__figure > .bar-space__object-hit--tv {top:28%;bottom:30%;}
 
 .bar-space__object-glow--foreground {z-index:3;}
 
