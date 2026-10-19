@@ -1,3 +1,4 @@
+import {VenuePanorama} from '../components/VenuePanorama.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -533,6 +534,7 @@ function renderWith(
   client = new QueryClient({
     defaultOptions: { mutations: { retry: false }, queries: { retry: false } },
   }),
+  panorama=false,
 ) {
   return render(
     <QueryClientProvider client={client}>
@@ -540,7 +542,7 @@ function renderWith(
         initialEntries={initialEntries}
         future={{ v7_startTransition: true, v7_relativeSplatPath: true }}
       >
-        <DailyScreen />
+        {panorama ? <VenuePanorama level="amateur" owner="u1"><DailyScreen/></VenuePanorama> : <DailyScreen />}
         <LocationProbe />
         {routeControl}
       </MemoryRouter>
@@ -4402,6 +4404,13 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' })).not.toBeInTheDocument();
   });
 
+  it('returns from a yard catalog directly to the map under panorama navigation',async()=>{
+    vi.spyOn(globalThis,'fetch').mockImplementation(async(input)=>new Response(JSON.stringify(String(input).includes('/duel/training/course')?initialTrainingCatalog:String(input).includes('/duel/training/state')?trainingIdleState:baseState),{headers:{'content-type':'application/json'}}));
+    renderWith(['/?view=training&section=course'],undefined,undefined,true);
+    await screen.findByRole('heading',{name:'Начальное обучение'});
+    fireEvent.click(screen.getByRole('button',{name:'Назад'}));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
+  });
   it('shows the initial-course hub and opens its seven-card catalog when enabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);

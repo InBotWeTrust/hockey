@@ -1,3 +1,4 @@
+import {VenuePanorama} from '../components/VenuePanorama.js';
 import { QueryClient, QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
@@ -62,14 +63,14 @@ function mockAchievementsApi(achievements: AchievementDto[], unclaimedCount = 0)
   });
 }
 
-function renderAchievements(): void {
+function renderAchievements(panorama=false): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/achievements']}>
-        <AchievementsScreen />
+        {panorama ? <VenuePanorama level="amateur" owner="test"><AchievementsScreen/></VenuePanorama> : <AchievementsScreen />}
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -119,6 +120,14 @@ describe('AchievementsScreen', () => {
     mockAchievementsApi([]);
   });
 
+  it('moves page tabs and their reward attention into panorama circles',async()=>{
+    useAuthStore.getState().setSession({accessToken:'test',refreshToken:'test',user:{id:'test',displayName:'Test',competitionLevel:'amateur'}});
+    mockAchievementsApi([makeAchievement({id:'claim',isClaimable:true})],1);renderAchievements(true);
+    await screen.findByRole('tab',{name:'Задания'});
+    expect(screen.queryByRole('tablist',{name:'Разделы заданий'})).toBeNull();
+    await waitFor(()=>expect(screen.getByRole('tab',{name:'Задания'}).querySelector('[aria-label="Есть награда"]')).not.toBeNull());
+    expect(screen.getByRole('tablist',{name:'Фильтр заданий'})).toBeInTheDocument();
+  });
   it('shows the challenge tab inside achievements', async () => {
     renderAchievements();
 

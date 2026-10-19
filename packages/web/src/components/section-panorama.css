@@ -230,3 +230,29 @@
     height: 44px;
   }
 }
+/* Existing catalogs own their headers and padding; the scene owns their only scroll container. */
+.venue-scene .section-scene__scroll {
+  padding: 0;
+}
+.venue-scene .section-scene__scroll > .screen,
+.venue-scene .section-scene__scroll > div > .screen {
+  height: auto !important;
+  min-height: 0 !important;
+  overflow: visible !important;
+  padding-bottom: 32px !important;
+  background: transparent !important;
+}
+.section-scene__dock button {
+  position: relative;
+}
+.section-scene__dock .section-scene__attention {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #fff;
+  border-radius: 50%;
+  background: #f4d275;
+  box-shadow: 0 1px 4px #0008;
+}

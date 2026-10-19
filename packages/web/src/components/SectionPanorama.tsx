@@ -15,6 +15,8 @@ export interface PanoramaPage {
   id: string;
   label: string;
   image: string;
+  position?: number;
+  attention?: boolean;
 }
 export function adjacentSection(
   pages: readonly PanoramaPage[],
@@ -40,6 +42,7 @@ export function SectionPanorama({
   overlays,
   disabled = false,
   className = '',
+  columns = pages.length,
 }: {
   label: string;
   pages: readonly PanoramaPage[];
@@ -51,6 +54,7 @@ export function SectionPanorama({
   overlays?: ReactNode;
   disabled?: boolean;
   className?: string;
+  columns?: number;
 }): JSX.Element {
   const scroll = useRef<HTMLDivElement>(null),
     dock = useRef<HTMLDivElement>(null);
@@ -66,11 +70,12 @@ export function SectionPanorama({
   );
   const previousIndex = useRef(index),
     blockClickUntil = useRef(0);
-  const target = useMotionValue(index),
+  const scenePosition = pages[index]?.position ?? index;
+  const target = useMotionValue(scenePosition),
     position = useSpring(target, { stiffness: 220, damping: 32 });
   const backgroundX = useTransform(
     [position, dragX],
-    ([value, drag]) => `calc(${(-Number(value) * 100) / pages.length}% + ${Number(drag) * 0.35}px)`,
+    ([value, drag]) => `calc(${(-Number(value) * 100) / columns}% + ${Number(drag) * 0.35}px)`,
   );
   useLayoutEffect(() => {
     try {
@@ -90,15 +95,13 @@ export function SectionPanorama({
   useLayoutEffect(() => {
     pendingRestore.current = positions.current[selected] ?? 0;
     if (scroll.current) scroll.current.scrollTop = pendingRestore.current;
-    if (reduced) position.jump(index);
-    else target.set(index);
-    dock.current
-      ?.querySelector('[aria-selected="true"]')
-      ?.scrollIntoView?.({
-        block: 'nearest',
-        inline: 'nearest',
-        behavior: reduced ? 'instant' : 'smooth',
-      });
+    if (reduced) position.jump(scenePosition);
+    else target.set(scenePosition);
+    dock.current?.querySelector('[aria-selected="true"]')?.scrollIntoView?.({
+      block: 'nearest',
+      inline: 'nearest',
+      behavior: reduced ? 'instant' : 'smooth',
+    });
     if (previousIndex.current !== index && !reduced) {
       dragX.set(
         (index > previousIndex.current ? 1 : -1) *
@@ -107,7 +110,7 @@ export function SectionPanorama({
       void animate(dragX, 0, { type: 'spring', stiffness: 330, damping: 34 });
     } else dragX.set(0);
     previousIndex.current = index;
-  }, [storageKey, selected, index, reduced, position, target, dragX]);
+  }, [storageKey, selected, index, scenePosition, reduced, position, target, dragX]);
   useLayoutEffect(() => {
     const restore = () => {
       const node = scroll.current,
@@ -135,7 +138,7 @@ export function SectionPanorama({
       <motion.div
         className="section-scene__panorama"
         aria-hidden="true"
-        style={{ width: `${pages.length * 100}%`, x: backgroundX }}
+        style={{ width: `${columns * 100}%`, x: backgroundX }}
       >
         <img src={panorama} alt="" draggable={false} decoding="async" />
       </motion.div>
@@ -262,6 +265,9 @@ export function SectionPanorama({
               >
                 <img src={page.image} alt="" draggable={false} />
                 <span>{page.label}</span>
+                {page.attention && (
+                  <span className="section-scene__attention" aria-label="Есть награда" />
+                )}
               </button>
             ))}
           </div>

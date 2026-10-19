@@ -1,3 +1,4 @@
+import { VenuePanorama } from '../components/VenuePanorama.js';
 import {GameEntryRoute} from './GameEntryRoute.js';
 import { useApplicationTheme } from './theme.js';
 import { BarAccessGate } from '../bar/BarAccessGate.js';
@@ -410,6 +411,7 @@ function AppExperience(): JSX.Element {
           </div>
         )}
         <div className="app-content">
+          <VenuePanorama level={user ? profileQuery.data?.competitionLevel ?? user.competitionLevel ?? null : null} owner={user?.id ?? null}>
           <Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/bar/games" element={<PrivateRoute><BarAccessGate><BarGamesPage/></BarAccessGate></PrivateRoute>}/>
@@ -664,6 +666,7 @@ function AppExperience(): JSX.Element {
               />
             </Routes>
           </Suspense>
+          </VenuePanorama>
         </div>
       </div>
     </>

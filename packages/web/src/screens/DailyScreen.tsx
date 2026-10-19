@@ -1,3 +1,4 @@
+import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
 import { createRhythmMovementSampler } from '@hockey/game-core';
 import {gameDockStatus,type GameDockStatus} from '../city/gameDockStatus.js';
@@ -3483,6 +3484,7 @@ function ModeShell({
   variant?: 'default' | 'section-hub';
   className?: string;
 }): JSX.Element {
+  const venue = useVenueNavigation();
   const isSectionHub = variant === 'section-hub';
   return (
     <main
@@ -3515,7 +3517,7 @@ function ModeShell({
                 ? 'icon-btn icon-btn--page-back catalog-header-back'
                 : 'icon-btn icon-btn--page-back'
             }
-            onClick={onBack}
+            onClick={venue?.onBack ?? onBack}
             aria-label="Назад"
             title="Назад"
             style={
