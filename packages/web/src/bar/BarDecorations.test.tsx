@@ -118,7 +118,7 @@ it('keeps an exit to the map before every bar character circle',()=>{
  render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
  const navigation=screen.getByRole('navigation',{name:'Места в баре'});
  const exit=screen.getByRole('link',{name:'На карту'});
- expect(exit).toHaveAttribute('href','/sections?home=1');
+ expect(exit).toHaveAttribute('href','/sections');
  expect(navigation.firstElementChild).toBe(exit);
  expect(exit).toHaveTextContent('Выход');
 });

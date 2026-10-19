@@ -1,3 +1,4 @@
+import { StartupSplash } from '../onboarding/StartupSplash.js';
 import { useGameInvites } from '../bar/games/gameInviteStore.js';
 import {caretakerBlocked} from '../city/caretakerSchedule.js';
 import type {GameDockStatus} from '../city/gameDockStatus.js';
@@ -275,6 +276,13 @@ export function SectionsScreen(): JSX.Element {
     `Награды: ${numberText(achievementsCompletedCount)}/${numberText(achievements.length)}`,
     `Уровни: ${numberText(achievementProgress.levels.completed)}/${numberText(achievementProgress.levels.total)}`,
   ] as const;
+
+  if (!profileQuery.data) {
+    return <StartupSplash
+      message={profileQuery.isError ? 'Не удалось загрузить карту.' : 'Идёт загрузка…'}
+      {...(profileQuery.isError ? {retry: () => { void profileQuery.refetch(); }} : {})}
+    />;
+  }
 
   return (
     <main

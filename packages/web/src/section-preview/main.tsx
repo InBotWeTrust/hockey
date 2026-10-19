@@ -1,3 +1,4 @@
+import { useDailyStore } from '../stores/dailyStore.js';
 import { apartmentProfile, referralSummary } from './apartmentFixtures.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
@@ -15,7 +16,7 @@ import { BarScene } from '../bar/BarScene.js';
 import { createDefaultBarLayout } from '@hockey/game-core';
 import type { CityTimeOfDay } from '../city/lighting.js';
 import { VenuePanorama } from '../components/VenuePanorama.js';
-import { DailyScreen } from '../screens/DailyScreen.js';
+import { DailyScreen, GameHub } from '../screens/DailyScreen.js';
 import { DailyOverviewScreen } from '../screens/DailyOverviewScreen.js';
 import { AchievementsScreen } from '../screens/AchievementsScreen.js';
 import { WeeklyChallengeScreen } from '../screens/WeeklyChallengeScreen.js';
@@ -44,6 +45,7 @@ const level =
 const previewTime = ['morning', 'day', 'sunset', 'night'].includes(params.get('time') ?? '')
   ? (params.get('time') as CityTimeOfDay)
   : undefined;
+if (scene === 'map') useDailyStore.setState({data: baseState});
 const inventory = structuredClone(inventoryWithItems);
 inventory.balances = { tokens: 43509, stars: 1860, experience: 77 };
 for (const kind of ['stick', 'skates', 'nutrition', 'recovery'] as const) {
@@ -324,9 +326,10 @@ createRoot(document.getElementById('root')!).render(
                 element={
                   <main className="screen sections-city-screen">
                     <CityMap
-                      level="beginner"
+                      level={level}
                       owner="navigation-labels-qa"
                       startAtDaily
+                      gamePanel={<GameHub presentation="city" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}} />}
                       daily="0/90 бросков"
                       training="0/500"
                       tasks="Есть награда"

@@ -1,3 +1,4 @@
+import { MapExitLink } from '../components/MapExitLink.js';
 import '../components/navigation-geometry.css';
 import {useHorizontalPan} from './useHorizontalPan.js';
 import {useEffect,useRef,useState} from 'react';
@@ -14,7 +15,7 @@ export function BarAvatarDock({layout,activeSlotId,activityCounts={},onSelectSlo
   };
   useEffect(()=>centerActive(),[activeSlotId]);
   return <nav className="bar-avatar-dock" aria-label="Места в баре">
-        <a className="bar-avatar-dock__exit" href="/sections?home=1" aria-label="На карту" title="На карту"><span><LogOut size={22} aria-hidden="true"/></span><small>Выход</small></a>
+        <MapExitLink className="bar-avatar-dock__exit"><span><LogOut size={22} aria-hidden="true"/></span><small>Выход</small></MapExitLink>
         <div ref={dock} className="bar-avatar-dock__slots"
         {...pan}
         onPointerLeave={()=>setDockFocus(null)}>

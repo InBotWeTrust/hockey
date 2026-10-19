@@ -26,7 +26,7 @@ it('keeps circle navigation visible and delegates selection without submitting c
   expect(change).toHaveBeenCalledWith('1');
   expect(screen.queryByLabelText('Свернуть навигацию')).toBeNull();
   const exit = screen.getByRole('link', { name: 'На карту' });
-  expect(exit).toHaveAttribute('href', '/sections?home=1');
+  expect(exit).toHaveAttribute('href', '/sections');
   expect(
     exit.compareDocumentPosition(screen.getByRole('tab', { name: 'Клюшки' })) &
       Node.DOCUMENT_POSITION_FOLLOWING,

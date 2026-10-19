@@ -530,15 +530,11 @@ describe('app backdrop variants', () => {
     expect(arenaCourtImage('professional')).toBe('/sprites/app-arena-ice.webp');
   });
 
-  it('renders lazy route loading text with a high-contrast arena treatment', () => {
+  it('uses the same dark loading screen for lazy routes and startup', () => {
     render(<RouteLoading />);
-
-    const loading = screen.getByRole('status');
-    expect(loading).toHaveClass('route-loading');
-    expect(loading).toHaveStyle({
-      color: 'var(--liquid-ink)',
-      background: 'var(--liquid-modal-bg)',
-    });
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.getByLabelText('Загрузка приложения')).toHaveClass('onboarding-flow--startup');
+    expect(document.querySelector('.route-loading')).toBeNull();
   });
 
   it('uses the dedicated login rink background on the sign-in screen', () => {

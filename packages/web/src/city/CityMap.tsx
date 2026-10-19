@@ -18,7 +18,7 @@ const places=[
  {id:'tasks',name:'Задания',x:27,y:58.5,w:8,h:13,thumb:[24.8,59]},
  {id:'chat',name:'Телефонная будка',x:30.1,y:62,w:2.6,h:8.5,thumb:[27.9,70]},
  {id:'bank',name:'Банк',x:36.2,y:36.5,w:8,h:16,thumb:[34.7,28]},
- {id:'stadium',name:'Стадион «Центральный»',x:44.8,y:51,w:14,h:20,thumb:[43.9,52.6]},
+ {id:'stadium',name:'Стадион «Центральный»',x:43.9,y:51,w:14,h:20,thumb:[43.9,52.6]},
  {id:'gym',name:'Спортзал',x:52.5,y:37,w:9.5,h:14,thumb:[54,28.9]},
  {id:'bar',name:'Бар "4-й период"',x:59.4,y:60,w:10.5,h:17,thumb:[60.3,62.6]},
  {id:'fame',name:'Зал славы',x:64.5,y:36,w:9,h:17,thumb:[66.2,26.1]},
@@ -98,7 +98,7 @@ export function CityMap(props:Props){
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
    <div ref={world} className="district-world"><CityBackground image={image}/><CityTraffic owner={owner} night={image.includes("city-night-")||image.includes("city-sunset-")}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
     {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':''}${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='profile'&&<span className="district-apartment-avatar" aria-hidden="true"><User/></span>}</button>)}
-    {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} style={{left:`${dailyVenue.x}%`} as CSSProperties} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
+    {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} style={{left:`${dailyVenue.x-(dailyId==='stadium'?0.5:0)}%`} as CSSProperties} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
    </div>
   </div>
   <WeatherOverlay key={props.weatherOverride??weather} weather={props.weatherOverride??weather}/>

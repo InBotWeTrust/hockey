@@ -309,6 +309,12 @@ describe('SectionsScreen', () => {
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
   });
 
+  it('does not render a beginner map while the player profile is pending', () => {
+    mockSectionsApi({profileRequest:'loading'}); renderSections();
+    expect(screen.queryByLabelText('Карта района')).toBeNull();
+    expect(screen.getByText('Идёт загрузка…')).toBeInTheDocument();
+  });
+
   it('reuses the admin menu attention query and updates the admin circle',async()=>{
     mockSectionsApi();
     useAuthStore.setState({user:{id:'u1',displayName:'Админ',role:'admin'}});
@@ -592,14 +598,14 @@ describe('SectionsScreen', () => {
     });
     renderSections();
 
-    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить награды.');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить карту.');
     expect(screen.queryByRole('dialog', { name: /зач[её]те дуэлей/ })).toBeNull();
     const profileCallsBeforeRetry = vi
       .mocked(fetch)
       .mock.calls.filter(([input]) =>
         String(input).includes('/api/me?includeTournamentCongratulations=true'),
       ).length;
-    fireEvent.click(screen.getByRole('button', { name: 'Повторить загрузку наград' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
     await waitFor(() =>
       expect(
         vi
@@ -938,19 +944,12 @@ describe('SectionsScreen', () => {
   });
 
   it.each([{ profileRequest: 'loading' as const }, { profileRequest: 'error' as const }])(
-    'keeps the daily-goal fallback when the profile request is $profileRequest',
+    'does not guess the map venue from goals while the profile is $profileRequest',
     async ({ profileRequest }) => {
-      mockSectionsApi({
-        dailyLifetimeTotalGoals: 300,
-        profileRequest,
-      });
-      renderSections();
-
-      fireEvent.click(await screen.findByRole('button', { name: 'Выбрать Стадион «Центральный»' }));
-      fireEvent.click(screen.getByRole('button', { name: 'Дуэли и турниры' }));
-
-      expect(screen.getByTestId('location')).toHaveTextContent('/?view=amateur&from=sections');
-      expect(screen.queryByRole('dialog')).toBeNull();
+      mockSectionsApi({dailyLifetimeTotalGoals:300,profileRequest}); renderSections();
+      if(profileRequest==='error') await screen.findByRole('alert');
+      else await screen.findByText('Идёт загрузка…');
+      expect(screen.queryByLabelText('Карта района')).toBeNull();
     },
   );
 });

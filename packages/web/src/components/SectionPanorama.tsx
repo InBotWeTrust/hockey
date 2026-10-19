@@ -1,3 +1,4 @@
+import { MapExitLink } from './MapExitLink.js';
 import '../components/navigation-geometry.css';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import {
@@ -73,6 +74,7 @@ export function SectionPanorama({
     pages.findIndex((page) => page.id === selected),
   );
   const blockClickUntil = useRef(0);
+  const gesture = useRef<{id:number;x:number;y:number} | null>(null);
   const scenePosition = pages[index]?.position ?? index;
   const target = useMotionValue(scenePosition),
     position = useSpring(target, { stiffness: 220, damping: 32 });
@@ -169,7 +171,19 @@ export function SectionPanorama({
             )
           )
             return;
+          gesture.current = {id:event.pointerId,x:event.clientX,y:event.clientY};
+        }}
+        onPointerMove={(event) => {
+          const initial=gesture.current;
+          if (!initial || initial.id!==event.pointerId) return;
+          const dx=Math.abs(event.clientX-initial.x), dy=Math.abs(event.clientY-initial.y);
+          if (dy>=12 && dy>=dx) { gesture.current=null; return; }
+          if (dx<12 || dx<dy*1.5) return;
+          gesture.current=null;
           controls.start(event);
+        }}
+        onPointerUp={() => {
+          gesture.current=null;
         }}
         onClickCapture={(event) => {
           if (event.detail !== 0 && performance.now() < blockClickUntil.current) {
@@ -181,6 +195,7 @@ export function SectionPanorama({
           blockClickUntil.current = performance.now() + 500;
         }}
         onPointerCancel={() => {
+          gesture.current=null;
           blockClickUntil.current = performance.now() + 250;
           void animate(dragX, 0, { duration: 0 });
         }}
@@ -226,17 +241,12 @@ export function SectionPanorama({
           </span>
         </div>
         <div className="section-scene__navigation">
-          <a
-            className="section-scene__exit"
-            href="/sections?home=1"
-            aria-label="На карту"
-            title="На карту"
-          >
+          <MapExitLink className="section-scene__exit">
             <span>
               <LogOut size={22} aria-hidden="true" />
             </span>
             <small>Выход</small>
-          </a>
+          </MapExitLink>
           <div
             ref={dock}
             className="section-scene__dock"

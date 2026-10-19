@@ -59,7 +59,7 @@ it('selects and centers first, recenters an off-center selection, then opens the
  viewport.scrollLeft=886;fireEvent.click(bank);
  expect(base.onNavigate).toHaveBeenCalledWith('/inventory?tab=bank');
 });
-for(const [level,title,left] of [['beginner','Дворовый каток',181],['amateur','Стадион «Центральный»',1144],['professional','Арена Ультимейт',2410]] as const){
+for(const [level,title,left] of [['beginner','Дворовый каток',181],['amateur','Стадион «Центральный»',1117],['professional','Арена Ультимейт',2410]] as const){
  it(`opens the centered daily venue for ${level}`,()=>{
   sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level={level}/>);
   const {viewport}=mapGeometry();viewport.scrollLeft=left;

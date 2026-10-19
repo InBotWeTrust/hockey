@@ -1,3 +1,4 @@
+import { StartupSplash } from '../onboarding/StartupSplash.js';
 import { VenuePanorama } from '../components/VenuePanorama.js';
 import {GameEntryRoute} from './GameEntryRoute.js';
 import { useApplicationTheme } from './theme.js';
@@ -260,17 +261,7 @@ function ChatRealtime(): JSX.Element {
 }
 
 export function RouteLoading(): JSX.Element {
-  return (
-    <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div
-        className="route-loading"
-        role="status"
-        style={{ color: 'var(--liquid-ink)', background: 'var(--liquid-modal-bg)' }}
-      >
-        Загрузка…
-      </div>
-    </main>
-  );
+  return <StartupSplash />;
 }
 
 export function appBackdropClassName(pathname: string, search = ''): string {

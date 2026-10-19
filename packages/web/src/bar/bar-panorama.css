@@ -654,6 +654,8 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-avatar-dock__item[aria-current="page"] .bar-avatar-dock__portrait,.bar-avatar-dock__item.is-focused .bar-avatar-dock__portrait {filter:none;}
 .bar-bottom-chrome .bar-space__actions--terminal {bottom:93px;}
 
-.bar-space .catalog-header-back {
-  display: none;
+.bar-space .catalog-header-back,
+.bar-screen .catalog-header-back,
+.bar-staff-room .catalog-header-back {
+  display: none !important;
 }

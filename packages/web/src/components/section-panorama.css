@@ -63,7 +63,7 @@
   border: 1px solid var(--liquid-border);
   border-radius: 26px;
   background: var(--liquid-card-bg);
-  box-shadow: var(--liquid-shadow);
+  box-shadow: none;
   backdrop-filter: var(--liquid-blur);
   -webkit-backdrop-filter: var(--liquid-blur);
   color: var(--liquid-ink);
@@ -245,7 +245,7 @@
 
 /* The persistent exit circle replaces page-level back actions. */
 .section-scene button[aria-label="Назад"]:not([role="dialog"] *) {
-  display: none;
+  display: none !important;
 }
 .venue-scene .profile-page-header {
   display: flex;
