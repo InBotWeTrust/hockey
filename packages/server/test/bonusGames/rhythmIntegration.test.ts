@@ -2,7 +2,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {beforeAll,afterAll,it,expect} from 'vitest';
 import type {Pool} from 'pg';
-import {deriveShotSeed,getSessionPhaseOffsets,resolvePerspectiveCourtShot,projectRhythm,STICK_NEUTRAL,GOAL_OPENING,PUCK_START} from '@hockey/game-core';
+import {deriveShotSeed,getSessionPhaseOffsets,resolvePerspectiveCourtShot,projectRhythm,STICK_NEUTRAL,GOAL_OPENING,PUCK_START,countRhythmBoardContacts} from '@hockey/game-core';
 import {createTestPool,hasIntegrationEnv,resetDatabase} from '../helpers/testDb.js';
 import {applyMigrations} from '../../src/db/migrations.js';
 import {findOrCreateTelegramUser} from '../../src/auth/users.js';
@@ -21,7 +21,7 @@ it.skipIf(!hasIntegrationEnv)('seeds ten immutable levels with Classic speeds an
  expect(rows.every(r=>r.slug.startsWith('rhythm-')&&r.preview_artwork_url.includes('/bonus-games/nhl-cities/previews/'))).toBe(true);
  expect(rows.map(r=>r.target_goals)).toEqual([20,24,28,32,36,40,44,48,52,56]);
  const classic=(await pool.query("select p from amateur_duel_template t cross join lateral jsonb_array_elements(t.period_speed_presets) p where duel_kind='classic' and deleted_at is null and p->>'periodNumber'='1' order by is_active desc,created_at desc limit 1")).rows[0].p;
- for(const r of rows){expect(r.period_rules[0].puckSpeedPerMs).toBe(1.25);expect(r.qualification_rules.breakOnMiss).toBe(true);expect(r.use_inventory).toBe(false);expect(r.period_rules[0].durationMs).toBe(180000);expect(r.period_rules[0].shooterFrequency).toBe(classic.shooterFrequency);}
+ for(const r of rows){expect(r.period_rules[0].puckSpeedPerMs).toBe(1.25);expect(r.qualification_rules.boardContactLimit).toBe(3);expect(r.qualification_rules.breakOnMiss).toBe(true);expect(r.use_inventory).toBe(false);expect(r.period_rules[0].durationMs).toBe(180000);expect(r.period_rules[0].shooterFrequency).toBe(classic.shooterFrequency);}
 });
 it.skipIf(!hasIntegrationEnv)('validates real shots, counts threshold series, breaks series on misses and settles once',async()=>{
  const user=await findOrCreateTelegramUser(pool,{providerUid:'local-bonus-rhythm-regression',displayName:'Local Rhythm'});
@@ -33,7 +33,7 @@ it.skipIf(!hasIntegrationEnv)('validates real shots, counts threshold series, br
  const rule=state.rules.periods[0]!;
  const goalie=buildBonusGoalieConfig(state.rules.slug,state.rules.title,rule);
  const flight=(PUCK_START.y-GOAL_OPENING.y)/rule.puckSpeedPerMs;
- let t=0;const history:Array<{travel:number;goal:boolean}>=[];
+ let t=0;const history:Array<{travel:number;boardContacts:number;goal:boolean}>=[];
  let duplicateChecked=false;
  for(let index=1;index<=100 && state.status==='active';index++){
   t+=flight+20;
@@ -52,8 +52,8 @@ it.skipIf(!hasIntegrationEnv)('validates real shots, counts threshold series, br
   t=shotInput.tapTime;
   const request={userId:user.id,attemptId:state.id,claimedShotIndex:index,input:shotInput,claimedResult:result,now:new Date(now.getTime()+t+(index-1)*1000)};
   const response=await submitBonusShot(pool,request);state=response.attempt;
-  history.push({travel:shotInput.shooterMotionTime*rule.shooterFrequency*2/1000,goal:result==='goal'});
-  const projected=projectRhythm({shots:history,travel:history.at(-1)!.travel,minimumSeries:2,breakOnMiss:true});
+  history.push({travel:shotInput.shooterMotionTime*rule.shooterFrequency*2/1000,boardContacts:countRhythmBoardContacts(shotInput.shooterMotionTime,rule.shooterFrequency,getSessionPhaseOffsets(state.attemptSeed).shooter),goal:result==='goal'});
+  const projected=projectRhythm({shots:history,travel:history.at(-1)!.travel,minimumSeries:2,breakOnMiss:true,boardContactLimit:3,currentBoardContacts:history.at(-1)!.boardContacts});
   expect(state.totalPoints).toBe(projected.score);
   expect(state.currentGoalStreak).toBe(projected.currentSeries);
   expect(state.goals).toBe(history.filter(s=>s.goal).length);

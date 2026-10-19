@@ -1,3 +1,4 @@
+import {getSessionPhaseOffsets} from './session.js';
 import {
   getDuelPlayerCondition,
   DUEL_STUMBLE_HOLD_MS,
@@ -9,6 +10,7 @@ import {
 export interface RhythmShot {
   travel: number;
   goal: boolean;
+  boardContacts?: number;
 }
 export interface RhythmProjection {
   score: number;
@@ -21,9 +23,11 @@ export interface RhythmProjection {
 export function projectRhythm(input: {
   shots: readonly RhythmShot[];
   travel: number;
-  version?: 1 | 2 | 3;
+  version?: 1 | 2 | 3 | 4;
   minimumSeries?: number;
   breakOnMiss?: boolean;
+  boardContactLimit?: 3;
+  currentBoardContacts?: number;
 }): RhythmProjection {
   if (input.version !== 1) return projectConfirmedRhythm(input);
   let score = 0,
@@ -55,15 +59,20 @@ export function projectRhythm(input: {
     lastGoalTravel,
   };
 }
-/** A lone goal is pending; a second timely goal credits the entire pair. */
+/** Pending goals are credited retroactively once the configured series minimum is reached. */
 function projectConfirmedRhythm(input: {
   shots: readonly RhythmShot[];
   travel: number;
   minimumSeries?: number;
   breakOnMiss?: boolean;
-  version?: 1 | 2 | 3;
+  boardContactLimit?: 3;
+  currentBoardContacts?: number;
+  version?: 1 | 2 | 3 | 4;
 }): RhythmProjection {
-  const minimum = input.minimumSeries ?? 2;
+  const minimum = input.minimumSeries ?? (input.version === 4 ? 4 : 2);
+  const contactLimit = input.version === 4 ? 3 : input.boardContactLimit;
+  let lastGoalContacts = 0;
+  const expired = (travel:number,contacts:number) => contactLimit ? contacts-lastGoalContacts >= contactLimit : travel-lastGoalTravel > 2;
   if (!Number.isInteger(minimum) || minimum < 2 || minimum > 1000) throw new Error("invalid rhythm minimum series");
   let score = 0;
   let currentSeries = 0;
@@ -74,9 +83,9 @@ function projectConfirmedRhythm(input: {
     currentSeries = 0;
   };
   for (const shot of input.shots) {
-    if (shot.travel - lastGoalTravel > 2) endSeries();
+    if (expired(shot.travel,shot.boardContacts ?? 0)) endSeries();
     if (!shot.goal) {
-      if (input.breakOnMiss || input.version === 3) endSeries();
+      if (input.breakOnMiss || input.version === 3 || input.version === 4) endSeries();
       continue;
     }
     if (currentSeries === 0) currentSeries = 1;
@@ -85,8 +94,9 @@ function projectConfirmedRhythm(input: {
       score += currentSeries === minimum ? minimum : currentSeries > minimum ? 1 : 0;
     }
     lastGoalTravel = shot.travel;
+    lastGoalContacts = shot.boardContacts ?? 0;
   }
-  if (input.travel - lastGoalTravel > 2) endSeries();
+  if (expired(input.travel,input.currentBoardContacts ?? input.shots.at(-1)?.boardContacts ?? 0)) endSeries();
   return {
     score,
     currentSeries,
@@ -119,6 +129,7 @@ export function createRhythmMovementSampler(input: DuelPlayerConditionInput) {
   let pauseKey = '';
   let pauses: readonly RhythmFlightPause[] = [];
   const frequency = input.currentShooterSpeed;
+  const phaseOffset = getSessionPhaseOffsets(input.seed).shooter;
   const stumbleRandomness =
     input.stumbleRandomness ??
     createDuelStumbleRandomness(
@@ -184,6 +195,7 @@ export function createRhythmMovementSampler(input: DuelPlayerConditionInput) {
   };
   return {
     motionAt,
+    boardContactsAt: (sceneMs:number,flightPauses:readonly RhythmFlightPause[]=[]) => countRhythmBoardContacts(motionAt(sceneMs,flightPauses),frequency,phaseOffset),
     travelAt: (sceneMs: number, flightPauses: readonly RhythmFlightPause[] = []) =>
       (motionAt(sceneMs, flightPauses) * frequency * 2) / 1000,
     conditionAt: (sceneMs: number, flightPauses: readonly RhythmFlightPause[] = pauses) => {
@@ -197,4 +209,9 @@ export function createRhythmMovementSampler(input: DuelPlayerConditionInput) {
         : c;
     },
   };
+}
+
+export function countRhythmBoardContacts(motionMs:number,frequency:number,phaseOffsetMs:number):number {
+  const scale=frequency*2/1000;
+  return Math.max(0,Math.floor((Math.max(0,motionMs)+phaseOffsetMs)*scale+1e-9)-Math.floor(phaseOffsetMs*scale+1e-9));
 }

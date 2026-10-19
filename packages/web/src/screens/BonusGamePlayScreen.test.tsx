@@ -2245,3 +2245,18 @@ it.each([0,1,3,5])('shows current Rhythm series %i against the level threshold o
   expect(next.scoreboardModel({timer:'02:44'}).rows[0].metrics.find((m:{id:string})=>m.id==='series').value).toBe('0/3');
  }
 });
+
+it('keeps a bonus series through two real contacts and hides it at exactly the third contact',async()=>{
+ const {getSessionPhaseOffsets}=await import('@hockey/game-core');
+ const base=attempt();const f=base.rules.periods.find(p=>p.period_number===base.current_period)!.shooter_frequency;
+ const phase=getSessionPhaseOffsets(base.attempt_seed).shooter*f*2/1000;const phaseStart=Math.floor(phase);
+ const motion=(contacts:number)=>(phaseStart+contacts-phase)*1000/(2*f);
+ setStore({attempt:{...base,rhythm_shots:[{travel:motion(1)*f*2/1000,boardContacts:1,goal:true}],rules:{...base.rules,skill_code:'rhythm',use_inventory:false,qualification_rules:{type:'rhythm_in_time',breakOnMiss:true,boardContactLimit:3,targetPoints:28,minimumSeries:3,activeTimeMs:180000}}}});renderScreen();
+ let props=playViewProbe.mock.calls.at(-1)![0];
+ act(()=>props.onSceneClock(0,motion(3)));
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+ act(()=>props.onSceneClock(0,motion(4)));
+ expect(screen.queryByRole('status')).toBeNull();
+ props=playViewProbe.mock.calls.at(-1)![0];
+ expect(props.scoreboardModel({timer:'02:40'}).rows[0].metrics.find((m:{id:string})=>m.id==='series').value).toBe('0/3');
+});

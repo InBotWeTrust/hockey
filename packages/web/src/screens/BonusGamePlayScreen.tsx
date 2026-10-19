@@ -1,4 +1,4 @@
-import {projectRhythm, getBonusChallengeShooterMotionTime as rhythmMotionTime} from '@hockey/game-core';
+import {countRhythmBoardContacts,getSessionPhaseOffsets,projectRhythm, getBonusChallengeShooterMotionTime as rhythmMotionTime} from '@hockey/game-core';
 import {FittedNotice} from '../game/FittedNotice.js';
 import { EnduranceTimer, enduranceTimerTone } from '../components/EnduranceTimer.js';
 import { MarksmanshipScoreNotice, formatMarksmanshipPoints, marksmanshipResultPresentation } from '../components/MarksmanshipScoreNotice.js';
@@ -613,9 +613,9 @@ export function BonusGamePlayScreen(): JSX.Element {
   const abandon = useBonusGameStore((state) => state.abandon);
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
-  const rhythmPendingRef=useRef<{index:number;travel:number;goal:boolean}|null>(null);
-  const [rhythmWindowTravel, setRhythmWindowTravel] = useState<{attemptId:string;index:number;travel:number}|null>(null);
-  const [rhythmVisible,setRhythmVisible]=useState<{attemptId:string;index:number;travel:number;goal:boolean}|null>(null);
+  const rhythmPendingRef=useRef<{index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
+  const [rhythmWindowTravel, setRhythmWindowTravel] = useState<{attemptId:string;index:number;travel:number;boardContacts?:number}|null>(null);
+  const [rhythmVisible,setRhythmVisible]=useState<{attemptId:string;index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
   const [rhythmExpired,setRhythmExpired]=useState<string|null>(null);
   const [rhythmAnimating,setRhythmAnimating]=useState(false);
   const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
@@ -1070,8 +1070,8 @@ export function BonusGamePlayScreen(): JSX.Element {
   const isMarksmanship = marksmanshipRules !== null;
   const rhythmRules=attempt.rules.qualification_rules.type==='rhythm_in_time'?attempt.rules.qualification_rules:null;
   const rhythmHistory=(attempt.rhythm_shots??[]).slice(0,rhythmVisible?.attemptId===attempt.id?rhythmVisible.index:undefined);
-  if(rhythmVisible?.attemptId===attempt.id && rhythmHistory.length<rhythmVisible.index) rhythmHistory.push({travel:rhythmVisible.travel,goal:rhythmVisible.goal});
-  const rhythmProjection=rhythmRules?projectRhythm({shots:rhythmHistory,travel:rhythmWindowTravel?.attemptId===attempt.id && rhythmWindowTravel.index===rhythmHistory.length ? rhythmWindowTravel.travel : rhythmHistory.at(-1)?.travel??0,minimumSeries:rhythmRules.minimumSeries,breakOnMiss:rhythmRules.breakOnMiss??false}):null;
+  if(rhythmVisible?.attemptId===attempt.id && rhythmHistory.length<rhythmVisible.index) rhythmHistory.push({travel:rhythmVisible.travel,boardContacts:rhythmVisible.boardContacts??0,goal:rhythmVisible.goal});
+  const rhythmProjection=rhythmRules?projectRhythm({shots:rhythmHistory,travel:rhythmWindowTravel?.attemptId===attempt.id && rhythmWindowTravel.index===rhythmHistory.length ? rhythmWindowTravel.travel : rhythmHistory.at(-1)?.travel??0,minimumSeries:rhythmRules.minimumSeries,breakOnMiss:rhythmRules.breakOnMiss??false,...(rhythmRules.boardContactLimit ? {boardContactLimit:rhythmRules.boardContactLimit,currentBoardContacts:rhythmWindowTravel?.attemptId===attempt.id && rhythmWindowTravel.index===rhythmHistory.length ? rhythmWindowTravel.boardContacts??0 : rhythmHistory.at(-1)?.boardContacts??0} : {})}):null;
   const rhythmNotice=rhythmHistory.at(-1)?.goal && rhythmProjection!.currentSeries>0 ? (rhythmProjection!.currentSeries>1?`Серия ${rhythmProjection!.currentSeries}`:'Серия началась'):null;
 
   const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
@@ -1270,8 +1270,11 @@ export function BonusGamePlayScreen(): JSX.Element {
         scoreboardEndsAt={scoreboardEndsAt}
         onSceneClock={rhythmRules ? (_scene, shooter) => {
           const travel = shooter * rule.shooter_frequency * 2 / 1000;
-          if (rhythmProjection!.currentSeries > 0 && travel - rhythmProjection!.lastGoalTravel > 2 + 1e-9) {
-            setRhythmWindowTravel({attemptId:attempt.id,index:rhythmHistory.length,travel});
+          const boardContacts=countRhythmBoardContacts(shooter,rule.shooter_frequency,getSessionPhaseOffsets(attempt.attempt_seed).shooter);
+          const lastGoalContacts=rhythmHistory.filter(shot=>shot.goal).at(-1)?.boardContacts??0;
+          const expired=rhythmRules.boardContactLimit ? boardContacts-lastGoalContacts>=rhythmRules.boardContactLimit : travel-rhythmProjection!.lastGoalTravel>2+1e-9;
+          if (rhythmProjection!.currentSeries > 0 && expired) {
+            setRhythmWindowTravel({attemptId:attempt.id,index:rhythmHistory.length,travel,boardContacts});
           }
         } : undefined}
         onTimerExpired={isPeriodActive && !isEndurance ? rhythmRules ? ()=>{if(rhythmExpired===attempt.id)return;setRhythmExpired(attempt.id);if(!rhythmAnimating) void refreshAttempt();} : refreshAttempt : undefined}
@@ -1353,7 +1356,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         onShotResolved={
           rhythmRules ? context=>{
             setRhythmAnimating(true);
-            rhythmPendingRef.current={index:context.shotIndex,travel:(context.input.shooterMotionTime??context.input.shooterTapTime??0)*rule.shooter_frequency*2/1000,goal:context.result.type==='goal'};
+            rhythmPendingRef.current={index:context.shotIndex,travel:(context.input.shooterMotionTime??context.input.shooterTapTime??0)*rule.shooter_frequency*2/1000,boardContacts:countRhythmBoardContacts(context.input.shooterMotionTime??context.input.shooterTapTime??0,rule.shooter_frequency,getSessionPhaseOffsets(attempt.attempt_seed).shooter),goal:context.result.type==='goal'};
             return {details:[]};
           } : isMarksmanship
             ? (context) => {

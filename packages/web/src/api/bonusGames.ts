@@ -37,7 +37,7 @@ export type EnduranceQualificationRules = {
   goalWindowMs: number;
 };
 export type BonusQualificationRules =
-  | {type: 'rhythm_in_time'; breakOnMiss?: boolean; targetPoints: number; minimumSeries: number; activeTimeMs: number}
+  | {type: 'rhythm_in_time'; breakOnMiss?: boolean; boardContactLimit?:3; targetPoints: number; minimumSeries: number; activeTimeMs: number}
   | {
       type: 'goals_from_shots';
       targetGoals: number;
@@ -217,7 +217,7 @@ export interface BonusGameAttempt {
   current_period_shots_taken: number;
   goals: number;
   total_points: number;
-  rhythm_shots?: Array<{travel:number;goal:boolean}>;
+  rhythm_shots?: Array<{travel:number;boardContacts?:number;goal:boolean}>;
   current_goal_streak: number;
   best_goal_streak: number;
   preview_required: boolean;
