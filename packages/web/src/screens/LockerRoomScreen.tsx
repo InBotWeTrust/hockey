@@ -59,7 +59,7 @@ export function LockerRoomScreen(): JSX.Element {
       }
     >
       <section className="locker-room-content">
-        <h1 className="section-label section-label--page">Инвентарь</h1>
+        <h1 className="bonus-games-catalog__title screen-title-on-arena">Раздевалка</h1>
         {profile.isPending ? (
           <p role="status">Загружаем раздевалку…</p>
         ) : !profile.data ? (
