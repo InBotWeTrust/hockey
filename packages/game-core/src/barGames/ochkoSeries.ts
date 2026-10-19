@@ -8,6 +8,7 @@ export interface Round {
 }
 export interface Series {
   round: number;
+  totalRounds?: number;
   phase: 'play' | 'reveal' | 'review' | 'countdown' | 'finished';
   totals: [number, number];
   history: Round[];
@@ -49,6 +50,7 @@ export function create(
   character: boolean,
   seed: number,
   roundPauseMs?: number,
+  totalRounds = 4,
 ): State {
   const base = createOchkoFromDeck(cards, now);
   const chance = (seed >>> 0) % 100;
@@ -65,6 +67,7 @@ export function create(
     stoppedAt: [null, null],
     series: {
       round: 1,
+      totalRounds,
       phase: 'play',
       totals: [0, 0],
       history: [],
@@ -172,11 +175,11 @@ export function advance(state: State, now: number): State {
     for (const p of [0, 1] as const) {
       if (
         !g.done[p] &&
-        (g.scores[p] >= 21 || g.deck.length <= 4 * (4 - s.round) || now >= g.deadlines[p])
+        (g.scores[p] >= 21 || g.deck.length <= 4 * ((s.totalRounds ?? 4) - s.round) || now >= g.deadlines[p])
       ) {
         g.done[p] = true;
         g.stoppedAt[p] =
-          g.scores[p] >= 21 || g.deck.length <= 4 * (4 - s.round)
+          g.scores[p] >= 21 || g.deck.length <= 4 * ((s.totalRounds ?? 4) - s.round)
             ? Math.max(...g.dealUntil)
             : g.deadlines[p];
       }
@@ -197,10 +200,10 @@ export function advance(state: State, now: number): State {
   }
   if (s.phase === 'reveal' && now >= s.reviewAt) {
     s.phase = 'review';
-    if (!g.character && s.round === 4) return finish(g);
+    if (!g.character && s.round === (s.totalRounds ?? 4)) return finish(g);
   }
   if (s.phase === 'review' && now >= s.reviewUntil) {
-    if (g.character) return s.round === 4 ? finish(g) : finish(g, 1);
+    if (g.character) return s.round === (s.totalRounds ?? 4) ? finish(g) : finish(g, 1);
     record(g);
     s.technical = true;
     s.totals = s.ready[0] !== s.ready[1] ? (s.ready[0] ? [21, 0] : [0, 21]) : [0, 0];
@@ -235,7 +238,7 @@ export function act(
     }
     if (g.character) {
       if (p !== 0) throw Error('Unavailable continuation');
-      if(s.round===4)return finish(g);
+      if(s.round===(s.totalRounds ?? 4))return finish(g);
       if(g.roundPauseMs){s.phase='countdown';s.nextAt=now+g.roundPauseMs;return g;}
       return advance(nextRound(g, now), now);
     }
@@ -253,7 +256,7 @@ export function act(
     g.done[p] = true;
     g.stoppedAt[p] = now;
   } else {
-    if (g.deck.length <= 4 * (4 - s.round)) throw Error('Reserved deck');
+    if (g.deck.length <= 4 * ((s.totalRounds ?? 4) - s.round)) throw Error('Reserved deck');
     g.hands[p].push(g.deck.pop()!);
     g.scores[p] = total(g.hands[p]);
     g.dealUntil[p] = now + 700;

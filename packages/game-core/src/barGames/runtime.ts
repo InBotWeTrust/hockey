@@ -34,7 +34,7 @@ export type BarGameAction =
   | { type: 'naval-attack'; x: number; y: number; salvo: boolean; vertical: boolean }
   | { type: 'naval-move'; x: number; y: number }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 19;
+export const ENGINE_VERSION = 20;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -62,6 +62,7 @@ function supportedVersion(version: number): boolean {
     version === 16 ||
     version === 17 ||
     version === 18 ||
+    version === 19 ||
     version === ENGINE_VERSION
   );
 }
@@ -671,6 +672,7 @@ function createSeries(seed: number, now: number, computer: boolean, version: num
     computer,
     seed,
     version >= 17 ? 3000 : undefined,
+    version >= 20 && computer ? 5 : 4,
   );
 }
 function seriesRuntime(m: Runtime, g: series.State, now: number): Runtime {

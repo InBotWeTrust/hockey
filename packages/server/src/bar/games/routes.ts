@@ -68,18 +68,18 @@ export const gameAction = z.discriminatedUnion('type', [
     .object({
       type: z.literal('ochko-hit'),
       seq: z.number().int().positive(),
-      round: z.number().int().min(1).max(4).optional(),
+      round: z.number().int().min(1).max(5).optional(),
     })
     .strict(),
   z
     .object({
       type: z.literal('ochko-stand'),
       seq: z.number().int().positive(),
-      round: z.number().int().min(1).max(4).optional(),
+      round: z.number().int().min(1).max(5).optional(),
     })
     .strict(),
-  z.object({ type: z.literal('ochko-next'), round: z.number().int().min(1).max(4) }).strict(),
-  z.object({ type: z.literal('ochko-challenge'), round: z.number().int().min(1).max(4) }).strict(),
+  z.object({ type: z.literal('ochko-next'), round: z.number().int().min(1).max(5) }).strict(),
+  z.object({ type: z.literal('ochko-challenge'), round: z.number().int().min(1).max(5) }).strict(),
   z
     .object({
       type: z.literal('naval-configure'),
