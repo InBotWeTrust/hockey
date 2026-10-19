@@ -24,8 +24,8 @@ it('moves a character and only persists on Save', async () => {
   fireEvent.click(screen.getByRole('button', { name: 'Сохранить' }));
   await screen.findByText('Расстановка сохранена.');
   const sent = vi.mocked(saveAdminBarLayout).mock.calls[0]![0];
-  expect(sent.layout.slots[2]!.occupantId).toBe(null);
-  expect(sent.layout.slots[5]!.occupantId).toBe('maria');
+  expect(sent.layout.slots.find(slot=>slot.id==='bar-3')!.occupantId).toBe(null);
+  expect(sent.layout.slots.find(slot=>slot.id==='bar-6')!.occupantId).toBe('maria');
 });
 it('preserves draft on conflict and prevents repeated saves', async () => {
   let reject: (e: Error) => void = () => {};
@@ -55,7 +55,8 @@ it('reorders slots and keeps the default attached to its ID', async () => {
   await waitFor(() => expect(saveAdminBarLayout).toHaveBeenCalled());
   const saved = vi.mocked(saveAdminBarLayout).mock.calls[0]![0].layout;
   expect(saved.defaultSlotId).toBe('bar-8');
-  expect(saved.slots[6]!.id).toBe('bar-8');
+  const originalIndex=createDefaultBarLayout().slots.findIndex(slot=>slot.id===saved.defaultSlotId);
+  expect(saved.slots.findIndex(slot=>slot.id===saved.defaultSlotId)).toBe(originalIndex-1);
 });
 
 it('ignores older reads arriving after a newer StrictMode read', async () => {
