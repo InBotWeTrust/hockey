@@ -4,7 +4,7 @@ export function cityTimeOfDay(date: Date): CityTimeOfDay {
  const hour = date.getHours();
  if (hour >= 7 && hour < 10) return 'morning';
  if (hour >= 10 && hour < 18) return 'day';
- return hour >= 18 && hour < 22 ? 'sunset' : 'night';
+ return hour >= 18 && (hour < 19 || (hour === 19 && date.getMinutes() < 30)) ? 'sunset' : 'night';
 }
 const images = {
  morning: ['/maps/city-morning-4096-6c51c36a5e7c.webp', '/maps/city-morning-6144-827e19348fd3.webp'],
