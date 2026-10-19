@@ -31,7 +31,8 @@ it('freezes street lighting through the result across a day phase boundary', asy
     await act(async () => {});
     expect(document.querySelector('.bar-oleg-fight')).toHaveStyle('--bar-fight-street: url("/bar/city-v3/street-sunset-v3.webp")');
     vi.mocked(fetchOlegFight).mockResolvedValue({...snapshot('one'), outcome: 'win'});
-    await act(async () => {await vi.advanceTimersByTimeAsync(2000);});
+    await act(async () => {await vi.advanceTimersByTimeAsync(250);});
+    await act(async () => {await vi.advanceTimersByTimeAsync(1750);});
     expect(screen.getByRole('img', {name: 'Олег сидит у стены бара после драки'})).toHaveAttribute('src', '/bar/city-v3/player-win-sunset-v3.webp');
   } finally {view.unmount(); vi.useRealTimers();}
 });
@@ -89,4 +90,18 @@ it('shows loss result before acknowledging it and keeps it visible when acknowle
  await screen.findByRole('alert');expect(done).not.toHaveBeenCalled();
  fireEvent.click(screen.getByRole('button',{name:'Понятно'}));
  await waitFor(()=>expect(done).toHaveBeenCalledOnce());
+});
+
+it('keeps the live scene briefly for the final contact before showing the result', async()=>{
+ vi.useFakeTimers();
+ const view=render(<OlegFightPanel id="one" onDone={()=>{}}/>);
+ try{
+  await act(async()=>{});
+  vi.mocked(fetchOlegFight).mockResolvedValue({...snapshot('one'),outcome:'win'});
+  await act(async()=>{await vi.advanceTimersByTimeAsync(250);});
+  expect(screen.getByText('Attack fixture')).toBeInTheDocument();
+  expect(screen.queryByRole('dialog',{name:'Результат драки'})).not.toBeInTheDocument();
+  await act(async()=>{await vi.advanceTimersByTimeAsync(650);});
+  expect(screen.getByRole('dialog',{name:'Результат драки'})).toBeInTheDocument();
+ }finally{view.unmount();vi.useRealTimers();}
 });

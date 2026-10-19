@@ -1,3 +1,4 @@
+import { FightHitstop } from './fightHitstop.js';
 import { FightMovementPresentation } from './fightMovementPresentation.js';
 import { FightReserve } from './FightReserve.js';
 import { useEffect,useRef,useState } from 'react';
@@ -17,6 +18,8 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
  const app=useRef<Application|null>(null),fighters=useRef<Fighter[]>([]);
  const flashes=useRef(new Map<number,HTMLSpanElement>());
  const timeline=useRef(new FightTimeline(state));timeline.current.observe(state,nowMs);
+ const hitstop=useRef(new FightHitstop(state));
+ if(props.skin==='bar')hitstop.current.observe(state,nowMs);
  const movement=useRef(new FightMovementPresentation());
  const held=useRef<FightHeldInput>(neutralFightInput());const predictedReady=useRef(0);
  const clock=useRef({now:nowMs,performance:performance.now()});clock.current={now:nowMs,performance:performance.now()};
@@ -40,7 +43,8 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
  };
  const layout=()=>{
   const a=app.current;if(!a)return;
-  const p=latest.current;const time=clock.current.now+Math.max(0,performance.now()-clock.current.performance);
+  const p=latest.current;const liveTime=clock.current.now+Math.max(0,performance.now()-clock.current.performance);
+  const time=p.skin==='bar'?hitstop.current.time(liveTime):liveTime;
   const host=a.canvas.parentElement;if(host&&host.clientWidth>0&&host.clientHeight>0&&(a.screen.width!==host.clientWidth||a.screen.height!==host.clientHeight))a.renderer.resize(host.clientWidth,host.clientHeight);
   const reduced=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
   const scale=Math.min((a.screen.width-16)/580,a.screen.height*.84/512);
@@ -50,7 +54,7 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
    const index=(side===0?p.player:1-p.player) as 0|1;
    const visual=timeline.current.frame(p.state,index,time);
    const posture=getFightPosture(p.state,index,time);
-   if(index===p.player&&time>=Math.max(posture.readyAtMs,predictedReady.current)&&p.state.hp[index]>0&&!visual.reaction&&!visual.pose.includes('attack')){
+   if(time===liveTime&&index===p.player&&time>=Math.max(posture.readyAtMs,predictedReady.current)&&p.state.hp[index]>0&&!visual.reaction&&!visual.pose.includes('attack')){
      visual.pose=held.current.crouch?(held.current.guard&&posture.guardUnits>0?'crouch_block':'crouch'):(held.current.guard&&posture.guardUnits>0?'block_head':'idle');
    }
    const x=a.screen.width*(p.player===0?positions[index]:1-positions[index])+(side===0?-8:8);

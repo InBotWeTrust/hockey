@@ -1,3 +1,4 @@
+import { createOlegRuntime, advanceOlegRuntime } from '../server/src/bar/olegBot';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { FightModal } from './src/components/duel/fight/FightModal';
@@ -10,16 +11,20 @@ import {
   type FightCommand,
   type FightHeldInput,
 } from '@hockey/game-core';
+import './src/bar/oleg-fight.css';
+import { barStreet } from './src/bar/barArtwork';
 import './src/app/global.css';
 import './src/app/design-system.css';
 const qaRules = new URLSearchParams(location.search).has('runtime')
   ? {...DEFAULT_FIGHT_RULES, version: 6, deliveryGraceMs: 0}
   : DEFAULT_FIGHT_RULES;
+const isBar = new URLSearchParams(location.search).has('bar');
 function Scene() {
   const [now, setNow] = useState(Date.now());
-  const [mode, setMode] = useState('idle');
+  const [mode, setMode] = useState(isBar ? 'oleg' : 'idle');
   const [player, setPlayer] = useState<0 | 1>(0);
-  const fight = useRef(createFightState(qaRules, now + 1000));
+  const oleg = useRef(createOlegRuntime(now + 1000, 42));
+  const fight = useRef(isBar ? oleg.current.state : createFightState(qaRules, now + 1000));
   const botAt = useRef(now + 2000);
   const send = (
     command:
@@ -42,6 +47,12 @@ function Scene() {
       seq: fight.current.lastSeq[side] + 1,
       effectiveAtMs: time,
     } as FightCommand;
+    if (mode === 'oleg') {
+      oleg.current = advanceOlegRuntime(oleg.current, time, [input]);
+      fight.current = oleg.current.state;
+      setNow(time);
+      return fight.current.lastSeq[side] >= input.seq;
+    }
     const next = advanceFight(
       fight.current,
       [input],
@@ -54,6 +65,12 @@ function Scene() {
   useEffect(() => {
     const timer = setInterval(() => {
       const time = Date.now();
+      if (mode === 'oleg') {
+        oleg.current = advanceOlegRuntime(oleg.current, time);
+        fight.current = oleg.current.state;
+        setNow(time);
+        return;
+      }
       if (
         mode !== 'idle' &&
         time >= botAt.current &&
@@ -82,7 +99,8 @@ function Scene() {
   }, [mode, player]);
   const restart = () => {
     const time = Date.now();
-    const next = createFightState(qaRules, time + 1000);
+    oleg.current = createOlegRuntime(time + 1000, (Math.random() * 0xffffffff) >>> 0);
+    const next = mode === 'oleg' ? oleg.current.state : createFightState(qaRules, time + 1000);
     fight.current = next;
     botAt.current = time + 2000;
     setNow(time);
@@ -92,10 +110,12 @@ function Scene() {
   return (
     <div className="duel-fight-screen">
       <FightModal>
+        <div className={new URLSearchParams(location.search).has('bar') ? 'bar-oleg-fight' : undefined} style={{'--bar-fight-street': `url("${barStreet('street','day')}")`} as React.CSSProperties}>
         <FightView
+          skin={new URLSearchParams(location.search).has('bar') ? 'bar' : undefined}
           key={reset}
           currentPlayer={{ name: 'Ты', avatarUrl: '/sprites/advanced-training-coach-avatar.webp' }}
-          opponent={{ name: 'Соперник', avatarUrl: null }}
+          opponent={{ name: new URLSearchParams(location.search).has('bar') ? 'Олег' : 'Соперник', avatarUrl: null }}
           state={fight.current}
           player={player}
           nowMs={now}
@@ -104,6 +124,7 @@ function Scene() {
           onAttack={() => {const id=crypto.randomUUID();return send({kind:'attack',zone:'head',actionId:id})?id:false;}}
           onMove={(direction) => send({ kind: 'move', direction })}
         />
+        </div>
         {fight.current.status === 'resolved' && now < (fight.current.endedAtMs ?? now) + 2700 && (
           <FightResultModal won={fight.current.winner === player} />
         )}
@@ -118,7 +139,7 @@ function Scene() {
           }}
         >
           <button onClick={restart}>Новый бой</button>
-          <button
+          <button disabled={mode === 'oleg'}
             onClick={() => {
               restart();
               fight.current.hp[player === 0 ? 1 : 0] = 1;
@@ -131,17 +152,24 @@ function Scene() {
             aria-label="Действие соперника"
             value={mode}
             onChange={(e) => {
-              setMode(e.target.value);
+              const nextMode = e.target.value;
+              setMode(nextMode);
+              setPlayer(0);
+              const time = Date.now();
+              oleg.current = createOlegRuntime(time + 1000, 42);
+              fight.current = nextMode === 'oleg' ? oleg.current.state : createFightState(qaRules, time + 1000);
+              setReset(n => n + 1);
               botAt.current = Date.now() + 500;
             }}
           >
+            {isBar && <option value="oleg">Олег: настоящий ИИ</option>}
             <option value="idle">Соперник ждёт</option>
             <option value="attack_head">Бьёт в голову</option>
             <option value="attack_body">Бьёт в корпус</option>
             <option value="block_head">Блок головы</option>
             <option value="block_body">Блок корпуса</option>
           </select>
-          <button
+          <button disabled={mode === 'oleg'}
             onClick={() => {
               setPlayer((p) => (p === 0 ? 1 : 0));
               restart();

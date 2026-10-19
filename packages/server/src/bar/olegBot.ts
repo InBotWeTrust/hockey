@@ -9,6 +9,8 @@ import {
 } from '@hockey/game-core';
 export interface OlegFightRuntime {
   state: FightState;
+  behaviorVersion?: 2;
+  guardUntil?: number;
   random: number;
   nextDecisionAt: number;
   nextAttackAt?: number;
@@ -19,9 +21,10 @@ export function createOlegRuntime(at: number, seed: number): OlegFightRuntime {
       { ...DEFAULT_FIGHT_RULES, initialHpByPlayer: [5, 10], guardUnitsByPlayer: [3, 5] },
       at,
     ),
+    behaviorVersion: 2,
     random: seed >>> 0 || 1,
     nextDecisionAt: at + 300,
-    nextAttackAt: at + 1800,
+    nextAttackAt: at + 900,
   };
 }
 export function advanceOlegRuntime(
@@ -62,6 +65,35 @@ export function advanceOlegRuntime(
     }
     const posture = getFightPosture(runtime.state, 1, at - 1);
     const positions = fightPositionsAt(runtime.state, at - 1);
+    if (runtime.behaviorVersion === 2) {
+      // Observe an older visible posture, never the command arriving at this instant.
+      const opponent = getFightPosture(runtime.state, 0, at - 180);
+      const distance = positions[1] - positions[0];
+      const close = distance <= 0.4;
+      if (at >= posture.readyAtMs) {
+        const attack = close && at >= runtime.nextAttackAt!;
+        if (!attack && close && at >= (runtime.guardUntil ?? 0) && random() < 0.35) {
+          runtime.guardUntil = at + 300 + Math.floor(random() * 201);
+        }
+        const recentAttack = [...runtime.state.actions].reverse().find(action =>
+          action.player === 0 && action.effectiveAtMs <= at - 180 && action.effectiveAtMs > at - 900);
+        const duck = close && recentAttack?.zone === 'head' && posture.guardUnits <= 2;
+        const crouch = close && (opponent.crouch || duck);
+        const guard = !attack && posture.guardUnits > 0 && at < (runtime.guardUntil ?? 0);
+        const base = {player: 1 as const, phaseId: runtime.state.phaseId,
+          seq: runtime.state.lastSeq[1] + 1, effectiveAtMs: at};
+        const inputs: FightCommand[] = [{...base, kind: 'input',
+          input: {direction: close ? 0 : 1, crouch, guard}}];
+        if (attack) {
+          inputs.push({...base, seq: base.seq + 1, kind: 'attack', zone: crouch ? 'body' : 'head'});
+          runtime.nextAttackAt = at + 650 + Math.floor(random() * 351);
+          runtime.guardUntil = 0;
+        }
+        runtime.state = advanceFight(runtime.state, inputs, at).state;
+      }
+      runtime.nextDecisionAt = at + 150;
+      continue;
+    }
     const choose = random();
     let command: FightCommand;
     const base = {
