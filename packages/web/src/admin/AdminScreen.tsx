@@ -491,7 +491,7 @@ function inventoryItemKindLabel(kind: AdminInventoryItemKind): string {
 }
 
 function msToMinutes(value: number): number {
-  return Math.round(value / 60_000);
+  return value / 60_000;
 }
 
 function minutesToMs(value: string): number {
@@ -8252,6 +8252,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="1"
+              step="any"
               value={periodMinutes}
               onChange={(event) => setPeriodMinutes(event.target.value)}
             />
@@ -8260,6 +8261,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="0"
+              step="any"
               value={breakMinutes}
               onChange={(event) => setBreakMinutes(event.target.value)}
             />
@@ -8268,6 +8270,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="1"
+              step="any"
               value={challengeMinutes}
               onChange={(event) => setChallengeMinutes(event.target.value)}
             />
@@ -8276,6 +8279,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="1"
+              step="any"
               value={readyMinutes}
               onChange={(event) => setReadyMinutes(event.target.value)}
             />

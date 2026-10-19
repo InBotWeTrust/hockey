@@ -1912,7 +1912,7 @@ describe('AdminScreen', () => {
       endsAt: '2100-01-01T00:00:00.000Z',
       totalPeriods: 3,
       shotsPerPeriod: 30,
-      periodDurationMs: 300_000,
+      periodDurationMs: 150_000,
       breakDurationMs: 120_000,
       goalieId: 'rookie',
       periodSpeedPresets: [],
@@ -1940,7 +1940,7 @@ describe('AdminScreen', () => {
       updatedAt: '2026-05-03T08:00:00.000Z',
     };
 
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.includes('/admin/summary')) {
         return new Response(JSON.stringify(makeAdminSummary()), {
@@ -1978,6 +1978,7 @@ describe('AdminScreen', () => {
         );
       }
       if (url.includes('/admin/duel-templates/duel-template-1')) {
+        expect(JSON.parse(String(init?.body)).periodDurationMs).toBe(150_000);
         patchCount += 1;
         return patchResponse;
       }
@@ -1997,6 +1998,7 @@ describe('AdminScreen', () => {
     selectAdminSection('Дуэли');
     fireEvent.click(await screen.findByRole('button', { name: 'Редактировать Классика' }));
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(dialog).getByLabelText('Минут период')).toHaveValue(2.5);
     const saveButton = within(dialog).getByRole('button', { name: 'Сохранить' });
     saveButton.click();
     saveButton.click();
