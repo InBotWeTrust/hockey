@@ -28,6 +28,8 @@ export function OlegFightPanel({
     [error, setError] = useState(''),
     [now, setNow] = useState(Date.now()),
     [finishing, setFinishing] = useState(false);
+  const [resultReady, setResultReady] = useState(false);
+  const resultPending = useRef(false);
   const current = useRef<OlegSnapshot | null>(null),
     offset = useRef(0),
     busy = useRef<number | null>(null),
@@ -47,6 +49,11 @@ export function OlegFightPanel({
       next.serverNow < (current.current?.serverNow ?? 0)
     )
       return;
+    if (next.outcome && !current.current?.outcome) {
+      // Reopened results need no replay; a live finish keeps its contact and fall visible.
+      resultPending.current = current.current !== null;
+      setResultReady(!resultPending.current);
+    }
     current.current = next;
     offset.current = next.serverNow - Date.now();
     setData(next);
@@ -59,6 +66,8 @@ export function OlegFightPanel({
     queue.current = [];
     busy.current = null;
     setData(null);
+    setResultReady(false);
+    resultPending.current = false;
     let pending = false;
     const read = async () => {
       if (pending) return;
@@ -81,6 +90,11 @@ export function OlegFightPanel({
       clearInterval(clock);
     };
   }, [id]);
+  useEffect(() => {
+    if (!data?.outcome || !resultPending.current) return;
+    const timer = setTimeout(() => { resultPending.current = false; setResultReady(true); }, 650);
+    return () => clearTimeout(timer);
+  }, [id, data?.outcome]);
   const drain = async () => {
     const version = generation.current;
     const valid = () => alive.current && version === generation.current;
@@ -150,7 +164,7 @@ export function OlegFightPanel({
       : data.outcome === 'loss'
         ? 'Олег победил'
         : 'Драка закончилась без победителя';
-  if (data.outcome)
+  if (data.outcome && resultReady)
     return (
       <AccessibleModal
         title={resultTitle}
@@ -198,6 +212,7 @@ export function OlegFightPanel({
     <FightModal>
     <div className="bar-oleg-fight" style={{'--bar-fight-street': `url("${barStreet('street', lighting.current.phase)}")`} as CSSProperties}>
       <FightView
+        key={id}
         state={data.state}
         player={0}
         nowMs={now}

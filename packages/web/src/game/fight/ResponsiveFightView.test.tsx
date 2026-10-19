@@ -13,3 +13,14 @@ it('v3 has left directions and two right actions, held controls release independ
  fireEvent(window,new Event('blur'));expect(input).toHaveBeenLastCalledWith({direction:0,crouch:false,guard:false});
  expect(screen.getAllByRole('button')).toHaveLength(5);expect(block.closest('.fight-control-right')).not.toBeNull();expect(down.closest('.fight-control-left')).not.toBeNull();v.unmount();
 });
+
+it('bar contact emphasis does not disable held input or attack submission',()=>{
+ const state=createFightState({...DEFAULT_FIGHT_RULES,version:6},0);
+ const input=vi.fn(()=>true),attack=vi.fn(()=> 'bar-hit');
+ const view=render(<FightView skin="bar" state={state} player={0} nowMs={100} onAction={()=>{}} onInput={input} onAttack={attack}/>);
+ fireEvent.keyDown(screen.getByRole('button',{name:'Присесть'}),{key:'Enter'});
+ fireEvent.keyDown(screen.getByRole('button',{name:'Блок'}),{key:'Enter'});
+ expect(input).toHaveBeenLastCalledWith({direction:0,crouch:true,guard:true});
+ fireEvent.click(screen.getByRole('button',{name:'Удар'}));expect(attack).toHaveBeenCalledOnce();
+ view.unmount();
+});

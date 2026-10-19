@@ -10,6 +10,8 @@ import {
   type FightCommand,
   type FightHeldInput,
 } from '@hockey/game-core';
+import './src/bar/oleg-fight.css';
+import { barStreet } from './src/bar/barArtwork';
 import './src/app/global.css';
 import './src/app/design-system.css';
 const qaRules = new URLSearchParams(location.search).has('runtime')
@@ -92,10 +94,12 @@ function Scene() {
   return (
     <div className="duel-fight-screen">
       <FightModal>
+        <div className={new URLSearchParams(location.search).has('bar') ? 'bar-oleg-fight' : undefined} style={{'--bar-fight-street': `url("${barStreet('street','day')}")`} as React.CSSProperties}>
         <FightView
+          skin={new URLSearchParams(location.search).has('bar') ? 'bar' : undefined}
           key={reset}
           currentPlayer={{ name: 'Ты', avatarUrl: '/sprites/advanced-training-coach-avatar.webp' }}
-          opponent={{ name: 'Соперник', avatarUrl: null }}
+          opponent={{ name: new URLSearchParams(location.search).has('bar') ? 'Олег' : 'Соперник', avatarUrl: null }}
           state={fight.current}
           player={player}
           nowMs={now}
@@ -104,6 +108,7 @@ function Scene() {
           onAttack={() => {const id=crypto.randomUUID();return send({kind:'attack',zone:'head',actionId:id})?id:false;}}
           onMove={(direction) => send({ kind: 'move', direction })}
         />
+        </div>
         {fight.current.status === 'resolved' && now < (fight.current.endedAtMs ?? now) + 2700 && (
           <FightResultModal won={fight.current.winner === player} />
         )}
