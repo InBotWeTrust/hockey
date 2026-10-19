@@ -4381,3 +4381,18 @@
   color: #18212e;
   text-shadow: none;
 }
+/* Bar conversation keeps white chrome over the panorama in light mode. */
+:root[data-theme="light"] .app-shell .bar-conversation .bar-conversation__bubble {
+  background: var(--surface-card-bg);
+  color: #18212e;
+  border: 1px solid var(--surface-border);
+  box-shadow: var(--surface-card-shadow);
+}
+:root[data-theme="light"] .app-shell .bar-conversation .modal-title,
+:root[data-theme="light"] .app-shell .bar-conversation__identity,
+:root[data-theme="light"] .app-shell .bar-conversation .modal-header .icon-btn,
+:root[data-theme="light"] .app-shell .bar-conversation .modal-header .icon-btn svg,
+:root[data-theme="light"] .app-shell .bar-conversation__thinking,
+:root[data-theme="light"] .app-shell .bar-conversation__log > [role="status"] {
+  color: #fff;
+}
