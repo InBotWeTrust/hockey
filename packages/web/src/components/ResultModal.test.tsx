@@ -3,6 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { ResultModal } from './ResultModal.js';
 
 describe('ResultModal standard result', () => {
+  it('preserves the original shot feedback material independently of application theme', () => {
+    render(<ResultModal result={{ type: 'miss', reason: 'wide' }} durationMs={1000} />);
+    expect(screen.getByRole('status')).toHaveStyle({ background: 'rgba(172, 184, 198, 0.74)' });
+    expect(screen.getByText('МИМО')).toHaveStyle({ color: '#111827', textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)' });
+  });
   it('can center the same result material inside a spectator rink', () => {
     render(<ResultModal result={{ type: 'miss', reason: 'wide' }} durationMs={1000} contained />);
     expect(screen.getByRole('status')).toHaveStyle({

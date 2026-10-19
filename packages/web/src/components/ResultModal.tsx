@@ -79,7 +79,7 @@ export function ResultModal({
           boxSizing: 'border-box',
           padding: contained ? '7px 12px' : 'clamp(14px, 2vmin, 18px) clamp(24px, 5vmin, 36px)',
           borderRadius: contained ? 12 : 24,
-          background: 'var(--liquid-modal-bg)',
+          background: 'rgba(172, 184, 198, 0.74)',
           border: '1.5px solid rgba(255, 255, 255, 0.86)',
           backdropFilter: 'blur(18px) saturate(115%)',
           WebkitBackdropFilter: 'blur(18px) saturate(115%)',
@@ -106,8 +106,8 @@ export function ResultModal({
                 : (theme.titleSize ?? 'clamp(38px, 6vmin, 58px)'),
               lineHeight: 1,
               letterSpacing: theme.letterSpacing ?? '0.06em',
-              color: 'var(--liquid-ink)',
-              textShadow: 'var(--liquid-text-shadow)',
+              color: '#111827',
+              textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
             }}
           >
             {title ?? theme.title}

@@ -525,3 +525,10 @@ svg.lucide { stroke-width: 1.5; }
   border: 1px solid var(--liquid-border);
   box-sizing: border-box;
 }
+
+/* Keep empty selection indicators distinct from the filled, checked state. */
+:root[data-theme="dark"] .duel-equipment-option__check:not(.duel-equipment-option__check--selected) {
+  background: transparent;
+  border: 1px solid var(--liquid-border);
+  box-shadow: none;
+}

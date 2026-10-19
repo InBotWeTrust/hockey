@@ -249,3 +249,24 @@ it('rejects a delayed resume from an older revision without releasing the newer 
  const resumed=await actGame(pool,'a','match',{requestId:'resume',revision:newer.runtime.revision,action:{type:'rules-pause',paused:false}});
  expect(resumed.rulesPaused).toBe(false);
 });
+
+it('gives new battleship games four minutes to place ships', async () => {
+  vi.useFakeTimers();
+  vi.setSystemTime(1000);
+  let stored: { ready: { expiresAt: number; startsAt: number | null; players: number[] } } | undefined;
+  const query = vi.fn(async (sql: string, args: unknown[] = []) => {
+    if (sql.startsWith('select * from bar_visitor_accounts')) return { rows: [{
+      purchased_at: null, expires_at: null, paid_messages: 0, messages_used: 0,
+      games_used: {}, day_started_at: new Date(), reset_at: new Date(Date.now() + 86400000),
+    }] };
+    if (sql.startsWith('select revision,settings from bar_visitor_settings'))
+      return { rows: [{ revision: 1, settings: defaultVisitorSettings }] };
+    if (sql.startsWith('insert into bar_game_matches')) stored = JSON.parse(args[5] as string);
+    return { rows: [] };
+  });
+  const pool = { connect: async () => ({ query, release: vi.fn() }) } as unknown as Pool;
+  await startComputer(pool, 'a', 'timofey', 'four-minute-placement');
+  expect(stored?.ready.expiresAt).toBe(241000);
+  expect(stored?.ready.startsAt).toBeNull();
+  expect(stored?.ready.players).toEqual([1]);
+});

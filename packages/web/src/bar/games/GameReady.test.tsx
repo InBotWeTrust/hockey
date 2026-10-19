@@ -36,13 +36,13 @@ it('keeps naval placement instructions in the shared notice and readiness under 
  render(<GameTable view={snapshot('battleship',[1])} now={0} disabled={false} send={()=>{}}/>);
  expect(screen.getByRole('status')).toHaveTextContent('Выбери корабль сверху и расставь весь флот');expect(screen.queryByText('Соперник готов')).not.toBeInTheDocument();expect(screen.getByText('Готов',{selector:'.bar-game-ready-label'})).toBeInTheDocument();expect(screen.queryByRole('button',{name:'Случайно'})).not.toBeInTheDocument();
 });
-it('shows a persistent ninety-second naval setup clock in the menu',()=>{
- const v=snapshot('battleship',[1]);v.ready!.expiresAt=90000;
+it('shows a persistent four-minute naval setup clock in the menu',()=>{
+ const v=snapshot('battleship',[1]);v.ready!.expiresAt=240000;
  const {rerender}=render(<GameTable view={v} now={0} disabled={false} send={()=>{}}/>);
- expect(screen.getByRole('timer')).toHaveTextContent('1:30');
+ expect(screen.getByRole('timer')).toHaveTextContent('4:00');
  expect(screen.getByRole('timer')).toHaveTextContent('Расстановка');
  rerender(<GameTable view={v} now={17000} disabled={false} send={()=>{}}/>);
- expect(screen.getByRole('timer')).toHaveTextContent('1:13');
+ expect(screen.getByRole('timer')).toHaveTextContent('3:43');
 });
 it.each(['darts','checkers','billiards','ochko','armwrestling','battleship'] as const)('shows confirmed readiness under both names in %s',kind=>{
  const {container,rerender}=render(<GameTable view={snapshot(kind,[0,1])} now={0} disabled={false} send={()=>{}}/>);

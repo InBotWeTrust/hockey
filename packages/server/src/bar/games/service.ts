@@ -143,7 +143,7 @@ async function create(
       starter,
       ready: character && kind!=='battleship'
         ? null
-        : { players: character?[1]:[], expiresAt: now + (kind === 'battleship' ? 90000 : 60000), startsAt: null, cancelled: false },
+        : { players: character?[1]:[], expiresAt: now + (kind === 'battleship' ? 240000 : 60000), startsAt: null, cancelled: false },
     },
     ended_at: null,
   };
