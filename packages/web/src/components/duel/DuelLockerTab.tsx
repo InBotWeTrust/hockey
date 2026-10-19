@@ -170,6 +170,14 @@ export function DuelLockerTab({
     recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
     '/inventory/recovery-30.webp';
 
+  if (inventoryQuery.isPending) return <p role="status">Загружаем инвентарь…</p>;
+  if (inventoryQuery.data === undefined) return (
+    <section role="alert">
+      <p>Не удалось загрузить инвентарь.</p>
+      <button type="button" className="btn btn--cta" onClick={() => void inventoryQuery.refetch()}>Повторить</button>
+    </section>
+  );
+
   return (
     <>
       <section className="duel-section">
