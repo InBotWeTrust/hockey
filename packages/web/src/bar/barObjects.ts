@@ -13,7 +13,7 @@ export const barObjects:readonly BarObject[]=[
  {id:'maria-cards',character:'maria',label:'Играть в карты с Марией',action:'cards',left:70,top:34,width:7.5,height:8,glow:{x:72.4,y:37.5}},
  {id:'checkerboard',character:'arsenich',label:'Играть в шашки с Арсеничем',action:'checkers',left:62.2,top:30,width:4.2,height:17,glow:{x:64.3,y:38}},
  {id:'battleship',character:'timofey',label:'Играть в морской бой с Тимофеем',action:'battleship',left:51.5,top:34,width:6,height:8,glow:{x:55,y:37.5}},
- {id:'billiards-door',character:'veronika',label:'Играть в бильярд с Вероникой',action:'billiards',left:32.1,top:18.3,width:5,height:14.2,glow:{x:33.1,y:29}},
+ {id:'billiards-door',character:'veronika',label:'Играть в бильярд с Вероникой',action:'billiards',left:32.1,top:11,width:5,height:23,glow:{x:34.3,y:15.5}},
  {id:'terminal',character:'online',label:'Терминал',left:44,top:35,width:2,height:14,glow:{x:45,y:42}},
  {id:'television',character:'broadcasts',label:'Телевизор',left:14,top:35,width:2,height:14,glow:{x:15,y:43}},
  {id:'club-cards',character:'igor',label:'Клубные карты',left:27.4,top:35.6,width:2.2,height:6.6,glow:{x:28.5,y:38.9}},
