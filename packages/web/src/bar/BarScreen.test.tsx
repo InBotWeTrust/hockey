@@ -55,6 +55,26 @@ const match: BarMatch = {
   ],
 };
 describe('bar board', () => {
+  it('uses bottom circle navigation and exits to the bar without changing its selected slot',()=>{
+    const previousSlot=sessionStorage.getItem('bar-active-slot');
+    sessionStorage.setItem('bar-active-slot','bar-10');
+    const view=render(<MemoryRouter initialEntries={['/bar/broadcasts']}><Routes>
+      <Route path="/bar/broadcasts" element={<BarBroadcastsScreen/>}/>
+      <Route path="/bar" element={<h1>Бар у телевизора</h1>}/>
+    </Routes></MemoryRouter>);
+    const dock=screen.getByRole('navigation',{name:'Разделы трансляций'});
+    expect(dock).toContainElement(screen.getByRole('button',{name:'Выход в бар'}));
+    expect(dock).toContainElement(screen.getByRole('tab',{name:'Онлайн'}));
+    expect(dock).toContainElement(screen.getByRole('tab',{name:'Предстоящие'}));
+    expect(screen.queryByText('Выбери события')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.bar-filters')).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Выход в бар'}));
+    expect(screen.getByRole('heading',{name:'Бар у телевизора'})).toBeInTheDocument();
+    expect(sessionStorage.getItem('bar-active-slot')).toBe('bar-10');
+    expect(disconnect).toHaveBeenCalled();
+    if(previousSlot===null)sessionStorage.removeItem('bar-active-slot');
+    else sessionStorage.setItem('bar-active-slot',previousSlot);
+  });
   it('filters online matches and targeted invitations, and replaces expired cards', () => {
     render(
       <MemoryRouter>

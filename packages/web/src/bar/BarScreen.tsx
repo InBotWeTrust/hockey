@@ -2,8 +2,8 @@ import { BarPanorama } from './BarPanorama.js';
 import './cards/durak.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, CalendarClock, LogOut, Radio } from 'lucide-react';
+import '../components/navigation-geometry.css';
 import { useAuthStore } from '../auth/authStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { BarSocket, type BarSocketStatus } from './BarSocket.js';
@@ -56,24 +56,11 @@ export function BarBroadcastsScreen(): JSX.Element {
   const { data, status } = useBarSnapshot(`page=${page}`);
   const board = data && 'online' in data ? data : null;
   return (
-    <main className="screen bar-screen">
-      <BarHeader title="Трансляции" onBack={() => navigate('/bar')} />
+    <main className="screen bar-screen bar-screen--broadcasts">
+      <header className="bar-header bonus-games-catalog__header">
+        <h1 className="bonus-games-catalog__title screen-title-on-arena">Трансляции</h1>
+      </header>
       <section className="bar-content">
-        <h2 className="section-label bar-section-label">Выбери события</h2>
-        <div className="bar-filters">
-          <SegmentedTabs
-            items={[
-              { id: 'online', label: 'Онлайн' },
-              { id: 'upcoming', label: 'Предстоящие' },
-            ]}
-            activeTab={filter}
-            ariaLabel="Матчи в баре"
-            onChange={(next) => {
-              setFilter(next);
-              setPage(0);
-            }}
-          />
-        </div>
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
             {statusText[status]}
@@ -109,6 +96,22 @@ export function BarBroadcastsScreen(): JSX.Element {
           </>
         )}
       </section>
+      <nav className="bar-broadcast-dock" aria-label="Разделы трансляций">
+        <button type="button" className="bar-broadcast-dock__item" aria-label="Выход в бар" onClick={()=>navigate('/bar')}>
+          <span className="bar-broadcast-dock__circle"><LogOut size={22} aria-hidden="true"/></span>
+          <span>Выход</span>
+        </button>
+        <div className="bar-broadcast-dock__tabs" role="tablist" aria-label="Матчи в баре">
+          {([
+            {id:'online',label:'Онлайн',Icon:Radio},
+            {id:'upcoming',label:'Предстоящие',Icon:CalendarClock},
+          ] as const).map(({id,label,Icon})=><button key={id} type="button" role="tab" aria-selected={filter===id}
+            className="bar-broadcast-dock__item" onClick={()=>{setFilter(id);setPage(0);}}>
+            <span className="bar-broadcast-dock__circle"><Icon size={22} aria-hidden="true"/></span>
+            <span>{label}</span>
+          </button>)}
+        </div>
+      </nav>
     </main>
   );
 }
