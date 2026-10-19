@@ -1,5 +1,5 @@
 import {BONUS_RHYTHM_SETTLEMENT_GRACE_MS} from './rhythm.js';
-import { projectRhythm } from '@hockey/game-core';
+import { countRhythmBoardContacts, projectRhythm } from '@hockey/game-core';
 import { bonusLocationCompletedSql } from './challengeLevels.js';
 import { getBonusRecordResult, settleBonusRecord } from './records.js';
 import { challengeLevelPreview, buildChallengeLevelEnvironment, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
@@ -1454,9 +1454,10 @@ export async function submitBonusShot(
             ).type;
           const rhythmShots = isRhythm ? [...(attempt.rhythm_shots ?? []), {
             travel: (shotInput.shooterMotionTime ?? input.input.shooterTapTime) * rule.shooterFrequency * 2 / 1000,
+            boardContacts: countRhythmBoardContacts(shotInput.shooterMotionTime ?? input.input.shooterTapTime,rule.shooterFrequency,getSessionPhaseOffsets(attempt.attempt_seed).shooter),
             goal: serverResult === 'goal',
           }] : [];
-          const rhythm = qualificationRules.type === 'rhythm_in_time' ? projectRhythm({shots:rhythmShots,travel:rhythmShots.at(-1)!.travel,minimumSeries:qualificationRules.minimumSeries,breakOnMiss:qualificationRules.breakOnMiss??false}) : null;
+          const rhythm = qualificationRules.type === 'rhythm_in_time' ? projectRhythm({shots:rhythmShots,travel:rhythmShots.at(-1)!.travel,minimumSeries:qualificationRules.minimumSeries,breakOnMiss:qualificationRules.breakOnMiss??false,...(qualificationRules.boardContactLimit ? {boardContactLimit:qualificationRules.boardContactLimit,currentBoardContacts:rhythmShots.at(-1)!.boardContacts} : {})}) : null;
           const awardedPoints = rhythm ? rhythm.score - Number(attempt.total_points) : classification?.awardedPoints ?? 0;
           const scoreDetails = classification !== null && qualificationRules.type === 'points_in_time'
             ? toMarksmanshipScoreDetails(classification, qualificationRules.scoring)

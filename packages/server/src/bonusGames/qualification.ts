@@ -7,7 +7,7 @@ import { z } from 'zod';
 const requiredGoalStreakSchema = z.number().int().min(1).max(1_000).optional();
 
 const qualificationRulesSchema = z.discriminatedUnion('type', [
-  z.object({type:z.literal('rhythm_in_time'),breakOnMiss:z.boolean().optional(),targetPoints:z.number().int().min(1).max(1000000),minimumSeries:z.number().int().min(2).max(1000),activeTimeMs:z.number().int().min(1000).max(86400000)}).strict(),
+  z.object({type:z.literal('rhythm_in_time'),boardContactLimit:z.literal(3).optional(),breakOnMiss:z.boolean().optional(),targetPoints:z.number().int().min(1).max(1000000),minimumSeries:z.number().int().min(2).max(1000),activeTimeMs:z.number().int().min(1000).max(86400000)}).strict(),
   z
     .object({
       type: z.literal('goals_from_shots'),

@@ -1,6 +1,6 @@
 import { getDuelPlayerCondition } from './duelInventory.js';
 import { describe, it, expect } from 'vitest';
-import { projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
+import { countRhythmBoardContacts, projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
 describe('Rhythm goal windows', () => {
   it('accepts the exact boundary and rejects a late goal', () => {
     expect(projectRhythm({ version: 1, shots: [{ travel: 2, goal: true }], travel: 2 }).score).toBe(1);
@@ -147,4 +147,37 @@ it('uses strict consecutive goals for duel version three while preserving older 
  const shots=[...goals,{travel:1.2,goal:false},{travel:1.4,goal:true}];
  expect(projectRhythm({shots,travel:1.4,version:3})).toMatchObject({score:6,currentSeries:1,series:[6]});
  expect(projectRhythm({shots,travel:1.4,version:2})).toMatchObject({score:7,currentSeries:7});
+});
+
+it('credits duel v4 at four consecutive goals and resets exactly at the third contact',()=>{
+ const shots=[0,1,2,3,4].map((boardContacts,i)=>({travel:i*.4,boardContacts,goal:true}));
+ expect(projectRhythm({shots:shots.slice(0,3),travel:.8,currentBoardContacts:2,version:4}).score).toBe(0);
+ expect(projectRhythm({shots:shots.slice(0,4),travel:1.2,currentBoardContacts:3,version:4})).toMatchObject({score:4,currentSeries:4});
+ expect(projectRhythm({shots,travel:1.6,currentBoardContacts:4,version:4}).score).toBe(5);
+ expect(projectRhythm({shots,travel:3.8,currentBoardContacts:6,version:4}).currentSeries).toBe(5);
+ expect(projectRhythm({shots,travel:4,currentBoardContacts:7,version:4})).toMatchObject({score:5,currentSeries:0});
+ expect(projectRhythm({shots:[...shots,{travel:4,boardContacts:7,goal:true}],travel:4,currentBoardContacts:7,version:4})).toMatchObject({score:5,currentSeries:1});
+});
+it('uses actual contact counts for bonus thresholds instead of two travelled widths',()=>{
+ const shots=[{travel:.1,boardContacts:1,goal:true},{travel:2.2,boardContacts:3,goal:true}];
+ expect(projectRhythm({shots,travel:2.2,currentBoardContacts:3,boardContactLimit:3,minimumSeries:2,breakOnMiss:true}).score).toBe(2);
+ expect(projectRhythm({shots,travel:2.3,currentBoardContacts:6,boardContactLimit:3,minimumSeries:2,breakOnMiss:true}).currentSeries).toBe(0);
+});
+
+it('counts phase-aligned contacts once at exact boundaries, excluding the starting position',()=>{
+ expect(countRhythmBoardContacts(0,.5,250)).toBe(0);
+ expect(countRhythmBoardContacts(749.99,.5,250)).toBe(0);
+ expect(countRhythmBoardContacts(750,.5,250)).toBe(1);
+ expect(countRhythmBoardContacts(1750,.5,250)).toBe(2);
+ expect(countRhythmBoardContacts(2750,.5,250)).toBe(3);
+ expect(countRhythmBoardContacts(0,.5,1000)).toBe(0);
+ expect(countRhythmBoardContacts(1000,.5,1000)).toBe(1);
+});
+
+it('does not create contacts while the shooter is stopped during a flight',()=>{
+ const sampler=createRhythmMovementSampler({seed:'board-contact-flight',userId:'player',periodNumber:1,elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:600,baselineShooterSpeed:.75,currentShooterSpeed:.75,loadout:{stick:null,skates:null,nutrition:null}});
+ const pauses=[{tapTime:200,flightMs:2000}];
+ const atLaunch=sampler.boardContactsAt(200,pauses);
+ expect(sampler.boardContactsAt(2100,pauses)).toBe(atLaunch);
+ expect(sampler.boardContactsAt(4000,pauses)).toBeGreaterThan(atLaunch);
 });

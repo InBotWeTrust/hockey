@@ -42,10 +42,10 @@ export function duelScorePairText(
   return [duelScoreText(kind, me), duelScoreText(kind, opponent)].join(kind === 'sniper' ? '\u2009:\u2009' : ':');
 }
 
-export function rhythmGoalDetails(shots: readonly RhythmShot[], version: 1 | 2 | 3, travel?: number): string[] {
+export function rhythmGoalDetails(shots: readonly RhythmShot[], version: 1 | 2 | 3 | 4, travel?: number, boardContacts?:number): string[] {
   const latest = shots.at(-1);
   if (!latest?.goal) return [];
-  const result = projectRhythm({shots, travel:travel ?? latest.travel, version});
+  const result = projectRhythm({shots, travel:travel ?? latest.travel, version,currentBoardContacts:boardContacts??latest.boardContacts??0});
   if (!result.currentSeries) return [];
   return [result.currentSeries >= 2 ? `Серия ${result.currentSeries}` : 'Серия началась'];
 }

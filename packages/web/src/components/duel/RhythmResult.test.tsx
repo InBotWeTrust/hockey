@@ -89,3 +89,19 @@ it('hides strict duel notice on miss and expiry, then starts the next goal from 
  view.rerender(<RhythmShotNotice shots={[...missed,{travel:1.4,goal:true}]} version={3}/>);
  expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
 });
+
+it('keeps duel v4 notice yellow for goals one to three and green from goal four',()=>{
+ const goals=Array.from({length:5},(_,i)=>({travel:i,boardContacts:i,goal:true}));
+ const view=render(<RhythmShotNotice shots={goals.slice(0,1)} version={4}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+ for(let n=1;n<=5;n++){
+  view.rerender(<RhythmShotNotice shots={goals.slice(0,n)} version={4}/>);
+  if(n<4)expect(screen.getByRole('status')).toHaveClass('initial-training-feedback-notice--warning');
+  else expect(screen.getByRole('status')).not.toHaveClass('initial-training-feedback-notice--warning');
+  if(n>1)expect(screen.getByRole('status')).toHaveTextContent(`Серия ${n}`);
+ }
+ view.rerender(<RhythmShotNotice shots={goals} version={4} boardContacts={6}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Серия 5');
+ view.rerender(<RhythmShotNotice shots={goals} version={4} boardContacts={7}/>);
+ expect(screen.queryByRole('status')).toBeNull();
+});

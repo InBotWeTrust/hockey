@@ -104,8 +104,10 @@ export interface AmateurDuelRules {
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duelKind: AmateurDuelKind;
-  rhythmVersion?: 1 | 2 | 3;
+  rhythmVersion?: 1 | 2 | 3 | 4;
   rhythmWindowTraversals?: 2;
+  rhythmBoardContactLimit?:3;
+  rhythmMinimumSeries?:4;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: 4000 | 7000;
@@ -160,7 +162,7 @@ export interface AmateurDuelParticipant {
   rhythm_current_series?: number;
   rhythm_travel?: number;
   rhythm_last_goal_travel?: number;
-  rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; goal:boolean}>;
+  rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; boardContacts?:number; goal:boolean}>;
   format_score?: number;
   sniper_points?: number;
   marathon_penalties?: number;
