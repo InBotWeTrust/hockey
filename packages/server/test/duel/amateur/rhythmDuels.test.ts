@@ -354,6 +354,8 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     for (const timing of [rules.noInventoryTiming.skates, rules.noInventoryTiming.nutrition]) {
       timing.stumbleIntervalMinRolls = 0;
       timing.stumbleIntervalMaxRolls = 0;
+      timing.stumbleIntervalMinMs = 1000000;
+      timing.stumbleIntervalMaxMs = 1000000;
       timing.fatigueGraceMs = 1000000;
     }
     await app.pg.query('update amateur_duel_match set rules_snapshot=$2 where id=$1', [
