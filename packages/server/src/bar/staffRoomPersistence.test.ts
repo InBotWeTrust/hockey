@@ -2,7 +2,8 @@ import {Pool} from 'pg';
 import {randomUUID} from 'node:crypto';
 import {readFileSync} from 'node:fs';
 import {beforeAll,afterAll,describe,it,expect} from 'vitest';
-import {staffRoomEvent} from './staffRoom.js';
+import {staffRoomEvent as runStaffRoomEvent} from './staffRoom.js';
+const staffRoomEvent=(...args:Parameters<typeof runStaffRoomEvent>)=>runStaffRoomEvent(args[0],args[1],args[2],args[3],()=> 'scene');
 const url=process.env.BAR_OLEG_TEST_DATABASE_URL;
 const enabled=!!url&&url.includes('uh_bar_oleg_test_');
 describe.skipIf(!enabled)('staff-room isolated persistence',()=>{

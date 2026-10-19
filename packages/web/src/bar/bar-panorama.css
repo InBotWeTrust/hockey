@@ -657,8 +657,7 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-bottom-chrome .bar-space__actions--terminal {bottom:93px;}
 
 .bar-space .catalog-header-back,
-.bar-screen .catalog-header-back,
-.bar-staff-room .catalog-header-back {
+.bar-screen .catalog-header-back {
   display: none !important;
 }
 

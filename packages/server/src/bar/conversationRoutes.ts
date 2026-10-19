@@ -1,3 +1,4 @@
+import {requireElinaOffice,elinaIntervention,type ElinaOfficeAccess} from './elinaOffice.js';
 import {safeEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { recordPhysicalIncident } from './physicalIncident.js';
 import { SqlConflictStore,createConflictClassifier,nextConflict,type ClassifyConflict,type ConflictEffect } from './conflict.js';
@@ -23,6 +24,7 @@ export const characters = [
   'oleg',
   'timofey',
   'igor',
+  'elina',
 ] as const;
 export type Character = (typeof characters)[number];
 export interface ConversationTurn {
@@ -36,6 +38,7 @@ export interface ConversationTurn {
   event?: 'physical';
   emotion?:CharacterEmotion;
   farewell?: string;
+  officeDay?:string;
 }
 export interface ConversationRecord {
   revision: number;
@@ -54,6 +57,7 @@ export interface ConversationStore {
 }
 export const characterVoices: Record<Character, { name: string; greeting: string; voice: string }> =
   {
+    elina: {name:'Элина',greeting:'Добрый день. Слушаю тебя.',voice:'Владелица бара. Сдержанная, уверенная, требовательная; уважает сотрудников. Обычный разговор без задания и игры.'},
     maria: {
       name: 'Мария',
       greeting: 'Привет! Присаживайся. Сыграем в карты или сначала поболтаем?',
@@ -102,6 +106,7 @@ export type Answer = (
   signal?: AbortSignal,
 ) => Promise<string | GeneratedAnswer>;
 interface Options {
+  elinaOffice?: (user:string)=>Promise<ElinaOfficeAccess>;
   classifyConflict?: ClassifyConflict;
   conflicts?: Pick<SqlConflictStore, 'state'|'phrase'>;
   privacy?: DialoguePrivacy;
@@ -203,6 +208,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
   });
   const snapshot = (character: Character, record: ConversationRecord) => ({
     ...record,
+    ...(character==='elina'?{interventionActive:false}:{}),
     greeting: characterVoices[character].greeting,
   });
   app.post('/bar/conversations/:character/physical-incident', { preHandler: [app.authenticate] }, async request => {
@@ -210,6 +216,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
     const parsed=z.object({eventId:z.string().uuid()}).strict().safeParse(request.body);
     if(!parsed.success)throw new AppError('invalid_incident','Не удалось распознать нажатие.',400);
     const {eventId}=parsed.data;
+    if(character==='elina')throw new AppError('bad_request','В кабинете доступен разговор.',400);
     await recordPhysicalIncident(app.pg,request.user.id,character,eventId);
     return snapshot(character,await store.read(request.user.id,character));
   });
@@ -246,6 +253,8 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
         409,
       );
     try {
+      const office=character==='elina'?await (options.elinaOffice??(user=>requireElinaOffice(app.pg,user)))(user):null;
+      if(office&&parsed.data.conflictAction)throw new AppError('conversation_stale','В кабинете доступен обычный разговор.',409);
       if (parsed.data.conflictAction) {
         if (!conflicts) throw new AppError('conversation_stale', 'Обнови разговор.', 409);
         const current = await conflicts.state(user);
@@ -262,11 +271,12 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       try { context = await memory?.context(user,character,content,reserved.record.turns); }
       catch { app.log.warn({ code: 'bar_memory_context_failed' }, 'Conversation continues without memory'); }
       const signal=AbortSignal.timeout(105000);
-      const assessmentPromise=conflicts&&!immediateDanger(content)?conflictDeadline(checkSignal=>conflicts.state(user).then(async current=>({current,verdict:await classify(character,reserved.record.turns,content,current.intervening,checkSignal)})),signal).catch(()=>{app.log.warn({code:'bar_conflict_check_failed'},'Conversation continues without conflict escalation');return null;}):Promise.resolve(null);
+      const assessmentPromise=conflicts&&!immediateDanger(content)?conflictDeadline(checkSignal=>conflicts.state(user).then(async current=>({current,verdict:await classify(character,reserved.record.turns,content,character==='elina'?false:current.intervening,checkSignal)})),signal).catch(()=>{app.log.warn({code:'bar_conflict_check_failed'},'Conversation continues without conflict escalation');return null;}):Promise.resolve(null);
       const [incoming,assessment]=await Promise.all([immediateDanger(content)?Promise.resolve('crisis' as const):moderate(content,signal),assessmentPromise]);
       if(incoming==='unavailable' && requireModeration) throw new Error('moderation_unavailable');
       let conflict:ConflictEffect|undefined;
-      if(incoming==='allow'&&assessment) {
+      const officeIntervention=office&&incoming==='allow'&&assessment&&['insult','sexual'].includes(assessment.verdict)?elinaIntervention(office.warnings):null;
+      if(incoming==='allow'&&assessment&&!office) {
         const {current,verdict}=assessment;
         conflict={...nextConflict(current,verdict),day:current.day,category:verdict};
         if(conflict.kind==='warning')context={...(context??{summary:'',facts:[],relationship:[],tool:async()=>({unavailable:true})}),boundaryWarning:verdict==='sexual'?'sexual':'insult'};
@@ -275,6 +285,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       let response: string | GeneratedAnswer;
       if(incoming==='crisis') response=crisisReply;
       else if(incoming==='block') response=boundaryReply;
+      else if(officeIntervention) response=officeIntervention.text;
       else if(scripted&&conflicts&&conflict) response=await conflicts.phrase(conflict.kind,conflict.category);
       else {
         const history=memory && !context ? [] : reserved.record.turns.slice(context?.historyStart ?? 0);
@@ -297,7 +308,9 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
           user: content,
           assistant: typeof response === 'string' ? response : response.text,
           createdAt: new Date().toISOString(),
-          emotion: response===crisisReply ? 'empathy' : response===boundaryReply || conflict && ['warning','intervention','fight'].includes(conflict.kind) ? 'displeasure' : scripted ? 'neutral' : safeEmotion(typeof response==='string'?undefined:response.emotion),
+          ...(office?{officeDay:office.day}:{}),
+          ...(officeIntervention?{speaker:'oleg' as const,intervention:officeIntervention.intervention}:{}),
+          emotion: officeIntervention?'displeasure':response===crisisReply ? 'empathy' : response===boundaryReply || conflict && ['warning','intervention','fight'].includes(conflict.kind) ? 'displeasure' : scripted ? 'neutral' : safeEmotion(typeof response==='string'?undefined:response.emotion),
           ...(scripted&&conflict ? {speaker:'oleg' as const,intervention:conflict.kind} : {}),
         }, typeof response === 'string' ? [] : response.usedStoryIds, conflict),
       );

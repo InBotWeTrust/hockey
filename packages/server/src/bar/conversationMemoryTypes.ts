@@ -13,6 +13,7 @@ export interface MemoryFact {
 export interface ConversationContext {
   boundaryWarning?: 'insult'|'sexual';
   fightMemories?: unknown;
+  barBehaviour?: unknown;
   historyStart?: number;
   recentGames?: Awaited<ReturnType<SqlCardHistoryStore['memories']>>;
   summary: string;

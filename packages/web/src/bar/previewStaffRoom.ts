@@ -15,11 +15,14 @@ export function installStaffRoomPreview(){
    if(officePreview==='scene-1'||officePreview==='scene-2')return Response.json({phase:'scene'});
    if(officePreview==='1')return Response.json({phase:'empty'});
    const body=JSON.parse(String(init?.body));
+   const mode=new URLSearchParams(location.search).get('office-mode');
+   if(mode==='seated'&&body.action!=='leave')return Response.json({phase:'seated',warnAfterMs:0});
+   if(mode==='empty'&&body.action==='enter'){state.entries[body.entryId]??=Date.now();save(state);return Response.json({phase:'empty',warnAfterMs:30000});}
    if(state.outcome==='win')return Response.json({phase:'empty'});
    if(state.outcome==='loss')return Response.json({error:{code:'bar_closed',message:'На сегодня бар закрыт для тебя.'}},{status:403});
    if(body.action==='leave'){delete state.entries[body.entryId];save(state);return Response.json({phase:'scene'});}
    if(body.action==='warn'){
-    if(!state.warned&&(!state.entries[body.entryId]||Date.now()-state.entries[body.entryId]!<3000))return Response.json({error:{code:'staff_room_not_ready',message:'Дождись трёх секунд.'}},{status:409});
+    if(!state.warned&&(!state.entries[body.entryId]||Date.now()-state.entries[body.entryId]!<(mode==='empty'?30000:3000)))return Response.json({error:{code:'staff_room_not_ready',message:'Дождись трёх секунд.'}},{status:409});
     state.warned=true;state.warningId=body.entryId;save(state);return Response.json({phase:'warning'});
    }
    if(state.warned){state.fight=true;save(state);fight??=createFightState({...DEFAULT_FIGHT_RULES,initialHpByPlayer:[5,10],guardUnitsByPlayer:[3,5]},Date.now()+500);return Response.json({phase:'fight',fightId:'staff-room-demo-fight'});}

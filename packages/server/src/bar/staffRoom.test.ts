@@ -12,3 +12,7 @@ it('only the linked won fight empties the room until day reset',()=>{
  expect(staffRoomPhase(true,'fight','win')).toBe('empty');
  expect(staffRoomPhase(true,'fight',null)).toBe('fight');
 });
+it('requires thirty seconds for an empty office visit',()=>{
+ expect(canWarn('entry','entry',1000,30999,30000)).toBe(false);
+ expect(canWarn('entry','entry',1000,31000,30000)).toBe(true);
+});

@@ -4,6 +4,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {BarStaffRoom} from './BarStaffRoom.js';
 import {staffRoomEvent} from './staffRoomApi.js';
 vi.mock('./staffRoomApi.js',()=>({staffRoomEvent:vi.fn()}));
+vi.mock('./BarConversation.js',()=>({BarConversation:({name}:{name:string})=><div>Разговор с {name}</div>}));
 vi.mock('./OlegFightPanel.js',()=>({OlegFightPanel:({id}:{id:string})=><div>fight:{id}</div>}));
 function Location(){const l=useLocation();return <output>{l.pathname}{l.state?.staffRoomWarning?' warning':''}</output>;}
 afterEach(()=>{cleanup();vi.useRealTimers();vi.clearAllMocks();});
@@ -45,4 +46,30 @@ it('starts the returned fight immediately and leaves won rooms empty',async()=>{
  await waitFor(()=>expect(empty.container.querySelector('[data-staff-room-phase="empty"]')).not.toBeNull());
  expect(screen.queryByText('fight:linked')).toBeNull();
  expect(screen.queryByAltText('Элина — первый кадр')).toBeNull();
+});
+
+it('offers an ordinary Elina conversation with no game and no idle warning',async()=>{
+ vi.useFakeTimers();vi.mocked(staffRoomEvent).mockResolvedValue({phase:'seated',warnAfterMs:0,day:'2026-10-20'});
+ const view=mount();await act(async()=>{});fireEvent.load(view.container.querySelector('img')!);
+ expect(screen.getByRole('button',{name:'Разговор'})).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'Игры'})).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Поговорить с Элиной'}));
+ expect(screen.getByText('Разговор с Элина')).toBeInTheDocument();
+ await act(async()=>vi.advanceTimersByTimeAsync(30001));
+ expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
+});
+it('shows the same-canvas empty chair and waits thirty seconds before Oleg',async()=>{
+ vi.useFakeTimers();vi.mocked(staffRoomEvent).mockImplementation(async action=>({phase:action==='warn'?'warning':'empty',warnAfterMs:30000}));
+ const view=mount();await act(async()=>{});fireEvent.load(view.container.querySelector('img')!);
+ expect(screen.getByAltText('Пустое кресло Элины')).toHaveAttribute('src','/bar/emotions/elina/empty-chair-v1.webp');
+ expect(screen.queryByRole('button',{name:'Разговор'})).toBeNull();
+ await act(async()=>vi.advanceTimersByTimeAsync(29999));expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
+ await act(async()=>vi.advanceTimersByTimeAsync(1));expect(screen.getByText('/bar warning')).toBeInTheDocument();
+});
+it('rechecks Elina on return and closes a conversation when she is no longer available',async()=>{
+ vi.mocked(staffRoomEvent).mockResolvedValueOnce({phase:'seated',day:'2026-10-20',warnAfterMs:0}).mockResolvedValue({phase:'empty',day:'2026-10-21',warnAfterMs:30000});
+ mount();await screen.findByRole('button',{name:'Разговор'});fireEvent.click(screen.getByRole('button',{name:'Разговор'}));
+ expect(screen.getByText('Разговор с Элина')).toBeInTheDocument();
+ fireEvent.focus(window);await waitFor(()=>expect(screen.queryByText('Разговор с Элина')).toBeNull());
+ expect(screen.getByAltText('Пустое кресло Элины')).toBeInTheDocument();
 });

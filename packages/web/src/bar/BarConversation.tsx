@@ -8,7 +8,7 @@ import { ApiError } from '../api/apiFetch.js';
 import {
   fetchConversation,
   sendConversation,
-  type BarCharacter,
+  type ConversationCharacter,
   type ConversationMessage,
   type ConversationSnapshot,
 } from './conversationApi.js';
@@ -26,7 +26,7 @@ export function BarConversation({
   onWaiting,
   onVisitorShop,
 }: {
-  character: BarCharacter;
+  character: ConversationCharacter;
   name: string;
   role?: string;
   avatar?: string | null;
