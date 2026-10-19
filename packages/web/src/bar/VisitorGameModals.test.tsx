@@ -54,7 +54,7 @@ it('formats the refresh using the server day across a year boundary even if the 
         new Date(2027, 0, 1, 0).toISOString(),
         new Date(2026, 11, 31, 23).toISOString(),
       ),
-    ).toBe('Завтра в 00:00');
+    ).toBe('1 ч 0 мин');
   } finally {
     vi.useRealTimers();
   }
@@ -74,8 +74,8 @@ it('replaces the invitation with a single refusal and one image when entering wi
   expect(screen.getAllByRole('img')).toHaveLength(1);
   expect(screen.queryByText(gameCopy.darts.invite)).not.toBeInTheDocument();
   expect(visitorPhrases.daria.games.some((phrase) => screen.queryByText(`«${phrase}»`))).toBe(true);
-  expect(screen.getByText('Попытки обновятся')).toBeInTheDocument();
-  expect(screen.getByText('Завтра в 00:00')).toBeInTheDocument();
+  expect(screen.getByText('Попытки обновятся через:')).toBeInTheDocument();
+  expect(screen.getByText('12 ч 0 мин')).toBeInTheDocument();
   expect(screen.queryByText(/Игр осталось: 0/)).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'К Игорю за картой' }));
   expect(screen.getByText('Стойка Игоря')).toBeInTheDocument();
@@ -85,7 +85,7 @@ it('preserves the normal invitation and play action while attempts remain', () =
   mount(<CharacterLaunch character="daria" close={vi.fn()} />);
   expect(screen.getByText(gameCopy.darts.invite)).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Играть' })).toBeInTheDocument();
-  expect(screen.queryByText('Попытки обновятся')).not.toBeInTheDocument();
+  expect(screen.queryByText('Попытки обновятся через:')).not.toBeInTheDocument();
 });
 it('keeps the outcome, score and back action after the final game without inviting a replay', () => {
   const view: BarGameSnapshot = {

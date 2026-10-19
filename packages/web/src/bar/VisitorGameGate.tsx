@@ -6,18 +6,10 @@ import { useVisitor } from './visitorApi.js';
 import './visitor-card.css';
 
 export function visitorGameResetLabel(resetAt: string, serverNow: string): string {
-  const reset = new Date(resetAt),
-    now = new Date(serverNow);
-  const calendarDay = (date: Date) => Date.UTC(date.getFullYear(), date.getMonth(), date.getDate());
-  const days = Math.round((calendarDay(reset) - calendarDay(now)) / 86400000);
-  const day =
-    days === 0
-      ? 'Сегодня'
-      : days === 1
-        ? 'Завтра'
-        : reset.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
-  const time = reset.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
-  return `${day} в ${time}`;
+  const minutes = Math.max(0, Math.ceil((Date.parse(resetAt) - Date.parse(serverNow)) / 60000));
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return hours > 0 ? `${hours} ч ${rest} мин` : `${rest} мин`;
 }
 export function VisitorGameGate({
   character,
@@ -105,7 +97,7 @@ function GameRefusal({
       </p>
       <section className="visitor-game-limit" aria-label="Игры на сегодня завершены">
         <div className="visitor-game-limit__reset" role="status">
-          <span>Попытки обновятся</span>
+          <span>Попытки обновятся через:</span>
           <strong>{visitorGameResetLabel(resetAt, serverNow)}</strong>
         </div>
         {!active && (
