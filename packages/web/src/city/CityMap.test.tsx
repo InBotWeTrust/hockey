@@ -236,3 +236,25 @@ it('opens a centered building from its dock circle and recenters it after a pan'
  viewport.scrollLeft=886;fireEvent.click(circle);
  expect(base.onNavigate).toHaveBeenCalledWith('/inventory?tab=bank');
 });
+
+it.each(['beginner','amateur','professional'] as const)('keeps exactly one separate locker entry for %s',level=>{
+ sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level={level}/>);
+ expect(screen.getAllByRole('button',{name:'На карте: Раздевалка'})).toHaveLength(1);
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Раздевалка'}));
+ expect(screen.getByRole('heading',{name:'Раздевалка'})).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Открыть раздевалку'}));
+ expect(base.onNavigate).toHaveBeenCalledWith('/locker-room');
+});
+it('moves the same locker marker with level and keeps restored selection usable',()=>{
+ sessionStorage.clear();sessionStorage.setItem('city-place-v2:test:beginner','locker');
+ const view=render(<CityMap {...base} level="beginner"/>);
+ const marker=screen.getByRole('button',{name:'На карте: Раздевалка'});
+ const first=marker.style.left;
+ expect(screen.getByRole('heading',{name:'Раздевалка'})).toBeVisible();
+ view.rerender(<CityMap {...base} level="amateur"/>);
+ expect(marker.style.left).not.toBe(first);
+ const second=marker.style.left;
+ view.rerender(<CityMap {...base} level="professional"/>);
+ expect(marker.style.left).not.toBe(second);
+ expect(screen.getAllByRole('button',{name:'На карте: Раздевалка'})).toHaveLength(1);
+});

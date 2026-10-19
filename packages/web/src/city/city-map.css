@@ -45,3 +45,14 @@
 .district-dock__label {font:var(--navigation-label-font);}
 .district-dock button[aria-pressed=true] span {filter:none;}
 .district-dock button:hover span,.district-dock button:focus-visible span {filter:none;}
+
+.district-hit.district-locker {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.75);
+  background: rgba(17,39,55,.88);
+  color: #fff;
+  box-shadow: 0 3px 10px #0005;
+}
+.district-locker:focus-visible { outline: 2px solid white; outline-offset: 3px; }

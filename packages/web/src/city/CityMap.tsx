@@ -3,15 +3,15 @@ import {CityTraffic} from './CityTraffic.js';
 import {CityCaretaker,useCaretakerVisit} from './CityCaretaker.js';
 import type {CaretakerKind} from './caretakerSchedule.js';
 import type {GameDockStatus} from './gameDockStatus.js';
-import {useEffect,useLayoutEffect,useRef,useState,type ReactNode,type CSSProperties} from 'react';
-import {ChevronRight,User,ShieldCheck,Map as MapIcon} from 'lucide-react';
+import {useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode,type CSSProperties} from 'react';
+import {ChevronRight,User,ShieldCheck,Shirt,Map as MapIcon} from 'lucide-react';
 import './city-map.css';
 import {WeatherOverlay} from './WeatherOverlay.js';
 import {useWeatherCycle,type WeatherKind} from './weather.js';
 import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
 type Props={maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
-const places=[
+const basePlaces=[
  {id:'profile',name:'Моя квартира',x:5.8,y:35,w:4,h:9},
  {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
  {id:'shop',name:'Магазин',x:25.6,y:39,w:7.5,h:12,thumb:[22.5,31]},
@@ -25,7 +25,11 @@ const places=[
  {id:'bonus',name:'Бонусные игры',x:72.3,y:59,w:8,h:17,thumb:[75.8,62.9]},
  {id:'pro',name:'Арена Ультимейт',x:87,y:42,w:25,h:34,thumb:[92,37]},
 ];
+const lockerPositions = {
+ beginner: {x:15.5,y:70}, amateur: {x:50.5,y:73}, professional: {x:89,y:70},
+} as const;
 export function CityMap(props:Props){
+ const places=useMemo(()=>[...basePlaces,{id:'locker',name:'Раздевалка',...lockerPositions[props.level],w:3,h:8}], [props.level]);
  const {weather}=useWeatherCycle();
  const caretaker=useCaretakerVisit(props.owner,props.maintenanceBlocked??true);
  const district=useRef<HTMLElement>(null),panel=useRef<HTMLElement>(null);
@@ -66,11 +70,12 @@ export function CityMap(props:Props){
   if(p.id==='chat'){onNavigate('/chat');return;}
   const left=targetLeft(p);
   if(p.id!==selected||left===null||Math.abs((viewport.current?.scrollLeft??0)-left)>4){select(p.id);return;}
-  const routes:Record<string,string>={profile:'/profile',yard:'/?view=training&from=sections',stadium:'/?view=amateur&from=sections',shop:'/inventory',bank:'/inventory?tab=bank',tasks:'/achievements',bar:'/bar',bonus:'/bonus-games',chat:'/chat'};
+  const routes:Record<string,string>={profile:'/profile',locker:'/locker-room',yard:'/?view=training&from=sections',stadium:'/?view=amateur&from=sections',shop:'/inventory',bank:'/inventory?tab=bank',tasks:'/achievements',bar:'/bar',bonus:'/bonus-games',chat:'/chat'};
   const path=p.id===dailyId?'/daily':routes[p.id];
   if(path)onNavigate(path);
  };
  let description='';const actions:{label:string;path:string;}[]=[];
+ if(selected==='locker'){description='Выбор инвентаря перед игрой';actions.push({label:'Открыть раздевалку',path:'/locker-room'});}
  if(selected==='profile'){description='Мой профиль, прогресс и настройки';actions.push({label:'Перейти в профиль',path:'/profile'});}
  if(selected==='yard'){description=level==='beginner'?`${daily} · Тренировка: ${training}`:'Открытая тренировка и упражнения';actions.push({label:'Войти во двор',path:selected===dailyId?'/daily':'/?view=training&from=sections'});}
  if(selected==='stadium'){description=level==='amateur'?daily:'Дуэли и турниры';actions.push({label:'Войти на стадион',path:selected===dailyId?'/daily':'/?view=amateur&from=sections'});}
@@ -97,7 +102,7 @@ export function CityMap(props:Props){
    onPointerCancel={()=>{blockUntil.current=performance.now()+500;drag.current=null;}}
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
    <div ref={world} className="district-world"><CityBackground image={image}/><CityTraffic owner={owner} night={image.includes("city-night-")||image.includes("city-sunset-")}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
-    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':''}${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:`${p.w}%`,height:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='profile'&&<span className="district-apartment-avatar" aria-hidden="true"><User/></span>}</button>)}
+    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':p.id==='locker'?' district-locker':''}${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:p.id==='locker'?44:`${p.w}%`,height:p.id==='locker'?44:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='locker'&&<Shirt size={22} aria-hidden="true"/>}{p.id==='profile'&&<span className="district-apartment-avatar" aria-hidden="true"><User/></span>}</button>)}
     {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} style={{left:`${dailyVenue.x-(dailyId==='stadium'?0.5:0)}%`} as CSSProperties} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
    </div>
   </div>
@@ -105,7 +110,7 @@ export function CityMap(props:Props){
   <section ref={panel} className={`district-panel${navigationCollapsed?' district-panel--collapsed':''}`} aria-label="Выбранное место">
    <button type="button" className="icon-btn district-navigation-toggle" aria-label={navigationCollapsed?'Показать навигацию':'Свернуть навигацию'} title={navigationCollapsed?'Показать навигацию':'Свернуть навигацию'} aria-expanded={!navigationCollapsed} onClick={toggleNavigation}>{navigationCollapsed?<MapIcon aria-hidden="true"/>:<span className="district-navigation-handle" aria-hidden="true"/>}{navigationCollapsed&&navigationCount>0&&<small className="district-badge" aria-label={`Уведомления: ${navigationCount}`}>{navigationCount>99?'99+':navigationCount}</small>}{navigationCollapsed&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>
    {!navigationCollapsed&&<><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>onNavigate(a.path)}>{<ChevronRight/>}</button>)}</div></div>
-   <nav className="district-dock" ref={dock} aria-label="Места района"><button aria-label="Открыть профиль" aria-pressed={selected==='profile'} title="Мой профиль" onClick={()=>openBuilding(places[0]!)}><span className="district-profile">{props.avatarUrl?<img src={props.avatarUrl} alt=""/>:<User aria-hidden="true"/>}</span><small className="district-dock__label">Профиль</small>{(props.referralCount??0)>0&&<small className="district-badge" aria-label={`Награды за приглашения: ${props.referralCount}`}>{props.referralCount!>99?'99+':props.referralCount}</small>}</button>{places.filter(p=>p.id!=='profile').map(p=><button key={p.id} aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>{const left=targetLeft(p);if(p.id===selected&&left!==null&&Math.abs((viewport.current?.scrollLeft??0)-left)<=4)openBuilding(p);else select(p.id);if(p.id===dailyId&&props.gameStatus?.urgent)props.onOpenGamePanel?.();}}><span style={{backgroundImage:`url(${image})`,backgroundPosition:`${p.thumb?.[0]??p.x}% ${p.thumb?.[1]??p.y}%`}}/><small className="district-dock__label">{p.id==='yard'?'Двор':p.id==='stadium'?'Стадион':p.id==='pro'?'Арена':p.id==='bar'?'Бар':p.name}</small>{badge(p.id)}{p.id===dailyId&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>)}{props.isAdmin&&<button aria-label="Открыть админку" title="Админ" onClick={()=>onNavigate('/admin')}><span className="district-profile district-admin"><ShieldCheck size={18} strokeWidth={1.5} aria-hidden="true"/></span><small className="district-dock__label">Админ</small>{(props.adminCount??0)>0&&<small className="district-badge" aria-label={`События администратора: ${props.adminCount}`}>{props.adminCount!>99?'99+':props.adminCount}</small>}</button>}</nav></>}
+   <nav className="district-dock" ref={dock} aria-label="Места района"><button aria-label="Открыть профиль" aria-pressed={selected==='profile'} title="Мой профиль" onClick={()=>openBuilding(places[0]!)}><span className="district-profile">{props.avatarUrl?<img src={props.avatarUrl} alt=""/>:<User aria-hidden="true"/>}</span><small className="district-dock__label">Профиль</small>{(props.referralCount??0)>0&&<small className="district-badge" aria-label={`Награды за приглашения: ${props.referralCount}`}>{props.referralCount!>99?'99+':props.referralCount}</small>}</button>{places.filter(p=>p.id!=='profile').map(p=><button key={p.id} aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>{const left=targetLeft(p);if(p.id===selected&&left!==null&&Math.abs((viewport.current?.scrollLeft??0)-left)<=4)openBuilding(p);else select(p.id);if(p.id===dailyId&&props.gameStatus?.urgent)props.onOpenGamePanel?.();}}>{p.id==='locker'?<span className="district-profile"><Shirt size={22} aria-hidden="true"/></span>:<span style={{backgroundImage:`url(${image})`,backgroundPosition:`${p.thumb?.[0]??p.x}% ${p.thumb?.[1]??p.y}%`}}/>}<small className="district-dock__label">{p.id==='yard'?'Двор':p.id==='stadium'?'Стадион':p.id==='pro'?'Арена':p.id==='bar'?'Бар':p.name}</small>{badge(p.id)}{p.id===dailyId&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>)}{props.isAdmin&&<button aria-label="Открыть админку" title="Админ" onClick={()=>onNavigate('/admin')}><span className="district-profile district-admin"><ShieldCheck size={18} strokeWidth={1.5} aria-hidden="true"/></span><small className="district-dock__label">Админ</small>{(props.adminCount??0)>0&&<small className="district-badge" aria-label={`События администратора: ${props.adminCount}`}>{props.adminCount!>99?'99+':props.adminCount}</small>}</button>}</nav></>}
   </section>
  </section>;
 }
