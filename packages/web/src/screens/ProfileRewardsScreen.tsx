@@ -44,7 +44,9 @@ export function ProfileRewardsScreen(): JSX.Element {
                 <p>Полученные достижения появятся в этом списке.</p>
               </section>
             )}
-            <TrophyShowcase profile={profile} onOpen={setSection} />
+            <div className="glass profile-rewards-summary">
+              <TrophyShowcase profile={profile} onOpen={setSection} />
+            </div>
             <h2 className="section-label section-label--page">
               Полученные достижения · {earned.length}
             </h2>

@@ -138,6 +138,7 @@ const ProfileStatsScreen = lazy(() =>
     default: module.ProfileStatsScreen,
   })),
 );
+const ProfileFriendsScreen = lazy(() => import('../screens/ProfileFriendsScreen.js').then(module=>({default:module.ProfileFriendsScreen})));
 const LockerRoomScreen = lazy(() => import('../screens/LockerRoomScreen.js').then(module => ({ default: module.LockerRoomScreen })));
 const ProfileArenaScreen = lazy(() =>
   import('../screens/ProfileDestinationScreens.js').then((module) => ({
@@ -402,6 +403,7 @@ function AppExperience(): JSX.Element {
           <VenuePanorama level={user ? profileQuery.data?.competitionLevel ?? user.competitionLevel ?? null : null} owner={user?.id ?? null}>
           <Suspense fallback={<RouteLoading />}>
             <Routes>
+              <Route path="/profile/friends" element={<PrivateRoute><ProfileFriendsScreen /></PrivateRoute>} />
               <Route path="/locker-room" element={<PrivateRoute><LockerRoomScreen /></PrivateRoute>} />
               <Route path="/profile/rewards" element={<PrivateRoute><ProfileRewardsScreen /></PrivateRoute>} />
               <Route path="/bar/games" element={<PrivateRoute><BarAccessGate><BarGamesPage/></BarAccessGate></PrivateRoute>}/>

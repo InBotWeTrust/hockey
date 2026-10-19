@@ -72,7 +72,7 @@ export function ProfileStoryScreen(): JSX.Element {
   return (
     <main className="screen profile-detail-screen profile-story-screen">
       <ProfilePageHeader title="Сюжет" standard />
-      <div className="profile-story-series-list">
+      <div className="profile-story-series-list" data-no-section-swipe role="group" aria-label="Серии сюжета" tabIndex={0}>
         {Array.from({ length: 10 }, (_, index) => {
           const series = index + 1;
           const unlocked =

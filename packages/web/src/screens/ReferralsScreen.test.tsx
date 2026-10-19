@@ -1,6 +1,7 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { VenuePanorama } from '../components/VenuePanorama.js';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as referralsApi from '../api/referrals.js';
 import { ReferralsScreen } from './ReferralsScreen.js';
@@ -53,6 +54,18 @@ describe('ReferralsScreen', () => {
       total: level === 'beginner' ? 1 : 0,
     }));
     triggerHaptic.mockClear();
+  });
+
+  it('returns from invitations to friends and keeps the friends circle active',async()=>{
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/referrals']}><Routes>
+      <Route path="/referrals" element={<VenuePanorama level="amateur" owner="u"><ReferralsScreen/></VenuePanorama>}/>
+      <Route path="/profile/friends" element={<p>В комнате друзей</p>}/>
+    </Routes></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByRole('heading',{name:'Приглашённые друзья'})).toBeVisible();
+    expect(screen.getByRole('tab',{name:'Друзья'})).toHaveAttribute('aria-selected','true');
+    expect(screen.getByRole('button',{name:'Назад'})).toHaveAttribute('data-section-back','true');
+    fireEvent.click(screen.getByRole('button',{name:'Назад'}));
+    expect(screen.getByText('В комнате друзей')).toBeVisible();
   });
 
   it('opens an invitee in the same swipeable profile sheet used by chats', async () => {

@@ -1,4 +1,4 @@
-import { useVenueAttention } from '../components/VenuePanorama.js';
+import { useVenueAttention, useVenueNavigation } from '../components/VenuePanorama.js';
 import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ChevronRight, Copy, Star, TrendingUp } from 'lucide-react';
@@ -60,14 +60,16 @@ function ReferralSection({ level, title, onSelect }: { level: ReferralLevel; tit
   </section>;
 }
 
-export function ReferralsScreen(): JSX.Element {
+export function ReferralsScreen({ embedded = false }: { embedded?: boolean } = {}): JSX.Element {
+  const Container = embedded ? 'div' : 'main';
   const navigate = useNavigate();
+  const apartment = useVenueNavigation() !== null;
   const [selectedPlayer, setSelectedPlayer] = useState<UserPickerItem | null>(null);
   const [copyToastSequence, setCopyToastSequence] = useState(0);
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((state) => state.updateUser);
   const summary = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
-  useVenueAttention('referrals', summary.data?.unclaimedRewardsCount ?? 0);
+  useVenueAttention('friends', summary.data?.unclaimedRewardsCount ?? 0);
   const inviteUrl = summary.data ? `${window.location.origin}/invite/${summary.data.code}` : '';
   const copy = (value: string): void => {
     void copyText(value).then((copied) => {
@@ -95,20 +97,21 @@ export function ReferralsScreen(): JSX.Element {
   });
 
   return (
-    <main className="screen profile-detail-screen referrals-screen">
+    <Container className={embedded ? 'referrals-screen referrals-screen--embedded' : 'screen profile-detail-screen referrals-screen'}>
       {copyToastSequence > 0 ? (
         <div role="status" aria-live="polite" className="achievement-reward-toast profile-referral-copy-toast">
           <strong className="achievement-reward-toast__title">Скопировано</strong>
         </div>
       ) : null}
-      <header className="profile-page-header page-header-standard">
-        <button type="button" className="icon-btn page-header-standard__back" aria-label="Назад" onClick={() => navigate('/profile')}><ArrowLeft size={18} /></button>
+      {!embedded && <header className="profile-page-header page-header-standard">
+        <button type="button" className="icon-btn page-header-standard__back" aria-label="Назад" data-section-back={apartment || undefined} onClick={() => navigate(apartment ? '/profile/friends' : '/profile')}><ArrowLeft size={18} /></button>
         <h1 className="page-header-standard__title">Приглашённые друзья</h1>
-      </header>
+      </header>}
       {summary.data ? (
+        <section className="apartment-invite-section">
+        <h2 className="section-label">Приглашай друзей</h2>
         <section className="referral-invite-card glass" aria-label="Как приглашать друзей">
           <div className="referral-invite-card__copy">
-            <h2>Приглашай друзей</h2>
             <p>Поделись ссылкой или кодом – друг должен указать его при первой регистрации. Когда он перейдёт в «Любители», приглашение засчитается в шкале наград, а за открытые ступени можно будет забрать звёзды.</p>
             <p>Следи за прогрессом друзей ниже и напоминай им об игре, если они пропускают матчи.</p>
           </div>
@@ -123,8 +126,9 @@ export function ReferralsScreen(): JSX.Element {
             </div>
           </div>
         </section>
+        </section>
       ) : null}
-      {summary.data ? (
+      {summary.data && summary.data.milestones.length > 0 ? (
         <section className="referral-rewards-section" aria-label="Награды за приглашения">
           <div className="section-label">Шкала наград</div>
           <div className="referral-rewards glass">
@@ -161,6 +165,6 @@ export function ReferralsScreen(): JSX.Element {
         </section>
       ) : summary.data ? sections.map((section) => <ReferralSection key={section.level} {...section} onSelect={setSelectedPlayer} />) : null}
       <UserProfileSheet sender={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
-    </main>
+    </Container>
   );
 }

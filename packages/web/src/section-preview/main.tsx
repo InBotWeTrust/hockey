@@ -1,3 +1,6 @@
+import { ProfileFriendsScreen } from '../screens/ProfileFriendsScreen.js';
+import { SocialProvider } from '../social/SocialContext.js';
+import { socialApi } from '../social/api.js';
 import { LockerRoomScreen } from '../screens/LockerRoomScreen.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { apartmentProfile, referralSummary } from './apartmentFixtures.js';
@@ -85,6 +88,19 @@ const games = skills.flatMap((skill, index) =>
     }),
   ),
 );
+// Synthetic social connections for the local preview only.
+const previewFans = [
+  { id: 'preview-fan-1', displayName: 'Максим Орлов', avatarUrl: null },
+  { id: 'preview-fan-2', displayName: 'Анна Соколова', avatarUrl: null },
+  { id: 'preview-fan-3', displayName: 'Ледяной Лис', avatarUrl: null },
+];
+const previewFollowing = [
+  { id: 'preview-follow-1', displayName: 'Александр Волков', avatarUrl: null },
+  { id: 'preview-follow-2', displayName: 'Мария Север', avatarUrl: null },
+  { id: 'preview-follow-3', displayName: 'Капитан двора', avatarUrl: null },
+  { id: 'preview-follow-4', displayName: 'Дмитрий Очень Длинная Фамилия', avatarUrl: null },
+];
+const previewSocialSummary = () => ({ followersCount: previewFans.length, followingCount: previewFollowing.length, following: false, canFollow: false });
 window.fetch = async (input, init) => {
   const url = String(input);
   if (!url.includes('/api/')) return Response.error();
@@ -92,7 +108,19 @@ window.fetch = async (input, init) => {
   if (url.endsWith('/inventory/equipment') && init?.method === 'PATCH') {
     Object.assign(inventory.equipped, JSON.parse(String(init.body)));
     data = inventory;
-  } else if (url.endsWith('/api/me'))
+   } else if (/\/me\/fans\//.test(url) && init?.method === 'DELETE') {
+    const index = previewFans.findIndex(player => player.id === url.split('/').pop());
+    if (index >= 0) previewFans.splice(index, 1);
+    data = previewSocialSummary();
+  } else if (/\/users\/[^/]+\/fan$/.test(url) && init?.method === 'DELETE') {
+    const index = previewFollowing.findIndex(player => player.id === url.split('/').at(-2));
+    if (index >= 0) previewFollowing.splice(index, 1);
+    data = previewSocialSummary();
+  } else if (url.includes('/fans/summary')) data = previewSocialSummary();
+  else if (/\/(fans|following)(\?|$)/.test(url)) data = { items: url.includes('/following') ? previewFollowing : previewFans, nextCursor: null };
+  else if (url.includes('/social/fans/rating')) data = { items:[], nextCursor:null, currentUser:null };
+  else if (/\/users\/[^/]+\/bio$/.test(url)) data = { bio: 'Играю в хоккей с детства. Люблю красивые передачи и вечерние матчи во дворе.' };
+  else if (url.endsWith('/api/me'))
     data = {
       ...apartmentProfile,
       competitionLevel: level,
@@ -313,6 +341,7 @@ createRoot(document.getElementById('root')!).render(
       })
     }
   >
+    <SocialProvider value={{viewerId:apartmentProfile.id,api:socialApi}}>
     <MemoryRouter initialEntries={[initial]}>
       <div
         className="app-shell app-shell--unified-glass"
@@ -330,6 +359,7 @@ createRoot(document.getElementById('root')!).render(
           <VenuePanorama level={level} owner="local-preview" previewTime={previewTime}>
             <Routes>
               <Route path="/profile" element={<ProfileScreen />} />
+              <Route path="/profile/friends" element={<ProfileFriendsScreen />} />
               <Route path="/profile/equipment" element={<Navigate to="/locker-room" replace />} />
               <Route path="/locker-room" element={<LockerRoomScreen />} />
               <Route path="/sections" element={<MapNavigationPreview />} />
@@ -365,5 +395,6 @@ createRoot(document.getElementById('root')!).render(
         </div>
       </div>
     </MemoryRouter>
+    </SocialProvider>
   </QueryClientProvider>,
 );

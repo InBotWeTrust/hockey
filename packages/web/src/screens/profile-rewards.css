@@ -53,3 +53,12 @@
 .profile-earned-award-history small {
   color: var(--liquid-muted);
 }
+
+.profile-rewards-summary {
+  padding: 18px 12px;
+  border-radius: 22px;
+}
+.profile-rewards-screen .profile-rewards-summary .profile-trophy-showcase {
+  padding: 0;
+  border-top: 0;
+}

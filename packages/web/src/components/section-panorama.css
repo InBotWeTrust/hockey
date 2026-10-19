@@ -244,7 +244,7 @@
 }
 
 /* The persistent exit circle replaces page-level back actions. */
-.section-scene button[aria-label="Назад"]:not([role="dialog"] *) {
+.section-scene button[aria-label="Назад"]:not([data-section-back]):not([role="dialog"] *) {
   display: none !important;
 }
 .venue-scene .profile-page-header {

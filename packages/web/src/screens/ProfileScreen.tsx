@@ -675,6 +675,10 @@ function SportingMetrics({
   profile: ProfileData;
   onOpenRating: (metric: StatRatingMetric) => void;
 }): JSX.Element {
+  const apartment = useVenueNavigation() !== null;
+  const streakDays = profile.stats.playStreakDays;
+  const dayWord = new Intl.PluralRules('ru-RU').select(streakDays);
+  const streakLabel = `${formatProfileNumber(streakDays)} ${dayWord === 'one' ? 'день' : dayWord === 'few' ? 'дня' : 'дней'}`;
   const registeredDate = new Date(profile.registeredAt);
   const registeredLabel = Number.isNaN(registeredDate.getTime())
     ? '—'
@@ -695,7 +699,7 @@ function SportingMetrics({
       metric: 'accuracy',
     },
     {
-      value: (
+      value: apartment ? <span className="apartment-streak-value">{streakLabel}<small>Рекорд: {formatProfileNumber(profile.stats.bestPlayStreakDays ?? streakDays)}</small></span> : (
         <>
           {formatProfileNumber(profile.stats.playStreakDays)}{' '}
           <span className="profile-streak-record">
@@ -704,7 +708,7 @@ function SportingMetrics({
           </span>
         </>
       ),
-      label: 'Дней подряд',
+      label: apartment ? 'Дней в игре подряд' : 'Дней подряд',
       metric: 'streak',
     },
     {
@@ -721,12 +725,12 @@ function SportingMetrics({
     },
   ];
   return (
-    <div className="profile-sporting-metrics" aria-label="Главные показатели">
+    <div className={`profile-sporting-metrics ${apartment ? 'glass' : ''}`} aria-label="Главные показатели">
       {items.map(({ value, label, metric }) => {
         const content = (
           <>
             <strong>
-              <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
+              {apartment ? value : <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>}
             </strong>
             <span>{label}</span>
           </>
@@ -879,8 +883,9 @@ export function ProfileScreen(): JSX.Element {
       className={`screen profile-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(profile.competitionLevel)}`}
     >
       <DistrictPageHeader title="Профиль"/>
-      <section className="profile-passport glass" aria-label="Спортивный паспорт">
+      <section className={`profile-passport ${apartment ? 'profile-passport--separate' : 'glass'}`} aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
+          <div className={apartment ? 'glass apartment-profile-identity' : undefined}>
           <SocialProfile userId={profile.id} renderIdentity={counts=><div className="public-profile-social-identity"><div className="profile-identity__main">
             {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
               <button
@@ -904,9 +909,9 @@ export function ProfileScreen(): JSX.Element {
                 )}
               </div>
             )}
-            <div className="profile-identity__copy">
+            {!apartment && <div className="profile-identity__copy">
               {counts}
-            </div>
+            </div>}
             <button
               type="button"
               className="profile-early-player-badge"
@@ -924,7 +929,8 @@ export function ProfileScreen(): JSX.Element {
           <span className="profile-identity__name public-profile-name-status"><span className="public-profile-name-text" title={profile.displayName}>{profile.displayName}</span><span className="profile-identity__level public-profile-status">{getLevelLabel(profile.competitionLevel)}</span></span>
           <ProfileBio userId={profile.id}/>
           </div>}/>
-          <div className="profile-balances" aria-label="Баланс игрока">
+          </div>
+          <div className={`profile-balances ${apartment ? 'glass' : ''}`} aria-label="Баланс игрока">
             <ProfileBalance
               label="Монеты"
               value={currencyBalance}

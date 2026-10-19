@@ -61,23 +61,16 @@ it('opens the first yard catalog and allows circles to switch to advanced traini
 });
 
 it.each([
-  ['/profile', 'profile'],
-  ['/profile/rewards', 'rewards'],
-  ['/profile/settings', 'settings'],
-  ['/referrals', 'referrals'],
-  ['/profile/story', 'story'],
-])('opens apartment page %s without changing its direct link', (path, selected) => {
+  ['/profile', 'profile'], ['/profile/rewards', 'rewards'], ['/profile/friends','friends'],
+  ['/referrals','friends'], ['/profile/settings', 'settings'], ['/profile/story', 'story'],
+])('opens five-page apartment at %s', (path, selected) => {
   const scene = venueSceneFor(path, '', 'amateur');
   expect(scene?.id).toBe('apartment');
   expect(scene?.selected).toBe(selected);
-  expect(scene?.pages.map((p) => p.id)).toEqual([
-    'profile',
-    'equipment',
-    'rewards',
-    'settings',
-    'referrals',
-    'story',
-  ]);
+  expect(scene?.pages.map(p=>p.label)).toEqual(['Профиль','Награды','Друзья','Настройки','Сюжет']);
+  expect(scene?.pages.map(p=>p.position)).toEqual([0,2,4,3,5]);
+  expect(scene?.pages.some(p=>p.href==='/profile/equipment')).toBe(false);
+  expect(scene?.columns).toBe(6);
 });
 it('keeps story replay full screen and profile achievements in the task building', () => {
   expect(venueSceneFor('/profile/story/series-1', '', 'amateur')).toBeNull();

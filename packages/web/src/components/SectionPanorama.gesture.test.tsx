@@ -21,3 +21,11 @@ it('waits for a deliberate horizontal gesture and ignores touch jitter and verti
   fireEvent.pointerMove(page,{pointerId:2,clientX:125,clientY:102});
   expect(start).toHaveBeenCalledOnce();
 });
+it('leaves gestures inside the television to its episode scroller',()=>{
+ const view=render(<SectionPanorama label="Квартира" pages={[{id:'story',label:'Сюжет',image:'/a.webp'}]} selected="story" onSelect={()=>{}} panorama="/a.webp" storageKey="tv"><div data-no-section-swipe><button>Серия</button></div></SectionPanorama>);
+ start.mockClear();
+ const episode=view.getByRole('button',{name:'Серия'});
+ fireEvent.pointerDown(episode,{isPrimary:true,button:0,pointerId:3,clientX:100,clientY:100});
+ fireEvent.pointerMove(episode,{pointerId:3,clientX:150,clientY:102});
+ expect(start).not.toHaveBeenCalled();
+});

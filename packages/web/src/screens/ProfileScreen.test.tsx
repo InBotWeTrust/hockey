@@ -312,12 +312,13 @@ function renderProfile(apartment = false): void {
 describe('ProfileScreen', () => {
   it('shows pending referral rewards on the apartment circle before opening referrals',async()=>{
     mockProfileRequest();renderProfile(true);
-    await waitFor(()=>expect(screen.getByRole('tab',{name:'Рефералка'})).toHaveTextContent('2'));
+    await waitFor(()=>expect(screen.getByRole('tab',{name:'Друзья'})).toHaveTextContent('2'));
   });
 
   it('keeps personal data but removes duplicate apartment destination cards',async()=>{
     mockProfileRequest();renderProfile(true);
     await screen.findByRole('region',{name:'Спортивный паспорт'});
+    expect(screen.getByRole('heading',{name:'Профиль'})).toBeVisible();
     expect(screen.queryByRole('button',{name:/^Настройки$/})).toBeNull();
     expect(screen.queryByRole('button',{name:'Открыть раздел «Сюжет»'})).toBeNull();
     expect(screen.queryByLabelText('Витрина наград')).toBeNull();

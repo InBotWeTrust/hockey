@@ -167,7 +167,7 @@ export function SectionPanorama({
           if (disabled || event.button !== 0 || !event.isPrimary) return;
           if (
             (event.target as HTMLElement).closest(
-              'input,select,textarea,[role="dialog"],[role="tablist"]',
+              'input,select,textarea,[role="dialog"],[role="tablist"],[data-no-section-swipe]',
             )
           )
             return;
