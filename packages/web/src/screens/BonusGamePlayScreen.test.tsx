@@ -1759,6 +1759,14 @@ describe('BonusGamePlayScreen', () => {
     },
   );
 
+  it('returns from an attempt to its actual skill instead of a stale remembered catalog', () => {
+    const base=attempt({status:'failed',state:'closed',period_started_at:null,period_ends_at:null});
+    setStore({attempt:{...base,rules:{...base.rules,skill_code:'accuracy'}}});
+    localStorage.setItem('bonus-games:last-skill','rhythm');renderScreen();
+    fireEvent.click(screen.getByRole('button',{name:'К бонусным играм'}));
+    expect(screen.getByLabelText('location')).toHaveTextContent('/bonus-games?skill=accuracy');
+  });
+
   it('keeps the terminal result open until the catalog button is pressed', () => {
     setStore({
       attempt: attempt({

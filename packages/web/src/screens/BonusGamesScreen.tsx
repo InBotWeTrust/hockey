@@ -1,3 +1,4 @@
+import { SectionPanorama } from '../components/SectionPanorama.js';
 import { BonusRecordsModal, formatBonusPreviewRecord } from '../profile/BonusRecordsModal.js';
 import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
 import { useEffect, useRef, useState } from 'react';
@@ -13,7 +14,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { rewardColor, type RewardTone } from '../app/rewardColors.js';
 import {
   fetchBonusGames,
@@ -33,7 +34,6 @@ import {
 } from '../amateur/amateurAccess.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import { SegmentedTabs } from '../components/SegmentedTabs.js';
 import {
   enduranceQualificationLines,
   qualificationDescription,
@@ -107,6 +107,7 @@ export function bonusGameVisualStatus(game: BonusGameCard): 'completed' | 'avail
 
 export function BonusGamesScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams,setSearchParams] = useSearchParams();
   const currentUserId = useAuthStore((state) => state.user?.id ?? '');
   const [recordsGame, setRecordsGame] = useState<BonusGameCard | null>(null);
   const queryClient = useQueryClient();
@@ -144,7 +145,7 @@ export function BonusGamesScreen(): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
-    const stored = localStorage.getItem(LAST_SKILL_STORAGE_KEY);
+    const stored = searchParams.get('skill') ?? localStorage.getItem(LAST_SKILL_STORAGE_KEY);
     if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'rhythm' || stored === 'challenge'
       ? stored
@@ -280,6 +281,7 @@ export function BonusGamesScreen(): JSX.Element {
   const selectSkill = (skill: BonusSkillCode): void => {
     if (skill !== 'speed' && skill !== 'accuracy' && competitionLevel === 'beginner') { guardAmateurMutation(amateurAccess, () => undefined); return; }
     setSelectedSkill(skill);
+    const next=new URLSearchParams(searchParams);next.set('skill',skill);setSearchParams(next,{replace:true});
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
   };
   const focusGame =
@@ -303,165 +305,10 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allGames, focusGame?.id, selectedSkill]);
 
   return (
-    <main
-      className="screen"
-      style={{
-        padding: 'calc(18px + var(--app-safe-top)) 14px 24px',
-        overflowY: 'auto',
-      }}
-    >
-      <section className="bonus-games-catalog" aria-labelledby="bonus-games-title">
-        <header className="bonus-games-catalog__header">
-          <button
-            type="button"
-            className="icon-btn"
-            onClick={() => navigate('/sections')}
-            aria-label="Назад"
-            title="Назад"
-          >
-            <ArrowLeft size={16} aria-hidden="true" />
-          </button>
-          <div className="bonus-games-catalog__heading">
-            <h1 id="bonus-games-title" className="bonus-games-catalog__title screen-title-on-arena">
-              Бонусные игры
-            </h1>
-            <button
-              type="button"
-              className="section-info-btn"
-              onClick={() => setRulesOpen(true)}
-              aria-label="Правила бонусных игр"
-            >
-              <Info size={12} aria-hidden="true" />
-            </button>
-          </div>
-        </header>
-
-        <div className="bonus-games-skill-tabs">
-          <SegmentedTabs
-            items={(Object.keys(skillLabels) as BonusSkillCode[]).map((skill) => ({
-              id: skill,
-              label: skillLabels[skill],
-            }))}
-            activeTab={selectedSkill}
-            ariaLabel="Навык"
-            onChange={selectSkill}
-            scrollable
-          />
-        </div>
-
-        <section
-          className={`bonus-games-attempt-progress${selectedAllowance === undefined ? ' bonus-games-attempt-progress--loading' : ''}`}
-          aria-label={`Прогресс игр: ${skillLabels[selectedSkill]}`}
-        >
-          {selectedAllowance ? (
-            <>
-              <div
-                className="bonus-games-attempt-progress__bar"
-                role="progressbar"
-                aria-label={`Пройдено игр: ${skillLabels[selectedSkill]}`}
-                aria-valuemin={0}
-                aria-valuenow={completedGamesCount}
-                aria-valuemax={games.length}
-              >
-                <span style={{ width: `${gamesProgressPercent}%` }} />
-                <strong className="bonus-games-attempt-progress__value">
-                  {completedGamesCount}/{games.length} игр
-                </strong>
-              </div>
-              <div className="bonus-games-attempt-progress__meta">
-                <strong>
-                  {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
-                </strong>
-                {allowanceCountdown !== null ? (
-                  <span>До обновления: {allowanceCountdown}</span>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-        </section>
-
-        {catalogQuery.isLoading ? (
-          <div className="bonus-games-catalog__notice" role="status">
-            Загружаем бонусные игры…
-          </div>
-        ) : catalogQuery.isError ? (
-          <div
-            className="bonus-games-catalog__notice bonus-games-catalog__notice--error"
-            role="alert"
-          >
-            {safeUiError(catalogQuery.error)}
-          </div>
-        ) : catalogQuery.data?.games.length === 0 ? (
-          <div className="bonus-games-catalog__notice">Сейчас нет доступных бонусных игр.</div>
-        ) : games.length > 0 ? (
-          <div className="bonus-games-catalog__groups">
-            {focusGame !== null ? (
-              <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
-                <h2 id="bonus-games-current-title" className="section-label sections-group__title">
-                  Текущая игра
-                </h2>
-                <BonusGameCard
-                  game={focusGame}
-                  actionLabel={actionLabel(focusGame)}
-                  isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
-                  canStartNewAttempt={canStartNewAttempt}
-                  onAction={() => openGame(focusGame)}
-                  featured={true}
-                />
-              </section>
-            ) : null}
-            {completedGames.length > 0 ? (
-              <section className="bonus-games-group" aria-labelledby="bonus-games-completed-title">
-                <h2
-                  id="bonus-games-completed-title"
-                  className="section-label sections-group__title"
-                >
-                  Пройденные · {completedGames.length}
-                </h2>
-                <div className="bonus-games-catalog__grid">
-                  {completedGames.map((game) => (
-                    <BonusGameCard
-                      key={game.id}
-                      game={game}
-                      actionLabel={actionLabel(game)}
-                      isStarting={startMutation.isPending && startMutation.variables === game.id}
-                      canStartNewAttempt={canStartNewAttempt}
-                      onAction={() => openGame(game)}
-                      compact={true}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-            {futureGames.length > 0 ? (
-              <section className="bonus-games-group" aria-labelledby="bonus-games-next-title">
-                <h2 id="bonus-games-next-title" className="section-label sections-group__title">
-                  Дальше
-                </h2>
-                <div className="bonus-games-catalog__grid bonus-games-catalog__grid--compact">
-                  {futureGames.map((game) => (
-                    <BonusGameCard
-                      key={game.id}
-                      game={game}
-                      actionLabel={actionLabel(game)}
-                      isStarting={false}
-                      canStartNewAttempt={canStartNewAttempt}
-                      onAction={() => openGame(game)}
-                      compact={true}
-                    />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </div>
-        ) : null}
-
-        {startMutation.isError && !wasAmateurLevelRequiredErrorHandled(startMutation.error) && (
-          <div className="bonus-games-catalog__notice" role="alert">
-            {safeUiError(startMutation.error)}
-          </div>
-        )}
-      </section>
+    <SectionPanorama label="Бонусные игры" pages={(Object.keys(skillLabels) as BonusSkillCode[]).map((skill,index)=>({id:skill,label:skillLabels[skill],image:`/section-panoramas/bonus-${index}.webp`}))}
+      selected={selectedSkill} onSelect={id=>selectSkill(id as BonusSkillCode)} panorama="/section-panoramas/bonus-v1.webp"
+      storageKey={`section-scroll:${currentUserId||'guest'}:bonus`} disabled={rulesOpen||previewGame!==null||purchaseGame!==null||recordsGame!==null||switchGame!==null}
+      overlays={<>
       {developmentToast && <div role="status" style={{ position: 'fixed', bottom: 'calc(100px + var(--app-safe-bottom))',
         left: '50%', transform: 'translateX(-50%)', padding: '12px 18px', borderRadius: 16,
         background: 'var(--liquid-inset-bg)', color: '#fff', zIndex: 1000, whiteSpace: 'nowrap' }}>Локация в разработке</div>}
@@ -665,7 +512,147 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         </AccessibleModal>
       ) : null}
-    </main>
+      </>}>
+      <section className="bonus-games-catalog" aria-labelledby="bonus-games-title">
+        <header className="bonus-games-catalog__header">
+          <button
+            type="button"
+            className="icon-btn"
+            onClick={() => navigate('/sections')}
+            aria-label="Назад"
+            title="Назад"
+          >
+            <ArrowLeft size={16} aria-hidden="true" />
+          </button>
+          <div className="bonus-games-catalog__heading">
+            <h1 id="bonus-games-title" className="bonus-games-catalog__title screen-title-on-arena">
+              Бонусные игры
+            </h1>
+            <button
+              type="button"
+              className="section-info-btn"
+              onClick={() => setRulesOpen(true)}
+              aria-label="Правила бонусных игр"
+            >
+              <Info size={12} aria-hidden="true" />
+            </button>
+          </div>
+        </header>
+
+        <section
+          className={`bonus-games-attempt-progress${selectedAllowance === undefined ? ' bonus-games-attempt-progress--loading' : ''}`}
+          aria-label={`Прогресс игр: ${skillLabels[selectedSkill]}`}
+        >
+          {selectedAllowance ? (
+            <>
+              <div
+                className="bonus-games-attempt-progress__bar"
+                role="progressbar"
+                aria-label={`Пройдено игр: ${skillLabels[selectedSkill]}`}
+                aria-valuemin={0}
+                aria-valuenow={completedGamesCount}
+                aria-valuemax={games.length}
+              >
+                <span style={{ width: `${gamesProgressPercent}%` }} />
+                <strong className="bonus-games-attempt-progress__value">
+                  {completedGamesCount}/{games.length} игр
+                </strong>
+              </div>
+              <div className="bonus-games-attempt-progress__meta">
+                <strong>
+                  {selectedAllowance.remaining} из {selectedAllowance.daily_limit} попыток
+                </strong>
+                {allowanceCountdown !== null ? (
+                  <span>До обновления: {allowanceCountdown}</span>
+                ) : null}
+              </div>
+            </>
+          ) : null}
+        </section>
+
+        {catalogQuery.isLoading ? (
+          <div className="bonus-games-catalog__notice" role="status">
+            Загружаем бонусные игры…
+          </div>
+        ) : catalogQuery.isError ? (
+          <div
+            className="bonus-games-catalog__notice bonus-games-catalog__notice--error"
+            role="alert"
+          >
+            {safeUiError(catalogQuery.error)}
+          </div>
+        ) : catalogQuery.data?.games.length === 0 ? (
+          <div className="bonus-games-catalog__notice">Сейчас нет доступных бонусных игр.</div>
+        ) : games.length > 0 ? (
+          <div className="bonus-games-catalog__groups">
+            {focusGame !== null ? (
+              <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
+                <h2 id="bonus-games-current-title" className="section-label sections-group__title">
+                  Текущая игра
+                </h2>
+                <BonusGameCard
+                  game={focusGame}
+                  actionLabel={actionLabel(focusGame)}
+                  isStarting={startMutation.isPending && startMutation.variables === focusGame.id}
+                  canStartNewAttempt={canStartNewAttempt}
+                  onAction={() => openGame(focusGame)}
+                  featured={true}
+                />
+              </section>
+            ) : null}
+            {completedGames.length > 0 ? (
+              <section className="bonus-games-group" aria-labelledby="bonus-games-completed-title">
+                <h2
+                  id="bonus-games-completed-title"
+                  className="section-label sections-group__title"
+                >
+                  Пройденные · {completedGames.length}
+                </h2>
+                <div className="bonus-games-catalog__grid">
+                  {completedGames.map((game) => (
+                    <BonusGameCard
+                      key={game.id}
+                      game={game}
+                      actionLabel={actionLabel(game)}
+                      isStarting={startMutation.isPending && startMutation.variables === game.id}
+                      canStartNewAttempt={canStartNewAttempt}
+                      onAction={() => openGame(game)}
+                      compact={true}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+            {futureGames.length > 0 ? (
+              <section className="bonus-games-group" aria-labelledby="bonus-games-next-title">
+                <h2 id="bonus-games-next-title" className="section-label sections-group__title">
+                  Дальше
+                </h2>
+                <div className="bonus-games-catalog__grid bonus-games-catalog__grid--compact">
+                  {futureGames.map((game) => (
+                    <BonusGameCard
+                      key={game.id}
+                      game={game}
+                      actionLabel={actionLabel(game)}
+                      isStarting={false}
+                      canStartNewAttempt={canStartNewAttempt}
+                      onAction={() => openGame(game)}
+                      compact={true}
+                    />
+                  ))}
+                </div>
+              </section>
+            ) : null}
+          </div>
+        ) : null}
+
+        {startMutation.isError && !wasAmateurLevelRequiredErrorHandled(startMutation.error) && (
+          <div className="bonus-games-catalog__notice" role="alert">
+            {safeUiError(startMutation.error)}
+          </div>
+        )}
+      </section>
+    </SectionPanorama>
   );
 }
 

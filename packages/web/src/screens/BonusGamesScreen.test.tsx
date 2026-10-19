@@ -278,6 +278,11 @@ describe('BonusGamesScreen', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it('places all six skill circles in persistent panorama navigation', () => {
+    mockCatalog([]);renderCatalog();
+    expect(screen.getByRole('region',{name:'Навигация: Бонусные игры'})).toBeInTheDocument();
+    for (const name of ['Скорость','Точность','Меткость','Выносливость','Ритм','Испытания']) expect(screen.getByRole('tab',{name})).toBeInTheDocument();
+  });
   it('shows the marksmanship tab with a point target and timed unlimited attempt', async () => {
     mockCatalog([
       card({
@@ -825,12 +830,9 @@ describe('BonusGamesScreen', () => {
       'true',
     );
     expect(screen.getByRole('tablist', { name: 'Навык' })).toHaveClass(
-      'segmented-tabs',
-      'segmented-tabs--scrollable',
+      'section-scene__dock',
     );
-    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveClass(
-      'segmented-tabs__item--active',
-    );
+    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected','true');
     expect(await screen.findByText('Скоростной пляж')).toBeInTheDocument();
     expect(screen.queryByText('Точный пляж')).not.toBeInTheDocument();
 

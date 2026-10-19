@@ -420,6 +420,23 @@ describe('InventoryScreen', () => {
     mockInventoryFetch(emptyInventory);
   });
 
+  it('uses department circles and keeps bank history separate on direct links', async () => {
+    mockInventoryFetch(inventoryWithItems);renderInventory('/inventory?category=stick');
+    expect(await screen.findByRole('heading', {name:'Клюшки'})).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('tab',{name:'Коньки'}));
+    expect(await screen.findByRole('heading',{name:'Коньки'})).toBeInTheDocument();
+    expect(screen.queryByRole('tab',{name:'Банк'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Назад'}));
+    expect(screen.getByText('sections screen')).toBeInTheDocument();
+  });
+  it('opens history directly with a bank panorama and preserves filters', async () => {
+    renderInventory('/inventory?tab=history');
+    expect(screen.getByRole('tab',{name:'История'})).toHaveAttribute('aria-selected','true');
+    expect(screen.getByRole('tab',{name:'Банк'})).toBeInTheDocument();
+    expect(screen.queryByRole('tab',{name:'Клюшки'})).toBeNull();
+    expect(await screen.findByRole('tab',{name:'Начисления'})).toBeInTheDocument();
+  });
+
   it('retains the overview and current category artwork after loading shop data', async () => {
     mockInventoryFetch(inventoryWithItems);
     renderInventory('/inventory?category=recovery');
@@ -428,13 +445,8 @@ describe('InventoryScreen', () => {
 
     await waitFor(() =>
       expect(preloadArtwork).toHaveBeenCalledWith([
-        '/shop/shop-background.webp',
-        '/shop/categories/sticks.webp',
-        '/shop/categories/skates.webp',
-        '/shop/categories/nutrition.webp',
-        '/shop/categories/recovery.webp',
-        '/shop/categories/bar-v1.webp',
-        '/shop/backgrounds/recovery.webp',
+        '/section-panoramas/shop-v1.webp',
+        ...Array.from({length:5},(_,i)=>`/section-panoramas/shop-${i}.webp`),
         '/inventory/recovery-15.webp?v=20260911-locker-equipment-v2',
         '/inventory/recovery-30.webp?v=20260911-locker-equipment-v2',
         '/inventory/recovery-60.webp?v=20260911-locker-equipment-v2',
@@ -442,34 +454,7 @@ describe('InventoryScreen', () => {
     );
   });
 
-  it('reuses wide section cards with one title, unique item count and decorative artwork', async () => {
-    mockInventoryFetch({
-      ...inventoryWithItems,
-      items: {
-        ...inventoryWithItems.items,
-        stick: [
-          ...inventoryWithItems.items.stick,
-          { ...inventoryWithItems.items.stick[0]!, id: 'duplicate-stick' },
-        ],
-      },
-    });
-    renderInventory();
-
-    for (const title of ['Клюшки', 'Коньки', 'Питание', 'Восстановление']) {
-      const card = await screen.findByRole('button', { name: `Открыть раздел ${title}` });
-      expect(within(card).getAllByText(title)).toHaveLength(1);
-      expect(within(card).queryByText(/Выбрать/)).toBeNull();
-      expect(
-        within(card).getByText(title === 'Восстановление' ? '3 товара' : '1 товар'),
-      ).toBeVisible();
-      expect(card).toHaveClass('section-card-surface', 'amateur-hub-card');
-      const image = card.querySelector('img');
-      expect(image).toHaveAttribute('alt', '');
-      expect(image?.parentElement).toHaveClass('amateur-hub-card__art');
-      expect(card.querySelector('.amateur-hub-card__copy')).not.toBeNull();
-      expect(card.querySelector('.card-chevron')).toHaveAttribute('aria-hidden', 'true');
-    }
-  });
+  it('keeps department navigation decorative and preserves unique products', async()=>{mockInventoryFetch({...inventoryWithItems,items:{...inventoryWithItems.items,stick:[...inventoryWithItems.items.stick,{...inventoryWithItems.items.stick[0]!,id:'duplicate'}]}});renderInventory();await screen.findByText('Бронзовая клюшка');expect(screen.getAllByRole('button',{name:/Подробнее о Бронзовая клюшка/})).toHaveLength(1);for(const title of ['Клюшки','Коньки','Питание','Восстановление','Бар'])expect(screen.getByRole('tab',{name:title}).querySelector('img')).toHaveAttribute('alt','');});
 
   it('lays out category cards in two columns with square artwork above the copy', () => {
     const grid = designSystemCss.match(/\.inventory-category-grid\s*\{([^}]+)\}/)?.[1];
@@ -491,51 +476,11 @@ describe('InventoryScreen', () => {
     expect(title).toMatch(/white-space:\s*nowrap/);
   });
 
-  it('shows the goods section heading with the same style as Bank and History', async () => {
-    mockInventoryFetch(inventoryWithItems);
-    renderInventory();
-    await screen.findByRole('button', { name: 'Открыть раздел Клюшки' });
-    const goods = screen.getByText('Товары', { selector: '.section-label' });
-    const style = goods.getAttribute('style');
-    fireEvent.click(screen.getByRole('tab', { name: 'Банк' }));
-    expect(screen.getByText('Банк', { selector: '.section-label' }).getAttribute('style')).toBe(
-      style,
-    );
-    fireEvent.click(screen.getByRole('tab', { name: 'История' }));
-    expect(screen.getByText('История', { selector: '.section-label' }).getAttribute('style')).toBe(
-      style,
-    );
-    expect(screen.queryByText('Товары', { selector: '.section-label' })).toBeNull();
-  });
+  it('uses a bank-specific heading when switching between bank and history',async()=>{renderInventory('/inventory?tab=bank');expect(screen.getByRole('heading',{name:'Банк'})).toBeInTheDocument();fireEvent.click(screen.getByRole('tab',{name:'История'}));expect(screen.getByRole('heading',{name:'История'})).toBeInTheDocument();expect(screen.queryByRole('tab',{name:'Товары'})).toBeNull();});
 
-  it('delivers decorative WebP artwork in all five shop category cards', async () => {
-    mockInventoryFetch(inventoryWithItems);
-    const { container } = renderInventory();
+  it('delivers one shared panorama and five lightweight department thumbnails',()=>{const {container}=renderInventory();expect(container.querySelector('.section-scene__panorama img')).toHaveAttribute('src','/section-panoramas/shop-v1.webp');const images=container.querySelectorAll('.section-scene__dock img');expect(images).toHaveLength(5);for(const image of images)expect(image.getAttribute('src')).toMatch(/section-panoramas\/shop-\d.webp$/);});
 
-    await screen.findByRole('button', { name: 'Открыть раздел Клюшки' });
-    expect(screen.getByRole('main')).toHaveClass('inventory-shop-screen');
-    const categoryImages = container.querySelectorAll<HTMLImageElement>(
-      '.inventory-category-card img',
-    );
-    expect(categoryImages).toHaveLength(5);
-    expect([...categoryImages].map((image) => image.getAttribute('src'))).toEqual([
-      '/shop/categories/sticks.webp',
-      '/shop/categories/skates.webp',
-      '/shop/categories/nutrition.webp',
-      '/shop/categories/recovery.webp',
-        '/shop/categories/bar-v1.webp',
-    ]);
-    for (const image of categoryImages) expect(image).toHaveAttribute('alt', '');
-  });
-
-  it('shows the overall empty state instead of four empty categories', async () => {
-    renderInventory();
-
-    expect(await screen.findByText('Товары скоро появятся')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Открыть раздел Клюшки' })).toBeNull();
-    expect(screen.queryByText('В разделе пока нет товаров')).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
-  });
+  it('keeps all department circles accessible when the current department is empty',async()=>{renderInventory();expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();expect(screen.getAllByRole('tab')).toHaveLength(5);expect(screen.getByRole('link',{name:'На карту'})).toBeInTheDocument();});
 
   it('shows a category-local empty state and preserves the shop balance', async () => {
     mockInventoryFetch({
@@ -546,8 +491,7 @@ describe('InventoryScreen', () => {
 
     expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();
     expect(screen.getByLabelText('Монеты: 1 000')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Открыть раздел Клюшки' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Клюшки' }));
     expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
   });
 
@@ -557,15 +501,15 @@ describe('InventoryScreen', () => {
     ['nutrition', 'Питание', 'shop-zone--nutrition', '/shop/backgrounds/nutrition.webp'],
     ['recovery', 'Восстановление', 'shop-zone--recovery', '/shop/backgrounds/recovery.webp'],
   ])(
-    'shows the %s category on its dedicated portrait background',
-    async (category, title, zone, artwork) => {
+    'shows the %s category on its position in the shared panorama',
+    async (category, title, _zone, artwork) => {
       mockInventoryFetch(inventoryWithItems);
       renderInventory(`/inventory?category=${category}`);
 
       await screen.findByRole('heading', { name: title });
       const main = screen.getByRole('main');
-      expect(main).toHaveClass(zone);
-      expect(main).toHaveStyle({ '--shop-category-artwork': `url("${artwork}")` });
+      expect(main).toHaveClass('section-scene');
+      expect(screen.getByRole('tab',{name:title})).toHaveAttribute('aria-selected','true');
       expect(main.querySelectorAll(`img[src="${artwork}"]`)).toHaveLength(0);
     },
   );
@@ -584,30 +528,7 @@ describe('InventoryScreen', () => {
     expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
   });
 
-  it('keeps the main tabs and shows four goods categories', async () => {
-    mockInventoryFetch(inventoryWithItems);
-
-    renderInventory();
-
-    expect(await screen.findByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Назад' })).toBeInTheDocument();
-    expect(await screen.findByLabelText('Монеты: 1 000')).toBeInTheDocument();
-    expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();
-    expect(screen.queryByLabelText('Опыт: 77')).toBeNull();
-    expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tab', { name: 'Банк' })).toBeInTheDocument();
-    expect(screen.getByRole('tab', { name: 'История' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть раздел Клюшки' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть раздел Коньки' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Открыть раздел Питание' })).toBeInTheDocument();
-    expect(
-      screen.getByRole('button', { name: 'Открыть раздел Восстановление' }),
-    ).toBeInTheDocument();
-    expect(screen.queryByText('Бронзовая клюшка')).not.toBeInTheDocument();
-    expect(screen.queryByText('-120')).not.toBeInTheDocument();
-    expect(document.querySelector('.inventory-shop-header')).toBeInTheDocument();
-    expect(document.querySelector('.inventory-shop-balance')).toBeInTheDocument();
-  });
+  it('opens the first shop department without the retired goods/bank tabs',async()=>{mockInventoryFetch(inventoryWithItems);renderInventory();expect(await screen.findByRole('heading',{name:'Клюшки'})).toBeInTheDocument();expect(screen.getAllByRole('tab')).toHaveLength(5);expect(screen.queryByRole('tab',{name:'Банк'})).toBeNull();});
 
   it('opens one category and hides the main shop tabs', async () => {
     mockInventoryFetch(inventoryWithItems);
@@ -619,54 +540,11 @@ describe('InventoryScreen', () => {
     expect(screen.queryByText('Серебряные коньки')).toBeNull();
   });
 
-  it('returns from a category to the goods overview', async () => {
-    mockInventoryFetch(inventoryWithItems);
-    renderInventory('/inventory?category=stick');
+  it('returns directly to the map from a department',async()=>{mockInventoryFetch(inventoryWithItems);renderInventory('/inventory?category=stick');await screen.findByRole('heading',{name:'Клюшки'});fireEvent.click(screen.getByRole('button',{name:'Назад'}));expect(screen.getByText('sections screen')).toBeInTheDocument();});
 
-    fireEvent.click(await screen.findByRole('button', { name: 'К разделам магазина' }));
-    expect(screen.getByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
-    expect(screen.getByRole('tablist', { name: 'Разделы магазина' })).toBeInTheDocument();
-  });
+  it('reconciles both scene and department when browser navigation changes the URL',async()=>{mockInventoryFetch(inventoryWithItems);window.history.replaceState(null,'','/inventory?tab=bank');const client=new QueryClient({defaultOptions:{queries:{retry:false}}});render(<QueryClientProvider client={client}><BrowserRouter><InventoryScreen/></BrowserRouter></QueryClientProvider>);expect(screen.getByRole('tab',{name:'Банк'})).toHaveAttribute('aria-selected','true');act(()=>{window.history.pushState(null,'','/inventory?category=skates');window.dispatchEvent(new PopStateEvent('popstate'));});expect(await screen.findByRole('heading',{name:'Коньки'})).toBeInTheDocument();expect(screen.getByRole('tab',{name:'Коньки'})).toHaveAttribute('aria-selected','true');});
 
-  it('restores goods when browser Forward returns to a category after selecting Bank', async () => {
-    mockInventoryFetch(inventoryWithItems);
-    window.history.replaceState(null, '', '/inventory');
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-    });
-    render(
-      <QueryClientProvider client={queryClient}>
-        <BrowserRouter>
-          <InventoryScreen />
-        </BrowserRouter>
-      </QueryClientProvider>,
-    );
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }));
-    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
-    act(() => window.history.back());
-    fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
-    expect(screen.getByRole('tab', { name: 'Банк' })).toHaveAttribute('aria-selected', 'true');
-
-    act(() => window.history.forward());
-    expect(await screen.findByRole('heading', { name: 'Клюшки' })).toBeInTheDocument();
-    expect(window.location.search).toBe('?category=stick');
-    expect(await screen.findByText('Бронзовая клюшка')).toBeInTheDocument();
-    expect(screen.queryByRole('tablist', { name: 'Разделы магазина' })).toBeNull();
-
-    fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
-    expect(screen.getByRole('tab', { name: 'Товары' })).toHaveAttribute('aria-selected', 'true');
-  });
-
-  it('falls back to the goods overview for an invalid category', async () => {
-    mockInventoryFetch(inventoryWithItems);
-    renderInventory('/inventory?category=bank');
-
-    expect(await screen.findByRole('heading', { name: 'Магазин' })).toBeInTheDocument();
-    expect(
-      await screen.findByRole('button', { name: 'Открыть раздел Клюшки' }),
-    ).toBeInTheDocument();
-  });
+  it('falls back to sticks for an invalid department link',async()=>{mockInventoryFetch(inventoryWithItems);renderInventory('/inventory?category=invalid');expect(await screen.findByRole('heading',{name:'Клюшки'})).toBeInTheDocument();expect(screen.getByRole('tab',{name:'Клюшки'})).toHaveAttribute('aria-selected','true');});
 
   it('shows only one shop card per equipment rarity', async () => {
     const duplicatedInventory: InventoryState = {
@@ -730,7 +608,7 @@ describe('InventoryScreen', () => {
   it('shows seven progressively better bank packages with highlighted offers', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
 
@@ -767,7 +645,7 @@ describe('InventoryScreen', () => {
 
   it('creates one payment for the selected API package', async () => {
     mockInventoryFetch(inventoryWithItems);
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
@@ -795,7 +673,7 @@ describe('InventoryScreen', () => {
   });
 
   it('uses the standard close action and one CTA in the receipt email modal', async () => {
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
 
@@ -840,7 +718,7 @@ describe('InventoryScreen', () => {
 
   it('prefills the last receipt email and lets the user replace it', async () => {
     mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending', null, 'last@example.com');
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
 
@@ -893,7 +771,7 @@ describe('InventoryScreen', () => {
         }
         return fallback(input, init);
       });
-      let view = renderInventory();
+      let view = renderInventory('/inventory?tab=bank');
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
       confirmReceiptEmail();
@@ -908,7 +786,7 @@ describe('InventoryScreen', () => {
         expect(screen.getByRole('button', { name: /Купить.*40.*000.*699/ })).toBeEnabled(),
       );
       view.unmount();
-      view = renderInventory();
+      view = renderInventory('/inventory?tab=bank');
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
       confirmReceiptEmail();
@@ -940,7 +818,7 @@ describe('InventoryScreen', () => {
       ['buyer-one', /Купить.*40.*000.*699/],
     ] as const) {
       useAuthStore.getState().updateUser({ id: buyer });
-      const view = renderInventory();
+      const view = renderInventory('/inventory?tab=bank');
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: packageName }));
       confirmReceiptEmail();
@@ -953,7 +831,7 @@ describe('InventoryScreen', () => {
   });
 
   it('fails closed before sending a payment when persistent attempt storage is unavailable', async () => {
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
     vi.spyOn(localStorage, 'setItem').mockImplementation(() => {
@@ -975,7 +853,7 @@ describe('InventoryScreen', () => {
   it('does not overwrite corrupt unresolved attempt data with a new payment', async () => {
     const key = `hockey.bank.attempt.buyer-one.${coinPackages[2].id}`;
     localStorage.setItem(key, '{broken attempt');
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
     confirmReceiptEmail();
@@ -1009,7 +887,7 @@ describe('InventoryScreen', () => {
         }
         return fallback(input, init);
       });
-      renderInventory();
+      renderInventory('/inventory?tab=bank');
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
       fireEvent.click(buy);
@@ -1027,7 +905,7 @@ describe('InventoryScreen', () => {
     style.textContent = designSystemCss;
     document.head.append(style);
     try {
-      renderInventory();
+      renderInventory('/inventory?tab=bank');
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       const buy = await screen.findByRole('button', { name: /Купить.*40.*000.*699/ });
       expect(getComputedStyle(buy).cursor).toBe('pointer');
@@ -1055,7 +933,7 @@ describe('InventoryScreen', () => {
 
   it('shows a payment error instead of navigating to an unsafe confirmation URL', async () => {
     mockInventoryFetch(inventoryWithItems, inventoryWithItems, 'pending', 'javascript:alert(1)');
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
 
     fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
     fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
@@ -1077,7 +955,7 @@ describe('InventoryScreen', () => {
         }
         return fallback(input, init);
       });
-      const view = renderInventory();
+      const view = renderInventory('/inventory?tab=bank');
       fireEvent.click(await screen.findByRole('tab', { name: 'Банк' }));
       fireEvent.click(await screen.findByRole('button', { name: /Купить.*40.*000.*699/ }));
       confirmReceiptEmail();
@@ -1118,7 +996,7 @@ describe('InventoryScreen', () => {
       );
       if (isTerminal) {
         await waitFor(() => {
-          expect(screen.getByTestId('location-search')).toBeEmptyDOMElement();
+          expect(screen.getByTestId('location-search')).toHaveTextContent('?tab=bank');
         });
       } else {
         expect(screen.getByTestId('location-search')).toHaveTextContent('?payment=return');
@@ -1161,7 +1039,7 @@ describe('InventoryScreen', () => {
   it('shows transaction history with currency icons and filters', async () => {
     mockInventoryFetch(inventoryWithItems);
 
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
 
     expect(
       vi
@@ -1224,7 +1102,7 @@ describe('InventoryScreen', () => {
     }));
     mockInventoryFetch({ ...inventoryWithItems, transactionHistory: transactions });
 
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
 
     expect(await screen.findByText('Награда 20')).toBeInTheDocument();
@@ -1244,7 +1122,7 @@ describe('InventoryScreen', () => {
       transactionHistory: [],
     });
 
-    renderInventory();
+    renderInventory('/inventory?tab=bank');
 
     fireEvent.click(await screen.findByRole('tab', { name: 'История' }));
     const empty = await screen.findByText('Операций пока нет.');

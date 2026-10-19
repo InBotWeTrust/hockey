@@ -4,7 +4,6 @@ import { achievementThumbnailUrl } from '../achievements/artwork.js';
 import { catalogBonusGameArtwork, versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from '../screens/inventoryArtwork.js';
 import {
-  SHOP_CATEGORY_META,
   SHOP_CATEGORY_ORDER,
   type ShopCategory,
 } from '../screens/inventoryShopCategories.js';
@@ -93,15 +92,14 @@ export function shopArtworkUrls(
     selectedCategory === null
       ? []
       : [
-          SHOP_CATEGORY_META[selectedCategory].backgroundUrl,
           ...(selectedCategory === 'bar'
             ? ['/shop/products/bar-card-v1.webp', '/shop/products/bar-messages-10-v1.webp', '/shop/products/bar-messages-30-v1.webp', '/shop/products/bar-messages-100-v1.webp']
             : inventory.items[selectedCategory].map(artworkForInventoryItem)),
         ];
   return [
     ...new Set([
-      '/shop/shop-background.webp',
-      ...SHOP_CATEGORY_ORDER.map((category) => SHOP_CATEGORY_META[category].artworkUrl),
+      '/section-panoramas/shop-v1.webp',
+      ...SHOP_CATEGORY_ORDER.map((_,index) => `/section-panoramas/shop-${index}.webp`),
       ...categoryArtwork,
     ]),
   ];

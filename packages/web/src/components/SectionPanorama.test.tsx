@@ -1,0 +1,120 @@
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { SectionPanorama, adjacentSection } from './SectionPanorama.js';
+const pages = ['Клюшки', 'Коньки', 'Питание'].map((label, i) => ({
+  id: String(i),
+  label,
+  image: '/thumb.webp',
+}));
+beforeEach(() => sessionStorage.clear());
+it('keeps circle navigation visible and delegates selection without submitting content', () => {
+  const change = vi.fn();
+  render(
+    <SectionPanorama
+      label="Магазин"
+      pages={pages}
+      selected="0"
+      onSelect={change}
+      panorama="/shop.webp"
+      storageKey="test"
+    >
+      <button>Купить</button>
+    </SectionPanorama>,
+  );
+  expect(screen.getByRole('tab', { name: 'Клюшки' })).toHaveAttribute('aria-selected', 'true');
+  fireEvent.click(screen.getByRole('tab', { name: 'Коньки' }));
+  expect(change).toHaveBeenCalledWith('1');
+  expect(screen.queryByLabelText('Свернуть навигацию')).toBeNull();
+  const exit = screen.getByRole('link', { name: 'На карту' });
+  expect(exit).toHaveAttribute('href', '/sections?home=1');
+  expect(
+    exit.compareDocumentPosition(screen.getByRole('tab', { name: 'Клюшки' })) &
+      Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
+it('clamps swipes at the first and last section', () => {
+  expect(adjacentSection(pages, '0', -1)).toBe('0');
+  expect(adjacentSection(pages, '2', 1)).toBe('2');
+  expect(adjacentSection(pages, '0', 1)).toBe('1');
+});
+it('restores independent vertical positions on switching and remounting', () => {
+  const props = {
+    label: 'Магазин',
+    pages,
+    onSelect: vi.fn(),
+    panorama: '/shop.webp',
+    storageKey: 'scroll-test',
+  };
+  const view = render(
+    <SectionPanorama {...props} selected="0">
+      <p>Товары</p>
+    </SectionPanorama>,
+  );
+  const scroll = screen.getByTestId('section-page-scroll');
+  scroll.scrollTop = 320;
+  fireEvent.scroll(scroll);
+  view.rerender(
+    <SectionPanorama {...props} selected="1">
+      <p>Товары</p>
+    </SectionPanorama>,
+  );
+  expect(scroll.scrollTop).toBe(0);
+  scroll.scrollTop = 100;
+  fireEvent.scroll(scroll);
+  view.rerender(
+    <SectionPanorama {...props} selected="0">
+      <p>Товары</p>
+    </SectionPanorama>,
+  );
+  expect(scroll.scrollTop).toBe(320);
+  view.unmount();
+  render(
+    <SectionPanorama {...props} selected="1">
+      <p>Товары</p>
+    </SectionPanorama>,
+  );
+  expect(screen.getByTestId('section-page-scroll').scrollTop).toBe(100);
+});
+it('ignores corrupt optional scroll storage', () => {
+  sessionStorage.setItem('corrupt', 'null');
+  expect(() =>
+    render(
+      <SectionPanorama
+        label="Магазин"
+        pages={pages}
+        selected="0"
+        onSelect={vi.fn()}
+        panorama="/shop.webp"
+        storageKey="corrupt"
+      >
+        <p>Товары</p>
+      </SectionPanorama>,
+    ),
+  ).not.toThrow();
+});
+it('restores a saved position after the catalog finishes loading', () => {
+  sessionStorage.setItem('delayed', JSON.stringify({ '0': 320 }));
+  const props = {
+    label: 'Магазин',
+    pages,
+    selected: '0',
+    onSelect: vi.fn(),
+    panorama: '/shop.webp',
+    storageKey: 'delayed',
+  };
+  const view = render(
+    <SectionPanorama {...props}>
+      <p>Загрузка</p>
+    </SectionPanorama>,
+  );
+  const scroll = screen.getByTestId('section-page-scroll');
+  // A browser clamps scrollTop while an asynchronous catalog is shorter than the viewport.
+  scroll.scrollTop = 0;
+  fireEvent.scroll(scroll);
+  view.rerender(
+    <SectionPanorama {...props}>
+      <p>Загруженные товары</p>
+    </SectionPanorama>,
+  );
+  expect(scroll.scrollTop).toBe(320);
+});

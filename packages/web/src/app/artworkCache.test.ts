@@ -137,13 +137,8 @@ describe('preloadArtwork', () => {
 
   it('collects the shop overview and only the open category artwork', () => {
     expect(shopArtworkUrls(inventoryWithSelectedEquipment(), 'recovery')).toEqual([
-      '/shop/shop-background.webp',
-      '/shop/categories/sticks.webp',
-      '/shop/categories/skates.webp',
-      '/shop/categories/nutrition.webp',
-      '/shop/categories/recovery.webp',
-        '/shop/categories/bar-v1.webp',
-      '/shop/backgrounds/recovery.webp',
+      '/section-panoramas/shop-v1.webp',
+        ...Array.from({length:5},(_,i)=>`/section-panoramas/shop-${i}.webp`),
       '/inventory/recovery.webp?v=20260911-locker-equipment-v2',
     ]);
   });
