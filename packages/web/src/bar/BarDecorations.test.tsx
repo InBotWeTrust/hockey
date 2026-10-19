@@ -22,7 +22,7 @@ it('keeps architectural doors in the panorama when Veronika moves', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-2', 'veronika');
   const view = render(<BarScene layout={layout} activeSlotId="bar-2" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
   expect(view.container.querySelector('[data-bar-backdrop="veronika"]')).toBeNull();
-  expect(view.container.querySelector('[data-bar-wall="middle"] img')?.getAttribute('src')).toMatch(/middle-.*-v[23].webp$/);
+  expect(view.container.querySelector('[data-bar-wall="west"] img')?.getAttribute('src')).toMatch(/west-.*-v2.webp$/);
   expect(view.container.querySelector('[data-bar-decoration="veronika"]')).toBeNull();
 });
 it('keeps the eastern panorama framing fixed between Igor and broadcasts', () => {
@@ -34,15 +34,16 @@ it('keeps the eastern panorama framing fixed between Igor and broadcasts', () =>
   expect((view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition).toBe(before);
 });
 
-it('uses baked background details without overlays and opens the door only at the last page', () => {
+it('uses baked background details and centers the office doorway before entering', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-6', 'maria');
   const open = vi.fn();
   const view = render(<BarScene layout={layout} activeSlotId="bar-6" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
   expect(view.container.querySelector('[data-bar-decoration]')).toBeNull();
-  expect(screen.queryByRole('button', {name: 'Открыть служебную дверь'})).not.toBeInTheDocument();
-  view.rerender(<BarScene layout={layout} activeSlotId="bar-10" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
   fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
-  expect(open).toHaveBeenCalledWith('bar-10');
+  expect(open).not.toHaveBeenCalled();
+  view.rerender(<BarScene layout={layout} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
+  fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
+  expect(open).toHaveBeenCalledWith('bar-9');
 });
 it('drags across the service door without opening it or selecting a page', () => {
   const layout = createDefaultBarLayout();
@@ -121,4 +122,12 @@ it('keeps an exit to the map before every bar character circle',()=>{
  expect(exit).toHaveAttribute('href','/sections');
  expect(navigation.firstElementChild).toBe(exit);
  expect(exit).toHaveTextContent('Выход');
+});
+
+it('opens the office from Igor next to the TV without highlighting its door', () => {
+ const open=vi.fn();
+ const {container}=render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Открыть служебную дверь'}));
+ expect(open).toHaveBeenCalledWith('bar-9');
+ expect(container.querySelector('.bar-space__service-door-hit [data-bar-object-glow]')).toBeNull();
 });

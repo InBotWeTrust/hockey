@@ -74,6 +74,7 @@ export function BarScene({
     layout.slots.findIndex((s) => s.id === activeSlotId),
   );
   const slot = layout.slots[index]!;
+  const staffDoorIndex = layout.slots.findIndex(s => s.occupantId === 'igor');
   const profile = slot.occupantId ? layout.profiles[slot.occupantId] : null;
   const [terminalOpen, setTerminalOpen] = useState(false);
   const incomingInvitation=useBarInvitation(slot.occupantId==='online'&&!hideIdentity);
@@ -195,8 +196,8 @@ export function BarScene({
             </div>
           );
         })}
-      {index === layout.slots.length - 1 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
-        onClick={()=>{if(ready(layout.slots.length-1))onStaffRoom(slot.id);}}/>}
+      {staffDoorIndex >= 0 && !hideIdentity && onStaffRoom && <button className="bar-space__service-door-hit" type="button" aria-label="Открыть служебную дверь"
+        onClick={()=>{if(ready(staffDoorIndex))onStaffRoom(layout.slots[staffDoorIndex]!.id);}}/>}
       </div>
       </div>
       </div>
