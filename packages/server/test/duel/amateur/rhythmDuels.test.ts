@@ -117,7 +117,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       duelKind: 'rhythm',
       totalPeriods: 1,
       periodDurationMs: 150000,
-      rhythmVersion: 2,
+      rhythmVersion: 3,
       rhythmWindowTraversals: 2,
       scoredClockVersion: 2,
       shotResultPauseMs: 1000,
@@ -202,7 +202,8 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     ).toBe(0);
   });
 
-  it('replays real timely, missed, late and recovery shots through the authoritative route', async () => {
+  it.each(['late','strict'] as const)('replays real timely, missed and recovery shots through the authoritative route (%s)', async (scenario) => {
+    const desiredShots = scenario === 'strict' ? ['goal','goal','miss','goal'] : ['goal','miss','late','goal'];
     const { id, post, rules } = await start();
     const timing = structuredClone(rules.noInventoryTiming);
     for (const item of [timing.skates, timing.nutrition]) {
@@ -238,7 +239,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       plan = [];
       let scene = 0,
         lastGoalTravel = 0;
-      for (const [index, desired] of ['goal', 'miss', 'late', 'goal'].entries()) {
+      for (const [index, desired] of desiredShots.entries()) {
         let found = false;
         for (let t = scene; t < scene + 10000; t += 5) {
           const travel = sample.travelAt(t, pauses);
@@ -291,16 +292,16 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       });
       expect(response.statusCode, response.body).toBe(200);
       const actual = response.json().participant;
-      const expected = projectRhythm({ shots: plan.slice(0, index + 1), travel: shot.travel });
+      const expected = projectRhythm({ shots: plan.slice(0, index + 1), travel: shot.travel, version: rules.rhythmVersion });
       expect(actual.format_score).toBe(expected.score);
       expect(actual.rhythm_current_series).toBe(expected.currentSeries);
       expect(actual.rhythm_last_goal_travel).toBeCloseTo(expected.lastGoalTravel, 8);
       expect(actual.rhythm_shots[index].travel).toBeCloseTo(shot.travel, 8);
-      expect(actual.goals).toBe(index === 0 ? 1 : index === 1 ? 1 : index === 2 ? 2 : 3);
+      expect(actual.goals).toBe(plan.slice(0,index+1).filter(shot=>shot.goal).length);
     }
-    expect(projectRhythm({ shots: plan, travel: plan[3]!.travel })).toMatchObject({
+    expect(projectRhythm({ shots: plan, travel: plan[3]!.travel, version: rules.rhythmVersion })).toMatchObject({
       score: 2,
-      currentSeries: 2,
+      currentSeries: scenario === 'strict' ? 1 : 2,
       series: [2],
     });
   });
@@ -427,6 +428,6 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       .find((m: any) => m.id === id);
     expect(Number(row.my_score)).toBe(4);
     expect(Number(row.opponent_score)).toBe(4);
-    expect(rules.rhythmVersion).toBe(2);
+    expect(rules.rhythmVersion).toBe(3);
   });
 });
