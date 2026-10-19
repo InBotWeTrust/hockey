@@ -42,7 +42,6 @@ import {
   type ShopCategory,
 } from './inventoryShopCategories.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
-import { FittedOneLineText } from './profileSections.js';
 import { updateCachedProfileBalances } from '../app/queryClient.js';
 import { preloadArtwork, shopArtworkUrls } from '../app/artworkCache.js';
 import { useAuthStore } from '../auth/authStore.js';
@@ -445,13 +444,7 @@ export function InventoryScreen(): JSX.Element {
             className="screen-title-on-arena"
             style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
           >
-            <FittedOneLineText
-              className="inventory-shop-header__fitted-title"
-              maxFontSize={24}
-              minFontSize={14}
-            >
-              {bankScene ? activeTab === 'history' ? 'История' : 'Банк' : SHOP_CATEGORY_META[selectedCategory!].title}
-            </FittedOneLineText>
+            {bankScene ? activeTab === 'history' ? 'История' : 'Банк' : SHOP_CATEGORY_META[selectedCategory!].title}
           </h1>
           <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
         </div>

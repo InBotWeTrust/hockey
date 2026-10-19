@@ -514,12 +514,12 @@ describe('InventoryScreen', () => {
     },
   );
 
-  it('keeps the recovery title on one line without moving the balance below it', async () => {
+  it('keeps the full recovery heading and the balance in the page header', async () => {
     mockInventoryFetch(inventoryWithItems);
     renderInventory('/inventory?category=recovery');
 
     const heading = await screen.findByRole('heading', { name: 'Восстановление' });
-    expect(heading.querySelector('.inventory-shop-header__fitted-title')).toHaveTextContent(
+    expect(heading).toHaveTextContent(
       'Восстановление',
     );
     expect(heading.closest('.inventory-shop-header')).toHaveClass(

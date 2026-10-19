@@ -64,6 +64,13 @@ export function venueSceneFor(pathname: string, search: string, level: Level): V
   if ((pathname === '/' && view === 'training') || (daily && level === 'beginner')) {
     const pages: VenuePage[] = [
       {
+        id: 'open',
+        label: 'Открытая',
+        href: trainingHref('open'),
+        position: 3,
+        image: '/section-panoramas/yard-3.webp',
+      },
+      {
         id: 'daily',
         label: 'Ежедневная',
         href: '/daily',
@@ -84,14 +91,8 @@ export function venueSceneFor(pathname: string, search: string, level: Level): V
         position: 2,
         image: '/section-panoramas/yard-2.webp',
       },
-      {
-        id: 'open',
-        label: 'Открытая',
-        href: trainingHref('open'),
-        position: 3,
-        image: '/section-panoramas/yard-3.webp',
-      },
-    ].filter((page) => page.id !== 'daily' || level === 'beginner');
+    ].filter((page) => page.id !== 'daily' || level === 'beginner')
+      .map((page, position) => ({...page, position, image: `/section-panoramas/yard-${position}.webp`}));
     const selected = daily ? 'daily' : (params.get('section') ?? 'course');
     return {
       id: 'yard',

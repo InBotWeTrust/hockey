@@ -153,3 +153,11 @@ describe('advanced training course UI', () => {
     expect(onStart).not.toHaveBeenCalled();
   });
 });
+
+it('translates open-window stage codes instead of exposing API identifiers', () => {
+  render(<AdvancedTrainingCatalog catalog={{...catalog,exercises:[{...exercises[0]!,skill:'notice'},{...exercises[1]!,skill:'anticipate'}]}} onStart={()=>{}} />);
+  expect(screen.queryByText('notice')).toBeNull();
+  expect(screen.queryByText('anticipate')).toBeNull();
+  expect(screen.getByText('Наблюдение')).toBeInTheDocument();
+  expect(screen.getByText('Предугадывание')).toBeInTheDocument();
+});

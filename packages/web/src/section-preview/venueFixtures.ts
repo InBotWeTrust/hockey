@@ -1,4 +1,4 @@
-import { DAILY_PERIOD_SPEED_PRESETS } from '@hockey/game-core';
+import { DAILY_PERIOD_SPEED_PRESETS, OPEN_WINDOW_STEPS } from '@hockey/game-core';
 import type { DailyStateResponse } from '../api/duel.js';
 import type { TrainingStateResponse } from '../api/training.js';
 import type { InitialTrainingCatalogResponse } from '../api/initialTraining.js';
@@ -84,34 +84,11 @@ export const initialTrainingCatalog: InitialTrainingCatalogResponse = {
   })) as InitialTrainingCatalogResponse['exercises'],
 };
 
-initialTrainingCatalog.advanced_training.exercises = (
-  [
-    'board-side',
-    'open-net',
-    'crossing',
-    'goalie-leaving',
-    'narrow-gap',
-    'counter-direction',
-    'second-tempo',
-    'rhythm-reset',
-  ] as const
-).map((key, i) => ({
-  key,
-  position: i + 1,
-  title: [
-    'От борта',
-    'Открытый угол',
-    'Пересечение',
-    'Выход вратаря',
-    'Узкий просвет',
-    'Противоход',
-    'Второй темп',
-    'Смена ритма',
-  ][i]!,
-  description: 'Отработка хоккейного приёма',
-  skill: 'Точность',
-  goal: 'Выполни приём',
-  rewardStars: 2,
-  rewardExperience: 5,
-  state: i === 0 ? 'available' : 'locked',
+initialTrainingCatalog.advanced_training.completed_count = 3;
+initialTrainingCatalog.advanced_training.total_count = OPEN_WINDOW_STEPS.length;
+initialTrainingCatalog.advanced_training.exercises = OPEN_WINDOW_STEPS.map((step, i) => ({
+  key: step.key, position: i + 1, title: step.title, description: step.objective,
+  skill: step.stage, goal: step.objective, rewardStars: i % 3 === 2 ? 1 : 0,
+  rewardExperience: i % 3 === 2 ? 1 : 0,
+  state: i < 3 ? 'completed' : i === 3 ? 'available' : 'locked',
 }));

@@ -13,11 +13,11 @@ it.each([
   if (scene) expect(scene.selected).toBe('daily');
 });
 it.each(['amateur', 'professional'] as const)(
-  'omits daily from the yard for %s without shifting the other zones',
+  'keeps yard pages and panorama positions in the same order for %s',
   (level) => {
     const scene = venueSceneFor('/', '?view=training&section=course', level)!;
-    expect(scene.pages.map((p) => p.id)).toEqual(['course', 'advanced', 'open']);
-    expect(scene.pages.map((p) => p.position)).toEqual([1, 2, 3]);
+    expect(scene.pages.map((p) => p.id)).toEqual(['open', 'course', 'advanced']);
+    expect(scene.pages.map((p) => p.position)).toEqual([0, 1, 2]);
     expect(scene.columns).toBe(4);
   },
 );
@@ -84,4 +84,11 @@ it('keeps story replay full screen and profile achievements in the task building
   expect(venueSceneFor('/profile/story/series-1', '', 'amateur')).toBeNull();
   expect(venueSceneFor('/profile/story/series-2', '', 'amateur')).toBeNull();
   expect(venueSceneFor('/profile/achievements', '', 'amateur')?.id).toBe('tasks');
+});
+
+it.each(['beginner','amateur','professional'] as const)('puts open training first in the yard for %s', level => {
+  const scene=venueSceneFor('/', '?view=training&section=open', level)!;
+  expect(scene.pages[0]?.id).toBe('open');
+  expect(scene.pages.map(page=>page.position)).toEqual(scene.pages.map((_,index)=>index));
+  expect(scene.selected).toBe('open');
 });

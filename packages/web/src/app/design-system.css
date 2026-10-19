@@ -15853,3 +15853,27 @@ button.daily-calendar__day:active {
 
 /* Preserve keyboard focus while suppressing the browser touch flash. */
 .achievement-card, .achievement-card * { -webkit-tap-highlight-color:transparent; }
+
+/* Exercise lists share their tallest content row, independent of progress state. */
+.advanced-training-exercise-list,
+.initial-training-exercise-list {
+  grid-auto-rows: 1fr;
+}
+.advanced-training-exercise-list .achievement-card__open,
+.initial-training-exercise-list .achievement-card__open {
+  height: 100%;
+}
+.advanced-training-exercise-card__meta {
+  display: grid;
+  align-content: start;
+  gap: 4px;
+}
+.advanced-training-exercise-card__meta > [aria-hidden] { display: none; }
+.inventory-bank-card__marker {
+  color: #18212e;
+  background: #e5edf5;
+}
+.inventory-bank-card__marker--premium {
+  color: #3b2600;
+  background: linear-gradient(135deg, #ffe18a, #f4b942);
+}

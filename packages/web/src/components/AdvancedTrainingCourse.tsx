@@ -277,7 +277,7 @@ export function AdvancedTrainingCatalog({
                   </span>
                   {exercise.skill && exercise.goal ? (
                     <div className="advanced-training-exercise-card__meta">
-                      <span className="advanced-training-exercise-card__skill">{exercise.skill}</span>
+                      <span className="advanced-training-exercise-card__skill">{({notice:'Наблюдение',anticipate:'Предугадывание',decide:'Выбор решения',pace:'Темп'} as Record<string,string>)[exercise.skill] ?? exercise.skill}</span>
                       <span aria-hidden="true">·</span>
                       <span>Цель: {exercise.goal}</span>
                     </div>
