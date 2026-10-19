@@ -62,7 +62,6 @@ it('opens the first yard catalog and allows circles to switch to advanced traini
 
 it.each([
   ['/profile', 'profile'],
-  ['/profile/equipment', 'equipment'],
   ['/profile/rewards', 'rewards'],
   ['/profile/settings', 'settings'],
   ['/referrals', 'referrals'],
@@ -91,4 +90,8 @@ it.each(['beginner','amateur','professional'] as const)('puts open training firs
   expect(scene.pages[0]?.id).toBe('open');
   expect(scene.pages.map(page=>page.position)).toEqual(scene.pages.map((_,index)=>index));
   expect(scene.selected).toBe('open');
+});
+it('keeps the standalone and legacy locker routes outside the apartment', () => {
+  expect(venueSceneFor('/locker-room', '', 'beginner')).toBeNull();
+  expect(venueSceneFor('/profile/equipment', '', 'beginner')).toBeNull();
 });

@@ -130,6 +130,24 @@ describe('App routing + auth', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it.each(['/locker-room', '/profile/equipment'])('opens private standalone locker from %s', async path => {
+    await import('../screens/LockerRoomScreen.js');
+    useAuthStore.getState().setSession({ accessToken: 'test', refreshToken: 'test', user: { id: 'u', displayName: 'A', competitionLevel: 'beginner' } });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => new Response(JSON.stringify(String(input).includes('/inventory/me') ? { balances: {tokens:0,stars:0,experience:0}, equipped: {stickItemId:null,skatesItemId:null,nutritionItemId:null}, items: {stick:[],skates:[],nutrition:[],recovery:[]} } : { competitionLevel: 'beginner' }), { status: 200 }));
+    window.history.replaceState({}, '', path); const historyLength=window.history.length; render(<App/>);
+    expect(await screen.findByRole('tab', { name: 'Инвентарь' })).toHaveAttribute('aria-selected', 'true');
+    expect(window.location.pathname).toBe('/locker-room');
+    expect(window.history.length).toBe(historyLength);
+    expect(document.querySelector('.apartment-scene')).toBeNull();
+    expect(screen.getAllByRole('link', { name: 'На карту' })).toHaveLength(1);
+  });
+  it('requires authentication for the standalone locker route', async () => {
+    window.history.replaceState({}, '', '/locker-room'); render(<App/>);
+    await screen.findByRole('heading', { name: /Вход|хоккей|Добро/i });
+    expect(window.location.pathname).toBe('/login');
+    expect(document.querySelector('.locker-room-scene')).toBeNull();
+  });
+
   it('opens a local second-period daily preview without authentication', async () => {
     // This tests the route, not cold Vite module compilation. Load the real
     // lazy screen before starting the DOM assertion's short wait budget.

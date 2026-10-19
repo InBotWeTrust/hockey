@@ -6429,7 +6429,7 @@ describe('DailyScreen', () => {
     expect(document.querySelector('main.mode-shell')).toHaveClass('mode-shell--locker');
     expect(document.querySelector('main.mode-shell')).toHaveClass('locker-room-bg--professional');
     expect(screen.queryByText('Доступный инвентарь')).not.toBeInTheDocument();
-    const infoButton = screen.getByRole('button', { name: 'Что такое раздевалка' });
+    const infoButton = await screen.findByRole('button', { name: 'Что такое раздевалка' });
     expect(infoButton).toHaveClass('duel-section-info-btn');
     expect(infoButton.querySelector('svg')).toHaveAttribute('stroke', 'rgba(240, 248, 255, 0.92)');
     const lockerSlots = [

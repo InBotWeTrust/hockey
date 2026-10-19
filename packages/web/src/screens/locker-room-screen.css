@@ -1,0 +1,15 @@
+.locker-room-scene .section-scene__panorama img {
+  object-fit: cover;
+  object-position: center top;
+}
+.locker-room-scene--pending .section-scene__panorama {
+  visibility: hidden;
+}
+.locker-room-content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+.locker-room-content > h1 {
+  margin: 0;
+}

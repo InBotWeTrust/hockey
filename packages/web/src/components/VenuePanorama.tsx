@@ -28,7 +28,7 @@ interface VenueScene {
 const trainingHref = (section: string) => `/?view=training&section=${section}&from=sections`;
 const stadiumHref = (section: string) => `/?view=amateur&section=${section}&from=sections`;
 export function venueSceneFor(pathname: string, search: string, level: Level): VenueScene | null {
-  if (level === null) return null;
+  if (level === null || pathname === '/profile/equipment') return null;
   const params = new URLSearchParams(search),
     view = params.get('view');
   const daily = pathname === '/daily';
