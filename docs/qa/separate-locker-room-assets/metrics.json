@@ -1,0 +1,78 @@
+{
+  "screens": [
+    {
+      "level": "beginner",
+      "background": "/backgrounds/locker-room-beginner.webp",
+      "height": 740,
+      "overflow": 0,
+      "tabs": 1,
+      "width": 320
+    },
+    {
+      "level": "beginner",
+      "background": "/backgrounds/locker-room-beginner.webp",
+      "height": 932,
+      "overflow": 0,
+      "tabs": 1,
+      "width": 430
+    },
+    {
+      "level": "amateur",
+      "background": "/backgrounds/locker-room-amateur.webp",
+      "height": 740,
+      "overflow": 0,
+      "tabs": 1,
+      "width": 320
+    },
+    {
+      "level": "amateur",
+      "background": "/backgrounds/locker-room-amateur.webp",
+      "height": 932,
+      "overflow": 0,
+      "tabs": 1,
+      "width": 430
+    },
+    {
+      "level": "professional",
+      "background": "/backgrounds/locker-room-detailed.webp",
+      "height": 740,
+      "overflow": 0,
+      "tabs": 1,
+      "width": 320
+    },
+    {
+      "level": "professional",
+      "background": "/backgrounds/locker-room-detailed.webp",
+      "height": 932,
+      "overflow": 0,
+      "tabs": 1,
+      "width": 430
+    }
+  ],
+  "map": [
+    {
+      "level": "beginner",
+      "height": 44,
+      "left": "15.5%",
+      "top": "70%",
+      "unobstructed": true,
+      "width": 44
+    },
+    {
+      "level": "amateur",
+      "height": 44,
+      "left": "50.5%",
+      "top": "73%",
+      "unobstructed": true,
+      "width": 44
+    },
+    {
+      "level": "professional",
+      "height": 44,
+      "left": "89%",
+      "top": "70%",
+      "unobstructed": true,
+      "width": 44
+    }
+  ]
+}

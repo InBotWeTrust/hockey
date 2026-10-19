@@ -1,3 +1,4 @@
+import { LockerRoomScreen } from '../screens/LockerRoomScreen.js';
 import { useDailyStore } from '../stores/dailyStore.js';
 import { apartmentProfile, referralSummary } from './apartmentFixtures.js';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
@@ -5,7 +6,6 @@ import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
 import { ReferralsScreen } from '../screens/ReferralsScreen.js';
 import { ProfileRewardsScreen } from '../screens/ProfileRewardsScreen.js';
 import {
-  ProfileEquipmentScreen,
   ProfileStoryScreen,
   ProfileStatsScreen,
   ProfileArenaScreen,
@@ -23,7 +23,7 @@ import { WeeklyChallengeScreen } from '../screens/WeeklyChallengeScreen.js';
 import { baseState, trainingIdleState, initialTrainingCatalog } from './venueFixtures.js';
 import React from 'react';
 import { createRoot } from 'react-dom/client';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Navigate, Route, Routes, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { InventoryScreen } from '../screens/InventoryScreen.js';
 import { BonusGamesScreen } from '../screens/BonusGamesScreen.js';
@@ -45,7 +45,7 @@ const level =
 const previewTime = ['morning', 'day', 'sunset', 'night'].includes(params.get('time') ?? '')
   ? (params.get('time') as CityTimeOfDay)
   : undefined;
-if (scene === 'map') useDailyStore.setState({data: baseState});
+if (['map', 'locker', 'locker-alias'].includes(scene)) useDailyStore.setState({data: baseState});
 const inventory = structuredClone(inventoryWithItems);
 inventory.balances = { tokens: 43509, stars: 1860, experience: 77 };
 for (const kind of ['stick', 'skates', 'nutrition', 'recovery'] as const) {
@@ -262,8 +262,29 @@ function BarNavigationPreview() {
     />
   );
 }
+function MapNavigationPreview() {
+  const navigate = useNavigate();
+  return (
+    <main className="screen sections-city-screen">
+      <CityMap
+        level={level}
+        owner="navigation-labels-qa"
+        startAtDaily
+        gamePanel={<GameHub presentation="city" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}} />}
+        daily="0/90 бросков"
+        training="0/500"
+        tasks="Есть награда"
+        bonus="Бонусные игры"
+        taskCount={1}
+        isAdmin
+        adminCount={2}
+        onNavigate={navigate}
+      />
+    </main>
+  );
+}
 const initial =
-  scene === 'apartment'
+  scene === 'locker' ? '/locker-room' : scene === 'locker-alias' ? '/profile/equipment' : scene === 'apartment'
     ? params.get('page') === 'referrals'
       ? '/referrals'
       : params.get('page') && params.get('page') !== 'profile'
@@ -309,7 +330,9 @@ createRoot(document.getElementById('root')!).render(
           <VenuePanorama level={level} owner="local-preview" previewTime={previewTime}>
             <Routes>
               <Route path="/profile" element={<ProfileScreen />} />
-              <Route path="/profile/equipment" element={<ProfileEquipmentScreen />} />
+              <Route path="/profile/equipment" element={<Navigate to="/locker-room" replace />} />
+              <Route path="/locker-room" element={<LockerRoomScreen />} />
+              <Route path="/sections" element={<MapNavigationPreview />} />
               <Route path="/profile/rewards" element={<ProfileRewardsScreen />} />
               <Route path="/profile/settings" element={<ProfileSettingsScreen />} />
               <Route path="/referrals" element={<ReferralsScreen />} />
@@ -321,27 +344,7 @@ createRoot(document.getElementById('root')!).render(
               />
               <Route path="/profile/stats" element={<ProfileStatsScreen />} />
               <Route path="/profile/arena" element={<ProfileArenaScreen />} />
-              <Route
-                path="/preview-map"
-                element={
-                  <main className="screen sections-city-screen">
-                    <CityMap
-                      level={level}
-                      owner="navigation-labels-qa"
-                      startAtDaily
-                      gamePanel={<GameHub presentation="city" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}} />}
-                      daily="0/90 бросков"
-                      training="0/500"
-                      tasks="Есть награда"
-                      bonus="Бонусные игры"
-                      taskCount={1}
-                      isAdmin
-                      adminCount={2}
-                      onNavigate={() => {}}
-                    />
-                  </main>
-                }
-              />
+              <Route path="/preview-map" element={<MapNavigationPreview />} />
               <Route path="/preview-bar" element={<BarNavigationPreview />} />
               <Route path="/" element={<DailyScreen />} />
               <Route path="/daily" element={<DailyOverviewScreen />} />
