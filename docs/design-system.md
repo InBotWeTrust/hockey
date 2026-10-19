@@ -6364,3 +6364,5 @@ Preference `hockey.theme`: auto/light/dark, default auto. Auto uses device-local
 Theme settings use the shared SegmentedTabs filter control. Section spacing: no extra top margin, 20 px below, 8 px between heading and card. Theme options fill the control width with columns 1.5fr/1fr/1fr.
 
 Settings account and editable profile avatars use the shared 1 px edge, with border-box sizing.
+
+Light theme semantic icons inherit their component/reward colors. Do not apply a global color or stroke to all Lucide SVGs: profile currency, trophy and task reward icons retain the pre-migration palette. Filled reward stars are historical behavior; outline glyphs remain unfilled.

@@ -58,10 +58,6 @@
 
 
 /* Light theme interface glyphs use dark ink inside their surfaces. */
-[data-theme='light'] svg.lucide {
-  color: #18212e;
-  stroke: #18212e;
-}
 [data-theme='light'] :is(.achievement-card__status--claimed,.bonus-game-card__completion-badge,.initial-training-exercise-card__completion,.advanced-training-exercise-card__completion,.profile-settings-grip-option__indicator) {
   color: #18212e;
   background: #eef3f8;
