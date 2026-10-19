@@ -3,6 +3,7 @@ import { useState } from 'react';
 import type { VisitorState } from '@hockey/game-core';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { visitorTime, useVisitor } from './visitorApi.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 import './visitor-card.css';
 export const VISITOR_CARD_ART = '/bar/visitor-card-v2.webp';
 export function VisitorCardSlot({ card }: { card?: VisitorState['card'] }) {
@@ -43,7 +44,7 @@ export function VisitorCardSlot({ card }: { card?: VisitorState['card'] }) {
           </p>
           <p className="modal-copy">
             {visitor.data
-              ? `${visitor.data.settings.cardMessages} сообщений в день и по ${visitor.data.settings.cardGames} игры с каждым персонажем.`
+              ? `${visitor.data.settings.cardMessages} сообщений в день и по ${formatRussianCount(visitor.data.settings.cardGames, 'игру', 'игры', 'игр')} с каждым персонажем.`
               : 'Больше ежедневных сообщений и игр с персонажами.'}{' '}
             Карта действует автоматически.
           </p>

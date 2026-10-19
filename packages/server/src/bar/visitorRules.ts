@@ -2,9 +2,9 @@ import { visitorCharacters, type VisitorSettings, type VisitorState } from '@hoc
 export const defaultVisitorSettings: VisitorSettings = {
   cardDays: 30,
   freeMessages: 10,
-  cardMessages: 30,
-  freeGames: 3,
-  cardGames: 2,
+  cardMessages: 50,
+  freeGames: 2,
+  cardGames: 5,
   products: [
     {
       id: 'visitor-card',
