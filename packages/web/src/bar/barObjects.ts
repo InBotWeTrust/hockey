@@ -8,8 +8,8 @@ export interface BarObject {
 // Percentages of the full ten-bay panorama, after the wall's display transform.
 // Architecture stays fixed; actions remain associated with character IDs.
 export const barObjects:readonly BarObject[]=[
- {id:'dartboard',character:'daria',label:'Играть в дартс с Дарьей',action:'darts',left:92.3,top:13.8,width:4.4,height:19.6,glow:{x:94,y:21.5}},
- {id:'grigory-cards',character:'grigory',label:'Играть в очко с Григорием',action:'ochko',left:81.8,top:33.5,width:5.5,height:6.8,glow:{x:87,y:36.6}},
+ {id:'dartboard',character:'daria',label:'Играть в дартс с Дарьей',action:'darts',left:92.3,top:11.7,width:4.4,height:16.6,glow:{x:94,y:18.2}},
+ {id:'grigory-cards',character:'grigory',label:'Играть в очко с Григорием',action:'ochko',left:81.8,top:28.3,width:5.5,height:5.7,glow:{x:87,y:30.9}},
  {id:'maria-cards',character:'maria',label:'Играть в карты с Марией',action:'cards',left:73.8,top:33.5,width:6.2,height:6.8,glow:{x:78.5,y:36.6}},
  {id:'checkerboard',character:'arsenich',label:'Играть в шашки с Арсеничем',action:'checkers',left:63.4,top:30,width:4.8,height:17.7,glow:{x:67.3,y:37.4}},
  {id:'battleship',character:'timofey',label:'Играть в морской бой с Тимофеем',action:'battleship',left:51.8,top:33.8,width:2.2,height:9,glow:{x:52.5,y:39}},

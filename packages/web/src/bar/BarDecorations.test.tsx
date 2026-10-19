@@ -22,7 +22,7 @@ it('keeps architectural doors in the panorama when Veronika moves', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-2', 'veronika');
   const view = render(<BarScene layout={layout} activeSlotId="bar-2" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
   expect(view.container.querySelector('[data-bar-backdrop="veronika"]')).toBeNull();
-  expect(view.container.querySelector('[data-bar-wall="west"] img')?.getAttribute('src')).toMatch(/west-.*-v1.webp$/);
+  expect(view.container.querySelector('[data-bar-wall="west"] img')?.getAttribute('src')).toMatch(/west-.*-v2.webp$/);
   expect(view.container.querySelector('[data-bar-decoration="veronika"]')).toBeNull();
 });
 it('keeps the eastern panorama framing fixed between Igor and broadcasts', () => {
