@@ -1,3 +1,4 @@
+import {requireElinaOffice,recordOfficeConversationIncident} from './elinaOffice.js';
 import { randomInt } from 'node:crypto';
 import { reserveVisitorMessage, completeVisitorMessage, refundVisitorReceipt, visitorState, visitorTransaction } from './visitorService.js';
 import { visitorPhrase } from '@hockey/game-core';
@@ -68,6 +69,7 @@ export class SqlConversationStore implements ConversationStore {
         );
         if (busy.rows.length) result = { kind: 'busy' };
         else {
+          if(character==='elina')await requireElinaOffice(db,user);
           if (!await reserveVisitorMessage(db, user, character, id, free)) result = { kind: 'limit' };
           else {
             await db.query(
@@ -99,6 +101,11 @@ export class SqlConversationStore implements ConversationStore {
       await db.query('begin');
       await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))',[`bar-conversation:${user}`]);
       await assertBarAccess(db,user);
+      if(character==='elina'){
+        const office=await requireElinaOffice(db,user,false);
+        if(turn.officeDay!==office.day)throw new AppError('conversation_stale','Начался новый день. Обнови разговор.',409);
+        if(turn.intervention==='office-warning'||turn.intervention==='office-eject')await recordOfficeConversationIncident(db,user,turn.intervention==='office-eject');
+      }
       await completeVisitorMessage(db, user, turn.id);
       const access = await visitorState(db, user, Date.now());
       if (!turn.intervention && access.messages.remaining + access.messages.paid === 0) {

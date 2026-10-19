@@ -1,6 +1,6 @@
 import { RotateCw, Pencil, Trash2 } from 'lucide-react';
 import {useEffect,useState,useRef} from 'react';
-import type {BarCharacter} from './conversationApi.js';
+import type {ConversationCharacter} from './conversationApi.js';
 import {changeMemory,fetchMemory,type MemoryView,type MemoryChange} from './memoryApi.js';
 import {ApiError} from '../api/apiFetch.js';
 function noteForPlayer(content:string) {
@@ -8,7 +8,7 @@ function noteForPlayer(content:string) {
   if(preference && preference[2] && preference[3]) return `Ты ${preference[1] ?? ''}${preference[2].toLowerCase()==='предпочитаю' ? 'предпочитаешь' : 'любишь'} ${preference[3]}.`;
   return `Твои слова: «${content}»`;
 }
-export function BarMemoryControls({character,name,onChanged}:{character:BarCharacter;name:string;onChanged:()=>Promise<void>}) {
+export function BarMemoryControls({character,name,onChanged}:{character:ConversationCharacter;name:string;onChanged:()=>Promise<void>}) {
   const mounted=useRef(true);
   useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
   const [data,setData]=useState<MemoryView|null>(null),[busy,setBusy]=useState(false),[error,setError]=useState('');

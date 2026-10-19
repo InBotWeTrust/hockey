@@ -12,10 +12,14 @@ import type { CardResult } from './cardHistory.js';
 
 let app: ReturnType<typeof Fastify>;
 let records: Map<string, ConversationRecord>;
+let officeAccess: ReturnType<typeof vi.fn>;
+let officeVerdict: ReturnType<typeof vi.fn>;
 let answer: ReturnType<typeof vi.fn>;
 let moderate: ReturnType<typeof vi.fn>;
 let savedGames: Array<{ user: string; match: CardResult }>;
 beforeEach(async () => {
+  officeAccess=vi.fn().mockResolvedValue({day:'2026-10-20',warnings:0});
+  officeVerdict=vi.fn().mockResolvedValue('none');
   records = new Map();
   savedGames = [];
   moderate=vi.fn().mockResolvedValue('allow');
@@ -57,7 +61,7 @@ beforeEach(async () => {
   app.setErrorHandler((err: FastifyError, _req: FastifyRequest, reply: FastifyReply) =>
     reply.status(err.statusCode ?? 500).send({ error: { code: err.code } }),
   );
-  await app.register(conversationRoutes, { store, answer, moderate, gameStore: { save: async (user: string,match: CardResult) => { savedGames.push({user,match}); return true; } } });
+  await app.register(conversationRoutes, { store, answer, moderate, elinaOffice:officeAccess,classifyConflict:officeVerdict,conflicts:{state:async()=>({day:'2026-10-20',warnings:0,intervening:false}),phrase:async()=>''},gameStore: { save: async (user: string,match: CardResult) => { savedGames.push({user,match}); return true; } } });
 });
 afterEach(async () => app.close());
 const send = (
@@ -274,4 +278,29 @@ it.each([{delay:21000,status:200},{delay:40000,status:503}])('bounds the whole c
   expect((await pending).statusCode).toBe(status);
   expect(moderate).toHaveBeenCalledTimes(2);
  } finally {vi.useRealTimers();vi.restoreAllMocks();}
+});
+
+it('allows an ordinary Elina conversation and preserves the server office day',async()=>{
+ const response=await app.inject({method:'POST',url:'/bar/conversations/elina',headers:{authorization:'alice'},payload:{id:crypto.randomUUID(),revision:0,content:'Как прошёл вечер в баре?'}});
+ expect(response.statusCode).toBe(200);expect(officeAccess).toHaveBeenCalledWith('alice');
+ const last=response.json().turns.at(-1);expect(last.officeDay).toBe('2026-10-20');expect(last.assistant).toBeTruthy();
+});
+it('rejects sending to an absent Elina and releases the reservation for a retry',async()=>{
+ officeAccess.mockRejectedValue(new AppError('elina_unavailable','Элины нет.',409));
+ const response=await app.inject({method:'POST',url:'/bar/conversations/elina',headers:{authorization:'alice'},payload:{id:crypto.randomUUID(),revision:0,content:'Привет'}});
+ expect(response.statusCode).toBe(409);expect(answer).not.toHaveBeenCalled();expect(records.get('alice:elina')?.pending).toBe(false);
+});
+it.each([[0,'office-warning'],[1,'office-eject']])('warns then ejects in Elina conversation without starting a fight (%s)',async(warnings,intervention)=>{
+ officeAccess.mockResolvedValue({day:'2026-10-20',warnings});officeVerdict.mockResolvedValue('insult');
+ const id=crypto.randomUUID();const request={method:'POST' as const,url:'/bar/conversations/elina',headers:{authorization:'alice'},payload:{id,revision:0,content:'Оскорбление'}};
+ const response=await app.inject(request);expect(response.statusCode).toBe(200);
+ const turn=response.json().turns.at(-1);expect(turn.intervention).toBe(intervention);expect(turn.speaker).toBe('oleg');expect(turn.fightId).toBeUndefined();expect(answer).not.toHaveBeenCalled();
+ officeAccess.mockRejectedValue(new AppError('elina_unavailable','Ушла.',409));
+ const retry=await app.inject(request);expect(retry.statusCode).toBe(200);expect(retry.json().turns).toHaveLength(1);
+});
+
+it('does not expose unrelated bar conflict controls inside Elina ordinary conversation',async()=>{
+ records.set('alice:elina',{revision:0,turns:[],pending:false,interventionActive:true});
+ const response=await app.inject({method:'GET',url:'/bar/conversations/elina',headers:{authorization:'alice'}});
+ expect(response.statusCode).toBe(200);expect(response.json().interventionActive).toBe(false);
 });
