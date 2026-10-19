@@ -142,8 +142,8 @@ it('opens the bar at the manager and pages to the online terminal', () => {
   expect(
     screen.getByRole('navigation', { name: 'Места в баре' }).querySelectorAll('button'),
   ).toHaveLength(10);
-  fireEvent.click(screen.getByRole('button', { name: 'Предыдущая страница' }));
-  expect(screen.getByRole('heading', {name:'Тимофей'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
+  expect(screen.getByRole('heading', {name:'Играть онлайн'})).toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', { name: 'Играть онлайн' }));
   expect(screen.queryByRole('tab', {name:'Карты'})).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('button', {name:'Найти соперников'}));

@@ -6,7 +6,7 @@ import { BarScene } from './BarScene.js';
 function pointer(target:Element,type:string,x:number){const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);}
 it('navigates by avatar click and suppresses clicks after dragging the dock', () => {
  const select=vi.fn();render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()}/>);
- const avatar=screen.getByRole('button',{name:'Арсенич'}),nav=screen.getByRole('navigation',{name:'Места в баре'});
+ const avatar=screen.getByRole('button',{name:'Арсенич'}),nav=screen.getByRole('navigation',{name:'Места в баре'}).querySelector('.bar-avatar-dock__slots')!;
  fireEvent.click(avatar,{detail:1});expect(select).toHaveBeenCalledWith('bar-4');select.mockClear();
  pointer(nav,'pointerdown',10);pointer(nav,'pointermove',80);pointer(nav,'pointerup',80);fireEvent.click(avatar,{detail:1});expect(select).not.toHaveBeenCalled();
 });
@@ -34,7 +34,7 @@ it('renders identity, safe actions and stable navigation', () => {
   fireEvent.click(screen.getByRole('button', { name: 'Игры' }));
   expect(action).toHaveBeenCalledWith('cards', 'maria');
   fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
-  expect(select).toHaveBeenCalledWith('bar-4');
+  expect(select).toHaveBeenCalledWith('bar-2');
   expect(screen.queryByRole('button', { name: 'Разговор' })).not.toBeInTheDocument();
   const moved = moveBarOccupant(layout, 'bar-6', 'maria');
   view.rerender(
@@ -59,7 +59,7 @@ it('shows Veronika with conversation and her assigned game', () => {
 
 it('shows a silhouette and no interactions for an empty place', () => {
   const layout = createDefaultBarLayout();
-  layout.slots[7]!.occupantId = null;
+  layout.slots.find(slot=>slot.id==='bar-8')!.occupantId = null;
   const { container } = render(<BarScene layout={layout} activeSlotId="bar-8"
     onSelectSlot={vi.fn()} onAction={vi.fn()} onTalk={vi.fn()} />);
   expect(screen.getByText('Персонаж в разработке')).toBeInTheDocument();

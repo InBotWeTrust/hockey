@@ -11,7 +11,7 @@ function setup(initial='bar-3') {
  Object.defineProperty(viewport,'clientWidth',{configurable:true,value:390});
  Object.defineProperty(view.container.querySelector('.bar-space__track'),'clientWidth',{configurable:true,value:3900});
  const scroll=vi.fn();viewport.scrollTo=scroll;
- viewport.scrollLeft=(Number(initial.split('-')[1])-1)*390;
+ viewport.scrollLeft=createDefaultBarLayout().slots.findIndex(slot=>slot.id===initial)*390;
  return {...view,viewport,scroll,action,incident,select};
 }
 function pointer(target:Element,type:string,x:number){const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'},isPrimary:{value:true}});fireEvent(target,event);}
@@ -19,8 +19,8 @@ it('recenters an off-center character before counting taps for an incident',()=>
  const {container,viewport,scroll,incident}=setup();viewport.scrollLeft=700;
  const hit=container.querySelector('[data-bar-character="maria"]')!;
  for(let i=0;i<3;i++){pointer(hit,'pointerdown',150);pointer(hit,'pointerup',150);fireEvent.click(hit,{detail:1});}
- expect(scroll).toHaveBeenCalledWith({left:780,behavior:'smooth'});expect(incident).not.toHaveBeenCalled();
- viewport.scrollLeft=780;
+ expect(scroll).toHaveBeenCalledWith({left:2730,behavior:'smooth'});expect(incident).not.toHaveBeenCalled();
+ viewport.scrollLeft=2730;
  for(let i=0;i<3;i++){pointer(hit,'pointerdown',150);pointer(hit,'pointerup',150);}
  expect(incident).toHaveBeenCalledOnce();
 });
@@ -33,13 +33,13 @@ it('drags the panorama continuously through a game hotspot without switching pag
 it('centers a game object on the first click, then opens its original game',()=>{
  const {viewport,action,scroll}=setup('bar-1');viewport.scrollLeft=85;
  const hit=screen.getByRole('button',{name:'Играть в дартс с Дарьей'});
- fireEvent.click(hit,{detail:1});expect(scroll).toHaveBeenCalledWith({left:0,behavior:'smooth'});expect(action).not.toHaveBeenCalled();
- viewport.scrollLeft=0;fireEvent.click(hit,{detail:1});expect(action).toHaveBeenCalledWith('darts','daria');
+ fireEvent.click(hit,{detail:1});expect(scroll).toHaveBeenCalledWith({left:3510,behavior:'smooth'});expect(action).not.toHaveBeenCalled();
+ viewport.scrollLeft=3510;fireEvent.click(hit,{detail:1});expect(action).toHaveBeenCalledWith('darts','daria');
 });
 it('recenters even the already selected circle without opening anything',()=>{
  const {viewport,scroll,action}=setup();viewport.scrollLeft=700;
  fireEvent.click(screen.getByRole('button',{name:'Мария'}));
- expect(scroll).toHaveBeenCalledWith({left:780,behavior:'smooth'});expect(action).not.toHaveBeenCalled();
+ expect(scroll).toHaveBeenCalledWith({left:2730,behavior:'smooth'});expect(action).not.toHaveBeenCalled();
 });
 it('moves the terminal with its page and centers it before opening',()=>{
  const {viewport,scroll}=setup('bar-5');viewport.scrollLeft=1450;
@@ -54,7 +54,7 @@ it('cancels a hold when native scrolling starts and still allows keyboard action
   const hit=container.querySelector('[data-bar-character="daria"]')!;
   pointer(hit,'pointerdown',150);fireEvent.scroll(viewport);vi.advanceTimersByTime(2100);
   expect(incident).not.toHaveBeenCalled();
-  pointer(hit,'pointermove',80);pointer(hit,'pointerup',80);viewport.scrollLeft=0;
+  pointer(hit,'pointermove',80);pointer(hit,'pointerup',80);viewport.scrollLeft=3510;
   fireEvent.click(screen.getByRole('button',{name:'Играть в дартс с Дарьей'}),{detail:0});
   expect(action).toHaveBeenCalledWith('darts','daria');
  } finally {vi.useRealTimers();}
