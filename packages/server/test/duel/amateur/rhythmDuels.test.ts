@@ -111,7 +111,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     for (const side of [0, 1]) expect((await post('period/start', side)).statusCode).toBe(200);
     return { id, post, rules: response.json().match.rules };
   }
-  it('freezes copied speeds, duration, scoring version and boundary; disables fights', async () => {
+  it('freezes copied speeds, duration, scoring version and boundary', async () => {
     const { id, rules } = await start();
     expect(rules).toMatchObject({
       duelKind: 'rhythm',
@@ -137,7 +137,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
       url: `/duel/amateur/matches/${id}`,
       headers: players[0]!.headers,
     });
-    expect(state.json().match.fight?.canChallenge ?? false).toBe(false);
+    expect(state.statusCode).toBe(200);
   });
   it('projects server travel and keeps retries idempotent, including after settlement', async () => {
     const { id, post } = await start();

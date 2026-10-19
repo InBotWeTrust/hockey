@@ -4190,9 +4190,7 @@ async function buildMatchStateDto(
         "select value='true'::jsonb as enabled from game_settings where key='duels.fights.enabled'",
       )
     ).rows[0]?.enabled === true &&
-    match.source !== 'tournament' &&
-    match.duel_kind !== 'sniper' &&
-    match.duel_kind !== 'marathon' && match.duel_kind !== 'rhythm';
+    match.source !== 'tournament';
   const clocks = participants.map((p) =>
     getParticipantClock(
       p,
@@ -4971,8 +4969,6 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         throw new AppError('forbidden', 'duel match access denied', 403);
       await assertFullAmateurAccess(client, userId);
       const now = new Date();
-      if (match.duel_kind === 'sniper' || match.duel_kind === 'marathon' || match.duel_kind === 'rhythm')
-        throw new AppError('conflict', 'fights are disabled for this duel format', 409);
       match = (await reconcileMatch(client, match, now)).match;
       const rules = parseRulesSnapshot(match.rules_snapshot);
       const participants = await fetchParticipants(client, matchId);

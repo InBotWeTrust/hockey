@@ -6185,12 +6185,13 @@ export function AmateurDuelPlayView({
     (match.me.result_pause_ends_at ?? null) === localShotClock.previousEndsAt;
   const pauseStartsAt = localPausePending ? localShotClock.startsAt : match.me.result_pause_starts_at;
   const pauseEndsAt = localPausePending ? localShotClock.endsAt : match.me.result_pause_ends_at;
+  const fightClockPaused = !!match.me.fight_aid_until || (!!match.fight_paused_at && match.fight?.status !== 'offered');
   const scoredClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now),
     Date.parse(match.server_now) + Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now())),
-    pauseStartsAt, pauseEndsAt);
+    pauseStartsAt, pauseEndsAt, fightClockPaused);
   const pausedScoredClock = match.rules.shotResultPauseMs !== undefined;
   const continuousScoredPeriod = match.rules.scoredClockVersion === 2;
-  const wallClockDelta = () => Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now()));
+  const wallClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now), fightNow, null, null, fightClockPaused);
   const periodClockDelta = () => continuousScoredPeriod ? wallClockDelta() : scoredClockDelta();
   const scoredRemainingMs = Math.max(0, (match.me.clock?.remainingMs ?? 0) - periodClockDelta());
   const authoritativeMarathonRemainingMs = Math.max(0,
@@ -6201,7 +6202,7 @@ export function AmateurDuelPlayView({
   const resultPauseStart = pauseStartsAt ? Date.parse(pauseStartsAt) : 0;
   const marathonRemainingMs = continuousScoredPeriod
     ? marathonWindowRemainingMs({
-      nowMs: fightNow,
+      nowMs: fightClockPaused ? Date.parse(match.server_now) : fightNow,
       windowMs,
       startsAtMs: Date.parse(match.me.marathon_window_started_at ?? '') ||
         Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - windowMs,
