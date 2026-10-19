@@ -741,8 +741,10 @@ interface DuelRulesSnapshot {
   description: string;
   difficulty: DuelDifficulty;
   duelKind: DuelKind;
-  rhythmVersion?: 1 | 2 | 3;
+  rhythmVersion?: 1 | 2 | 3 | 4;
   rhythmWindowTraversals?: 2;
+  rhythmBoardContactLimit?: 3;
+  rhythmMinimumSeries?: 4;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: MarathonWindowMs;
@@ -791,7 +793,7 @@ interface DuelParticipantDTO {
   rhythm_current_series?: number;
   rhythm_travel?: number;
   rhythm_last_goal_travel?: number;
-  rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; goal:boolean}>;
+  rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; boardContacts?:number; goal:boolean}>;
   format_score?: number;
   sniper_points?: number;
   marathon_penalties?: number;
@@ -1356,7 +1358,7 @@ export function makeRulesSnapshot(
     periodDurationMs: Number(template.period_duration_ms),
   });
   const snapshot: DuelRulesSnapshot = {
-    ...(template.duel_kind === 'rhythm' ? {rhythmVersion: 3 as const, rhythmWindowTraversals: 2 as const} : {}),
+    ...(template.duel_kind === 'rhythm' ? {rhythmVersion: 4 as const, rhythmBoardContactLimit: 3 as const, rhythmMinimumSeries: 4 as const} : {}),
     templateId: template.id,
     title: template.title,
     description: template.description,
@@ -1487,8 +1489,10 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       duelKind: z
         .enum(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])
         .default('classic'),
-      rhythmVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
+      rhythmVersion: z.union([z.literal(1), z.literal(2), z.literal(3), z.literal(4)]).optional(),
       rhythmWindowTraversals: z.literal(2).optional(),
+      rhythmBoardContactLimit: z.literal(3).optional(),
+      rhythmMinimumSeries: z.literal(4).optional(),
       scoredClockVersion: z.literal(2).optional(),
       shotResultPauseMs: z.literal(1000).optional(),
       marathonWindowMs: z.union([z.literal(4000), z.literal(7000)]).optional(),
@@ -1529,7 +1533,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
   if (!parsed.success) {
     throw new AppError('server_error', 'invalid duel rules snapshot', 500);
   }
-  const { rhythmWindowTraversals, rhythmVersion, tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, marathonSpeedStages, shotResultPauseMs, scoredClockVersion, ...rules } =
+  const { rhythmMinimumSeries, rhythmBoardContactLimit, rhythmWindowTraversals, rhythmVersion, tournamentLoadoutLifecycleVersion, sniperScoring, marathonWindowMs, marathonSpeedStages, shotResultPauseMs, scoredClockVersion, ...rules } =
     parsed.data;
   return {
     ...rules,
@@ -1539,6 +1543,8 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
     ...(scoredClockVersion === undefined ? {} : { scoredClockVersion }),
     ...(rhythmWindowTraversals === undefined ? {} : {rhythmWindowTraversals}),
     ...(rhythmVersion === undefined ? {} : { rhythmVersion }),
+    ...(rhythmMinimumSeries === undefined ? {} : {rhythmMinimumSeries}),
+    ...(rhythmBoardContactLimit === undefined ? {} : {rhythmBoardContactLimit}),
     ...(sniperScoring === undefined
       ? {}
       : { sniperScoring: parseMarksmanshipScoringRules(sniperScoring) }),
@@ -3903,7 +3909,7 @@ async function scoredParticipantFields(
 ): Promise<Partial<DuelParticipantDTO>> {
   if (rules.duelKind !== 'sniper' && rules.duelKind !== 'marathon' && rules.duelKind !== 'rhythm') return {};
   const shots = await client.query<{
-    input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number; rhythmTravel?: number };
+    input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number; rhythmTravel?: number; rhythmBoardContacts?:number };
     server_result: DuelShotResult;
     awarded_points: number;
   }>(
@@ -3933,10 +3939,10 @@ async function scoredParticipantFields(
   if (rules.duelKind === 'rhythm') {
     const history=shots.rows.map(shot=>({tapTime:shot.input_payload.tapTime,
       flightMs:(PUCK_START.y-GOAL_OPENING.y)/shot.input_payload.puckSpeedPerMs,
-      travel:shot.input_payload.rhythmTravel ?? 0,goal:shot.server_result==='goal'}));
+      travel:shot.input_payload.rhythmTravel ?? 0,boardContacts:shot.input_payload.rhythmBoardContacts ?? 0,goal:shot.server_result==='goal'}));
     const sampler=rhythmMovementForParticipant(match,participant,rules);
     const travel=sampler.travelAt(clockFields.scene_elapsed_ms,history);
-    const projection=projectRhythm({shots:history,travel,version:rules.rhythmVersion ?? 1});
+    const projection=projectRhythm({shots:history,travel,version:rules.rhythmVersion ?? 1,currentBoardContacts:sampler.boardContactsAt(clockFields.scene_elapsed_ms,history)});
     return {...clockFields,format_score:projection.score,rhythm_series:projection.series,
       rhythm_current_series:projection.currentSeries,rhythm_travel:travel,
       rhythm_last_goal_travel:projection.lastGoalTravel,rhythm_shots:history,last_shot_ends_ms:lastShotEndsMs};
@@ -4184,9 +4190,7 @@ async function buildMatchStateDto(
         "select value='true'::jsonb as enabled from game_settings where key='duels.fights.enabled'",
       )
     ).rows[0]?.enabled === true &&
-    match.source !== 'tournament' &&
-    match.duel_kind !== 'sniper' &&
-    match.duel_kind !== 'marathon' && match.duel_kind !== 'rhythm';
+    match.source !== 'tournament';
   const clocks = participants.map((p) =>
     getParticipantClock(
       p,
@@ -4965,8 +4969,6 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         throw new AppError('forbidden', 'duel match access denied', 403);
       await assertFullAmateurAccess(client, userId);
       const now = new Date();
-      if (match.duel_kind === 'sniper' || match.duel_kind === 'marathon' || match.duel_kind === 'rhythm')
-        throw new AppError('conflict', 'fights are disabled for this duel format', 409);
       match = (await reconcileMatch(client, match, now)).match;
       const rules = parseRulesSnapshot(match.rules_snapshot);
       const participants = await fetchParticipants(client, matchId);
@@ -7073,7 +7075,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         );
         const shotInput = {
           tapTime: body.input.tapTime,
-          ...(rhythmSampler ? {rhythmTravel:rhythmSampler.travelAt(body.input.tapTime,rhythmHistory),
+          ...(rhythmSampler ? {rhythmTravel:rhythmSampler.travelAt(body.input.tapTime,rhythmHistory),rhythmBoardContacts:rhythmSampler.boardContactsAt(body.input.tapTime,rhythmHistory),
             shooterMotionTime:rhythmSampler.motionAt(body.input.tapTime,rhythmHistory)} : {}),
           ...(isScoredDuel && body.input.periodTapTime !== undefined ? { periodTapTime, resultPauseMs: rules.shotResultPauseMs ?? body.input.resultPauseMs ?? 1000 } : {}),
           ...(body.input.shooterTapTime !== undefined

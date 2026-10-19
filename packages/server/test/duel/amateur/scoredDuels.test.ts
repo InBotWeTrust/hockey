@@ -80,6 +80,42 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
         ...(kind === 'marathon' ? { marathon_window_ms: window } : {}),
       },
     });
+  it.each(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])('supports existing fight offers in %s', async (kind) => {
+    await app.pg.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fights','Test') on conflict(key) do update set value=excluded.value");
+    const invited = await challenge(kind);
+    expect(invited.statusCode).toBe(200);
+    const id = invited.json().match.id;
+    const post = (path: string, side: number, payload?: object) => app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${id}/${path}`,
+      headers: players[side]!.headers, ...(payload ? {payload} : {}),
+    });
+    expect((await post('accept', 1)).statusCode).toBe(200);
+    for (const side of [0, 1]) expect((await post('ready', side, {loadout: {}})).statusCode).toBe(200);
+    for (const side of [0, 1]) {
+      expect((await post('period/start', side)).statusCode).toBe(200);
+      await app.pg.query(`insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at)
+        values($1,$2,'00000000-0000-4000-8000-000000000001',now()+interval '1 minute')`, [id, players[side]!.id]);
+    }
+    const state = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+    expect(state.json().match.fight_enabled).toBe(true);
+    expect(state.json().match.fight_availability.allowed).toBe(true);
+    const offer = await post('fight/challenge', 0, {requestId: '00000000-0000-4000-8000-000000000002'});
+    expect(offer.statusCode).toBe(200);
+    expect(offer.json().fight.status).toBe('offered');
+    const replay = await post('fight/challenge', 0, {requestId: '00000000-0000-4000-8000-000000000002'});
+    expect(replay.json().fight.id).toBe(offer.json().fight.id);
+    const accepted = await post('fight/respond', 1, {requestId: '00000000-0000-4000-8000-000000000003', fightId: offer.json().fight.id, decision: 'accept'});
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().match.fight_paused_at).not.toBeNull();
+    const paused = await app.pg.query('select period_paused_at from amateur_duel_participant where match_id=$1', [id]);
+    expect(paused.rows).toHaveLength(2);
+    expect(paused.rows.every(row => row.period_paused_at !== null)).toBe(true);
+    const frozen = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+    const later = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+    expect(later.json().match.me.clock).toEqual(frozen.json().match.me.clock);
+    if (kind === 'rhythm') expect(later.json().match.me.rhythm_travel).toBe(frozen.json().match.me.rhythm_travel);
+
+  });
   it('exposes both formats with independent first-period Classic speeds and unlimited shots', async () => {
     const response = await app.inject({
       url: '/duel/amateur/templates',

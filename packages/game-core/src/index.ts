@@ -229,7 +229,7 @@ export * from "./barLayout.js";
 
 export * from './barGames/runtime.js';
 
-export { projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
+export { countRhythmBoardContacts, projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
 export type { RhythmShot, RhythmProjection, RhythmFlightPause } from './rhythm.js';
 
 export * from './visitorCard.js';
