@@ -37,11 +37,18 @@ describe.skipIf(!enabled)('visitor SQL transactions in an isolated schema', () =
     await pool.query(
       `create table bar_game_matches(id uuid primary key,data jsonb,ended_at timestamptz); create table bar_conversations(user_id uuid,character_id text,revision integer default 0,turns jsonb default '[]',pending_id uuid,pending_until timestamptz,primary key(user_id,character_id)); create table bar_memory_settings(user_id uuid,character_id text,enabled boolean default false,primary key(user_id,character_id)); create table bar_conflicts(user_id uuid,day date,intervening boolean,blocked_until timestamptz); create table bar_oleg_fights(id uuid,user_id uuid,status text,acknowledged boolean,created_at timestamptz)`,
     );
+    // Match the real ledger constraint instead of accepting every purchase reason.
+    await pool.query(
+      await readFile(new URL('../../db/migrations/226_bar_ochko_history.sql', import.meta.url), 'utf8'),
+    );
     await pool.query(
       await readFile(
         new URL('../../db/migrations/229_bar_visitor_card.sql', import.meta.url),
         'utf8',
       ),
+    );
+    await pool.query(
+      await readFile(new URL('../../db/migrations/236_bar_visitor_purchase_ledger.sql', import.meta.url), 'utf8'),
     );
   });
   beforeEach(async () => {
@@ -84,6 +91,45 @@ describe.skipIf(!enabled)('visitor SQL transactions in an isolated schema', () =
       30 * 86400000,
     );
     expect((await pool.query('select count(*)::int as n from currency_ledger')).rows[0].n).toBe(2);
+  });
+  it.each(['coins', 'stars'] as const)('rolls back %s and the card when ledger recording fails', async (currency) => {
+    await pool.query("alter table currency_ledger add constraint simulated_ledger_failure check (reason <> 'bar_purchase')");
+    try {
+      await expect(purchase(randomUUID(), 'visitor-card', currency, currency === 'coins' ? 14900 : 300)).rejects.toMatchObject({ code: '23514' });
+      const balances = (await pool.query('select balance, xp from user_currency_account join users on users.id=user_id')).rows[0];
+      expect(balances).toMatchObject({ balance: 100000, xp: 1000 });
+      expect((await state()).card.purchased).toBe(false);
+      expect((await pool.query('select count(*)::int as n from bar_visitor_receipts')).rows[0].n).toBe(0);
+      expect((await pool.query('select count(*)::int as n from currency_ledger')).rows[0].n).toBe(0);
+    } finally {
+      await pool.query('alter table currency_ledger drop constraint simulated_ledger_failure');
+    }
+  });
+  it.each([
+    ['visitor-card', 'coins', 14900],
+    ['visitor-card', 'stars', 300],
+    ['messages-10', 'coins', 1000],
+    ['messages-10', 'stars', 20],
+  ] as const)('purchases %s with %s once through the real ledger constraint', async (product, currency, price) => {
+    const id = randomUUID();
+    const results = await Promise.all([
+      purchase(id, product, currency, price),
+      purchase(id, product, currency, price),
+    ]);
+    expect(results[0]!.card).toEqual(results[1]!.card);
+    expect(results[0]!.messages).toEqual(results[1]!.messages);
+    const balances = (await pool.query('select balance, xp from user_currency_account join users on users.id=user_id')).rows[0];
+    expect(balances.balance).toBe(100000 - (currency === 'coins' ? price : 0));
+    expect(balances.xp).toBe(1000 - (currency === 'stars' ? price : 0));
+    expect(results[0]!.card.active).toBe(product === 'visitor-card');
+    expect(results[0]!.messages.paid).toBe(product === 'messages-10' ? 10 : 0);
+    const ledger = (await pool.query('select reason, available_delta, metadata from currency_ledger')).rows;
+    expect(ledger).toHaveLength(1);
+    expect(ledger[0]).toMatchObject({
+      reason: 'bar_purchase',
+      available_delta: currency === 'coins' ? -price : 0,
+      metadata: { payment_currency: currency, stars: currency === 'stars' ? -price : 0 },
+    });
   });
   it('keeps all successful messages spent today when upgrading after using paid stock', async () => {
     await state();
