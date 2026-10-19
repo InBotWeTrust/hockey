@@ -29,9 +29,9 @@ it('keeps the eastern panorama framing fixed between Igor and broadcasts', () =>
   const layout = createDefaultBarLayout();
   const props = {layout, onSelectSlot: vi.fn(), onAction: vi.fn()};
   const view = render(<BarScene {...props} activeSlotId="bar-9"/>);
-  const before = (view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition;
+  const before = (view.container.querySelector('[data-bar-wall="hall"] img') as HTMLElement).style.objectPosition;
   view.rerender(<BarScene {...props} activeSlotId="bar-10"/>);
-  expect((view.container.querySelector('[data-bar-wall="east"] img') as HTMLElement).style.objectPosition).toBe(before);
+  expect((view.container.querySelector('[data-bar-wall="hall"] img') as HTMLElement).style.objectPosition).toBe(before);
 });
 
 it('uses baked background details and centers the office doorway before entering', () => {
