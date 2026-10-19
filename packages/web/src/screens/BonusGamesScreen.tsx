@@ -539,8 +539,9 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         </header>
 
+        {selectedAllowance ? (
         <section
-          className={`bonus-games-attempt-progress${selectedAllowance === undefined ? ' bonus-games-attempt-progress--loading' : ''}`}
+          className="bonus-games-attempt-progress"
           aria-label={`Прогресс игр: ${skillLabels[selectedSkill]}`}
         >
           {selectedAllowance ? (
@@ -569,6 +570,7 @@ export function BonusGamesScreen(): JSX.Element {
             </>
           ) : null}
         </section>
+        ) : null}
 
         {catalogQuery.isLoading ? (
           <div className="bonus-games-catalog__notice" role="status">

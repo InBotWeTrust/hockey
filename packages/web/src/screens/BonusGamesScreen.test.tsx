@@ -264,6 +264,21 @@ function renderCatalog(): QueryClient {
 }
 
 describe('BonusGamesScreen', () => {
+  it('does not reserve an empty progress block when the catalog has no allowance data', async () => {
+    mockCatalog([card({ title: 'No allowance preview' })]);
+    const fetchWithAllowances = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const response = await fetchWithAllowances(input, init);
+      if (!String(input).endsWith('/api/bonus-games')) return response;
+      const data = await response.json();
+      delete data.attempt_allowances;
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    renderCatalog();
+    await screen.findByRole('heading', { name: 'No allowance preview' });
+    expect(screen.queryByRole('region', { name: /Прогресс игр/ })).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();

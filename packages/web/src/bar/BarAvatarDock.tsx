@@ -1,25 +1,27 @@
 import {useHorizontalPan} from './useHorizontalPan.js';
 import {useEffect,useRef,useState} from 'react';
-import {Gamepad2,Newspaper,Tv} from 'lucide-react';
+import {Gamepad2,Newspaper,Tv,LogOut} from 'lucide-react';
 import {isBarAssetPath,type BarLayout,type BarOccupantId} from '@hockey/game-core';
 import './bar-panorama.css';
 export function BarAvatarDock({layout,activeSlotId,activityCounts={},onSelectSlot}:{layout:BarLayout;activeSlotId?:string;activityCounts?:Partial<Record<BarOccupantId,number>>;onSelectSlot:(id:string)=>void}) {
   const [dockFocus, setDockFocus] = useState<string | null>(null);
-  const dock = useRef<HTMLElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
   const pan=useHorizontalPan(dock);
   const centerActive = (id=activeSlotId) => {
     const el=dock.current,active=Array.from(el?.querySelectorAll<HTMLElement>('[data-slot]')??[]).find(button=>button.dataset.slot===id);
     if(el&&active)el.scrollTo?.({left:active.offsetLeft-el.clientWidth/2+active.offsetWidth/2,behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':'smooth'});
   };
   useEffect(()=>centerActive(),[activeSlotId]);
-  return <nav ref={dock} className="bar-avatar-dock" aria-label="Места в баре"
+  return <nav className="bar-avatar-dock" aria-label="Места в баре">
+        <a className="bar-avatar-dock__exit" href="/sections?home=1" aria-label="На карту" title="На карту"><span><LogOut size={22} aria-hidden="true"/></span><small>Выход</small></a>
+        <div ref={dock} className="bar-avatar-dock__slots"
         {...pan}
         onPointerLeave={()=>setDockFocus(null)}>
         {layout.slots.map((s,i)=>{
           const p=s.occupantId?layout.profiles[s.occupantId]:null;
           const focused=dockFocus===s.id;
           return <button key={s.id} data-slot={s.id} className={`bar-avatar-dock__item${focused?' is-focused':''}`}
-            aria-label={p?.name??`Персонаж в разработке, страница ${i+1}`} aria-current={activeSlotId===s.id?'page':undefined}
+            title={p?.name??'В разработке'} aria-label={p?.name??`Персонаж в разработке, страница ${i+1}`} aria-current={activeSlotId===s.id?'page':undefined}
             onMouseEnter={()=>setDockFocus(s.id)} onMouseLeave={()=>setDockFocus(null)} onFocus={()=>setDockFocus(s.id)} onBlur={()=>setDockFocus(null)}
             onClick={()=>{centerActive(s.id);onSelectSlot(s.id);}}>
             <span className="bar-avatar-dock__portrait" data-character={s.occupantId??undefined}>
@@ -29,5 +31,6 @@ export function BarAvatarDock({layout,activeSlotId,activityCounts={},onSelectSlo
             <span className="bar-avatar-dock__label">{p?.name??'В разработке'}</span>
           </button>;
         })}
+        </div>
       </nav>;
 }

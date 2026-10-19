@@ -201,8 +201,8 @@ export function AchievementsScreen({
       ...(weeklyChallengeQuery.data?.pendingRewards ?? []),
     ]) > 0;
   const venue = useVenueNavigation();
-  useVenueAttention('tasks', achievementsAttention);
-  useVenueAttention('challenges', challengeAttention);
+  useVenueAttention('tasks', achievementsQuery.data?.unclaimedCount ?? 0);
+  useVenueAttention('challenges', competitionLevel === 'beginner' ? 0 : countClaimableWeeklyChallenges([weeklyChallengeQuery.data?.challenge, ...(weeklyChallengeQuery.data?.pendingRewards ?? [])]));
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
     [achievements, filter],

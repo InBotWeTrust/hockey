@@ -16,7 +16,7 @@ export interface PanoramaPage {
   label: string;
   image: string;
   position?: number;
-  attention?: boolean;
+  attention?: boolean | number;
 }
 export function adjacentSection(
   pages: readonly PanoramaPage[],
@@ -56,6 +56,7 @@ export function SectionPanorama({
   className?: string;
   columns?: number;
 }): JSX.Element {
+  const panel = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null),
     dock = useRef<HTMLDivElement>(null);
   const positions = useRef<Record<string, number>>({});
@@ -77,6 +78,16 @@ export function SectionPanorama({
     [position, dragX],
     ([value, drag]) => `calc(${(-Number(value) * 100) / columns}% + ${Number(drag) * 0.35}px)`,
   );
+  useLayoutEffect(() => {
+    const measure = () => {
+      const height = panel.current?.getBoundingClientRect().height;
+      if (height) scroll.current?.style.setProperty('--section-panel-height', `${height}px`);
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    if (panel.current) observer?.observe(panel.current);
+    return () => observer?.disconnect();
+  }, []);
   useLayoutEffect(() => {
     try {
       const saved: unknown = JSON.parse(sessionStorage.getItem(storageKey) ?? '{}');
@@ -209,7 +220,7 @@ export function SectionPanorama({
           <div ref={content}>{children}</div>
         </div>
       </motion.div>
-      <section className="section-scene__panel" aria-label={`Навигация: ${label}`}>
+      <section ref={panel} className="section-scene__panel" aria-label={`Навигация: ${label}`}>
         <div className="section-scene__identity">
           <strong>{pages[index]?.label}</strong>
           <span>
@@ -265,8 +276,10 @@ export function SectionPanorama({
               >
                 <img src={page.image} alt="" draggable={false} />
                 <span>{page.label}</span>
-                {page.attention && (
-                  <span className="section-scene__attention" aria-label="Есть награда" />
+                {Number(page.attention) > 0 && (
+                  <span className="section-scene__attention" aria-label="Есть награда">
+                    {Number(page.attention) > 99 ? '99+' : Number(page.attention)}
+                  </span>
                 )}
               </button>
             ))}

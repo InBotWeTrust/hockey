@@ -1,3 +1,7 @@
+import { CityMap } from '../city/CityMap.js';
+import { BarScene } from '../bar/BarScene.js';
+import { createDefaultBarLayout } from '@hockey/game-core';
+import type { CityTimeOfDay } from '../city/lighting.js';
 import { VenuePanorama } from '../components/VenuePanorama.js';
 import { DailyScreen } from '../screens/DailyScreen.js';
 import { DailyOverviewScreen } from '../screens/DailyOverviewScreen.js';
@@ -25,6 +29,9 @@ const level =
     : params.get('level') === 'professional'
       ? 'professional'
       : 'amateur';
+const previewTime = ['morning', 'day', 'sunset', 'night'].includes(params.get('time') ?? '')
+  ? (params.get('time') as CityTimeOfDay)
+  : undefined;
 const inventory = structuredClone(inventoryWithItems);
 inventory.balances = { tokens: 43509, stars: 1860, experience: 77 };
 for (const kind of ['stick', 'skates', 'nutrition', 'recovery'] as const) {
@@ -68,7 +75,7 @@ window.fetch = async (input, init) => {
   const url = String(input);
   if (!url.includes('/api/')) return Response.error();
   let data: unknown = {};
-  if (url.endsWith('/me'))
+  if (url.endsWith('/api/me'))
     data = {
       id: 'preview',
       competitionLevel: level,
@@ -181,7 +188,23 @@ window.fetch = async (input, init) => {
     };
   else if (url.includes('/bank/packages')) data = { packages: coinPackages };
   else if (url.includes('/bank/receipt-email')) data = { receiptEmail: null };
-  else if (url.endsWith('/bonus-games')) data = { games, active_attempt: null };
+  else if (url.endsWith('/bonus-games'))
+    data = {
+      games,
+      active_attempt: null,
+      attempt_allowances: Object.fromEntries(
+        skills.map((skill) => [
+          skill,
+          {
+            skill_code: skill,
+            daily_limit: 2,
+            used: 0,
+            remaining: 2,
+            resets_at: '2026-10-20T00:00:00Z',
+          },
+        ]),
+      ),
+    };
   else if (url.includes('/records')) data = { rows: [], currentUser: null, nextOffset: null };
   else if (init?.method && init.method !== 'GET')
     data = { error: 'preview_only', message: 'Локальный просмотр' };
@@ -190,8 +213,12 @@ window.fetch = async (input, init) => {
     headers: { 'Content-Type': 'application/json' },
   });
 };
+function BarNavigationPreview() {
+  const [slot, setSlot] = React.useState('bar-1');
+  return <BarScene layout={createDefaultBarLayout()} activeSlotId={slot} onSelectSlot={setSlot} onAction={()=>{}} activityCounts={{online:2,veronika:1}} />;
+}
 const initial =
-  scene === 'yard'
+  scene === 'map' ? '/preview-map' : scene === 'bar' ? '/preview-bar' : scene === 'yard'
     ? `/?view=training&section=${params.get('section') ?? 'course'}&from=sections`
     : scene === 'stadium'
       ? `/?view=amateur&section=${params.get('section') ?? 'duels'}&from=sections`
@@ -216,8 +243,10 @@ createRoot(document.getElementById('root')!).render(
         style={{ height: '100dvh', width: '100%', maxWidth: 430, margin: '0 auto' }}
       >
         <div className="app-content">
-          <VenuePanorama level={level} owner="local-preview">
+          <VenuePanorama level={level} owner="local-preview" previewTime={previewTime}>
             <Routes>
+              <Route path="/preview-map" element={<main className="screen sections-city-screen"><CityMap level="beginner" owner="navigation-labels-qa" startAtDaily daily="0/90 бросков" training="0/500" tasks="Есть награда" bonus="Бонусные игры" taskCount={1} isAdmin adminCount={2} onNavigate={()=>{}} /></main>} />
+              <Route path="/preview-bar" element={<BarNavigationPreview />} />
               <Route path="/" element={<DailyScreen />} />
               <Route path="/daily" element={<DailyOverviewScreen />} />
               <Route path="/achievements" element={<AchievementsScreen />} />

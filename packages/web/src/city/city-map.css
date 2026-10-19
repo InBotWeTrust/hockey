@@ -32,3 +32,8 @@
 
 .district-panel:not(.district-panel--collapsed) .district-navigation-toggle.icon-btn:active{transform:translateX(-50%)}
 .district .district-panel--collapsed .district-navigation-toggle.icon-btn:active{transform:none}
+
+/* Keep labels outside the portrait and preserve the circle's notification overlays. */
+.district-dock button {flex:0 0 56px;width:56px;height:auto;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--liquid-ink);}
+.district-dock__label {display:block;width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:650 10px/13px var(--font-sans,system-ui);text-align:center;}
+.district-dock .district-game-status {bottom:19px;}

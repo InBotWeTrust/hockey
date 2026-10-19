@@ -1,3 +1,5 @@
+import { useYardLighting } from '../city/yardLighting.js';
+import type { CityTimeOfDay } from '../city/lighting.js';
 import {
   createContext,
   useCallback,
@@ -142,11 +144,11 @@ export function venueSceneFor(pathname: string, search: string, level: Level): V
 }
 interface VenueNavigation {
   onBack: () => void;
-  setAttention: (id: string, attention: boolean) => void;
+  setAttention: (id: string, attention: number) => void;
 }
 const VenueContext = createContext<VenueNavigation | null>(null);
 export const useVenueNavigation = () => useContext(VenueContext);
-export function useVenueAttention(id: string, attention: boolean): void {
+export function useVenueAttention(id: string, attention: number): void {
   const update = useVenueNavigation()?.setAttention;
   useEffect(() => {
     update?.(id, attention);
@@ -156,17 +158,20 @@ export function VenuePanorama({
   level,
   owner,
   children,
+  previewTime,
 }: {
   level: Level;
   owner: string | null;
   children: ReactNode;
+  previewTime?: CityTimeOfDay | undefined;
 }): JSX.Element {
   const location = useLocation(),
     navigate = useNavigate();
   const scene = venueSceneFor(location.pathname, location.search, level);
-  const [attention, setAttention] = useState<Record<string, boolean>>({});
+  const yard = useYardLighting(scene?.id === 'yard', import.meta.env.DEV ? previewTime : undefined);
+  const [attention, setAttention] = useState<Record<string, number>>({});
   const update = useCallback(
-    (id: string, value: boolean) =>
+    (id: string, value: number) =>
       setAttention((old) => (old[id] === value ? old : { ...old, [id]: value })),
     [],
   );
@@ -181,14 +186,18 @@ export function VenuePanorama({
       <SectionPanorama
         className="venue-scene"
         label={scene.label}
-        pages={scene.pages.map((page) => ({ ...page, attention: attention[page.id] ?? false }))}
+        pages={scene.pages.map((page) => ({
+          ...page,
+          image: scene.id === 'yard' ? yard.thumbnail(page.position ?? 0) : page.image,
+          attention: attention[page.id] ?? 0,
+        }))}
         columns={scene.columns}
         selected={scene.selected}
         onSelect={(id) => {
           const page = scene.pages.find((item) => item.id === id);
           if (page) navigate(page.href, { replace: true });
         }}
-        panorama={`/section-panoramas/${scene.id}-v1.webp`}
+        panorama={scene.id === 'yard' ? yard.panorama : `/section-panoramas/${scene.id}-v1.webp`}
         storageKey={`section-scroll:${owner ?? 'guest'}:${scene.id}`}
       >
         {scene.redirect ? <p role="status">Загрузка…</p> : children}

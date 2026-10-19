@@ -118,3 +118,47 @@ it('restores a saved position after the catalog finishes loading', () => {
   );
   expect(scroll.scrollTop).toBe(320);
 });
+
+it('reserves the measured floating panel height at the end of the scrollable content', () => {
+  const bounds = vi
+    .spyOn(HTMLElement.prototype, 'getBoundingClientRect')
+    .mockReturnValue({ height: 132 } as DOMRect);
+  render(
+    <SectionPanorama
+      label="Магазин"
+      pages={pages}
+      selected="0"
+      onSelect={vi.fn()}
+      panorama="/shop.webp"
+      storageKey="overlay"
+    >
+      <p>Last card</p>
+    </SectionPanorama>,
+  );
+  expect(
+    screen.getByTestId('section-page-scroll').style.getPropertyValue('--section-panel-height'),
+  ).toBe('132px');
+  bounds.mockRestore();
+});
+
+it('shows numeric reward counts and caps large badges', () => {
+  render(
+    <SectionPanorama
+      label="Задания"
+      pages={[
+        { id: 'tasks', label: 'Задания', image: '/thumb.webp', attention: 12 },
+        { id: 'challenges', label: 'Челленджи', image: '/thumb.webp', attention: 123 },
+      ]}
+      selected="tasks"
+      onSelect={vi.fn()}
+      panorama="/tasks.webp"
+      storageKey="counts"
+    >
+      <p>Tasks</p>
+    </SectionPanorama>,
+  );
+  expect(screen.getAllByLabelText('Есть награда').map((el) => el.textContent)).toEqual([
+    '12',
+    '99+',
+  ]);
+});

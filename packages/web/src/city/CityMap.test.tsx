@@ -4,13 +4,13 @@ import {CityMap} from './CityMap.js';
 const base={owner:'test',daily:'12/90 бросков сегодня',training:'4/100 бросков',tasks:'Награды: 8/53 · Уровни: 34/280',bonus:'Пройдено: 40/50',onNavigate:vi.fn()};
 it('moves daily action according to player status and keeps training in yard',()=>{
  const v=render(<CityMap {...base} level="amateur"/>);
- expect(screen.getByRole('button',{name:'Ежедневная игра'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'Войти на стадион'})).toBeVisible();
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Дворовый каток'}));
  expect(screen.queryByRole('button',{name:'Ежедневная игра'})).toBeNull();
  expect(screen.getByText('Открытая тренировка и упражнения')).toBeVisible();
  v.unmount();sessionStorage.clear();render(<CityMap {...base} level="professional"/>);
  expect(screen.getByRole('heading',{name:'Арена Ультимейт'})).toBeVisible();
- expect(screen.getByRole('button',{name:'Ежедневная игра'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'Войти на арену'})).toBeVisible();
 });
 it('uses bank route, real progress and development placeholders',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
@@ -201,3 +201,28 @@ it('keeps vehicle lights on at sunset and night, and off in daylight',()=>{
   }
  }finally{vi.useRealTimers();}
 });
+
+it('labels every map circle while keeping badges and full accessible place names',()=>{
+ sessionStorage.clear();
+ render(<CityMap {...base} level="beginner" isAdmin adminCount={2}/>);
+ const dock=screen.getByRole('navigation',{name:'Места района'});
+ const labels=Array.from(dock.querySelectorAll('.district-dock__label')).map(el=>el.textContent);
+ expect(labels).toContain('Профиль');
+ expect(labels).toContain('Магазин');
+ expect(labels).toContain('Двор');
+ expect(labels).toContain('Стадион');
+ expect(labels).toContain('Арена');
+ expect(labels).toContain('Админ');
+ expect(screen.getByRole('button',{name:'Выбрать Стадион «Центральный»'})).toHaveTextContent('Стадион');
+ expect(screen.getByLabelText('События администратора: 2')).toBeInTheDocument();
+});
+
+for(const [level,place,label,path] of [['beginner','Дворовый каток','Войти во двор','/daily'],['amateur','Стадион «Центральный»','Войти на стадион','/daily'],['professional','Арена Ультимейт','Войти на арену','/daily']] as const){
+ it(`uses one entrance for ${place}`,()=>{
+  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level={level}/>);
+  fireEvent.click(screen.getByRole('button',{name:`Выбрать ${place}`}));
+  expect(document.querySelectorAll('.district-actions button')).toHaveLength(1);
+  expect(screen.queryByRole('button',{name:'Ежедневная игра'})).toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:label}));expect(base.onNavigate).toHaveBeenCalledWith(path);
+ });
+}

@@ -165,7 +165,7 @@ export function WeeklyChallengeScreen({
   );
 
   const venue = useVenueNavigation();
-  useVenueAttention('challenges', challengeAttention);
+  useVenueAttention('challenges', [...catalog.future, ...catalog.active, ...catalog.completed].filter(weeklyChallengeNeedsAction).length);
   const claim = useMutation({
     mutationFn: (challenge: WeeklyChallenge) => claimWeeklyChallengeReward(challenge.id),
     onMutate: () => setClaimError(null),

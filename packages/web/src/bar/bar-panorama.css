@@ -628,3 +628,18 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-space__service-door-hit {z-index:3;left:99.2%;width:.8%;top:20%;height:42%;}
 
 .bar-space__object-glow--foreground {z-index:3;}
+
+/* Match the labeled navigation circles used by other panoramic catalogs. */
+.bar-avatar-dock {height:96px;}
+.bar-avatar-dock__item {flex:0 0 56px;width:56px;height:auto;display:flex;flex-direction:column;align-items:center;gap:6px;}
+.bar-avatar-dock__label {display:block;width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:650 10px/13px var(--font-sans,system-ui);color:var(--liquid-ink);text-align:center;}
+.bar-bottom-chrome .bar-space__actions--terminal {bottom:100px;}
+
+/* The exit stays visible while character circles scroll independently. */
+.bar-avatar-dock {overflow:hidden;}
+.bar-avatar-dock__slots {position:relative;display:flex;flex:1;min-width:0;align-items:center;gap:9px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;padding:12px 6px 2px;margin-top:-12px;}
+.bar-avatar-dock__slots::-webkit-scrollbar {display:none;}
+.bar-avatar-dock__exit {display:flex;flex:0 0 56px;flex-direction:column;align-items:center;gap:6px;align-self:center;color:var(--liquid-ink);text-decoration:none;}
+.bar-avatar-dock__exit>span {display:grid;place-items:center;width:46px;height:46px;border:1px solid var(--liquid-border);border-radius:50%;background:var(--liquid-chrome-bg);box-shadow:var(--liquid-shadow);}
+.bar-avatar-dock__exit>small {font:650 10px/13px var(--font-sans,system-ui);}
+.bar-avatar-dock__exit:focus-visible {outline:2px solid #fff;outline-offset:2px;border-radius:12px;}
