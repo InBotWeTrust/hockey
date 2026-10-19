@@ -11,7 +11,7 @@ export const barObjects:readonly BarObject[]=[
  {id:'dartboard',character:'daria',label:'Играть в дартс с Дарьей',action:'darts',left:89.2,top:12,width:5,height:22,glow:{x:91.8,y:20.5}},
  {id:'grigory-cards',character:'grigory',label:'Играть в очко с Григорием',action:'ochko',left:79.8,top:34,width:7.5,height:8,glow:{x:83.3,y:37.5}},
  {id:'maria-cards',character:'maria',label:'Играть в карты с Марией',action:'cards',left:70,top:34,width:7.5,height:8,glow:{x:72.4,y:37.5}},
- {id:'checkerboard',character:'arsenich',label:'Играть в шашки с Арсеничем',action:'checkers',left:62.2,top:30,width:4.2,height:17,glow:{x:64.3,y:38}},
+ {id:'checkerboard',character:'arsenich',label:'Играть в шашки с Арсеничем',action:'checkers',left:65.6,top:8.8,width:3.8,height:19,glow:{x:67.4,y:18.5}},
  {id:'battleship',character:'timofey',label:'Играть в морской бой с Тимофеем',action:'battleship',left:51.5,top:34,width:6,height:8,glow:{x:55,y:37.5}},
  {id:'billiards-door',character:'veronika',label:'Играть в бильярд с Вероникой',action:'billiards',left:32.1,top:11,width:5,height:23,glow:{x:34.3,y:15.5}},
  {id:'terminal',character:'online',label:'Терминал',left:44,top:35,width:2,height:14,glow:{x:45,y:42}},
