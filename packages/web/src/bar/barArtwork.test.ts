@@ -17,10 +17,10 @@ it('has all versioned current backgrounds, outcomes, decorations and staff room 
 });
 
 it('versions all corrected wall lighting variants while retaining approved day walls and using clean floor assets', () => {
-  expect(barInterior('west', 'day')).toBe('/bar/city-v5/west-day-v2.webp');
-  expect(barInterior('hall', 'day')).toBe('/bar/city-v5/hall-day-v4.webp');
+  expect(barInterior('west', 'day')).toBe('/bar/city-v5/west-day-v3.webp');
+  expect(barInterior('hall', 'day')).toBe('/bar/city-v5/hall-day-v5.webp');
   for (const phase of ['morning', 'sunset', 'night'] as const) {
-    for (const part of barParts) expect(barInterior(part, phase)).toBe(`/bar/city-v5/${part}-${phase}-${part === 'hall' ? 'v4' : 'v2'}.webp`);
+    for (const part of barParts) expect(barInterior(part, phase)).toBe(`/bar/city-v5/${part}-${phase}-${part === 'hall' ? 'v5' : 'v3'}.webp`);
     expect(barFloor(phase)).toBe(`/bar/city-v4/master-${phase}-v2.webp`);
   }
   expect(barFloor('day')).toBe('/bar/city-v4/day-master-v2.webp');
