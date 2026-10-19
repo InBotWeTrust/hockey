@@ -103,7 +103,7 @@ export function LocalCardAdmission({ children }: { children: ReactNode }) {
   if (!ready)
     return (
       <main className="bar-game-screen">
-        <VisitorGameGate character="maria" avatar="/bar/cards/avatar-v2.webp">
+        <VisitorGameGate character="maria">
           <p role={error ? 'alert' : 'status'}>{error ?? 'Готовим карточный стол…'}</p>
         </VisitorGameGate>
         <button className="btn btn--ghost" onClick={() => navigate('/bar')}>
@@ -114,7 +114,7 @@ export function LocalCardAdmission({ children }: { children: ReactNode }) {
   return (
     <LeaseContext.Provider value={lease.current}>
       {error && (
-        <VisitorGameGate character="maria" avatar="/bar/cards/avatar-v2.webp">
+        <VisitorGameGate character="maria">
           <p role="alert">{error}</p>
         </VisitorGameGate>
       )}

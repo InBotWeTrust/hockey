@@ -58,17 +58,19 @@ export function DurakLaunchModal({
         variant={opponentId === 'maria' ? 'playing' : 'invite'}
         label={`${opponent.name} приглашает сыграть в карты`}
       />
-      <p className="modal-copy bonus-game-preview-modal__story">
-        {opponentId === 'maria'
-          ? 'Мария составит тебе компанию за карточным столом. Обычный подкидной дурак: 36 карт, без ставок. Избавься от всех карт раньше соперницы.'
-          : `Подкидной дурак: 36 карт, без ставок. ${opponent.description}`}
-      </p>
-      <VisitorGameGate character={opponentId} avatar={opponentArt(opponentId, 'avatar')}>
-      <div className="modal-actions">
-        <button className="modal-primary btn btn--cta" onClick={onPlay}>
-          Играть
-        </button>
-      </div>
+      <VisitorGameGate
+        character={opponentId}
+        greeting={
+          opponentId === 'maria'
+            ? 'Мария составит тебе компанию за карточным столом. Обычный подкидной дурак: 36 карт, без ставок. Избавься от всех карт раньше соперницы.'
+            : `Подкидной дурак: 36 карт, без ставок. ${opponent.description}`
+        }
+      >
+        <div className="modal-actions">
+          <button className="modal-primary btn btn--cta" onClick={onPlay}>
+            Играть
+          </button>
+        </div>
       </VisitorGameGate>
     </AccessibleModal>
   );
@@ -99,22 +101,26 @@ export function DurakResultModal({
         label={title}
         result
       />
-      <p className="modal-copy">
-        {result === 0
-          ? opponent.win
-          : result === 1
-            ? opponent.loss
-            : '«Все карты ушли в отбой. Сыграем ещё?»'}
-      </p>
-      <VisitorGameGate character={opponentId} avatar={opponentArt(opponentId, 'avatar')}>
-      <div className="modal-actions">
-        <button className="btn btn--ghost" onClick={onBack}>
-          Вернуться в бар
-        </button>
-        <button className="modal-primary btn btn--cta" onClick={onReplay}>
-          Повторить
-        </button>
-      </div>
+      <VisitorGameGate
+        character={opponentId}
+        variant="result"
+        onBack={onBack}
+        greeting={
+          result === 0
+            ? opponent.win
+            : result === 1
+              ? opponent.loss
+              : '«Все карты ушли в отбой. Сыграем ещё?»'
+        }
+      >
+        <div className="modal-actions">
+          <button className="btn btn--ghost" onClick={onBack}>
+            Вернуться в бар
+          </button>
+          <button className="modal-primary btn btn--cta" onClick={onReplay}>
+            Повторить
+          </button>
+        </div>
       </VisitorGameGate>
     </AccessibleModal>
   );

@@ -25,16 +25,48 @@
   line-height: 1.5;
   margin: 6px 0;
 }
-.visitor-refusal {
-  padding: 12px;
-  border-radius: 14px;
-  margin: 10px 0;
+.visitor-game-farewell {
+  margin-bottom: 0;
 }
-.visitor-refusal img {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  object-fit: cover;
+.visitor-game-limit {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--liquid-border);
+}
+.visitor-game-limit__reset {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 6px 14px;
+}
+.visitor-game-limit__reset span {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.visitor-game-limit__reset strong {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 850;
+  line-height: 1.4;
+  font-variant-numeric: tabular-nums;
+}
+.visitor-game-limit__benefits {
+  margin: 12px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.modal-actions.visitor-game-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  margin-top: 16px;
+}
+.visitor-game-actions > button {
+  width: 100%;
+  min-height: 44px;
 }
 .visitor-settings {
   margin-bottom: 20px;
