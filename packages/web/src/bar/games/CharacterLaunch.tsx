@@ -50,24 +50,23 @@ export function CharacterLaunch({
         src={gameArt(kind, 'invite', character)}
         alt={characterNames[character]}
       />
-      <p className="modal-copy bonus-game-preview-modal__story">{gameCopy[kind].invite}</p>
-      <VisitorGameGate character={character} avatar={gameArt(kind, 'invite', character)}>
-      {character === 'grigory' ? (
-        <OchkoStake onStarted={(r) => navigate(`/bar/games/match/${r.id}`)} />
-      ) : (
-        <>
-          {error && <p role="alert">{error}</p>}
-          <div className="modal-actions">
-            <button
-              className="modal-primary btn btn--cta"
-              onClick={() => void start()}
-              disabled={busy}
-            >
-              Играть
-            </button>
-          </div>
-        </>
-      )}
+      <VisitorGameGate character={character} greeting={gameCopy[kind].invite}>
+        {character === 'grigory' ? (
+          <OchkoStake onStarted={(r) => navigate(`/bar/games/match/${r.id}`)} />
+        ) : (
+          <>
+            {error && <p role="alert">{error}</p>}
+            <div className="modal-actions">
+              <button
+                className="modal-primary btn btn--cta"
+                onClick={() => void start()}
+                disabled={busy}
+              >
+                Играть
+              </button>
+            </div>
+          </>
+        )}
       </VisitorGameGate>
     </AccessibleModal>
   );

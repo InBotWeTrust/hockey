@@ -104,7 +104,7 @@ export interface AmateurDuelRules {
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duelKind: AmateurDuelKind;
-  rhythmVersion?: 1 | 2;
+  rhythmVersion?: 1 | 2 | 3;
   rhythmWindowTraversals?: 2;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;

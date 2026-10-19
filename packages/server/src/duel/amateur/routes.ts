@@ -741,7 +741,7 @@ interface DuelRulesSnapshot {
   description: string;
   difficulty: DuelDifficulty;
   duelKind: DuelKind;
-  rhythmVersion?: 1 | 2;
+  rhythmVersion?: 1 | 2 | 3;
   rhythmWindowTraversals?: 2;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
@@ -1356,7 +1356,7 @@ export function makeRulesSnapshot(
     periodDurationMs: Number(template.period_duration_ms),
   });
   const snapshot: DuelRulesSnapshot = {
-    ...(template.duel_kind === 'rhythm' ? {rhythmVersion: 2 as const, rhythmWindowTraversals: 2 as const} : {}),
+    ...(template.duel_kind === 'rhythm' ? {rhythmVersion: 3 as const, rhythmWindowTraversals: 2 as const} : {}),
     templateId: template.id,
     title: template.title,
     description: template.description,
@@ -1487,7 +1487,7 @@ function parseRulesSnapshot(value: unknown): DuelRulesSnapshot {
       duelKind: z
         .enum(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])
         .default('classic'),
-      rhythmVersion: z.union([z.literal(1), z.literal(2)]).optional(),
+      rhythmVersion: z.union([z.literal(1), z.literal(2), z.literal(3)]).optional(),
       rhythmWindowTraversals: z.literal(2).optional(),
       scoredClockVersion: z.literal(2).optional(),
       shotResultPauseMs: z.literal(1000).optional(),

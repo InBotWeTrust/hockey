@@ -96,17 +96,13 @@ export function GameResult({
         alt={`${title}: ${view.character ? characterNames[view.character] : gameNames[view.kind]}`}
       />
       {reason && <p className="modal-copy">{reason}</p>}
-      <p className="modal-copy">
-        {view.character
-          ? reason
-            ? '«Заглядывай, когда будет больше времени на игру.»'
-            : gameCopy[view.kind][outcome]
-          : outcome === 'draw'
+      {!view.character && <p className="modal-copy">
+        {outcome === 'draw'
             ? 'Партия закончилась вничью.'
             : outcome === 'win'
               ? 'Ты выиграл эту партию.'
               : 'Соперник выиграл эту партию.'}
-      </p>
+      </p>}
       {outcome !== 'draw' && view.stake && view.stake.payout !== null && (
         <div className="bar-ochko-earned" data-loss={view.stake.payout < view.stake.amount} aria-label="Изменение баланса звёзд">
           <Star size={24} fill="currentColor" aria-hidden="true" />
@@ -115,22 +111,18 @@ export function GameResult({
       )}
       {finalScores && <p className="bar-game-result__score" aria-label="Итоговый счёт"><span>{technicalScore ? 'Технический счёт:' : 'Счёт:'}</span><strong>{finalScores[view.player]} : {finalScores[view.player === 0 ? 1 : 0]}</strong>{game.kind === 'ochko' && !!game.series?.history.length && <span className="bar-game-result__rounds">({technicalScore ? 'раздачи: ' : ''}{game.series.history.map(round => `${round.awards[view.player]}:${round.awards[view.player === 0 ? 1 : 0]}`).join(', ')})</span>}</p>}
       {challengePenalty > 0 && <p className="modal-copy">Штраф за проверку счёта: −{challengePenalty}</p>}
-      {view.character && <VisitorGameGate character={view.character} avatar={gameArt(view.kind, 'invite', view.character)}><button className="modal-primary btn btn--cta" onClick={replay} disabled={busy}>Повторить</button></VisitorGameGate>}
       {game.kind === 'battleship' && <NavalResult game={game} player={view.player}/>}
-      <div className="modal-actions">
-        {view.character ? (
-          <>
-            <button className="btn btn--ghost" onClick={back}>
-              Вернуться в бар
-            </button>
-
-          </>
-        ) : (
+      {view.character ? <VisitorGameGate character={view.character} variant="result" onBack={back}
+        greeting={reason ? '«Заглядывай, когда будет больше времени на игру.»' : gameCopy[view.kind][outcome]}>
+        <div className="modal-actions visitor-game-actions">
+          <button className="modal-primary btn btn--cta" onClick={replay} disabled={busy}>Повторить</button>
+          <button className="btn btn--ghost" onClick={back}>Вернуться в бар</button>
+        </div>
+      </VisitorGameGate> : <div className="modal-actions">
           <button className="modal-primary btn btn--cta" onClick={back}>
             Понятно
           </button>
-        )}
-      </div>
+      </div>}
     </AccessibleModal>
   );
 }
