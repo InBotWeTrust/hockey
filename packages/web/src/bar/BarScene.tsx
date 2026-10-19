@@ -193,7 +193,7 @@ export function BarScene({
               {!hideIdentity && s.occupantId && barCharacters.includes(s.occupantId as BarCharacter) && isBarAssetPath(composition) && !failedImages.includes(composition) && (
                 <CharacterHitArea onGame={s.occupantId === 'oleg' ? () => act('armwrestling','oleg') : undefined} character={s.occupantId as BarCharacter} x={s.x} y={s.y} style={{width:`${figureScale*100}%`,height:`${figureScale*100}%`,left:`${s.x}%`,top:`${figureTop}%`,transform:`translate(-${s.x}%,-${s.y}%)`}}/>
               )}
-              {!hideIdentity && (s.occupantId==='online'||s.occupantId==='broadcasts') && <button className="bar-space__object-hit" aria-label={s.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={e=>{e.stopPropagation();if(!ready(i))return;if(s.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
+              {!hideIdentity && (s.occupantId==='online'||s.occupantId==='broadcasts') && <button className={`bar-space__object-hit${s.occupantId==='broadcasts'?' bar-space__object-hit--tv':''}`} aria-label={s.occupantId==='online'?'Открыть терминал':'Открыть трансляции'} onClick={e=>{e.stopPropagation();if(!ready(i))return;if(s.occupantId==='online')setTerminalOpen(true);else onAction('broadcasts','broadcasts');}}/>}
             </div>
           );
         })}
