@@ -1,0 +1,13 @@
+:root {
+  --navigation-circle: 46px;
+  --navigation-item: 56px;
+  --navigation-gap: 9px;
+  --navigation-label-gap: 6px;
+  --navigation-label-font: 650 10px/13px var(--font-sans, system-ui);
+  --navigation-row-pad: 12px;
+  --navigation-bottom: calc(12px + var(--navigation-safe-area, env(safe-area-inset-bottom, 0px)));
+}
+/* Resolve local safe-area overrides at the application boundary, not on :root. */
+.app-shell {
+  --navigation-bottom: calc(12px + var(--navigation-safe-area, env(safe-area-inset-bottom, 0px)));
+}

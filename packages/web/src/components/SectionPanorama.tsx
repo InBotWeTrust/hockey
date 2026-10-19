@@ -1,3 +1,4 @@
+import '../components/navigation-geometry.css';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import {
   animate,
@@ -40,6 +41,7 @@ export function SectionPanorama({
   storageKey,
   children,
   overlays,
+  sceneDecoration,
   disabled = false,
   className = '',
   columns = pages.length,
@@ -52,6 +54,7 @@ export function SectionPanorama({
   storageKey: string;
   children: ReactNode;
   overlays?: ReactNode;
+  sceneDecoration?: ReactNode;
   disabled?: boolean;
   className?: string;
   columns?: number;
@@ -69,8 +72,7 @@ export function SectionPanorama({
     0,
     pages.findIndex((page) => page.id === selected),
   );
-  const previousIndex = useRef(index),
-    blockClickUntil = useRef(0);
+  const blockClickUntil = useRef(0);
   const scenePosition = pages[index]?.position ?? index;
   const target = useMotionValue(scenePosition),
     position = useSpring(target, { stiffness: 220, damping: 32 });
@@ -113,14 +115,9 @@ export function SectionPanorama({
       inline: 'nearest',
       behavior: reduced ? 'instant' : 'smooth',
     });
-    if (previousIndex.current !== index && !reduced) {
-      dragX.set(
-        (index > previousIndex.current ? 1 : -1) *
-          Math.min(80, (scroll.current?.clientWidth ?? 360) * 0.22),
-      );
-      void animate(dragX, 0, { type: 'spring', stiffness: 330, damping: 34 });
-    } else dragX.set(0);
-    previousIndex.current = index;
+    // Keep the new page anchored; only the panorama animates on selection.
+    dragX.stop();
+    dragX.set(0);
   }, [storageKey, selected, index, scenePosition, reduced, position, target, dragX]);
   useLayoutEffect(() => {
     const restore = () => {
@@ -152,6 +149,7 @@ export function SectionPanorama({
         style={{ width: `${columns * 100}%`, x: backgroundX }}
       >
         <img src={panorama} alt="" draggable={false} decoding="async" />
+        {sceneDecoration}
       </motion.div>
       <div className="section-scene__shade" aria-hidden="true" />
       <motion.div

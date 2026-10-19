@@ -1,3 +1,4 @@
+import './theme-settings.css';
 import { setTheme, useThemePreference } from '../app/theme.js';
 import { SegmentedTabs } from './SegmentedTabs.js';
 

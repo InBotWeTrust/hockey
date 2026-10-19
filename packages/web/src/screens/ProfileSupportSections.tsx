@@ -1,3 +1,4 @@
+import { CommunitySection } from '../components/CommunityLinks.js';
 import { Fragment, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, ChevronDown, MessageSquare, X } from 'lucide-react';
@@ -915,6 +916,8 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
           </div>
         </>
       )}
+
+      <CommunitySection />
 
       <AdminAndroidReleaseOnly>
         <>

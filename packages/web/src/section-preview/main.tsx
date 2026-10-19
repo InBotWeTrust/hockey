@@ -1,3 +1,15 @@
+import { apartmentProfile, referralSummary } from './apartmentFixtures.js';
+import { ProfileScreen } from '../screens/ProfileScreen.js';
+import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen.js';
+import { ReferralsScreen } from '../screens/ReferralsScreen.js';
+import { ProfileRewardsScreen } from '../screens/ProfileRewardsScreen.js';
+import {
+  ProfileEquipmentScreen,
+  ProfileStoryScreen,
+  ProfileStatsScreen,
+  ProfileArenaScreen,
+} from '../screens/ProfileDestinationScreens.js';
+import { ProfileStorySeriesScreen } from '../screens/ProfileStorySeriesScreen.js';
 import { CityMap } from '../city/CityMap.js';
 import { BarScene } from '../bar/BarScene.js';
 import { createDefaultBarLayout } from '@hockey/game-core';
@@ -75,15 +87,38 @@ window.fetch = async (input, init) => {
   const url = String(input);
   if (!url.includes('/api/')) return Response.error();
   let data: unknown = {};
-  if (url.endsWith('/api/me'))
+  if (url.endsWith('/inventory/equipment') && init?.method === 'PATCH') {
+    Object.assign(inventory.equipped, JSON.parse(String(init.body)));
+    data = inventory;
+  } else if (url.endsWith('/api/me'))
     data = {
-      id: 'preview',
+      ...apartmentProfile,
       competitionLevel: level,
-      displayName: 'Игрок',
-      currencyBalance: 43509,
-      starBalance: 1860,
-      experienceBalance: 77,
+      ...(params.get('empty') === '1'
+        ? {
+            achievements: [],
+            trophySummary: {
+              regularSeasonWins: 0,
+              tournamentChampionships: 0,
+              tournamentPodiums: 0,
+              completedChallenges: 0,
+            },
+          }
+        : {}),
     };
+  else if (url.includes('/referrals/me')) data = referralSummary;
+  else if (url.includes('/referrals/invitees')) data = { items: [], total: 0 };
+  else if (url.includes('/push/preferences'))
+    data = {
+      chatNewDialogMessage: true,
+      dailyGame: true,
+      trainingAvailable: true,
+      duelEvents: true,
+      tournamentEvents: true,
+      gameNews: true,
+    };
+  else if (url.includes('/social') || url.includes('/friends'))
+    data = { followers: 0, following: 0, friends: 0, items: [] };
   else if (url.includes('/duel/daily/history'))
     data = {
       games: [],
@@ -215,20 +250,38 @@ window.fetch = async (input, init) => {
 };
 function BarNavigationPreview() {
   const [slot, setSlot] = React.useState('bar-1');
-  return <BarScene layout={createDefaultBarLayout()} activeSlotId={slot} onSelectSlot={setSlot} onAction={()=>{}} activityCounts={{online:2,veronika:1}} />;
+  return (
+    <BarScene
+      layout={createDefaultBarLayout()}
+      activeSlotId={slot}
+      onSelectSlot={setSlot}
+      onAction={() => {}}
+      activityCounts={{ online: 2, veronika: 1 }}
+    />
+  );
 }
 const initial =
-  scene === 'map' ? '/preview-map' : scene === 'bar' ? '/preview-bar' : scene === 'yard'
-    ? `/?view=training&section=${params.get('section') ?? 'course'}&from=sections`
-    : scene === 'stadium'
-      ? `/?view=amateur&section=${params.get('section') ?? 'duels'}&from=sections`
-      : scene === 'tasks'
-        ? '/achievements'
-        : scene === 'bonus'
-          ? `/bonus-games?skill=${params.get('skill') ?? 'speed'}`
-          : scene === 'bank'
-            ? `/inventory?tab=${params.get('tab') ?? 'bank'}`
-            : `/inventory?category=${params.get('category') ?? 'stick'}`;
+  scene === 'apartment'
+    ? params.get('page') === 'referrals'
+      ? '/referrals'
+      : params.get('page') && params.get('page') !== 'profile'
+        ? `/profile/${params.get('page')}`
+        : '/profile'
+    : scene === 'map'
+      ? '/preview-map'
+      : scene === 'bar'
+        ? '/preview-bar'
+        : scene === 'yard'
+          ? `/?view=training&section=${params.get('section') ?? 'course'}&from=sections`
+          : scene === 'stadium'
+            ? `/?view=amateur&section=${params.get('section') ?? 'duels'}&from=sections`
+            : scene === 'tasks'
+              ? '/achievements'
+              : scene === 'bonus'
+                ? `/bonus-games?skill=${params.get('skill') ?? 'speed'}`
+                : scene === 'bank'
+                  ? `/inventory?tab=${params.get('tab') ?? 'bank'}`
+                  : `/inventory?category=${params.get('category') ?? 'stick'}`;
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider
     client={
@@ -240,12 +293,52 @@ createRoot(document.getElementById('root')!).render(
     <MemoryRouter initialEntries={[initial]}>
       <div
         className="app-shell app-shell--unified-glass"
-        style={{ height: '100dvh', width: '100%', maxWidth: 430, margin: '0 auto' }}
+        style={
+          {
+            height: '100dvh',
+            width: '100%',
+            maxWidth: 430,
+            margin: '0 auto',
+            '--navigation-safe-area': `${Math.max(0, Math.min(100, Number(params.get('safe-bottom')) || 0))}px`,
+          } as React.CSSProperties
+        }
       >
         <div className="app-content">
           <VenuePanorama level={level} owner="local-preview" previewTime={previewTime}>
             <Routes>
-              <Route path="/preview-map" element={<main className="screen sections-city-screen"><CityMap level="beginner" owner="navigation-labels-qa" startAtDaily daily="0/90 бросков" training="0/500" tasks="Есть награда" bonus="Бонусные игры" taskCount={1} isAdmin adminCount={2} onNavigate={()=>{}} /></main>} />
+              <Route path="/profile" element={<ProfileScreen />} />
+              <Route path="/profile/equipment" element={<ProfileEquipmentScreen />} />
+              <Route path="/profile/rewards" element={<ProfileRewardsScreen />} />
+              <Route path="/profile/settings" element={<ProfileSettingsScreen />} />
+              <Route path="/referrals" element={<ReferralsScreen />} />
+              <Route path="/profile/story" element={<ProfileStoryScreen />} />
+              <Route path="/profile/story/series-1" element={<ProfileStorySeriesScreen />} />
+              <Route
+                path="/profile/story/series-2"
+                element={<ProfileStorySeriesScreen series={2} />}
+              />
+              <Route path="/profile/stats" element={<ProfileStatsScreen />} />
+              <Route path="/profile/arena" element={<ProfileArenaScreen />} />
+              <Route
+                path="/preview-map"
+                element={
+                  <main className="screen sections-city-screen">
+                    <CityMap
+                      level="beginner"
+                      owner="navigation-labels-qa"
+                      startAtDaily
+                      daily="0/90 бросков"
+                      training="0/500"
+                      tasks="Есть награда"
+                      bonus="Бонусные игры"
+                      taskCount={1}
+                      isAdmin
+                      adminCount={2}
+                      onNavigate={() => {}}
+                    />
+                  </main>
+                }
+              />
               <Route path="/preview-bar" element={<BarNavigationPreview />} />
               <Route path="/" element={<DailyScreen />} />
               <Route path="/daily" element={<DailyOverviewScreen />} />

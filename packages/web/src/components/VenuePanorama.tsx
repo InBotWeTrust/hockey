@@ -1,3 +1,4 @@
+import { ApartmentRoomOverview } from './ApartmentRoom.js';
 import { useYardLighting } from '../city/yardLighting.js';
 import type { CityTimeOfDay } from '../city/lighting.js';
 import {
@@ -17,7 +18,7 @@ interface VenuePage extends PanoramaPage {
   href: string;
 }
 interface VenueScene {
-  id: 'yard' | 'stadium' | 'tasks';
+  id: 'yard' | 'stadium' | 'tasks' | 'apartment';
   label: string;
   selected: string;
   pages: VenuePage[];
@@ -31,6 +32,30 @@ export function venueSceneFor(pathname: string, search: string, level: Level): V
   const params = new URLSearchParams(search),
     view = params.get('view');
   const daily = pathname === '/daily';
+  const apartmentPages: VenuePage[] = [
+    ['profile', 'Профиль', '/profile'],
+    ['equipment', 'Инвентарь', '/profile/equipment'],
+    ['rewards', 'Награды', '/profile/rewards'],
+    ['settings', 'Настройки', '/profile/settings'],
+    ['referrals', 'Рефералка', '/referrals'],
+    ['story', 'Сюжет', '/profile/story'],
+  ].map(([id, label, href], position) => ({
+    id: id!,
+    label: label!,
+    href: href!,
+    position,
+    image: `/section-panoramas/apartment-${position}.webp`,
+  }));
+  const apartmentPage = apartmentPages.find((page) => page.href === pathname);
+  if (apartmentPage || pathname === '/profile/stats' || pathname === '/profile/arena')
+    return {
+      id: 'apartment',
+      label: 'Квартира',
+      columns: 6,
+      pages: apartmentPages,
+      selected: apartmentPage?.id ?? 'profile',
+    };
+
   if (
     pathname === '/' &&
     (params.get('play') === '1' || params.has('exercise') || params.has('match'))
@@ -175,6 +200,7 @@ export function VenuePanorama({
       setAttention((old) => (old[id] === value ? old : { ...old, [id]: value })),
     [],
   );
+  const updateReferrals = useCallback((count:number)=>update('referrals',count),[update]);
   const onBack = useCallback(() => navigate('/sections?home=1'), [navigate]);
   const context = useMemo(() => ({ onBack, setAttention: update }), [onBack, update]);
   useEffect(() => {
@@ -184,7 +210,7 @@ export function VenuePanorama({
   return (
     <VenueContext.Provider value={context}>
       <SectionPanorama
-        className="venue-scene"
+        className={`venue-scene${scene.id === 'apartment' ? ' apartment-scene' : ''}`}
         label={scene.label}
         pages={scene.pages.map((page) => ({
           ...page,
@@ -200,6 +226,17 @@ export function VenuePanorama({
         panorama={scene.id === 'yard' ? yard.panorama : `/section-panoramas/${scene.id}-v1.webp`}
         storageKey={`section-scroll:${owner ?? 'guest'}:${scene.id}`}
       >
+        {scene.id === 'apartment' && (
+          <ApartmentRoomOverview
+            pages={scene.pages}
+            onReferralCount={updateReferrals}
+            selected={scene.selected}
+            onSelect={(id) => {
+              const page = scene.pages.find((p) => p.id === id);
+              if (page) navigate(page.href, { replace: true });
+            }}
+          />
+        )}
         {scene.redirect ? <p role="status">Загрузка…</p> : children}
       </SectionPanorama>
     </VenueContext.Provider>

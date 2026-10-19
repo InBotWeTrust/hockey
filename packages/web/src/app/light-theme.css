@@ -38,8 +38,6 @@
 [data-theme='light'] :is(.duel-challenge-toast,.achievement-reward-toast) { color: #18212e; }
 /* Text directly over scenery keeps a stable white foreground. */
 [data-theme='light'] :is(.screen-title-on-arena,.section-label--page,.bar-space__header) { color:#fff; text-shadow:0 1px 3px #0009; }
-.profile-theme-settings { margin: 0 14px; padding:14px; border-radius:20px; }
-.profile-theme-settings p { margin:12px 0 0; color:var(--liquid-muted); font-size:12px; line-height:1.4; }
 @media (prefers-reduced-transparency: reduce) {
   :root[data-theme='light'] { --liquid-card-bg:#eef3f8; --liquid-chrome-bg:#eef3f8; --liquid-modal-bg:#f7f9fc; --chat-reading-bg:#f7f9fc; --chat-reading-own-bg:#e0edf6; }
 }
@@ -58,11 +56,7 @@
   :root[data-theme='light'] { --liquid-card-bg:#eef3f8; --liquid-chrome-bg:#eef3f8; --liquid-modal-bg:#f7f9fc; }
 }
 
-.profile-theme-section { margin: 0 0 20px; display: grid; gap: 8px; }
 
-.profile-theme-settings .segmented-tabs { display: flex; width: 100%; }
-.profile-theme-settings .segmented-tabs__item { flex: 1; }
-.profile-theme-settings .segmented-tabs__item:first-child { flex: 1.5; }
 /* Light theme interface glyphs use dark ink inside their surfaces. */
 [data-theme='light'] svg.lucide {
   color: #18212e;

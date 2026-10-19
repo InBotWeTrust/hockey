@@ -226,3 +226,13 @@ for(const [level,place,label,path] of [['beginner','Дворовый каток'
   fireEvent.click(screen.getByRole('button',{name:label}));expect(base.onNavigate).toHaveBeenCalledWith(path);
  });
 }
+
+it('opens a centered building from its dock circle and recenters it after a pan',()=>{
+ sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
+ const {viewport,scroll}=mapGeometry();const circle=screen.getByRole('button',{name:'Выбрать Банк'});
+ fireEvent.click(circle);expect(base.onNavigate).not.toHaveBeenCalled();
+ viewport.scrollLeft=700;scroll.mockClear();fireEvent.click(circle);
+ expect(base.onNavigate).not.toHaveBeenCalled();expect(scroll).toHaveBeenCalled();
+ viewport.scrollLeft=886;fireEvent.click(circle);
+ expect(base.onNavigate).toHaveBeenCalledWith('/inventory?tab=bank');
+});

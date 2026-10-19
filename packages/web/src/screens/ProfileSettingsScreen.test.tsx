@@ -201,6 +201,13 @@ describe('ProfileSettingsScreen', () => {
     vi.unstubAllGlobals();
   });
 
+  it('shows communities below notifications', async () => {
+    mockSettingsFetch(); renderProfileSettings();
+    const communities = await screen.findByRole('region', {name:'Сообщества'});
+    expect(screen.getByText('Уведомления').compareDocumentPosition(communities) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(within(communities).getByRole('link', {name:'Открыть канал в Telegram'})).toHaveAttribute('href','https://t.me/ultimate_hockey');
+  });
+
   it('labels the Android download area as a mobile application section', async () => {
     useAuthStore.getState().setSession({
       accessToken: 'a',

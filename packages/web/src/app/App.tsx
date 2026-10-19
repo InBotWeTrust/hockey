@@ -115,6 +115,7 @@ const WeeklyChallengeScreen = lazy(() =>
     default: module.WeeklyChallengeScreen,
   })),
 );
+const ProfileRewardsScreen = lazy(() => import('../screens/ProfileRewardsScreen.js').then(module=>({default:module.ProfileRewardsScreen})));
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
 );
@@ -414,6 +415,7 @@ function AppExperience(): JSX.Element {
           <VenuePanorama level={user ? profileQuery.data?.competitionLevel ?? user.competitionLevel ?? null : null} owner={user?.id ?? null}>
           <Suspense fallback={<RouteLoading />}>
             <Routes>
+              <Route path="/profile/rewards" element={<PrivateRoute><ProfileRewardsScreen /></PrivateRoute>} />
               <Route path="/bar/games" element={<PrivateRoute><BarAccessGate><BarGamesPage/></BarAccessGate></PrivateRoute>}/>
               <Route path="/bar/games/match/:id" element={<PrivateRoute><BarAccessGate><BarGameScreen/></BarAccessGate></PrivateRoute>}/>
               <Route path="/bar/cards/online" element={<PrivateRoute><BarAccessGate><Navigate to="/bar" replace /></BarAccessGate></PrivateRoute>} />

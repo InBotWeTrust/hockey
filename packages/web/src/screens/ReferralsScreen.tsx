@@ -1,3 +1,4 @@
+import { useVenueAttention } from '../components/VenuePanorama.js';
 import { useEffect, useState } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, ChevronRight, Copy, Star, TrendingUp } from 'lucide-react';
@@ -66,6 +67,7 @@ export function ReferralsScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const updateUser = useAuthStore((state) => state.updateUser);
   const summary = useQuery({ queryKey: ['referrals', 'summary'], queryFn: fetchReferralSummary });
+  useVenueAttention('referrals', summary.data?.unclaimedRewardsCount ?? 0);
   const inviteUrl = summary.data ? `${window.location.origin}/invite/${summary.data.code}` : '';
   const copy = (value: string): void => {
     void copyText(value).then((copied) => {

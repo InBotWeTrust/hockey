@@ -1,0 +1,72 @@
+.apartment-room-overview {
+  display: none;
+  position: relative;
+  aspect-ratio: 3/1;
+  margin: 14px 14px 0;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+}
+.apartment-room-overview > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.apartment-room-overview > button {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 16.6667%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  padding: 0;
+}
+.apartment-room-overview > button:hover,
+.apartment-room-overview > button:focus-visible {
+  background: #fff2;
+  outline: 2px solid #fffc;
+  outline-offset: -3px;
+  border-radius: 10px;
+}
+.apartment-room-overview > button[aria-pressed='true'] {
+  box-shadow: inset 0 -3px #fff8;
+}
+.apartment-room-awards {
+  position: absolute;
+  left: 36%;
+  top: 16%;
+  width: 12%;
+  height: 45%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  align-items: end;
+  gap: 5%;
+  pointer-events: none;
+  color: #e9c15c;
+  filter: drop-shadow(0 3px 2px #0008);
+}
+.apartment-room-awards svg,
+.apartment-room-awards img {
+  width: 85%;
+  height: 70%;
+  max-height: 70%;
+  justify-self: center;
+  object-fit: contain;
+}
+.apartment-room-awards svg {
+  fill: #ae842a66;
+  stroke-width: 1.7;
+}
+.apartment-scene .profile-screen,
+.apartment-scene .profile-detail-screen {
+  background: transparent !important;
+}
+.apartment-scene .section-scene__scroll > div > main {
+  padding-top: 16px !important;
+}
+.apartment-scene .district-page-header {
+  margin: 0 0 14px;
+}

@@ -1,0 +1,55 @@
+.profile-rewards-list {
+  display: grid;
+  gap: 12px;
+}
+.profile-rewards-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px;
+  text-align: left;
+  border-radius: 22px;
+  color: var(--liquid-ink);
+  border: 1px solid var(--liquid-border);
+}
+.profile-rewards-item img {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  object-fit: cover;
+}
+.profile-rewards-item span {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+.profile-rewards-item small {
+  color: var(--liquid-muted);
+}
+.profile-rewards-empty {
+  padding: 16px;
+  border-radius: 22px;
+}
+.profile-rewards-empty h2 { font-size: 18px; }
+.profile-rewards-empty p { color: var(--liquid-muted); }
+
+.profile-earned-award-image {
+  display: block;
+  width: min(220px, 100%);
+  max-height: 220px;
+  object-fit: contain;
+  margin: 0 auto 16px;
+  border-radius: 20px;
+}
+.profile-earned-award-history {
+  display: grid;
+  gap: 12px;
+  padding-left: 24px;
+}
+.profile-earned-award-history p {
+  margin: 6px 0;
+}
+.profile-earned-award-history small {
+  color: var(--liquid-muted);
+}

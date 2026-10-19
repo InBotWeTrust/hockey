@@ -1,0 +1,6 @@
+.profile-theme-settings { margin: 0 14px; padding:14px; border-radius:20px; }
+.profile-theme-settings p { margin:12px 0 0; color:var(--liquid-muted); font-size:12px; line-height:1.4; }
+.profile-theme-section { margin: 0 0 20px; display: grid; gap: 8px; }
+.profile-theme-settings .segmented-tabs { display: flex; width: 100%; }
+.profile-theme-settings .segmented-tabs__item { flex: 1; }
+.profile-theme-settings .segmented-tabs__item:first-child { flex: 1.5; }

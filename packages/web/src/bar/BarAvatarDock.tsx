@@ -1,3 +1,4 @@
+import '../components/navigation-geometry.css';
 import {useHorizontalPan} from './useHorizontalPan.js';
 import {useEffect,useRef,useState} from 'react';
 import {Gamepad2,Newspaper,Tv,LogOut} from 'lucide-react';

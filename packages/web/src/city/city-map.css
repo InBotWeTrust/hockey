@@ -37,3 +37,11 @@
 .district-dock button {flex:0 0 56px;width:56px;height:auto;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--liquid-ink);}
 .district-dock__label {display:block;width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:650 10px/13px var(--font-sans,system-ui);text-align:center;}
 .district-dock .district-game-status {bottom:19px;}
+
+.district-panel {bottom:var(--navigation-bottom);}
+.district-dock {gap:var(--navigation-gap);padding:var(--navigation-row-pad) 14px;}
+.district-dock button {flex-basis:var(--navigation-item);width:var(--navigation-item);gap:var(--navigation-label-gap);}
+.district-dock span {width:var(--navigation-circle);height:var(--navigation-circle);}
+.district-dock__label {font:var(--navigation-label-font);}
+.district-dock button[aria-pressed=true] span {filter:none;}
+.district-dock button:hover span,.district-dock button:focus-visible span {filter:none;}

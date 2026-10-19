@@ -59,3 +59,29 @@ it('opens the first yard catalog and allows circles to switch to advanced traini
   expect(screen.getByText('/?view=training&section=advanced&from=sections')).toBeInTheDocument();
   expect(screen.getByRole('link', { name: 'На карту' })).toBeInTheDocument();
 });
+
+it.each([
+  ['/profile', 'profile'],
+  ['/profile/equipment', 'equipment'],
+  ['/profile/rewards', 'rewards'],
+  ['/profile/settings', 'settings'],
+  ['/referrals', 'referrals'],
+  ['/profile/story', 'story'],
+])('opens apartment page %s without changing its direct link', (path, selected) => {
+  const scene = venueSceneFor(path, '', 'amateur');
+  expect(scene?.id).toBe('apartment');
+  expect(scene?.selected).toBe(selected);
+  expect(scene?.pages.map((p) => p.id)).toEqual([
+    'profile',
+    'equipment',
+    'rewards',
+    'settings',
+    'referrals',
+    'story',
+  ]);
+});
+it('keeps story replay full screen and profile achievements in the task building', () => {
+  expect(venueSceneFor('/profile/story/series-1', '', 'amateur')).toBeNull();
+  expect(venueSceneFor('/profile/story/series-2', '', 'amateur')).toBeNull();
+  expect(venueSceneFor('/profile/achievements', '', 'amateur')?.id).toBe('tasks');
+});

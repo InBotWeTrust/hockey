@@ -1,3 +1,4 @@
+import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
 import {DistrictPageHeader} from '../components/DistrictPageHeader.js';
@@ -612,7 +613,7 @@ export function TrophyHistoryModal({
   );
 }
 
-function TrophyShowcase({
+export function TrophyShowcase({
   profile,
   onOpen,
 }: {
@@ -766,6 +767,7 @@ function ProfileLoadError({ onRetry }: { onRetry: () => void }): JSX.Element {
 }
 
 export function ProfileScreen(): JSX.Element {
+  const apartment = useVenueNavigation() !== null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pickerKind, setPickerKind] = useState<keyof InventoryState['equipped'] | null>(null);
@@ -844,7 +846,7 @@ export function ProfileScreen(): JSX.Element {
     const inventory = inventoryQuery.data;
     if (profile === undefined || inventory === undefined) return;
     preloadArtwork(profileArtworkUrls(profile, inventory));
-  }, [inventoryQuery.data, profileQuery.data]);
+  }, [apartment, inventoryQuery.data, profileQuery.data]);
 
   if (profileQuery.isLoading) {
     return (
@@ -954,7 +956,7 @@ export function ProfileScreen(): JSX.Element {
           </div>
         </div>
         <SportingMetrics profile={profile} onOpenRating={setStatRatingMetric} />
-        <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
+        {!apartment && <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />}
       </section>
 
       {experienceRatingOpen ? (
@@ -1007,6 +1009,7 @@ export function ProfileScreen(): JSX.Element {
       ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
+        {!apartment && <>
         <EquipmentPanel
           inventory={inventoryQuery.data}
           onOpen={() => navigate('/profile/equipment')}
@@ -1020,7 +1023,8 @@ export function ProfileScreen(): JSX.Element {
           onChoose={setSelectedAchievement}
           hidden
         />
-        <CommunityLinks />
+        </>}
+        {!apartment && <CommunityLinks />}
       </section>
       {pickerKind !== null && inventoryQuery.data !== undefined ? (
         <EquipmentPickerModal

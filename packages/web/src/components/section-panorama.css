@@ -57,8 +57,8 @@
   position: absolute;
   inset: auto 0 0;
   z-index: 3;
-  margin: 0 12px calc(10px + var(--app-safe-bottom, 0px));
-  padding: 12px 13px 10px;
+  margin: 0 12px var(--navigation-bottom);
+  padding: 14px 16px 0;
   min-width: 0;
   border: 1px solid var(--liquid-border);
   border-radius: 26px;
@@ -72,7 +72,7 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 3px 10px;
+  padding: 0;
   gap: 8px;
 }
 .section-scene__identity strong {
@@ -87,22 +87,22 @@
 }
 .section-scene__dock {
   display: flex;
-  gap: 12px;
+  gap: var(--navigation-gap);
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;
-  padding: 14px 7px 1px;
+  padding: var(--navigation-row-pad) 6px;
 }
 .section-scene__dock::-webkit-scrollbar {
   display: none;
 }
 .section-scene__dock button {
   appearance: none;
-  flex: 0 0 56px;
+  flex: 0 0 var(--navigation-item);
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: var(--navigation-label-gap);
   border: 0;
   background: none;
   padding: 0;
@@ -112,8 +112,8 @@
   -webkit-tap-highlight-color: transparent;
 }
 .section-scene__dock img {
-  width: 52px;
-  height: 52px;
+  width: var(--navigation-circle);
+  height: var(--navigation-circle);
   object-fit: cover;
   border: 1px solid #c9d3df80;
   border-radius: 50%;
@@ -135,7 +135,7 @@
 .section-scene__dock button > span {
   font-size: 10px;
   font-weight: 650;
-  line-height: 1.2;
+  line-height: 13px;
   width: 56px;
   max-width: 56px;
   overflow: hidden;
@@ -156,37 +156,6 @@
 .section-scene .inventory-shop-header {
   margin-bottom: 0;
 }
-@media (max-width: 350px) {
-  .section-scene__scroll {
-    padding-left: 10px;
-    padding-right: 10px;
-  }
-  .section-scene__panel {
-    margin-left: 8px;
-    margin-right: 8px;
-    padding-left: 9px;
-    padding-right: 9px;
-  }
-  .section-scene__dock {
-    gap: 9px;
-  }
-  .section-scene__identity strong {
-    font-size: 17px;
-  }
-}
-@media (max-height: 600px) {
-  .section-scene__panel {
-    padding-top: 8px;
-    padding-bottom: 6px;
-  }
-  .section-scene__identity {
-    padding-bottom: 5px;
-  }
-  .section-scene__dock img {
-    width: 44px;
-    height: 44px;
-  }
-}
 @media (prefers-reduced-motion: reduce) {
   .section-scene__dock img {
     transition: none;
@@ -196,7 +165,7 @@
 .section-scene__navigation {
   display: flex;
   align-items: flex-start;
-  gap: 12px;
+  gap: var(--navigation-gap);
   min-width: 0;
 }
 .section-scene__navigation .section-scene__dock {
@@ -205,11 +174,11 @@
 }
 .section-scene__exit {
   display: flex;
-  flex: 0 0 56px;
+  flex: 0 0 var(--navigation-item);
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding-top: 14px;
+  gap: var(--navigation-label-gap);
+  padding-top: var(--navigation-row-pad);
   color: var(--liquid-ink);
   text-decoration: none;
   -webkit-tap-highlight-color: transparent;
@@ -217,8 +186,8 @@
 .section-scene__exit > span {
   display: grid;
   place-items: center;
-  width: 52px;
-  height: 52px;
+  width: var(--navigation-circle);
+  height: var(--navigation-circle);
   border: 1px solid var(--liquid-border);
   border-radius: 50%;
   background: var(--liquid-chrome-bg);
@@ -227,20 +196,12 @@
   -webkit-backdrop-filter: var(--liquid-blur);
 }
 .section-scene__exit small {
-  font-size: 10px;
-  font-weight: 650;
-  line-height: 1.2;
+  font: var(--navigation-label-font);
 }
 .section-scene__exit:focus-visible {
   outline: 2px solid #fff;
   outline-offset: 2px;
   border-radius: 12px;
-}
-@media (max-height: 600px) {
-  .section-scene__exit > span {
-    width: 44px;
-    height: 44px;
-  }
 }
 /* Existing catalogs own their headers and padding; the scene owns their only scroll container. */
 .venue-scene .section-scene__scroll {
@@ -279,5 +240,14 @@
 
 /* Let cards pass behind the floating dock, but keep the final card reachable. */
 .section-scene__scroll > div {
-  padding-bottom: calc(var(--section-panel-height, 140px) + 24px + var(--app-safe-bottom, 0px));
+  padding-bottom: calc(var(--section-panel-height, 140px) + var(--navigation-bottom) + 12px);
+}
+
+/* The persistent exit circle replaces page-level back actions. */
+.section-scene button[aria-label="Назад"]:not([role="dialog"] *) {
+  display: none;
+}
+.venue-scene .profile-page-header {
+  display: flex;
+  align-items: center;
 }
