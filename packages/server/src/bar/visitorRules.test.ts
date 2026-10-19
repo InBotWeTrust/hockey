@@ -16,12 +16,12 @@ const account = {
   resetAt: '2026-10-18T00:00:00Z',
 };
 describe('visitor card rules', () => {
-  it('shares ten free messages and three games across characters', () => {
+  it('shares ten free messages and two games across characters', () => {
     const state = visitorSnapshot(account, defaultVisitorSettings, now);
     expect(state.messages.remaining).toBe(10);
-    expect(state.games.remaining).toBe(3);
+    expect(state.games.remaining).toBe(2);
   });
-  it('upgrades without resetting usage and allows two games per character', () => {
+  it('upgrades without resetting usage and allows five games per character', () => {
     const state = visitorSnapshot(
       {
         ...account,
@@ -33,9 +33,24 @@ describe('visitor card rules', () => {
       defaultVisitorSettings,
       now,
     );
-    expect(state.messages.remaining).toBe(20);
-    expect(state.games.byCharacter.daria).toBe(1);
-    expect(state.games.byCharacter.maria).toBe(0);
+    expect(state.messages.remaining).toBe(40);
+    expect(state.games.byCharacter.daria).toBe(4);
+    expect(state.games.byCharacter.maria).toBe(3);
+  });
+  it('exhausts each character after five games and switches to paid messages after fifty', () => {
+    const member = {
+      ...account,
+      purchasedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + 86400000).toISOString(),
+      messagesUsed: 50,
+      gamesUsed: { daria: 5, maria: 4 },
+    };
+    const state = visitorSnapshot(member, defaultVisitorSettings, now);
+    expect(state.messages.remaining).toBe(0);
+    expect(state.games.byCharacter.daria).toBe(0);
+    expect(state.games.byCharacter.maria).toBe(1);
+    expect(messageSource(member, defaultVisitorSettings, now)).toBe(null);
+    expect(messageSource({ ...member, paidMessages: 1 }, defaultVisitorSettings, now)).toBe('paid');
   });
   it('uses purchased messages only after the daily allowance and denies empty stock', () => {
     expect(messageSource({ ...account, paidMessages: 5 }, defaultVisitorSettings, now)).toBe(

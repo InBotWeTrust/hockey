@@ -10,6 +10,7 @@ import { ShopProductCard } from '../shop/ShopProductCard.js';
 import { ShopPurchaseModal } from '../shop/ShopPurchaseModal.js';
 import { useVisitor, visitorChanged, visitorTime } from './visitorApi.js';
 import { visitorProductArtwork, visitorProductTitle } from './visitorArtwork.js';
+import { formatRussianCount } from '../lib/russianPlural.js';
 import './visitor-card.css';
 
 type Purchase = {
@@ -210,8 +211,8 @@ function VisitorCatalog({ owner, onClose }: { owner: string; onClose?: () => voi
           />
           {details.kind === 'card' && data && (
             <p className="modal-copy">
-              С картой {data.settings.cardMessages} сообщений в день и по {data.settings.cardGames}{' '}
-              игры с каждым персонажем.
+              С картой {data.settings.cardMessages} сообщений в день и по{' '}
+              {formatRussianCount(data.settings.cardGames, 'игру', 'игры', 'игр')} с каждым персонажем.
               {data.state.card.active && data.state.card.expiresAt
                 ? ` Карта действует до ${visitorTime(data.state.card.expiresAt)}.`
                 : ''}
