@@ -141,3 +141,10 @@ it('breaks strict bonus series on any non-goal without losing credited points',(
  expect(projectRhythm({shots:goals,travel:2.501,breakOnMiss:true}).currentSeries).toBe(0);
  expect(projectRhythm({shots:missed,travel:.7}).currentSeries).toBe(2);
 });
+
+it('uses strict consecutive goals for duel version three while preserving older match snapshots',()=>{
+ const goals=Array.from({length:6},(_,i)=>({travel:i*.2,goal:true}));
+ const shots=[...goals,{travel:1.2,goal:false},{travel:1.4,goal:true}];
+ expect(projectRhythm({shots,travel:1.4,version:3})).toMatchObject({score:6,currentSeries:1,series:[6]});
+ expect(projectRhythm({shots,travel:1.4,version:2})).toMatchObject({score:7,currentSeries:7});
+});

@@ -74,3 +74,18 @@ it('shows the last goal series below the menu and hides it on a missed shot', ()
   view.rerender(<RhythmShotNotice shots={[...goals,{travel:9,goal:true}]} version={2}/>);
   expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
 });
+
+it('hides strict duel notice on miss and expiry, then starts the next goal from one',()=>{
+ const goals=Array.from({length:6},(_,i)=>({travel:i*.2,goal:true}));
+ const view=render(<RhythmShotNotice shots={goals} version={3} travel={1}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Серия 6');
+ view.rerender(<RhythmShotNotice shots={goals} version={3} travel={3}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Серия 6');
+ view.rerender(<RhythmShotNotice shots={goals} version={3} travel={3.001}/>);
+ expect(screen.queryByRole('status')).toBeNull();
+ const missed=[...goals,{travel:1.2,goal:false}];
+ view.rerender(<RhythmShotNotice shots={missed} version={3}/>);
+ expect(screen.queryByRole('status')).toBeNull();
+ view.rerender(<RhythmShotNotice shots={[...missed,{travel:1.4,goal:true}]} version={3}/>);
+ expect(screen.getByRole('status')).toHaveTextContent('Серия началась');
+});
