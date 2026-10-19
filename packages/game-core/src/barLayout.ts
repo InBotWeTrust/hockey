@@ -55,6 +55,10 @@ export const barActionsFor = (id: BarOccupantId | null): BarAction[] =>
         : id === 'arsenich' ? ['checkers']
           : id === 'online' ? ['online']
             : id === 'broadcasts' ? ['broadcasts'] : [];
+export const barInteriorOrder: readonly BarOccupantId[] = ['oleg', 'broadcasts', 'igor', 'veronika', 'online', 'timofey', 'arsenich', 'maria', 'grigory', 'daria'];
+const legacyBarOrder: readonly BarOccupantId[] = ['daria', 'grigory', 'maria', 'arsenich', 'online', 'oleg', 'timofey', 'veronika', 'igor', 'broadcasts'];
+const interiorPosition = (slot: BarSlot) => slot.occupantId ? barInteriorOrder.indexOf(slot.occupantId) : barInteriorOrder.length;
+
 export function createDefaultBarLayout(): BarLayout {
   const profile = (
     name: string,
@@ -71,7 +75,7 @@ export function createDefaultBarLayout(): BarLayout {
       x: 50,
       y: 50,
       scale: 1,
-    })),
+    })).sort((a, b) => interiorPosition(a) - interiorPosition(b)),
     profiles: {
       daria: profile(
         'Дарья',
@@ -210,6 +214,9 @@ export function upgradeBarLayout(layout: BarLayout): BarLayout {
   if (!next.slots.some((slot) => slot.occupantId === 'igor')) {
     const newspapers = next.slots.find((slot) => slot.occupantId === 'news');
     if (newspapers) newspapers.occupantId = 'igor';
+  }
+  if (next.slots.length === legacyBarOrder.length && next.slots.every((slot, index) => slot.occupantId === legacyBarOrder[index])) {
+    next.slots.sort((a, b) => interiorPosition(a) - interiorPosition(b));
   }
   return next;
 }

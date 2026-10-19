@@ -4,7 +4,5 @@
 .bar-interior-backdrop__wall img {position:absolute;top:0;width:100%;max-width:none;object-fit:fill;}
 .bar-interior-backdrop__wall--west {left:0;}
 .bar-interior-backdrop__wall--west img {height:87%;}
-.bar-interior-backdrop__wall--middle {left:40%;}
-.bar-interior-backdrop__wall--middle img {height:87%;}
-.bar-interior-backdrop__wall--east {left:80%;width:20%;}
-.bar-interior-backdrop__wall--east img {height:102.3%;}
+.bar-interior-backdrop__wall--hall {left:40%;width:60%;}
+.bar-interior-backdrop__wall--hall img {top:-6%;height:auto;}

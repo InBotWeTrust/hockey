@@ -12,16 +12,15 @@ it('has all versioned current backgrounds, outcomes, decorations and staff room 
     '/bar/city-v3/director-office-portrait-v2.webp',
     '/bar/city-v3/director-office-wide-v1.webp',
   ];
-  expect(new Set(paths).size).toBe(34);
+  expect(new Set(paths).size).toBe(30);
   for (const path of paths) expect(existsSync(resolve('public', path.slice(1))), path).toBe(true);
 });
 
 it('versions all corrected wall lighting variants while retaining approved day walls and using clean floor assets', () => {
-  expect(barInterior('west', 'day')).toBe('/bar/city-v4/west-day-v3.webp');
-  expect(barInterior('middle', 'day')).toBe('/bar/city-v4/middle-day-v3.webp');
-  expect(barInterior('east', 'day')).toBe('/bar/city-v4/east-day-v3.webp');
+  expect(barInterior('west', 'day')).toBe('/bar/city-v5/west-day-v2.webp');
+  expect(barInterior('hall', 'day')).toBe('/bar/city-v5/hall-day-v2.webp');
   for (const phase of ['morning', 'sunset', 'night'] as const) {
-    for (const part of barParts) expect(barInterior(part, phase)).toBe(`/bar/city-v4/${part}-${phase}-v2.webp`);
+    for (const part of barParts) expect(barInterior(part, phase)).toBe(`/bar/city-v5/${part}-${phase}-v2.webp`);
     expect(barFloor(phase)).toBe(`/bar/city-v4/master-${phase}-v2.webp`);
   }
   expect(barFloor('day')).toBe('/bar/city-v4/day-master-v2.webp');
