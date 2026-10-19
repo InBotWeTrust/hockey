@@ -17,3 +17,8 @@ export const FIGHT_FINISH_ANIMATION_MS = 700;
 export const FIGHT_RESULT_DISPLAY_MS = 2000;
 
 export const FIGHT_MEDICAL_AID_MS = 10_000;
+
+// Presentation lead-in; combat duration starts at the shared phaseStartedAtMs.
+export const FIGHT_COUNTDOWN_MS = 3000;
+export const FIGHT_ENTRANCE_MS = 1000;
+export const FIGHT_START_DELAY_MS = FIGHT_COUNTDOWN_MS + FIGHT_ENTRANCE_MS;

@@ -33,3 +33,13 @@ describe('fight arrival', () => {
     }
   });
 });
+
+it('keeps both fighters offscreen for the countdown, then brings them in',()=>{
+ for(const side of [0,1] as const){
+  const origin=fightEntranceX(320,side,0,4000,0,false);
+  expect(fightEntranceX(320,side,0,4000,2999,false)).toBe(origin);
+  expect(fightEntranceX(320,side,0,4000,3500,false)).not.toBe(origin);
+  expect(fightEntranceX(320,side,0,4000,4000,false)).toBeCloseTo(side===0?80:240);
+  expect(fightEntranceX(320,side,0,4000,2000,true)).toBe(origin);
+ }
+});

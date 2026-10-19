@@ -1,3 +1,4 @@
+import { FIGHT_START_DELAY_MS } from '@hockey/game-core';
 import { randomBytes } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import type { FightCommand, FightState } from '@hockey/game-core';
@@ -50,7 +51,7 @@ export async function startOlegFight(
   ).rows[0];
   if (existing) return existing.id;
   const clock = (await db.query<{ at: string }>('select clock_timestamp()::text as at')).rows[0]!;
-  const runtime = createOlegRuntime(Date.parse(clock.at) + 1000, randomBytes(4).readUInt32LE());
+  const runtime = createOlegRuntime(Date.parse(clock.at) + FIGHT_START_DELAY_MS, randomBytes(4).readUInt32LE());
   const result = await db.query<{ id: string }>(
     `insert into bar_oleg_fights(user_id,source_turn_id,runtime) values($1,$2,$3) returning id`,
     [user, turnId ?? null, JSON.stringify(runtime)],

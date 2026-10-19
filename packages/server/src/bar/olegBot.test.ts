@@ -97,3 +97,11 @@ it('remains beatable by approaching in guard and changing attack level', () => {
  }
  expect(wins).toBeGreaterThanOrEqual(6);
 });
+
+it('cannot attack before the shared countdown and entrance have finished',()=>{
+ const runtime=createOlegRuntime(5000,42);
+ const waiting=advanceOlegRuntime(runtime,4999);
+ expect(waiting.state.actions).toHaveLength(0);
+ expect(waiting.state.hp).toEqual([5,10]);
+ expect(waiting.state.deadlineMs-waiting.state.phaseStartedAtMs).toBe(20000);
+});

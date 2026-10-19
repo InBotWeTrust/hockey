@@ -3,7 +3,7 @@ import { FightMovementPresentation } from './fightMovementPresentation.js';
 import { FightReserve } from './FightReserve.js';
 import { useEffect,useRef,useState } from 'react';
 import { Assets,type Application } from 'pixi.js';
-import { fightInRange,getFightPosture,neutralFightInput,type FightHeldInput } from '@hockey/game-core';
+import { FIGHT_ENTRANCE_MS,fightInRange,getFightPosture,neutralFightInput,type FightHeldInput } from '@hockey/game-core';
 import { PixiStage } from '../PixiStage.js';
 import { Fighter,FIGHT_ASSETS,BAR_FIGHT_ASSETS } from './Fighter.js';
 import { FightTimeline } from './fightTimeline.js';
@@ -59,7 +59,7 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
    }
    const x=a.screen.width*(p.player===0?positions[index]:1-positions[index])+(side===0?-8:8);
    fighter.view.position.set(fightEntranceX(a.screen.width,side as 0|1,p.state.phaseId,p.state.phaseStartedAtMs,time,reduced,scale,x),baseline);
-   const margin=a.screen.width*.08;if(reduced||p.state.phaseId!==0||time>=p.state.phaseStartedAtMs)fighter.view.x=Math.max(margin,Math.min(a.screen.width-margin,fighter.view.x));
+   const margin=a.screen.width*.08;if(p.state.phaseId!==0||time>=p.state.phaseStartedAtMs)fighter.view.x=Math.max(margin,Math.min(a.screen.width-margin,fighter.view.x));
    fighter.update(visual.pose,scale*384,scale*512,reduced,visual.reaction,undefined,visual.pose==='lose'?Math.min(1,Math.max(0,(time-(p.state.endedAtMs??time)-200)/350)):undefined,visual.motion,visual.recovery);
    const flash=flashes.current.get(index);
    if(flash){const r=visual.reaction;const visible=r&&(r.kind==='hit'||r.kind==='guard')&&r.progress>=0&&r.progress<1;
@@ -78,7 +78,7 @@ export function ResponsiveFightView(props:FightViewProps):JSX.Element{
  <span className="fight-health__name game-scoreboard__label">{(side===0?currentPlayer:opponent)?.name??(side===0?'Ты':'Соперник')}</span></div>
  <FightReserve kind="health" value={state.hp[index]} total={state.rules.initialHpByPlayer?.[index]??state.rules.initialHp}/>
  <FightReserve kind="guard" value={getFightPosture(state,index,nowMs).guardUnits} total={state.rules.guardUnitsByPlayer?.[index]??3}/></div>)}
- <div className="fight-timer game-scoreboard__metric game-scoreboard__metric--timer" role="timer"><span className="game-scoreboard__label">Время</span><strong className="game-scoreboard__value">{Math.max(0,Math.ceil(((nowMs<state.phaseStartedAtMs?state.phaseStartedAtMs:state.deadlineMs)-nowMs)/1000))}</strong>{(nowMs<state.phaseStartedAtMs||state.status==='sudden_death')&&<small>{nowMs<state.phaseStartedAtMs?'Старт':'До первого попадания'}</small>}</div></div></div>
+ <div className="fight-timer game-scoreboard__metric game-scoreboard__metric--timer" role="timer"><span className="game-scoreboard__label">Время</span><strong className="game-scoreboard__value">{nowMs<state.phaseStartedAtMs ? (Math.max(0,Math.ceil((state.phaseStartedAtMs-FIGHT_ENTRANCE_MS-nowMs)/1000)) || 'Старт') : Math.max(0,Math.ceil((state.deadlineMs-nowMs)/1000))}</strong>{(nowMs<state.phaseStartedAtMs||state.status==='sudden_death')&&<small>{nowMs<state.phaseStartedAtMs?'Подготовка':'До первого попадания'}</small>}</div></div></div>
  <div className="fight-arena"><PixiStage onResize={layout} onReady={a=>{app.current=a;void Assets.load([...FIGHT_ASSETS,...(props.skin==='bar'?BAR_FIGHT_ASSETS:[])]).then(()=>{if(app.current!==a)return;fighters.current=([0,1] as const).map(side=>{const f=new Fighter(side,props.skin==='bar'?(side===0?'player':'oleg'):undefined);a.stage.addChild(f.view);return f;});layoutRef.current();}).catch(()=>{if(app.current===a)setFailed(true);});}}/><div className="fight-feedback-layer" aria-hidden="true">{([0,1] as const).map(i=><span key={i} hidden className="fight-responsive-flash" ref={node=>{if(node)flashes.current.set(i,node);else flashes.current.delete(i);}}/>)}</div>{failed&&<p className="fight-notice" role="status">Игроки не загрузились.</p>}</div></div>
  <ResponsiveFightControls disabled={disabled} onInput={setInput} onAttack={attack} inRange={fightInRange(state,nowMs)} reset={reset}/></section>;
 }

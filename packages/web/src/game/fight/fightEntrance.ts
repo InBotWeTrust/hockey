@@ -1,3 +1,4 @@
+import { FIGHT_ENTRANCE_MS } from '@hockey/game-core';
 import { FIGHT_ART } from './fightArt.js';
 /** The server's shared start is the end of arrival, never a new local gameplay delay. */
 export function fightEntranceX(
@@ -20,8 +21,8 @@ export function fightEntranceX(
       Math.min(width - (side === 0 ? right : -left) - 12, target),
     );
   }
-  if (reducedMotion || phaseId !== 0 || nowMs >= startsAtMs) return target;
-  const progress = Math.max(0, Math.min(1, (nowMs - (startsAtMs - 1000)) / 1000));
+  if (phaseId !== 0 || nowMs >= startsAtMs || (reducedMotion && nowMs >= startsAtMs - FIGHT_ENTRANCE_MS)) return target;
+  const progress = Math.max(0, Math.min(1, (nowMs - (startsAtMs - FIGHT_ENTRANCE_MS)) / FIGHT_ENTRANCE_MS));
   const eased = 1 - (1 - progress) ** 3;
   const origin = width * (side === 0 ? -0.35 : 1.35);
   return origin + (target - origin) * eased;

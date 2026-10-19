@@ -1,6 +1,7 @@
 import type { PoolClient } from 'pg';
 import {
   DEFAULT_FIGHT_RULES,
+  FIGHT_START_DELAY_MS,
   createFightState,
   FIGHT_FINISH_ANIMATION_MS,
   FIGHT_RESULT_DISPLAY_MS,
@@ -248,7 +249,7 @@ async function startChallenge(
   if (!ctx.canExtend) denyFight('system_limit');
   await client.query('update amateur_duel_match set fight_paused_at=$2 where id=$1', [ctx.id, new Date(ctx.nowMs)]);
   await client.query('update amateur_duel_participant set period_paused_at=$2 where match_id=$1', [ctx.id, new Date(ctx.nowMs)]);
-  const start = ctx.nowMs + 1000;
+  const start = ctx.nowMs + FIGHT_START_DELAY_MS;
   await client.query(
     "update amateur_duel_fight set status='starting',starts_at=$2,engine_state=$3,response_decision='accept',response_request_id=$4,revision=revision+1 where id=$1",
     [fight.id, new Date(start), JSON.stringify(createFightState(fight.rules, start)), requestId],

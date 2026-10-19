@@ -1,3 +1,4 @@
+import { FIGHT_START_DELAY_MS } from '@hockey/game-core';
 import {resultPreviewMatch} from './fight-result-qa-match';
 import React, {useEffect, useRef, useState} from 'react';
 import {createRoot} from 'react-dom/client';
@@ -29,7 +30,7 @@ function offer(incoming:boolean,forced=false){
 function accept(automatic=false){
  const match=useAmateurDuelStore.getState().match!; const time=Date.now();
  if(match.fight?.status!=='offered'||(!automatic&&time>=Date.parse(match.fight.response_deadline_at))||windowRemaining(time)<=0)return;
- write({...match,fight_paused_at:new Date(time).toISOString(),fight:{...match.fight,status:'starting',starts_at:new Date(time+1000).toISOString(),engine_state:createFightState(DEFAULT_FIGHT_RULES,time+1000)}});
+ write({...match,fight_paused_at:new Date(time).toISOString(),fight:{...match.fight,status:'starting',starts_at:new Date(time+FIGHT_START_DELAY_MS).toISOString(),engine_state:createFightState(DEFAULT_FIGHT_RULES,time+FIGHT_START_DELAY_MS)}});
 }
 const originalFetch=window.fetch.bind(window);
 window.fetch=async(input,init)=>{const url=input instanceof Request?input.url:String(input);if(url.includes('/duel/amateur/matches/transition-preview/fight/')){if(url.endsWith('/challenge'))offer(false);if(url.endsWith('/respond'))accept();return new Response(JSON.stringify({match:useAmateurDuelStore.getState().match}),{headers:{'content-type':'application/json'}});}return originalFetch(input,init);};

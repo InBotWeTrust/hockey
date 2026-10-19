@@ -1,3 +1,4 @@
+import { FIGHT_START_DELAY_MS } from '@hockey/game-core';
 import { createOlegRuntime, advanceOlegRuntime } from '../server/src/bar/olegBot';
 import React, { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -23,8 +24,8 @@ function Scene() {
   const [now, setNow] = useState(Date.now());
   const [mode, setMode] = useState(isBar ? 'oleg' : 'idle');
   const [player, setPlayer] = useState<0 | 1>(0);
-  const oleg = useRef(createOlegRuntime(now + 1000, 42));
-  const fight = useRef(isBar ? oleg.current.state : createFightState(qaRules, now + 1000));
+  const oleg = useRef(createOlegRuntime(now + FIGHT_START_DELAY_MS, 42));
+  const fight = useRef(isBar ? oleg.current.state : createFightState(qaRules, now + FIGHT_START_DELAY_MS));
   const botAt = useRef(now + 2000);
   const send = (
     command:
@@ -99,8 +100,8 @@ function Scene() {
   }, [mode, player]);
   const restart = () => {
     const time = Date.now();
-    oleg.current = createOlegRuntime(time + 1000, (Math.random() * 0xffffffff) >>> 0);
-    const next = mode === 'oleg' ? oleg.current.state : createFightState(qaRules, time + 1000);
+    oleg.current = createOlegRuntime(time + FIGHT_START_DELAY_MS, (Math.random() * 0xffffffff) >>> 0);
+    const next = mode === 'oleg' ? oleg.current.state : createFightState(qaRules, time + FIGHT_START_DELAY_MS);
     fight.current = next;
     botAt.current = time + 2000;
     setNow(time);
@@ -156,8 +157,8 @@ function Scene() {
               setMode(nextMode);
               setPlayer(0);
               const time = Date.now();
-              oleg.current = createOlegRuntime(time + 1000, 42);
-              fight.current = nextMode === 'oleg' ? oleg.current.state : createFightState(qaRules, time + 1000);
+              oleg.current = createOlegRuntime(time + FIGHT_START_DELAY_MS, 42);
+              fight.current = nextMode === 'oleg' ? oleg.current.state : createFightState(qaRules, time + FIGHT_START_DELAY_MS);
               setReset(n => n + 1);
               botAt.current = Date.now() + 500;
             }}

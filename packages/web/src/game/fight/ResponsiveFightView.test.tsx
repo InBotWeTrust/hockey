@@ -24,3 +24,18 @@ it('bar contact emphasis does not disable held input or attack submission',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Удар'}));expect(attack).toHaveBeenCalledOnce();
  view.unmount();
 });
+
+it('counts 3, 2, 1 before arrival and starts the full fight only after arrival',()=>{
+ const state=createFightState(DEFAULT_FIGHT_RULES,4000);
+ const props={state,player:0 as const,onAction:()=>{}};
+ const view=render(<FightView {...props} nowMs={0}/>);
+ for(const [now,label] of [[0,'3'],[1000,'2'],[2000,'1'],[3000,'Старт']] as const){
+  view.rerender(<FightView {...props} nowMs={now}/>);
+  expect(screen.getByRole('timer').querySelector('strong')?.textContent).toBe(label);
+  expect(screen.getByRole('button',{name:'Удар'})).toBeDisabled();
+ }
+ view.rerender(<FightView {...props} nowMs={4000}/>);
+ expect(screen.getByRole('timer').querySelector('strong')?.textContent).toBe('20');
+ expect(screen.getByRole('button',{name:'Удар'})).not.toBeDisabled();
+ view.unmount();
+});
