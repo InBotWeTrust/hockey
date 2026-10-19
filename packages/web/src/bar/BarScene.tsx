@@ -74,7 +74,8 @@ export function BarScene({
     layout.slots.findIndex((s) => s.id === activeSlotId),
   );
   const slot = layout.slots[index]!;
-  const staffDoorIndex = layout.slots.findIndex(s => s.occupantId === 'igor');
+  // The door belongs to the second physical bay, independently of its occupant.
+  const staffDoorIndex = layout.slots.length > 1 ? 1 : -1;
   const profile = slot.occupantId ? layout.profiles[slot.occupantId] : null;
   const [terminalOpen, setTerminalOpen] = useState(false);
   const incomingInvitation=useBarInvitation(slot.occupantId==='online'&&!hideIdentity);

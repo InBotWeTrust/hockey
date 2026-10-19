@@ -22,7 +22,7 @@ it('keeps architectural doors in the panorama when Veronika moves', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-2', 'veronika');
   const view = render(<BarScene layout={layout} activeSlotId="bar-2" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
   expect(view.container.querySelector('[data-bar-backdrop="veronika"]')).toBeNull();
-  expect(view.container.querySelector('[data-bar-wall="west"] img')?.getAttribute('src')).toMatch(/west-.*-v2.webp$/);
+  expect(view.container.querySelector('[data-bar-wall="west"] img')?.getAttribute('src')).toMatch(/west-.*-v3.webp$/);
   expect(view.container.querySelector('[data-bar-decoration="veronika"]')).toBeNull();
 });
 it('keeps the eastern panorama framing fixed between Igor and broadcasts', () => {
@@ -41,9 +41,9 @@ it('uses baked background details and centers the office doorway before entering
   expect(view.container.querySelector('[data-bar-decoration]')).toBeNull();
   fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
   expect(open).not.toHaveBeenCalled();
-  view.rerender(<BarScene layout={layout} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
+  view.rerender(<BarScene layout={layout} activeSlotId="bar-10" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
   fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
-  expect(open).toHaveBeenCalledWith('bar-9');
+  expect(open).toHaveBeenCalledWith('bar-10');
 });
 it('drags across the service door without opening it or selecting a page', () => {
   const layout = createDefaultBarLayout();
@@ -124,10 +124,18 @@ it('keeps an exit to the map before every bar character circle',()=>{
  expect(exit).toHaveTextContent('Выход');
 });
 
-it('opens the office from Igor next to the TV without highlighting its door', () => {
+it('opens the concealed office from the TV bay without highlighting its door', () => {
  const open=vi.fn();
- const {container}=render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-9" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
+ const {container}=render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-10" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
  fireEvent.click(screen.getByRole('button',{name:'Открыть служебную дверь'}));
- expect(open).toHaveBeenCalledWith('bar-9');
+ expect(open).toHaveBeenCalledWith('bar-10');
  expect(container.querySelector('.bar-space__service-door-hit [data-bar-object-glow]')).toBeNull();
+});
+
+it('keeps the architectural office entry in its physical bay when broadcasts move',()=>{
+ const layout=moveBarOccupant(createDefaultBarLayout(),'bar-2','broadcasts');
+ const open=vi.fn();
+ render(<BarScene layout={layout} activeSlotId="bar-10" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Открыть служебную дверь'}));
+ expect(open).toHaveBeenCalledWith('bar-10');
 });
