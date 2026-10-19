@@ -1,7 +1,8 @@
+import type * as MotionReact from 'motion/react';
 import { render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 vi.mock('motion/react', async (original) => ({
-  ...await original<typeof import('motion/react')>(),
+  ...await original<typeof MotionReact>(),
   useReducedMotion: () => true,
 }));
 import { SectionPanorama } from './SectionPanorama.js';
