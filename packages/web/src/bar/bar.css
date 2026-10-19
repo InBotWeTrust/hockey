@@ -1,4 +1,4 @@
-/* Match cards reuse the in-rink game scoreboard; filters stay shared. */
+/* Match cards reuse the in-rink game scoreboard. */
 .bar-screen {
   padding: calc(16px + var(--app-safe-top)) 14px calc(24px + var(--app-safe-bottom));
   overflow-y: auto;
@@ -625,3 +625,61 @@
 .bar-screen > .bar-content > .bar-section-label:first-child { margin:0; }
 .bar-screen .bar-filters { width:100%; min-width:0; }
 .bar-screen .bar-filters .segmented-tabs { width:100%; max-width:100%; min-width:0; box-sizing:border-box; }
+
+.bar-screen--broadcasts {
+  padding-bottom:calc(113px + var(--app-safe-bottom));
+}
+.bar-screen--broadcasts .bar-header {grid-template-columns:minmax(0,1fr);}
+.bar-broadcast-dock {
+  position:fixed;
+  z-index:12;
+  left:50%;
+  bottom:var(--navigation-bottom);
+  transform:translateX(-50%);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:calc(100% - 28px);
+  max-width:760px;
+  height:89px;
+  box-sizing:border-box;
+  padding:var(--navigation-row-pad) 16px;
+  border:1px solid var(--liquid-border);
+  border-radius:26px;
+  background:var(--surface-card-bg,var(--liquid-card-bg));
+  box-shadow:var(--surface-card-shadow,var(--liquid-shadow));
+  backdrop-filter:var(--surface-blur,var(--liquid-blur));
+  -webkit-backdrop-filter:var(--surface-blur,var(--liquid-blur));
+}
+.bar-broadcast-dock__tabs {display:flex;flex:2;min-width:0;max-width:240px;}
+.bar-broadcast-dock__item {
+  display:flex;
+  flex:1;
+  min-width:0;
+  max-width:120px;
+  flex-direction:column;
+  align-items:center;
+  gap:var(--navigation-label-gap);
+  padding:0;
+  border:0;
+  background:none;
+  color:var(--liquid-ink);
+  font:var(--navigation-label-font);
+  cursor:pointer;
+}
+.bar-broadcast-dock__circle {
+  display:grid;
+  place-items:center;
+  width:var(--navigation-circle);
+  height:var(--navigation-circle);
+  box-sizing:border-box;
+  border:1px solid var(--liquid-border);
+  border-radius:50%;
+  background:var(--liquid-chrome-bg);
+}
+.bar-broadcast-dock__item[aria-selected="true"] .bar-broadcast-dock__circle {
+  border-color:var(--liquid-ink);
+  background:var(--liquid-selected-bg);
+  box-shadow:var(--liquid-selected-shadow);
+}
+.bar-broadcast-dock__item:focus-visible {outline:2px solid var(--liquid-ink);outline-offset:3px;border-radius:12px;}
