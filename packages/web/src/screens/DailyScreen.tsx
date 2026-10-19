@@ -2126,9 +2126,9 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         alignItems: 'stretch',
         padding: '0 clamp(38px, 11vw, 46px)',
         boxSizing: 'border-box',
-        color: '#e9fbff',
+        color: 'var(--arena-cube-ink, #e9fbff)',
         fontFamily: 'var(--font-mono)',
-        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
+        textShadow: 'var(--arena-cube-text-shadow, 0 0 8px rgba(122, 229, 255, 0.36))',
       }}
     >
       <div
@@ -2147,13 +2147,13 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         <div style={{ display: 'grid', justifyItems: 'center', gap: 2 }}>
           <div
             style={{
-              color: 'rgba(205, 246, 255, 0.88)',
+              color: 'var(--arena-cube-label, rgba(205, 246, 255, 0.88))',
               fontSize: 'clamp(7px, 1.08vh, 9px)',
               fontWeight: 950,
               letterSpacing: showDuelIdentity ? '0.08em' : '0.16em',
               textTransform: 'uppercase',
               lineHeight: 1.05,
-              textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
+              textShadow: 'var(--arena-cube-text-shadow, 0 0 8px rgba(99, 218, 255, 0.44))',
             }}
           >
             {entry.eyebrow}
@@ -2166,7 +2166,7 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
                 color: 'rgba(247, 254, 255, 0.92)',
                 marginTop: 3,
                 textAlign: 'center',
-                textShadow: '0 0 9px rgba(144, 231, 255, 0.58)',
+                textShadow: 'var(--arena-cube-text-shadow, 0 0 9px rgba(144, 231, 255, 0.58))',
               }}
             >
               {entry.typeLabel}
@@ -2201,7 +2201,7 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
               <div
                 className="arena-duel-opponent-name"
                 style={{
-                  color: '#f7feff',
+                  color: 'var(--arena-cube-ink, #f7feff)',
                   lineHeight: 0.95,
                   fontWeight: 950,
                   overflow: 'hidden',
@@ -2225,7 +2225,7 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           <div
             className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}${entry.compactTitle ? ' arena-cube-title--compact' : ''}`}
             style={{
-              color: '#f7feff',
+              color: 'var(--arena-cube-ink, #f7feff)',
               fontSize: entry.compactTitle
                 ? entry.title === 'Восстановление'
                   ? '19px'
@@ -2253,13 +2253,13 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           style={{
             maxWidth: entry.compactSubtitle ? 'min(84%, 300px)' : 'min(72%, 280px)',
             margin: '0 auto',
-            color: 'rgba(234, 246, 255, 0.9)',
+            color: 'var(--arena-cube-copy, rgba(234, 246, 255, 0.9))',
             fontSize: entry.compactSubtitle
               ? 'clamp(8px, 1.12vh, 9px)'
               : 'clamp(9px, 1.24vh, 10px)',
             fontWeight: 850,
             lineHeight: entry.compactSubtitle ? 1.08 : 1.12,
-            textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
+            textShadow: 'var(--arena-cube-text-shadow, 0 0 7px rgba(0, 12, 24, 0.88))',
           }}
         >
           {entry.subtitleLines ? (
@@ -2293,12 +2293,12 @@ export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             <div
               style={{
                 width: '100%',
-                color: '#e9fbff',
+                color: 'var(--arena-cube-ink, #e9fbff)',
                 fontSize: 'clamp(12px, 1.85vh, 16px)',
                 fontWeight: 950,
                 lineHeight: 1.05,
                 textAlign: 'center',
-                textShadow: '0 0 8px rgba(100, 218, 255, 0.38)',
+                textShadow: 'var(--arena-cube-text-shadow, 0 0 8px rgba(100, 218, 255, 0.38))',
               }}
             >
               {entry.meta}

@@ -74,3 +74,7 @@ it('does not repeat the training title in the collapsed summary',()=>{
  render(<CityGamePanel entries={[{...entries[0]!,kind:'training',title:'Тренировка',eyebrow:'Тренировка'}]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
  expect(screen.getByRole('button',{name:'Развернуть игры'}).textContent).toBe('Тренировка');
 });
+it.each([['ready','35/100 бросков сегодня','35/100 бросков сегодня'],['done','100/100 бросков сегодня','Завершена · 100/100 бросков сегодня']])('shows training progress in collapsed %s summary',(state,meta,expected)=>{
+ render(<CityGamePanel entries={[{...entries[0]!,kind:'training',title:'Тренировка',eyebrow:'Тренировка',dockState:state as 'ready'|'done',meta}]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Развернуть игры'})).toHaveTextContent(expected);
+});

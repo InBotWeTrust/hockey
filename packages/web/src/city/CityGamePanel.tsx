@@ -32,11 +32,12 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
   if(first)onActiveIndexChange(first.index);setExpanded(true);
  };
  // The existing scoreboard owns the timer value; this view only changes its presentation.
+ const trainingStatus=active.kind==='training'&&active.meta?`${active.dockState==='done'?'Завершена · ':''}${active.meta}`:null;
  const timer=active.scoreboard?.props as {timer?:string;timerLabel?:string}|undefined;
  return <section className={`city-game-panel glass${expanded?' is-expanded':''}`} aria-label="Мои игры">
   <div className="city-game-summary">
    <button className="city-game-toggle" aria-label={expanded?'Свернуть игры':'Развернуть игры'} aria-expanded={expanded} aria-controls="city-game-details" onClick={()=>setExpanded(value=>!value)}>
-    <span><strong>{active.eyebrow}</strong>{(active.title!==active.eyebrow||timer?.timer)&&<span className="city-game-status">{active.title===active.eyebrow?null:active.title}{timer?.timer&&<>{active.title===active.eyebrow?'':' · '}<span aria-label={timer.timerLabel}>{timer.timer}</span></>}</span>}</span>
+    <span><strong>{active.eyebrow}</strong>{(trainingStatus||active.title!==active.eyebrow||timer?.timer)&&<span className="city-game-status">{trainingStatus??(active.title===active.eyebrow?null:active.title)}{timer?.timer&&<>{active.title===active.eyebrow?'':' · '}<span aria-label={timer.timerLabel}>{timer.timer}</span></>}</span>}</span>
     {expanded?<ChevronUp size={18}/>:<ChevronDown size={18}/>}
    </button>
    {actionable.length>0&&<button className={`icon-btn city-game-notification${pulse?' is-new':''}`} aria-label={`Игры требуют действия: ${actionable.length}`} onClick={openNotification}><Bell size={18}/><small>{actionable.length>99?'99+':actionable.length}</small></button>}

@@ -4369,3 +4369,15 @@
 :root[data-theme='light'] .app-shell .glass .section-label { color:var(--ink); text-shadow:none; }
 :root[data-theme='light'] .profile-theme-settings .segmented-tabs__item:first-child { flex:1.8; }
 :root[data-theme='light'] .profile-theme-settings .segmented-tabs__item { padding-inline:6px; }
+/* Trophy labels need a stable reading surface over profile scenery. */
+:root[data-theme="light"] .profile-trophy-showcase {
+  background: rgba(237, 244, 250, 0.88);
+  border: 1px solid var(--liquid-border);
+  border-radius: 16px;
+  padding: 12px 8px;
+}
+:root[data-theme="light"] .profile-trophy-showcase__item strong,
+:root[data-theme="light"] .profile-trophy-showcase__item > span {
+  color: #18212e;
+  text-shadow: none;
+}

@@ -62,3 +62,13 @@
   color: #18212e;
   background: #eef3f8;
 }
+
+:root[data-theme='light'] {
+  --arena-cube-ink: #18212e;
+  --arena-cube-label: #235A91;
+  --arena-cube-copy: #18212e;
+  --arena-cube-text-shadow: none;
+}
+
+[data-theme='light'] .city-game-panel { color:var(--arena-cube-ink); text-shadow:none; }
+[data-theme='light'] .city-game-toggle strong { color:var(--arena-cube-label); }
