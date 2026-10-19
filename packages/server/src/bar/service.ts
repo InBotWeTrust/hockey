@@ -89,7 +89,7 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
-    rhythmVersion?: 1 | 2;
+    rhythmVersion?: 1 | 2 | 3;
     scoredClockVersion?: 2;
     shotResultPauseMs?: 1000;
     marathonWindowMs?: 4000 | 7000;

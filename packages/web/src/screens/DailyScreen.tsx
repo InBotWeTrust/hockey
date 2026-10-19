@@ -5830,6 +5830,7 @@ export function AmateurDuelPlayView({
   const [shotRequestActive, setShotRequestActive] = useState(false);
   const [shotAnimationActive, setShotAnimationActive] = useState(false);
   const rhythmPendingShotRef=useRef<{index:number;travel:number;goal:boolean}|null>(null);
+  const [rhythmNoticeExpiry,setRhythmNoticeExpiry]=useState<{matchId:string;index:number;goalTravel:number;travel:number}|null>(null);
   const [rhythmVisibleShot,setRhythmVisibleShot]=useState<{index:number;travel:number;goal:boolean}|null>(null);
   const marathonFrozenMsRef = useRef<number | null>(null);
   const [marathonFrozenMs, setMarathonFrozenMs] = useState<number | null>(null);
@@ -6541,6 +6542,12 @@ export function AmateurDuelPlayView({
             shotResultPauseMs: match.rules.shotResultPauseMs,
           } : {})}
           separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'}
+          onSceneClock={rhythmSampler && match.rules.rhythmVersion === 3 ? (scene) => {
+            const latest=rhythmNoticeShots.at(-1);
+            if (!latest?.goal || (rhythmNoticeExpiry?.matchId===match.id && rhythmNoticeExpiry.index===rhythmNoticeShots.length && rhythmNoticeExpiry.goalTravel===latest.travel)) return;
+            const travel=rhythmSampler.travelAt(scene,rhythmPauses);
+            if (travel-latest.travel>2+1e-9) setRhythmNoticeExpiry({matchId:match.id,index:rhythmNoticeShots.length,goalTravel:latest.travel,travel});
+          } : undefined}
           shooterMotionTime={rhythmSampler ? (ms, pauses) => rhythmSampler.motionAt(ms,mergeRhythmFlightPauses(match.me.rhythm_shots??[],pauses)) : undefined}
           onShotResolved={(context) => {
             setShotAnimationActive(true);
@@ -6611,7 +6618,8 @@ export function AmateurDuelPlayView({
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
           scoreboardAccessory={match.rules.duelKind==='rhythm' && !periodLocallyExpired && scoredRemainingMs>0 ? (
-            <RhythmShotNotice shots={rhythmNoticeShots} version={match.rules.rhythmVersion??1}/>
+            <RhythmShotNotice shots={rhythmNoticeShots} version={match.rules.rhythmVersion??1}
+              travel={rhythmNoticeExpiry?.matchId===match.id && rhythmNoticeExpiry.index===rhythmNoticeShots.length && rhythmNoticeExpiry.goalTravel===rhythmNoticeShots.at(-1)?.travel ? rhythmNoticeExpiry.travel : undefined}/>
           ) : match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
             <EnduranceTimer windowMs={windowMs} remainingMs={marathonRemainingMs} tone={enduranceTimerTone(marathonRemainingMs)} />
           ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
