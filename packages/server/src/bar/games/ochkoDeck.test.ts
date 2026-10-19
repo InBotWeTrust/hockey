@@ -7,3 +7,9 @@ it('keeps the new round pause in private character and online decks', () => {
     expect(createPrivateOchko(1000, 16, character)).not.toHaveProperty('roundPauseMs');
   }
 });
+
+it('uses five deals only for new Grigory matches', () => {
+  expect(createPrivateOchko(0, 20, true)).toHaveProperty('series.totalRounds', 5);
+  expect(createPrivateOchko(0, 20, false)).toHaveProperty('series.totalRounds', 4);
+  expect(createPrivateOchko(0, 19, true)).toHaveProperty('series.totalRounds', 4);
+});

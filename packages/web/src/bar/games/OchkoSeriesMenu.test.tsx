@@ -14,6 +14,8 @@ it('keeps round and cumulative scores inside the header and labels the three-min
     0,
     true,
     0,
+    3000,
+    5,
   );
   g = barOchkoSeries.act(g, 0, 'stand', 1, 1400);
   g = barOchkoSeries.act(g, 1, 'stand', 1, 1400);
@@ -35,7 +37,7 @@ it('keeps round and cumulative scores inside the header and labels the three-min
   };
   const { container } = render(<GameMenu view={view} now={now} />);
   const header = container.querySelector('.game-scoreboard')! as HTMLElement;
-  expect(within(header).getByRole('group', {name:'Раздача'})).toHaveTextContent('1/4');
+  expect(within(header).getByRole('group', {name:'Раздача'})).toHaveTextContent('1/5');
   expect(screen.getByRole('timer')).toHaveTextContent('Таймер');
   expect(screen.getByRole('timer')).not.toHaveTextContent('Раздача');
   expect(screen.queryByText('Раздача 1 из 4')).not.toBeInTheDocument();

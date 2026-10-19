@@ -64,3 +64,17 @@ it('does not display hidden-score sentinels as player totals',()=>{
  expect(container.querySelector('.bar-ochko-sum')).toBeNull();
  expect(screen.queryByText('-1')).not.toBeInTheDocument();
 });
+
+it('continues after the fourth Grigory deal and offers results after the fifth', () => {
+  const g = review(true);
+  g.series.totalRounds = 5;
+  g.series.round = 4;
+  const send = vi.fn();
+  const { rerender } = render(<OchkoField character game={series.view(g, 0, g.series.reviewAt)} player={0} now={g.series.reviewAt} disabled={false} send={send}/>);
+  fireEvent.click(screen.getByRole('button', { name: 'Дальше' }));
+  expect(send).toHaveBeenLastCalledWith({ type: 'ochko-next', round: 4 });
+  g.series.round = 5;
+  rerender(<OchkoField character game={series.view(g, 0, g.series.reviewAt)} player={0} now={g.series.reviewAt} disabled={false} send={send}/>);
+  fireEvent.click(screen.getByRole('button', { name: 'Результат' }));
+  expect(send).toHaveBeenLastCalledWith({ type: 'ochko-next', round: 5 });
+});

@@ -28,9 +28,12 @@ export function GameHelp({ kind, close, engineVersion = ENGINE_VERSION, notice, 
       : kind === 'battleship' && engineVersion < 15
         ? rules.battleship.map(p => p.replace('авианалёт на квадрат 2×2', 'залп 3×2 (можно повернуть)').replace('Авианалёт заряжается после пяти обычных выстрелов, в начале он недоступен. После использования заряд сбрасывается. ', '').replaceAll('Авианалёт', 'Залп').replaceAll('авианалёт', 'залп'))
         : rules[kind];
-  const displayedParagraphs = kind === 'ochko' && engineVersion >= 17
-    ? paragraphs.map(p => p.replace('затем отсчёт 5 секунд', 'затем отсчёт 3 секунды').replace('Между раздачами опоздание означает поражение.', 'Между раздачами опоздание означает поражение. После «Дальше» — пауза 3 секунды перед новой раздачей.'))
+  const roundParagraphs = kind === 'ochko' && engineVersion >= 20
+    ? paragraphs.map(p => p.replace('Матч состоит из четырёх раздач', 'Матч с Григорием состоит из пяти раздач, онлайн — из четырёх раздач').replace('за четыре раздачи.', 'за все раздачи матча.').replace('После четвёртой раздачи кнопка', 'После пятой раздачи кнопка'))
     : paragraphs;
+  const displayedParagraphs = kind === 'ochko' && engineVersion >= 17
+    ? roundParagraphs.map(p => p.replace('затем отсчёт 5 секунд', 'затем отсчёт 3 секунды').replace('Между раздачами опоздание означает поражение.', 'Между раздачами опоздание означает поражение. После «Дальше» — пауза 3 секунды перед новой раздачей.'))
+    : roundParagraphs;
   return (
     <AccessibleModal
       cardClassName="bar-game-help"

@@ -138,3 +138,44 @@ it.each([true,false])('waits three seconds before the next hand in the new conti
  expect(series.advance(g,now+2999).series.round).toBe(1);
  expect(series.advance(g,now+3000).series.round).toBe(2);
 });
+
+it('plays five Grigory deals in new matches and reserves enough cards for every deal', async () => {
+  const { createMatch } = await import('../../src/barGames/runtime.js');
+  let g = createMatch('ochko', 0, 0, true, 1).game as series.State;
+  const used: number[] = [];
+  for (let round = 1; round <= 5; round++) {
+    expect(g.series.round).toBe(round);
+    expect(g.winner).toBeNull();
+    while (g.series.phase === 'play') {
+      const p = !g.done[0] ? 0 : 1;
+      g = series.act(g, p, 'hit', round, Math.max(...g.dealUntil));
+      expect(g.deck.length).toBeGreaterThanOrEqual(4 * (5 - round));
+    }
+    used.push(...g.hands.flat());
+    expect(new Set(used).size).toBe(used.length);
+    g = series.advance(g, g.series.reviewAt);
+    expect(g.winner).toBeNull();
+    g = series.act(g, 0, 'next', round, g.series.reviewAt);
+    if (g.series.phase === 'countdown') g = series.advance(g, g.series.nextAt);
+  }
+  expect(g.series.phase).toBe('finished');
+  expect(g.series.history).toHaveLength(5);
+  expect(g.winner).not.toBeNull();
+});
+
+it('auto-settles the fifth review and preserves four deals in online and legacy matches', async () => {
+  const { createMatch } = await import('../../src/barGames/runtime.js');
+  expect((createMatch('ochko', 0, 0, false, 1).game as series.State).series.totalRounds).toBe(4);
+  expect((createMatch('ochko', 0, 0, true, 1, 19).game as series.State).series.totalRounds).toBe(4);
+  let g = series.create(deck, 0, true, 0, undefined, 5);
+  for (let round = 1; round <= 5; round++) {
+    const now = Math.max(...g.dealUntil);
+    for (const p of [0, 1] as const) if (!g.done[p]) g = series.act(g, p, 'stand', round, now);
+    g = series.advance(g, g.series.reviewAt);
+    if (round < 5) g = series.act(g, 0, 'next', round, g.series.reviewAt);
+  }
+  const end = series.advance(g, g.series.reviewUntil);
+  expect(end.winner).not.toBeNull();
+  expect(end.series.history).toHaveLength(5);
+  expect(end.series.totals).toEqual(g.series.totals);
+});

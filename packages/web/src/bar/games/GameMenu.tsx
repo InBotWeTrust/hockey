@@ -328,7 +328,7 @@ export function GameMenu({
           </div>
           {g.kind === 'ochko' && g.series && <div className="game-scoreboard__metric bar-ochko-round-metric" role="group" aria-label="Раздача">
             <FittedMenuLabel>Раздача</FittedMenuLabel>
-            <strong className="game-scoreboard__value">{g.series.round}/4</strong>
+            <strong className="game-scoreboard__value">{g.series.round}/{g.series.totalRounds ?? 4}</strong>
           </div>}
           <div className="game-scoreboard__metric bar-game-player--opponent">
             <span className="bar-pool-group-slot bar-pool-group-slot--opponent">

@@ -138,7 +138,7 @@ export function OchkoField({
             disabled={disabled || series.ready[player]}
             onClick={() => send({ type: 'ochko-next', round: series.round })}
           >
-            {series.round === 4 ? 'Результат' : series.ready[player] ? 'Ждём соперника' : 'Дальше'}
+            {series.round === (series.totalRounds ?? 4) ? 'Результат' : series.ready[player] ? 'Ждём соперника' : 'Дальше'}
           </button>
         </div>
       )}

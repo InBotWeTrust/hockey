@@ -94,3 +94,11 @@ it('accepts naval and round-scoped commands while rejecting invalid coordinates 
  expect(gameAction.safeParse({type:'ochko-next',round:4}).success).toBe(true);
  expect(gameAction.safeParse({type:'ochko-challenge',round:0}).success).toBe(false);
 });
+
+it('accepts fifth-deal commands and rejects deals beyond the match limit', () => {
+  for (const type of ['ochko-hit', 'ochko-stand', 'ochko-next', 'ochko-challenge']) {
+    const fields = type === 'ochko-hit' || type === 'ochko-stand' ? { seq: 1 } : {};
+    expect(gameAction.safeParse({ type, round: 5, ...fields }).success).toBe(true);
+    expect(gameAction.safeParse({ type, round: 6, ...fields }).success).toBe(false);
+  }
+});
