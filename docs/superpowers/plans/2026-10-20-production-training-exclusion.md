@@ -8,7 +8,7 @@
 **Spec:** User approval in the current conversation: exercises remain closed on production; only beach challenges are available; do not regenerate exercise scenes.
 
 ## Constraints
-- Keep dev de843fb8 and its exercise implementation intact.
+- Keep the full dev exercise implementation intact; carry only common release fixes back to dev.
 - Production course/advanced circles show «В разработке»; direct routes cannot start exercises.
 - Preserve database migrations, records, and unrelated work.
 - Do not skip failing tests or weaken CI gates.
@@ -24,7 +24,8 @@
 ## Tasks
 - [x] Add regression for retained advanced navigation and server catalog/removed endpoints; observe RED.
 - [x] Remove unfinished course source, exports, API registration and feature-specific tests; reconnect legacy course consumers.
-- [ ] Rebuild core, run focused tests/typecheck/lint, then CI and database integration. Review complete diff.
+- [x] Rebuild core, run focused tests/typecheck/lint and isolated database integration. Review the exclusion diff.
+- [ ] Complete final full CI, including Docker builds.
 - [ ] Commit production-only exclusion, update PR, release through Actions after checks and verify runtime. Carry only shared fixes to dev.
 
 ## Execution evidence
@@ -35,4 +36,5 @@
 - Independent read-only review found no actionable issues in this exclusion diff.
 - Local rendered production-gate preview: both circles show «В разработке»; original open training remains selected.
 - Ruling: preserve all additive migrations and recorded results, despite excluding course runtime code; deleting database history would risk user data.
-- Full server suite remains in progress and has additional duel regressions to investigate. Production release is not yet approved by checks.
+- Latest full CI: core, mobile and full web PASS; server 2447 PASS, one final-siren timing fixture FAIL, 44 skipped. That remaining fixture was reproduced RED with a 13-second processing delay, corrected with a fixed Date clock, and passed the same delayed scenario. All 23 scored-duel tests and server typecheck then PASS. Full CI must pass for the new head before production integration.
+- Shared fixes were carried to dev separately. Dev deployment was verified with Actions, matching server/worker/web image SHA, migrations, health, published asset and browser load. Authenticated gameplay acceptance remains separate.
