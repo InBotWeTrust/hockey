@@ -1,5 +1,5 @@
 import {STICK_NEUTRAL,classifyMarksmanshipShot,getGoalie,getSessionPhaseOffsets,DEFAULT_MARKSMANSHIP_V6_SCORING_RULES} from '@hockey/game-core';
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../../src/app.js';
@@ -158,9 +158,11 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     }
     expect(accepted?.v6Score).toBeTruthy();
     const technique=accepted!.v6Score!.technique,points=accepted!.awardedPoints;
+    const legacyInput = { ...input };
+    delete legacyInput.sniperTechnique;
     // Synthetic accepted rows in this dedicated test DB cover saved and legacy formats.
     await app.pg.query("update shot_session set input_payload=$2,server_result='goal',awarded_points=$3 where id=$1",[shot.id,JSON.stringify({...input,sniperTechnique:technique}),points]);
-    await app.pg.query("insert into shot_session(user_id,mode,amateur_duel_match_id,period_number,shot_index,seed,input_payload,server_result,game_core_version,created_at,awarded_points) values($1,'amateur_duel',$2,1,1,$3,$4,'goal',$5,now(),$6)",[players[1]!.id,id,shot.seed,JSON.stringify(input),shot.game_core_version,points]);
+    await app.pg.query("insert into shot_session(user_id,mode,amateur_duel_match_id,period_number,shot_index,seed,input_payload,server_result,game_core_version,created_at,awarded_points) values($1,'amateur_duel',$2,1,1,$3,$4,'goal',$5,now(),$6)",[players[1]!.id,id,shot.seed,JSON.stringify(legacyInput),shot.game_core_version,points]);
     await app.pg.query("update amateur_duel_participant set shots_taken=1,goals=1,period_started_at=now()-interval '194 seconds' where match_id=$1",[id]);
     const result=await post('settle',0);
     expect(result.statusCode).toBe(200);
@@ -241,22 +243,29 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
         expect((await post('period/start', player)).statusCode).toBe(200);
       const duration = kind === 'sniper' ? 150000 : 240000;
       expect(invited.json().match.rules.periodRules[0].durationMs).toBe(duration);
-      await app.pg.query(
-        "update amateur_duel_participant set period_started_at=now()-($2::int * interval '1 millisecond') where match_id=$1",
-        [id, duration],
-      );
-      const shot = (tapTime: number) => ({
-        shot_index: 1,
-        input: { tapTime },
-        claimed_result: 'goal',
-      });
-      expect((await post('shot', 0, shot(duration + 1))).statusCode).toBe(409);
-      expect((await post('shot', 0, shot(duration))).statusCode).toBe(200);
-      const stored = await app.pg.query(
-        'select count(*)::int n from shot_session where amateur_duel_match_id=$1',
-        [id],
-      );
-      expect(stored.rows[0].n).toBe(1);
+      const boundaryNow = new Date();
+      // Assert logical siren boundaries independently of SQL and CPU latency.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(boundaryNow);
+      try {
+        await app.pg.query(
+          "update amateur_duel_participant set period_started_at=$2::timestamptz where match_id=$1",
+          [id, new Date(boundaryNow.getTime() - duration)],
+        );
+        const shot = (tapTime: number) => ({
+          shot_index: 1,
+          input: { tapTime },
+          claimed_result: 'goal',
+        });
+        expect((await post('shot', 0, shot(duration + 1))).statusCode).toBe(409);
+        const finalShot = await post('shot', 0, shot(duration));
+        expect(finalShot.statusCode, finalShot.body).toBe(200);
+        const stored = await app.pg.query(
+          'select count(*)::int n from shot_session where amateur_duel_match_id=$1',
+          [id],
+        );
+        expect(stored.rows[0].n).toBe(1);
+      } finally { vi.useRealTimers(); }
     },
   );
   it.each(['sniper','marathon'])('finishes %s immediately only at its effective deadline', async (kind) => {
