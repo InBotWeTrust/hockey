@@ -7741,7 +7741,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       }));
       try{
         await vi.waitFor(()=>expect(ready.size).toBe(2),{timeout:3000});
-        await vi.waitFor(()=>expect(Date.now()).toBeGreaterThan(engine.phaseStartedAtMs+20),{timeout:3000});
+        await vi.waitFor(()=>expect(Date.now()).toBeGreaterThan(engine.phaseStartedAtMs+20),
+          {timeout:Math.max(3000,engine.phaseStartedAtMs-Date.now()+1000)});
         for(let seq=1;seq<=12;seq++){
           sent.set(seq,performance.now());
           sockets[0]!.send(JSON.stringify({type:'fight:action',fightId,actionId:randomUUID(),seq,phaseId:0,kind:'input',input:{direction:0,crouch:seq%2===0,guard:false}}));
@@ -7815,7 +7816,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       const send=(player:number,seq:number,body:object)=>sockets[player]!.send(JSON.stringify({type:'fight:action',fightId,actionId:randomUUID(),seq,phaseId:0,...body}));
       try{
         await vi.waitFor(()=>expect(received.every(m=>m.some(v=>v.type==='connection:ready'))).toBe(true),{timeout:3000});
-        await vi.waitFor(()=>expect(Date.now()).toBeGreaterThan(engine.phaseStartedAtMs+20),{timeout:3000});
+        await vi.waitFor(()=>expect(Date.now()).toBeGreaterThan(engine.phaseStartedAtMs+20),
+          {timeout:Math.max(3000,engine.phaseStartedAtMs-Date.now()+1000)});
         send(0,1,{kind:'input',input:{direction:0,crouch:true,guard:false}});
         send(1,1,{kind:'input',input:{direction:0,crouch:true,guard:false}});
         await vi.waitFor(()=>expect(received.every(m=>m.some(v=>v.ack?.seq===1&&v.ack.accepted))).toBe(true),{timeout:3000});
