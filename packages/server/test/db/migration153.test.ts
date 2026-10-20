@@ -18,7 +18,7 @@ describe.skipIf(!hasIntegrationEnv)('migration 153 initial training position dri
     pool = createTestPool();
     await resetDatabase(pool);
     await applyMigrationsThrough(pool, MIGRATIONS_DIR, '152_marksmanship_scoring_v2.sql');
-    await pool.query(`insert into users (id, display_name) values ($1, 'Migration test')`, [userId]);
+    await pool.query(`insert into users (id, display_name, timezone) values ($1, 'Migration test', 'UTC')`, [userId]);
     await pool.query(
       `insert into initial_training_run (user_id, exercise_key, state, seed, game_core_version)
        values ($1, 'moving-goal', 'active', 'active-seed', 1),
