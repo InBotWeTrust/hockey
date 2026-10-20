@@ -24,3 +24,13 @@ describe('UserAvatar', () => {
     expect(screen.queryByRole('img', { name: 'Sirius' })).toBeNull();
   });
 });
+
+it('keeps a shared circular border within the requested avatar size', () => {
+  render(<UserAvatar avatarUrl={null} name="Player" size={44} />);
+  expect(document.querySelector('.user-avatar')).toHaveStyle({
+    border: '1px solid var(--liquid-border)',
+    boxSizing: 'border-box',
+    width: '44px',
+    height: '44px',
+  });
+});

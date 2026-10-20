@@ -42,3 +42,4 @@ export const claimReferralReward = (unlockId: string) =>
     `/referrals/rewards/${unlockId}/claim`,
     { method: 'POST' },
   );
+

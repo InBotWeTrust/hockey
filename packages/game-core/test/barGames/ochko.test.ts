@@ -1,0 +1,22 @@
+import { describe, expect, it } from 'vitest';
+import { createOchko, actOchko, advanceOchko, ochkoView, cardPoints, type OchkoState } from '../../src/barGames/ochko.js';
+function game(a:number[],b:number[],deck=[0,1,2,3]):OchkoState {return {...createOchko(1,0),hands:[a,b],scores:[a.reduce((s,c)=>s+cardPoints(c),0),b.reduce((s,c)=>s+cardPoints(c),0)],done:[false,false],winner:null,deadlines:[40000,40000],dealUntil:[0,0],deck};}
+const id=(rank:number,suit=0)=>(rank-6)*4+suit;
+describe('ochko',()=>{
+ it('values all ranks without ace conversion',()=>{expect([6,7,8,9,10,11,12,13,14].map(r=>cardPoints(id(r)))).toEqual([6,7,8,9,10,2,3,4,11]);});
+ it('deals deterministically without replacement and hides all secrets',()=>{const g=createOchko(42,0);expect(createOchko(42,0)).toEqual(g);expect(new Set([...g.deck,...g.hands.flat()]).size).toBe(36);const v=ochkoView(g,0);expect(v.hands[0]).toEqual(g.hands[0]);expect(v.hands[1]).toEqual([-1,-1]);expect(v.scores[1]).toBe(-1);expect('deck'in v).toBe(false);expect('seed'in v).toBe(false);});
+ it('golden ochko beats ordinary 21 and two golden hands draw',()=>{const g=game([id(14),id(14,1)],[id(10),id(14,2)]);expect(advanceOchko(g,0).winner).toBe(0);expect(advanceOchko({...g,hands:[[id(14),id(14,1)],[id(14,2),id(14,3)]]},0).winner).toBe('draw');});
+ it('resolves both busts or equal scores as draw and reveals both hands',()=>{for(const hands of [[[id(10),id(9),id(6)],[id(10,1),id(9,1),id(7)]],[[id(9),id(8)],[id(10),id(7)]]] as [number[],number[]][]){let g=advanceOchko(game(...hands),1);if(g.winner===null){g=actOchko(g,0,'stand',1);g=actOchko(g,1,'stand',1);}expect(g.winner).toBe('draw');expect(ochkoView(g,0).hands).toEqual(hands);}});
+ it('pauses only the receiving player and prevents another hit during dealing',()=>{const g=game([id(6),id(7)],[id(8),id(9)],[id(6,1),id(7,1)]);const n=actOchko(g,0,'hit',100);expect(n.deadlines).toEqual([40350,40000]);expect(n.dealUntil[0]).toBe(450);expect(()=>actOchko(n,0,'hit',101)).toThrow();expect(n.done[0]).toBe(false);expect(actOchko(n,1,'stand',101).done[1]).toBe(true);});
+ it('stands at 21, on bust, and on expiry without stealing another player time',()=>{const g=game([id(10),id(6)],[id(8),id(9)],[id(6,1)]);expect(actOchko(g,0,'hit',0).done).toEqual([true,true]);expect(advanceOchko(game([id(6),id(7)],[id(8),id(9)]),39999).done).toEqual([false,false]);expect(advanceOchko(game([id(6),id(7)],[id(8),id(9)]),40000).done).toEqual([true,true]);const twentyOne=game([id(10),id(9)],[id(8),id(9)],[id(11)]);expect(actOchko(twentyOne,0,'hit',0).done[0]).toBe(true);});
+ it('rejects hit after stand and makes surrender terminal',()=>{const g=actOchko(game([id(6),id(7)],[id(8),id(9)]),0,'stand',0);expect(()=>actOchko(g,0,'hit',1)).toThrow();expect(actOchko(g,0,'surrender',1).winner).toBe(1);});
+});
+
+it('accepts an explicit private shuffle and rejects incomplete or duplicated decks',async()=>{
+ const {createOchkoFromDeck}=await import('../../src/barGames/ochko.js');
+ const deck=Array.from({length:36},(_,i)=>i);
+ const g=createOchkoFromDeck(deck,0);
+ expect(g.hands).toEqual([[35,34],[33,32]]);
+ expect(deck).toHaveLength(36);
+ expect(()=>createOchkoFromDeck([0,0],0)).toThrow();
+});

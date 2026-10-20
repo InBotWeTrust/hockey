@@ -1,3 +1,4 @@
+import { CommunitySection } from '../components/CommunityLinks.js';
 import { Fragment, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Bell, ChevronDown, MessageSquare, X } from 'lucide-react';
@@ -83,8 +84,8 @@ function SettingsSectionIcon({ children }: { children: JSX.Element }): JSX.Eleme
         width: 44,
         height: 44,
         borderRadius: 14,
-        background: 'rgba(15, 23, 42, 0.08)',
-        color: 'rgba(15, 23, 42, 0.62)',
+        background: 'var(--liquid-inset-bg)',
+        color: 'var(--liquid-muted)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
@@ -178,7 +179,7 @@ export function PushPreferenceToggle({
         padding: '10px 12px',
         border: '1px solid rgba(255,255,255,0.7)',
         borderRadius: 16,
-        background: 'rgba(255, 255, 255, 0.34)',
+        background: 'var(--liquid-inset-bg)',
         color: 'var(--ink)',
         display: 'flex',
         alignItems: 'center',
@@ -204,7 +205,7 @@ export function PushPreferenceToggle({
           height: 26,
           borderRadius: 999,
           padding: 3,
-          background: checked ? 'rgba(15, 23, 42, 0.9)' : 'rgba(100, 116, 139, 0.28)',
+          background: checked ? 'var(--liquid-selected-bg)' : 'rgba(100, 116, 139, 0.28)',
           display: 'flex',
           justifyContent: checked ? 'flex-end' : 'flex-start',
           alignItems: 'center',
@@ -217,7 +218,7 @@ export function PushPreferenceToggle({
             width: 20,
             height: 20,
             borderRadius: 999,
-            background: '#ffffff',
+            background: 'var(--liquid-inset-bg)',
             boxShadow: '0 2px 8px rgba(15, 23, 42, 0.24)',
           }}
         />
@@ -391,7 +392,7 @@ function FeedbackModal({ onClose }: { onClose: () => void }): JSX.Element {
                   minHeight: 132,
                   border: '1px solid rgba(255,255,255,0.74)',
                   borderRadius: 18,
-                  background: 'rgba(255, 255, 255, 0.46)',
+                  background: 'var(--liquid-inset-bg)',
                   color: 'var(--ink)',
                   padding: 12,
                   outline: 'none',
@@ -503,7 +504,7 @@ function OfficialMessageModal({ onClose }: { onClose: () => void }): JSX.Element
                 minHeight: 132,
                 border: '1px solid rgba(255,255,255,0.74)',
                 borderRadius: 18,
-                background: 'rgba(255, 255, 255, 0.46)',
+                background: 'var(--liquid-inset-bg)',
                 color: 'var(--ink)',
                 padding: 12,
                 outline: 'none',
@@ -822,7 +823,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
                     fontWeight: 700,
                     color:
                       pushStatus === 'error' || pushStatus === 'denied'
-                        ? '#b42318'
+                        ? 'var(--red-deep)'
                         : 'var(--muted)',
                   }}
                 >
@@ -864,7 +865,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
                     padding: '0 12px',
                     border: '1px solid rgba(255,255,255,0.7)',
                     borderRadius: 16,
-                    background: 'rgba(255, 255, 255, 0.34)',
+                    background: 'var(--liquid-inset-bg)',
                     color: 'var(--ink)',
                     outline: 'none',
                     display: 'flex',
@@ -916,6 +917,8 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
         </>
       )}
 
+      <CommunitySection />
+
       <AdminAndroidReleaseOnly>
         <>
           <div className="section-label" style={{ marginBottom: 8 }}>
@@ -958,7 +961,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
             {index > 0 && (
               <div
                 aria-hidden="true"
-                style={{ height: 1, margin: '0 16px', background: 'rgba(100, 116, 139, 0.24)' }}
+                style={{ height: 1, margin: '0 16px', background: 'var(--liquid-inset-bg)' }}
               />
             )}
             <div

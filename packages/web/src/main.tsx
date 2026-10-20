@@ -1,20 +1,15 @@
+import { initializeTheme } from './app/theme.js';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { MotionConfig } from 'motion/react';
 import { App } from './app/App.js';
 import { initializeApplicationAuth } from './auth/bootstrap.js';
+import { installAppViewport } from './app/viewport.js';
 
 const LOCAL_DEV_CACHE_RESET_KEY = 'hockey.localDevCacheReset.v1';
 
-function syncViewportHeight(): void {
-  const height = window.visualViewport?.height ?? window.innerHeight;
-  document.documentElement.style.setProperty('--app-viewport-height', `${height}px`);
-}
-
-syncViewportHeight();
-window.visualViewport?.addEventListener('resize', syncViewportHeight);
-window.addEventListener('resize', syncViewportHeight);
-window.addEventListener('orientationchange', syncViewportHeight);
+initializeTheme();
+installAppViewport();
 
 if (import.meta.env.DEV && window.location.hostname === '127.0.0.1') {
   void (async () => {

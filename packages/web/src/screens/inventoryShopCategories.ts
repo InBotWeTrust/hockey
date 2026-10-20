@@ -1,15 +1,22 @@
 import type { InventoryKind } from '../api/inventory.js';
 
-export type ShopCategory = InventoryKind;
+export type ShopCategory = InventoryKind | 'bar';
 
 export const SHOP_CATEGORY_ORDER: ShopCategory[] = [
   'stick',
   'skates',
   'nutrition',
   'recovery',
+  'bar',
 ];
 
 export const SHOP_CATEGORY_META = {
+  bar: {
+    title: 'Бар',
+    artworkUrl: '/shop/categories/bar-v1.webp',
+    backgroundUrl: '/shop/backgrounds/bar-v1.webp',
+    className: 'shop-zone--bar',
+  },
   stick: {
     title: 'Клюшки',
     artworkUrl: '/shop/categories/sticks.webp',
@@ -34,12 +41,15 @@ export const SHOP_CATEGORY_META = {
     backgroundUrl: '/shop/backgrounds/recovery.webp',
     className: 'shop-zone--recovery',
   },
-} satisfies Record<ShopCategory, {
-  title: string;
-  artworkUrl: string;
-  backgroundUrl: string;
-  className: string;
-}>;
+} satisfies Record<
+  ShopCategory,
+  {
+    title: string;
+    artworkUrl: string;
+    backgroundUrl: string;
+    className: string;
+  }
+>;
 
 export function parseShopCategory(value: string | null): ShopCategory | null {
   return value !== null && SHOP_CATEGORY_ORDER.includes(value as ShopCategory)

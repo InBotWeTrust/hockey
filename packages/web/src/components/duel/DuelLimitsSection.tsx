@@ -13,6 +13,7 @@ const FORMATS: Array<{ key: AmateurDuelKind; label: string }> = [
   { key: 'classic', label: 'Классика' },
   { key: 'sniper', label: 'Снайпер' },
   { key: 'marathon', label: 'Марафон' },
+  { key: 'rhythm', label: 'Ритм' },
 ];
 
 function countdown(resetAt: string, now: number): string {

@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { getHapticCapabilities, triggerHaptic, triggerShotOutcomeHaptic } from './haptics.js';
+import {
+  getHapticCapabilities,
+  runWebVibrationDiagnostic,
+  triggerHaptic,
+  triggerShotOutcomeHaptic,
+} from './haptics.js';
 
 interface TelegramWindow extends Window {
   Telegram?: {
@@ -129,6 +134,30 @@ describe('platform haptics', () => {
 
   it('does not throw when shot haptics are unavailable', () => {
     expect(() => triggerShotOutcomeHaptic('post')).not.toThrow();
+  });
+
+  it('reports the browser vibration result from a direct diagnostic call', () => {
+    const vibrate = vi.fn(() => false);
+    setVibrate(vibrate);
+
+    expect(runWebVibrationDiagnostic()).toEqual({
+      runtime: 'browser',
+      visibility: 'visible',
+      apiAvailable: true,
+      result: false,
+      error: null,
+    });
+    expect(vibrate).toHaveBeenCalledWith(40);
+  });
+
+  it('reports a missing vibration API without throwing', () => {
+    expect(runWebVibrationDiagnostic()).toEqual({
+      runtime: 'browser',
+      visibility: 'visible',
+      apiAvailable: false,
+      result: null,
+      error: null,
+    });
   });
 
   it('is a safe no-op without platform support or while the document is hidden', () => {

@@ -18,6 +18,7 @@
 :root {
   color-scheme: only light;
   --app-viewport-height: 100dvh;
+  --app-viewport-top: 0px;
   --app-bg-top: #c9dcf0;
   --app-bg-bottom: #9cbfdf;
   --app-safe-top-raw: env(safe-area-inset-top, 0px);
@@ -138,7 +139,11 @@ body {
   overscroll-behavior: none;
 }
 
+/* Screens own scrolling; prevent Safari focus from panning the document behind them. */
 body {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
   min-height: 100vh;
   min-height: 100dvh;
 }
@@ -160,4 +165,9 @@ body {
 
 button {
   font-family: inherit;
+}
+
+/* The keyboard already replaces the home-indicator area. */
+:root.app-keyboard-open {
+  --app-dock-safe-bottom: 0px;
 }

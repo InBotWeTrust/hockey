@@ -149,7 +149,8 @@ describe('WeeklyChallengeScreen', () => {
       ],
     });
 
-    renderScreen();
+    // Flush the resolved catalog and its initial filter effect before clicking tabs.
+    await act(async () => { renderScreen(); });
 
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
     const filters = screen.getByRole('tablist', { name: 'Фильтры челленджей' });

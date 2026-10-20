@@ -1,0 +1,63 @@
+import { act, cleanup, renderHook } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { createMatch, type BarGameSnapshot } from '@hockey/game-core';
+import { ApiError } from '../../api/apiFetch.js';
+import { gameApi } from './api.js';
+import { useGameMatch } from './useGameMatch.js';
+vi.mock('./api.js',()=>({gameApi:{read:vi.fn(),command:vi.fn()}}));
+const view=():BarGameSnapshot=>({id:'m',kind:'billiards',player:0,character:null,participants:[],ready:null,serverNow:Date.now(),runtime:createMatch('billiards',0,Date.now(),false,1)});
+afterEach(()=>{cleanup();vi.useRealTimers();vi.resetAllMocks();});
+it('clears a polling failure after a successful refresh',async()=>{
+ vi.useFakeTimers();vi.mocked(gameApi.read).mockRejectedValueOnce(new Error('offline')).mockResolvedValue(view());
+ const {result}=renderHook(()=>useGameMatch('m'));
+ await act(async()=>{});expect(result.current.error).toContain('Не удалось обновить');
+ await act(async()=>{await vi.advanceTimersByTimeAsync(500);});
+ expect(result.current.view).not.toBeNull();expect(result.current.error).toBeNull();
+});
+it('clears a revision conflict once the new field has been read',async()=>{
+ vi.useFakeTimers();vi.mocked(gameApi.read).mockResolvedValue(view());
+ vi.mocked(gameApi.command).mockRejectedValue(new ApiError(409,'conflict','Conflict'));
+ const {result}=renderHook(()=>useGameMatch('m'));await act(async()=>{});
+ await act(async()=>{result.current.send({type:'shot',angle:0,power:0.5});});
+ expect(result.current.error).toBeNull();expect(result.current.uncertain).toBe(false);
+});
+it('retains an uncertain command and its retry even while polling succeeds',async()=>{
+ vi.useFakeTimers();vi.mocked(gameApi.read).mockResolvedValue(view());vi.mocked(gameApi.command).mockRejectedValue(new Error('offline'));
+ const {result}=renderHook(()=>useGameMatch('m'));await act(async()=>{});
+ await act(async()=>{result.current.send({type:'shot',angle:0,power:0.5});});
+ const first=vi.mocked(gameApi.command).mock.calls[0]![1];
+ await act(async()=>{await vi.advanceTimersByTimeAsync(500);});
+ expect(result.current.uncertain).toBe(true);expect(result.current.error).toContain('Не удалось подтвердить');
+ vi.mocked(gameApi.command).mockResolvedValue(view());
+ await act(async()=>{result.current.retry();});
+ expect(vi.mocked(gameApi.command).mock.calls[1]![1]).toEqual(first);
+ expect(result.current.error).toBeNull();expect(result.current.uncertain).toBe(false);
+});
+it('freezes the displayed clock while paused and queues closing rules behind opening them',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(1000);
+ const initial={...view(),character:'veronika' as const};
+ vi.mocked(gameApi.read).mockResolvedValue(initial);
+ let resolve!:(v:BarGameSnapshot)=>void;
+ vi.mocked(gameApi.command).mockImplementationOnce(()=>new Promise(r=>{resolve=r;})).mockResolvedValue({...initial,rulesPaused:false,runtime:{...initial.runtime,revision:2}});
+ const {result}=renderHook(()=>useGameMatch('m'));await act(async()=>{});
+ act(()=>result.current.send({type:'rules-pause',paused:true}));
+ act(()=>result.current.send({type:'rules-pause',paused:false}));
+ await act(async()=>resolve({...initial,rulesPaused:true,runtime:{...initial.runtime,revision:1}}));
+ expect(vi.mocked(gameApi.command).mock.calls[1]![1].action).toEqual({type:'rules-pause',paused:false});
+ const frozen={...initial,rulesPaused:true,runtime:{...initial.runtime,revision:3}};
+ vi.mocked(gameApi.read).mockResolvedValue(frozen);
+ await act(async()=>{await vi.advanceTimersByTimeAsync(1000);});
+ expect(result.current.now).toBe(1000);
+});
+it('does not rewind the resumed clock when an old paused poll arrives later',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(1000);
+ const initial={...view(),character:'veronika' as const};
+ let resolveRead!:(v:BarGameSnapshot)=>void;
+ vi.mocked(gameApi.read).mockResolvedValueOnce(initial).mockImplementationOnce(()=>new Promise(r=>{resolveRead=r;}));
+ vi.mocked(gameApi.command).mockResolvedValue({...initial,rulesPaused:false,serverNow:2000,runtime:{...initial.runtime,revision:2}});
+ const {result}=renderHook(()=>useGameMatch('m'));await act(async()=>{});
+ await act(async()=>{await vi.advanceTimersByTimeAsync(500);});
+ await act(async()=>result.current.send({type:'rules-pause',paused:false}));
+ await act(async()=>resolveRead({...initial,rulesPaused:true,runtime:{...initial.runtime,revision:1}}));
+ expect(result.current.now).toBe(2000);expect(result.current.view?.rulesPaused).toBe(false);
+});

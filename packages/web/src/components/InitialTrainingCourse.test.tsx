@@ -60,9 +60,9 @@ const catalog: InitialTrainingCatalogResponse = {
     {
       key: 'moving-goal',
       position: 4,
-      title: 'Ворота в движении',
-      description: 'Поймай движущиеся ворота.',
-      targetGoals: 10,
+      title: 'Три зоны',
+      description: 'Забей по 3 гола справа, слева и по центру.',
+      targetGoals: 9,
       rewardStars: 1,
       rewardExperience: 1,
       state: 'locked',
@@ -70,9 +70,9 @@ const catalog: InitialTrainingCatalogResponse = {
     {
       key: 'find-the-gap',
       position: 5,
-      title: 'Найди свободный угол',
-      description: 'Обыграй медленного дворового вратаря.',
-      targetGoals: 10,
+      title: 'Три зоны с вратарём',
+      description: 'Забей по 3 гола справа, слева и по центру с вратарём.',
+      targetGoals: 9,
       rewardStars: 1,
       rewardExperience: 1,
       state: 'locked',
@@ -80,9 +80,9 @@ const catalog: InitialTrainingCatalogResponse = {
     {
       key: 'pressure-window',
       position: 6,
-      title: 'Вратарь ускоряется',
-      description: 'Читай движение вратаря и забивай в свободный угол.',
-      targetGoals: 8,
+      title: 'Меняй стороны',
+      description: 'Чередуй стороны при бросках по пустым воротам.',
+      targetGoals: 6,
       rewardStars: 1,
       rewardExperience: 1,
       state: 'locked',
@@ -92,7 +92,7 @@ const catalog: InitialTrainingCatalogResponse = {
       position: 7,
       title: 'Игровой темп',
       description: 'Забивай в движущиеся ворота на скорости настоящей игры.',
-      targetGoals: 8,
+      targetGoals: 6,
       rewardStars: 1,
       rewardExperience: 1,
       state: 'locked',
@@ -155,8 +155,8 @@ describe('initial training course UI', () => {
     expect(screen.getByText('Пройдено')).toHaveClass('achievement-card__stage');
     expect(screen.getByText('Первый бросок')).toHaveClass('achievement-card__title');
     expect(screen.getByText('Точность')).toHaveClass('initial-training-exercise-card__skill');
-    expect(screen.getByText('Тайминг')).toHaveClass('initial-training-exercise-card__skill');
-    expect(screen.getByText('Реакция')).toHaveClass('initial-training-exercise-card__skill');
+    expect(screen.getAllByText('Позиция')).toHaveLength(2);
+    expect(screen.getByText('Чередование')).toHaveClass('initial-training-exercise-card__skill');
     expect(screen.getByText('Игра')).toHaveClass('initial-training-exercise-card__skill');
     expect(screen.getByText('Не пройдено')).toHaveClass(
       'training-exercise-card__stage--available',
@@ -239,12 +239,17 @@ describe('initial training course UI', () => {
 
   it('maps verified shot feedback to useful Russian hints', () => {
     expect(initialTrainingFeedbackCopy('miss_left')).toBe(
-      'Возьми чуть правее — бросок прошёл левее ворот.',
+      'Возьми чуть правее',
     );
     expect(initialTrainingFeedbackCopy('miss_right')).toBe(
-      'Возьми чуть левее — бросок прошёл правее ворот.',
+      'Возьми чуть левее',
     );
-    expect(initialTrainingFeedbackCopy('goalie_blocked')).toMatch(/вратарь/i);
+    expect(initialTrainingFeedbackCopy('shot_wrong_zone', 'right')).toBe(
+      'Бросок не в нужной зоне – бросай справа.',
+    );
+    expect(initialTrainingFeedbackCopy('goalie_blocked')).toBe(
+      'Этот угол перекрыл вратарь.\nДождись свободной стороны.',
+    );
     expect(initialTrainingFeedbackCopy('goal_timing')).toMatch(/тайминг/i);
   });
 });

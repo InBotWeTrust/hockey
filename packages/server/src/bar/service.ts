@@ -1,6 +1,10 @@
+import { projectMarathon, scoredElapsedFromShots } from '../duel/amateur/scoredFormats.js';
 import { sampleBarMotion } from './motion.js';
 import type { Pool } from 'pg';
 import {
+  projectRhythm,
+  PUCK_START,
+  GOAL_OPENING,
   getGoalie,
   GOALIES,
   getSessionPhaseOffsets,
@@ -44,7 +48,7 @@ const PUBLIC_MATCHES = `with entries as (
        order by s.sequence_number desc limit 1
     ) segment on true
 ), public_matches as (
-  select e.*, m.status as duel_status, m.duel_kind, m.match_seed, m.rules_snapshot, (to_jsonb(m)->>'fight_paused_at')::timestamptz as fight_paused_at, m.updated_at as match_updated_at,
+  select e.*, m.status as duel_status, m.duel_kind, m.match_seed, m.rules_snapshot, m.fight_paused_at, m.updated_at as match_updated_at,
          case when e.status in ('settled','forfeit','cancelled','expired') then 'finished'
               when e.kind = 'duel' and m.status = 'active' and m.ends_at <= $1 then 'finished'
               when m.status = 'active' and m.ends_at > $1 then 'online'
@@ -74,7 +78,7 @@ interface MatchRow {
   match_id: string | null;
   status: string;
   duel_status: string | null;
-  duel_kind: 'express' | 'express_plus' | 'classic' | null;
+  duel_kind: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm' | null;
   match_seed?: string;
   starts_at: Date | null;
   ends_at: Date | null;
@@ -85,6 +89,10 @@ interface MatchRow {
   home_score: number;
   away_score: number;
   rules_snapshot: {
+    rhythmVersion?: 1 | 2 | 3 | 4;
+    scoredClockVersion?: 2;
+    shotResultPauseMs?: 1000;
+    marathonWindowMs?: 4000 | 7000;
     goalieId?: string;
     periodDurationMs?: number;
     breakDurationMs?: number;
@@ -177,8 +185,7 @@ async function playersFor(
                where recent.amateur_duel_match_id = p.match_id and recent.user_id = p.user_id
                  and recent.mode = 'amateur_duel' and recent.created_at > $3::timestamptz
             ) end) as shots_taken, p.state, p.current_period, p.period_started_at, p.break_started_at,
-            coalesce((to_jsonb(p)->>'period_paused_ms')::integer, 0) as period_paused_ms,
-            (to_jsonb(p)->>'period_paused_at')::timestamptz as period_paused_at,
+            p.period_paused_ms, p.period_paused_at,
             case when $3::timestamptz is null then null else (select count(*)::int from shot_session ss
               where ss.amateur_duel_match_id=p.match_id and ss.user_id=p.user_id
                 and ss.mode='amateur_duel' and ss.period_number=p.current_period
@@ -192,6 +199,27 @@ async function playersFor(
       delayedAt,
     ],
   );
+  const scoredIds = rows
+    .filter((row) => row.duel_kind === 'sniper' || row.duel_kind === 'marathon' || row.duel_kind === 'rhythm')
+    .map((row) => row.match_id)
+    .filter(Boolean);
+  const scoringShots =
+    scoredIds.length === 0
+      ? []
+      : (
+          await pool.query<{
+            amateur_duel_match_id: string;
+            user_id: string;
+            input_payload: { tapTime: number; periodTapTime?: number; rhythmTravel?: number; rhythmBoardContacts?:number; puckSpeedPerMs: number };
+            server_result: string;
+            awarded_points: number;
+          }>(
+            `select amateur_duel_match_id,user_id,input_payload,server_result,awarded_points from shot_session
+         where amateur_duel_match_id=any($1::uuid[]) and mode='amateur_duel'
+           and ($2::timestamptz is null or created_at <= $2) order by period_number,shot_index`,
+            [scoredIds, delayedAt],
+          )
+        ).rows;
   return rows.flatMap((row) => {
     const player = (id: string) =>
       players.rows.find((p) => p.user_id === id && p.match_id === row.match_id) ??
@@ -220,10 +248,66 @@ async function playersFor(
         row,
         now,
       );
+    const scoredPlayer = (
+      p: PlayerRow & { match_id: string | null },
+      legacyScore: number,
+    ): BarPlayer => {
+      const result = publicPlayer(p, legacyScore);
+      if (row.duel_kind !== 'sniper' && row.duel_kind !== 'marathon' && row.duel_kind !== 'rhythm') return result;
+      const shots = scoringShots.filter(
+        (shot) => shot.amateur_duel_match_id === row.match_id && shot.user_id === p.user_id,
+      );
+      const goals = shots.filter((shot) => shot.server_result === 'goal').length;
+      const wallElapsed =
+        p.period_started_at === null
+          ? p.state === 'completed'
+            ? 240000
+            : 0
+          : Math.max(0, (delayedAt ?? now).getTime() - p.period_started_at.getTime());
+      const projectedShots = shots.map((shot) => ({
+        startedMs: shot.input_payload.periodTapTime ?? shot.input_payload.tapTime,
+        flightMs: (PUCK_START.y - GOAL_OPENING.y) / shot.input_payload.puckSpeedPerMs,
+        goal: shot.server_result === 'goal',
+      }));
+      const elapsed = row.rules_snapshot?.shotResultPauseMs && p.state === 'completed' && p.period_started_at === null
+        ? row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000
+        : row.rules_snapshot?.shotResultPauseMs && row.rules_snapshot.scoredClockVersion !== 2
+        ? scoredElapsedFromShots(wallElapsed, projectedShots, row.rules_snapshot.shotResultPauseMs)
+        : wallElapsed;
+      return {
+        ...result,
+        ...(row.rules_snapshot?.shotResultPauseMs && p.period_started_at ? {
+          state: elapsed >= (row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000) ? 'completed' : p.state === 'period_active' ? 'period_active' : result.state,
+          until: new Date(p.period_started_at.getTime() + (wallElapsed - elapsed) +
+            (row.rules_snapshot.periodRules?.[0]?.durationMs ?? 240000)).toISOString(),
+        } : {}),
+        goals,
+        shotsTaken: shots.length,
+        score:
+          row.duel_kind === 'sniper'
+            ? shots.reduce((total, shot) => total + Number(shot.awarded_points), 0) / 10
+            : row.duel_kind === 'rhythm'
+            ? projectRhythm({version:row.rules_snapshot?.rhythmVersion ?? 1,shots:shots.map(shot=>({travel:shot.input_payload.rhythmTravel??0,boardContacts:shot.input_payload.rhythmBoardContacts??0,goal:shot.server_result==='goal'})),travel:shots.at(-1)?.input_payload.rhythmTravel??0}).score
+            : projectMarathon({
+                durationMs: row.rules_snapshot?.periodRules?.[0]?.durationMs ?? 240000,
+                windowMs: row.rules_snapshot?.marathonWindowMs ?? 7000,
+                ...(row.rules_snapshot?.scoredClockVersion === 2 ? { resetAfterShotPauseMs: 1000 } : {}),
+                elapsedMs: elapsed,
+                shots: shots.map((shot) => ({
+                  startedMs: shot.input_payload.periodTapTime ?? shot.input_payload.tapTime,
+                  flightMs: (PUCK_START.y - GOAL_OPENING.y) / shot.input_payload.puckSpeedPerMs,
+                  goal: shot.server_result === 'goal',
+                })),
+              }).score,
+      };
+    };
     return [
       {
         id: row.id,
         format: row.duel_kind ?? null,
+        ...(row.duel_kind === 'marathon'
+          ? { marathonWindowMs: row.rules_snapshot?.marathonWindowMs ?? 7000 }
+          : {}),
         totalPeriods: row.rules_snapshot?.totalPeriods ?? null,
         kind: row.kind,
         title: row.title,
@@ -231,7 +315,7 @@ async function playersFor(
         status: row.status,
         startsAt: row.starts_at?.toISOString() ?? null,
         expiresAt: (row.ready_expires_at ?? row.ends_at)?.toISOString() ?? null,
-        players: [publicPlayer(home, row.home_score), publicPlayer(away, row.away_score)],
+        players: [scoredPlayer(home, row.home_score), scoredPlayer(away, row.away_score)],
       },
     ];
   });

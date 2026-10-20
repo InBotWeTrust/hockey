@@ -1,3 +1,4 @@
+import type { FightState } from '@hockey/game-core';
 import type {
   DailyPeriodSpeedPreset,
   DuelInventoryResourceUnit,
@@ -29,7 +30,7 @@ export type AmateurDuelParticipantState =
   | 'completed'
   | 'forfeit';
 export type AmateurDuelOutcome = 'challenger_win' | 'opponent_win' | 'draw' | 'double_loss';
-export type AmateurDuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
+export type AmateurDuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm';
 export type AmateurDuelPeriodMode = 'quota' | 'time_attack';
 export type AmateurDuelVenuePolicy =
   | 'direct_challenge'
@@ -103,6 +104,10 @@ export interface AmateurDuelRules {
   description: string;
   difficulty: 'easy' | 'medium' | 'hard';
   duelKind: AmateurDuelKind;
+  rhythmVersion?: 1 | 2 | 3 | 4;
+  rhythmWindowTraversals?: 2;
+  rhythmBoardContactLimit?:3;
+  rhythmMinimumSeries?:4;
   scoredClockVersion?: 2;
   shotResultPauseMs?: 1000;
   marathonWindowMs?: 4000 | 7000;
@@ -142,7 +147,6 @@ export interface AmateurDuelRules {
 }
 
 export interface AmateurDuelParticipant {
-  clock?: {periodElapsedMs:number;totalActiveMs:number;remainingMs:number;running:boolean};
   user_id: string;
   display_name: string;
   avatar_url: string | null;
@@ -154,8 +158,14 @@ export interface AmateurDuelParticipant {
   last_shot_ends_ms?: number;
   scene_elapsed_ms?: number;
   shooter_elapsed_ms?: number;
+  rhythm_series?: number[];
+  rhythm_current_series?: number;
+  rhythm_travel?: number;
+  rhythm_last_goal_travel?: number;
+  rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; boardContacts?:number; goal:boolean}>;
   format_score?: number;
   sniper_points?: number;
+  sniper_breakdown?: Array<{category:string;count:number;points:number}>;
   marathon_penalties?: number;
   average_goal_ms?: number | null;
   result_pause_starts_at?: string | null;
@@ -170,6 +180,9 @@ export interface AmateurDuelParticipant {
   current_period_shots: number;
   current_period_goals: number;
   ready_at: string | null;
+  clock?: {periodElapsedMs:number;totalActiveMs:number;remainingMs:number;running:boolean};
+  recovery_until?:string|null;
+  fight_aid_until?:string|null;
   period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;
@@ -271,6 +284,7 @@ export interface AmateurDuelMatch {
   accepted_at: string | null;
   settled_at: string | null;
   earned_reward?: { stars: number; experience: number } | null;
+  fight_rewards?: Array<{ fight_id: string; won: boolean; stars: number; experience: number }>;
   created_at: string;
   server_now: string;
   period_started_at: string | null;
@@ -282,7 +296,19 @@ export interface AmateurDuelMatch {
   opponent: AmateurDuelParticipant;
 }
 
+export interface AmateurDuelFight {
+  reason?: string | null;
+  revision?:number|string;
+  forced?:boolean;
+  id:string; initiator_user_id:string; status:string; response_deadline_at:string;
+  starts_at:string|null; resolved_at:string|null; winner_user_id:string|null; engine_state:FightState|null;
+}
 export interface AmateurDuelMatchState extends AmateurDuelMatch {
+  state_revision?:number;
+  fight_enabled?:boolean;
+  fight_paused_at?:string|null;
+  fight_availability?:{allowed:boolean;reason:string;remainingMs:number;remainingCalls?:number};
+  fight?:AmateurDuelFight|null;
   match_seed: string | null;
   current_period_shots: number;
   current_period_goals: number;
@@ -361,7 +387,7 @@ export interface MonthlyRatingCongratulation {
   tokens: number;
   created_at: string;
   awards?: Array<{
-    scope: 'overall' | 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
+    scope: 'overall' | 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm';
     place: number;
     points?: number;
     coins: number;
@@ -416,13 +442,13 @@ export interface SubmitAmateurDuelShotRequest {
 }
 
 export interface SubmitAmateurDuelShotResponse {
-  state_revision?: number;
-  awarded_points?: number;
   server_now?: string;
   period_started_at?: string | null;
   period_ends_at?: string | null;
+  state_revision?:number;
   match_id: string;
   server_result: ShotResultType;
+  awarded_points?: number;
   confirmed_shot_index: number;
   participant: Partial<AmateurDuelParticipant> & {
     state: AmateurDuelParticipantState;
@@ -705,4 +731,13 @@ export function fetchAmateurHistoryCalendar(
   return apiFetch<AmateurDuelHistoryCalendarResponse>(
     `/duel/amateur/history/calendar${query ? `?${query}` : ''}`,
   );
+}
+
+export async function challengeAmateurFight(matchId:string,requestId:string):Promise<{match:AmateurDuelMatchState}> {
+ const response=await apiFetch<{match:AmateurDuelMatchState}>(`/duel/amateur/matches/${matchId}/fight/challenge`,{method:'POST',body:JSON.stringify({requestId})});
+ return {match:stampMatch(response.match)};
+}
+export async function respondAmateurFight(matchId:string,fightId:string,decision:'accept'|'decline',requestId:string):Promise<{match:AmateurDuelMatchState}> {
+ const response=await apiFetch<{match:AmateurDuelMatchState}>(`/duel/amateur/matches/${matchId}/fight/respond`,{method:'POST',body:JSON.stringify({fightId,decision,requestId})});
+ return {match:stampMatch(response.match)};
 }

@@ -1,3 +1,4 @@
+import type { VisitorState } from '@hockey/game-core';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
@@ -47,6 +48,7 @@ interface InventoryItemRow {
 }
 
 interface InventoryState {
+  visitorCard: VisitorState['card'];
   balances: {
     tokens: number;
     stars: number;
@@ -227,10 +229,11 @@ function transactionFlow(amounts: InventoryTransactionAmountDto[]): TransactionF
 }
 
 function transactionCategory(reason: string): TransactionCategory {
-  if (reason === 'inventory_purchase' || reason === 'recovery_kit_use') return 'inventory';
+  if (reason === 'inventory_purchase' || reason === 'bar_purchase' || reason === 'recovery_kit_use') return 'inventory';
   if (
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_reward' ||
+    reason === 'duel_fight_reward' ||
     reason === 'achievement_reward' ||
     reason === 'bonus_game_reward' ||
     reason === 'tournament_reward'
@@ -242,6 +245,9 @@ function transactionCategory(reason: string): TransactionCategory {
 }
 
 export function transactionTitle(reason: string, metadata: Record<string, unknown>): string {
+  if (reason === 'bar_ochko_stake') return 'Ставка в Очке';
+  if (reason === 'bar_ochko_payout') return 'Выигрыш в Очке';
+  if (reason === 'bar_ochko_refund') return 'Возврат ставки в Очке';
   if (reason === 'inventory_purchase' && metadata.payment_currency === 'stars')
     return 'Покупка за звёзды';
   const title = stringMetadata(metadata, 'title');
@@ -254,6 +260,7 @@ export function transactionTitle(reason: string, metadata: Record<string, unknow
   if (reason === 'tournament_reward') return 'Награда за турнир';
   if (reason === 'tournament_entry_fee') return 'Взнос за турнир';
   if (reason === 'tournament_entry_refund') return 'Возврат взноса за турнир';
+  if (reason === 'duel_fight_reward') return metadata.won === true ? 'Победа в драке' : 'Поражение в драке';
   if (reason === 'duel_reward') return 'Награда за дуэль';
   if (reason === 'achievement_reward') return 'Награда за достижение';
   if (reason === 'duel_stake_hold') return 'Ставка дуэли заморожена';
@@ -285,6 +292,7 @@ function transactionSubtitle(
     if (recoveryMinutes > 0) parts.push(`−${recoveryMinutes} минут`);
   } else if (
     reason === 'weekly_challenge_reward' ||
+    reason === 'duel_fight_reward' ||
     reason === 'achievement_reward' ||
     reason === 'bonus_game_reward' ||
     reason === 'tournament_reward'
@@ -533,7 +541,9 @@ async function fetchInventoryState(client: DbClient, userId: string): Promise<In
     return active?.id ?? null;
   };
 
+  const card = (await client.query<{ purchased: boolean; active: boolean; expires_at: Date | null }>("select purchased_at is not null as purchased,coalesce(expires_at>clock_timestamp(),false) as active,expires_at from bar_visitor_accounts where user_id=$1", [userId])).rows[0];
   return {
+    visitorCard: { purchased: card?.purchased ?? false, active: card?.active ?? false, expiresAt: card?.expires_at?.toISOString() ?? null },
     balances: {
       tokens: Number(account.balance),
       stars: Number(account.stars),

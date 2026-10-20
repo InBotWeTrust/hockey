@@ -42,6 +42,7 @@ const scopeLabels = {
   classic: 'Классика',
   sniper: 'Снайпер',
   marathon: 'Марафон',
+  rhythm: 'Ритм',
 } as const;
 
 function seasonLabel(seasonKey: string): string {

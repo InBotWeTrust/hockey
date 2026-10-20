@@ -1,3 +1,4 @@
+import { useVenueNavigation, useVenueAttention } from '../components/VenuePanorama.js';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -163,6 +164,8 @@ export function WeeklyChallengeScreen({
     (challenge) => weeklyChallengeNeedsAction(challenge),
   );
 
+  const venue = useVenueNavigation();
+  useVenueAttention('challenges', [...catalog.future, ...catalog.active, ...catalog.completed].filter(weeklyChallengeNeedsAction).length);
   const claim = useMutation({
     mutationFn: (challenge: WeeklyChallenge) => claimWeeklyChallengeReward(challenge.id),
     onMutate: () => setClaimError(null),
@@ -253,17 +256,19 @@ export function WeeklyChallengeScreen({
           </h1>
         </div>
 
-        <SegmentedTabs
-          items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
-            ...tab,
-            attention: tab.id === 'challenges' ? challengeAttention : false,
-          }))}
-          activeTab="challenges"
-          ariaLabel="Разделы заданий"
-          onChange={(tab) => {
-            if (tab === 'achievements') navigate(achievementsRoute);
-          }}
-        />
+        {!venue && (
+          <SegmentedTabs
+            items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
+              ...tab,
+              attention: tab.id === 'challenges' ? challengeAttention : false,
+            }))}
+            activeTab="challenges"
+            ariaLabel="Разделы заданий"
+            onChange={(tab) => {
+              if (tab === 'achievements') navigate(achievementsRoute);
+            }}
+          />
+        )}
 
         <div
           className="segmented-tabs weekly-challenge-filters"

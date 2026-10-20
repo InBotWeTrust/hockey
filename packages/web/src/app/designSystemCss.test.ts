@@ -46,6 +46,7 @@ describe('duel inventory notices', () => {
     expect(notice).toContain('white-space: nowrap');
   });
 });
+
 describe('bonus game first-clear reward heading', () => {
   it('uses the primary dark ink color to separate it from descriptive copy', () => {
     expect(css).toMatch(/\.bonus-game-card__reward-title\s*\{\s*color: var\(--ink\);\s*\}/);
@@ -53,12 +54,22 @@ describe('bonus game first-clear reward heading', () => {
 });
 
 describe('bonus game progress and endurance timer surfaces', () => {
+  it('caps the marksmanship breakdown at scoreboard width without horizontal scrolling', () => {
+    const notice = rule('.game-scoreboard.bonus-game-marksmanship-score');
+    const part = rule('.bonus-game-marksmanship-score__part');
+    expect(notice).toContain('max-width: 100%');
+    expect(notice).toContain('overflow: hidden');
+    expect(notice).not.toContain('overflow-x: auto');
+    expect(part).not.toContain('min-width: max-content');
+    expect(css).toContain('.bonus-game-marksmanship-score__inner {');
+  });
+
   it('uses the featured bonus card surface for the progress container', () => {
     const progress = rule('.bonus-games-attempt-progress');
 
     expect(progress).toContain('border: 1px solid rgba(255, 255, 255, 0.94)');
     expect(progress).toContain('border-radius: 22px');
-    expect(progress).toContain('background: rgba(237, 244, 250, 0.84)');
+    expect(progress).toContain('background: var(--liquid-card-bg)');
     expect(progress).toContain('0 18px 42px rgba(15, 23, 42, 0.18)');
     expect(progress).toContain('0 0 0 2px rgba(74, 144, 226, 0.12)');
     expect(progress).toContain('inset 0 1px 0 rgba(255, 255, 255, 0.9)');
@@ -76,7 +87,7 @@ describe('bonus game progress and endurance timer surfaces', () => {
     expect(timer).not.toContain('box-shadow:');
     expect(timer).not.toContain('backdrop-filter:');
     expect(timer).not.toContain('border:');
-    expect(warning).toContain('color: #d9ae3d');
+    expect(warning).toContain('color: #ebd499');
     expect(warning).not.toContain('background:');
     expect(warning).not.toContain('box-shadow:');
     expect(danger).toContain('color: #df6b6b');
@@ -91,7 +102,7 @@ describe('bonus game modal depth', () => {
     const result = rule('.modal-card.bonus-game-result-modal');
 
     for (const bonusModal of [preview, result]) {
-      expect(bonusModal).toContain('background: rgba(226, 233, 241, 0.94)');
+      expect(bonusModal).toContain('background: var(--liquid-modal-bg)');
       expect(bonusModal).toContain('box-shadow: none');
       expect(bonusModal).toContain('backdrop-filter: none');
     }
@@ -118,7 +129,7 @@ describe('experience rating scroll containment', () => {
     const header = rule('.tournament-standing-table--experience-rating th');
 
     expect(viewport).toContain('overscroll-behavior: none');
-    expect(header).toContain('background: rgb(186, 195, 208)');
+    expect(header).toContain('background: var(--liquid-solid-bg)');
     expect(header).not.toContain('background: transparent');
   });
 });
@@ -127,15 +138,16 @@ describe('profile story section heading alignment', () => {
   it('keeps story series headings on the shared page-label offset', () => {
     const heading = rule('.profile-story-series > h2');
 
-    expect(heading).toContain('margin: 0 0 -2px -14px');
+    expect(heading).toContain('margin: 0 0 -2px;');
   });
 });
 
 describe('profile story image treatment', () => {
-  it('uses the same white image border as other profile cards', () => {
+  it('keeps the story image inside a single outer frame', () => {
     const image = rule('.profile-story-card > img');
 
-    expect(image).toContain('border: 1px solid rgba(255, 255, 255, 0.88)');
+    expect(image).toContain('border: 0;');
+    expect(rule('.profile-story-card')).toContain('border: 1px solid var(--liquid-border)');
   });
 });
 
@@ -231,5 +243,11 @@ describe('completed challenge history modal', () => {
     );
 
     expect(expandedSummary).toContain('border-bottom: 1px solid rgba(15, 23, 42, 0.08)');
+  });
+});
+
+ describe('section heading alignment', () => {
+  it('aligns labels with content without an extra horizontal inset', () => {
+    expect(css.match(/^\.section-label \{[^}]*\}/m)?.[0]).toContain('padding: 2px 0;');
   });
 });

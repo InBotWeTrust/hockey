@@ -77,7 +77,7 @@ function duelEquipmentStockLineStyle(): CSSProperties {
   return {
     display: 'inline-block',
     marginTop: 3,
-    color: '#334155',
+    color: 'var(--liquid-muted)',
     fontSize: 12,
     fontWeight: 920,
     lineHeight: 1.15,
@@ -169,6 +169,14 @@ export function DuelLockerTab({
   const recoveryArtwork =
     recoveryItems.find((item) => item.chargesAvailable > 0)?.imageUrl ??
     '/inventory/recovery-30.webp';
+
+  if (inventoryQuery.isPending) return <p role="status">Загружаем инвентарь…</p>;
+  if (inventoryQuery.data === undefined) return (
+    <section role="alert">
+      <p>Не удалось загрузить инвентарь.</p>
+      <button type="button" className="btn btn--cta" onClick={() => void inventoryQuery.refetch()}>Повторить</button>
+    </section>
+  );
 
   return (
     <>
@@ -433,7 +441,7 @@ function DuelEquipmentDetailsModal({
                   borderRadius: 14,
                   overflow: 'hidden',
                   border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(255,255,255,0.28)',
+                  background: 'var(--liquid-inset-bg)',
                 }}
               >
                 <img
@@ -455,7 +463,7 @@ function DuelEquipmentDetailsModal({
                 </span>
                 <span
                   style={{
-                    color: 'rgba(15, 23, 42, 0.62)',
+                    color: 'var(--liquid-muted)',
                     fontSize: 12,
                     fontWeight: 760,
                     lineHeight: 1.28,
@@ -500,7 +508,7 @@ function DuelEquipmentDetailsModal({
                     borderRadius: 14,
                     overflow: 'hidden',
                     border: '1px solid rgba(255,255,255,0.8)',
-                    background: 'rgba(255,255,255,0.28)',
+                    background: 'var(--liquid-inset-bg)',
                     boxShadow:
                       'inset 0 1px 0 rgba(255,255,255,0.8), 0 10px 18px rgba(15,23,42,0.12)',
                   }}
@@ -528,7 +536,7 @@ function DuelEquipmentDetailsModal({
                     style={{
                       display: 'grid',
                       gap: 2,
-                      color: 'rgba(15, 23, 42, 0.62)',
+                      color: 'var(--liquid-muted)',
                       fontSize: 12,
                       fontWeight: 760,
                       lineHeight: 1.25,

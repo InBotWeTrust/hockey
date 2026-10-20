@@ -4,6 +4,7 @@ export interface BarPlayer {
   avatarUrl: string | null;
   grip: 'left' | 'right';
   goals: number;
+  score?: number;
   shots?: number;
   shotsTaken?: number;
   shotsTotal?: number | null;
@@ -12,7 +13,8 @@ export interface BarPlayer {
   until: string | null;
 }
 export interface BarMatch {
-  format: 'express' | 'express_plus' | 'classic' | null;
+  format: 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm' | null;
+  marathonWindowMs?: 4000 | 7000;
   totalPeriods: number | null;
   id: string;
   kind: 'duel' | 'tournament';

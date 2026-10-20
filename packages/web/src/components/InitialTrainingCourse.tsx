@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { AppToast } from './AppToast.js';
 import { Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import type {
@@ -12,9 +14,9 @@ const exerciseSkill: Record<InitialTrainingExerciseKey, string> = {
   'first-shot': 'Точность',
   'three-positions': 'Позиция',
   'follow-the-goal': 'Фокус',
-  'moving-goal': 'Тайминг',
-  'find-the-gap': 'Угол',
-  'pressure-window': 'Реакция',
+  'moving-goal': 'Позиция',
+  'find-the-gap': 'Вратарь',
+  'pressure-window': 'Чередование',
   'game-pace': 'Игра',
 };
 
@@ -54,11 +56,20 @@ export const INITIAL_TRAINING_HUB_LOADING_CATALOG: InitialTrainingCatalogRespons
   },
 };
 
-export function initialTrainingFeedbackCopy(code: InitialTrainingFeedbackCode): string {
-  if (code === 'miss_left') return 'Возьми чуть правее — бросок прошёл левее ворот.';
-  if (code === 'miss_right') return 'Возьми чуть левее — бросок прошёл правее ворот.';
-  if (code === 'goalie_blocked') return 'Этот угол перекрыл вратарь. Дождись свободной стороны.';
-  return 'Точный тайминг — продолжай в том же ритме!';
+export function initialTrainingFeedbackCopy(
+  code: InitialTrainingFeedbackCode,
+  requiredZone?: 'right' | 'left' | 'center' | null,
+): string {
+  if (code === 'goal_wrong_zone' || code === 'shot_wrong_zone') {
+    const side = requiredZone === 'left' ? 'слева' : requiredZone === 'center' ? 'по центру' : 'справа';
+    return code === 'goal_wrong_zone'
+      ? `Гол не засчитан: сейчас нужно бросать ${side}.`
+      : `Бросок не в нужной зоне – бросай ${side}.`;
+  }
+  if (code === 'miss_left') return 'Возьми чуть правее';
+  if (code === 'miss_right') return 'Возьми чуть левее';
+  if (code === 'goalie_blocked') return 'Этот угол перекрыл вратарь.\nДождись свободной стороны.';
+  return 'Точный тайминг – продолжай в том же ритме!';
 }
 
 export function InitialTrainingHub({
@@ -75,14 +86,18 @@ export function InitialTrainingHub({
   loading?: boolean;
 }): JSX.Element {
   const advanced = catalog.advanced_training;
+  const exercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
+  const [developmentToast,setDevelopmentToast] = useState(false);
+  const openExercise = (action:()=>void) => { if (!exercisesEnabled) {setDevelopmentToast(true);return;} action(); };
   return (
     <div className="initial-training-hub">
+      {developmentToast && <AppToast message="В разработке" onDismiss={()=>setDevelopmentToast(false)}/>}
       <button
         type="button"
         className="section-card-surface amateur-hub-card initial-training-mode-card"
         aria-disabled={loading}
         onClick={() => {
-          if (!loading) onOpenCourse();
+          if (!loading) openExercise(onOpenCourse);
         }}
         aria-label={`Начальный уровень, пройдено ${catalog.completed_count} из ${catalog.total_count} упражнений`}
       >
@@ -105,7 +120,8 @@ export function InitialTrainingHub({
         totalCount={advanced.total_count}
         unlocked={!loading && advanced.enabled && advanced.access.unlocked}
         access={advanced.access}
-        onOpen={onOpenAdvanced}
+        onOpen={()=>openExercise(onOpenAdvanced)}
+        inDevelopment={!exercisesEnabled}
         loading={loading}
       />
 

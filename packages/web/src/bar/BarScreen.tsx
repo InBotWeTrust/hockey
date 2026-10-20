@@ -1,7 +1,9 @@
+import { BarPanorama } from './BarPanorama.js';
+import './cards/durak.css';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { SegmentedTabs } from '../components/SegmentedTabs.js';
-import { ChevronLeft } from 'lucide-react';
+import { ArrowLeft, CalendarClock, LogOut, Radio } from 'lucide-react';
+import '../components/navigation-geometry.css';
 import { useAuthStore } from '../auth/authStore.js';
 import { refreshAccessToken } from '../api/apiFetch.js';
 import { BarSocket, type BarSocketStatus } from './BarSocket.js';
@@ -44,30 +46,21 @@ const statusText: Record<BarSocketStatus, string> = {
 };
 
 export function BarScreen(): JSX.Element {
+  return <BarPanorama />;
+}
+
+export function BarBroadcastsScreen(): JSX.Element {
   const navigate = useNavigate();
   const [page, setPage] = useState(0);
   const [filter, setFilter] = useState<'online' | 'upcoming'>('online');
   const { data, status } = useBarSnapshot(`page=${page}`);
   const board = data && 'online' in data ? data : null;
   return (
-    <main className="screen bar-screen">
-      <BarHeader title="Бар" onBack={() => navigate('/sections')} />
+    <main className="screen bar-screen bar-screen--broadcasts">
+      <header className="bar-header bonus-games-catalog__header">
+        <h1 className="bonus-games-catalog__title screen-title-on-arena">Трансляции</h1>
+      </header>
       <section className="bar-content">
-        <h2 className="section-label bar-section-label">Выбери события</h2>
-        <div className="bar-filters">
-          <SegmentedTabs
-            items={[
-              { id: 'online', label: 'Онлайн' },
-              { id: 'upcoming', label: 'Предстоящие' },
-            ]}
-            activeTab={filter}
-            ariaLabel="Матчи в баре"
-            onChange={(next) => {
-              setFilter(next);
-              setPage(0);
-            }}
-          />
-        </div>
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
             {statusText[status]}
@@ -103,6 +96,22 @@ export function BarScreen(): JSX.Element {
           </>
         )}
       </section>
+      <nav className="bar-broadcast-dock" aria-label="Разделы трансляций">
+        <button type="button" className="bar-broadcast-dock__item" aria-label="Выход в бар" onClick={()=>navigate('/bar')}>
+          <span className="bar-broadcast-dock__circle"><LogOut size={22} aria-hidden="true"/></span>
+          <span>Выход</span>
+        </button>
+        <div className="bar-broadcast-dock__tabs" role="tablist" aria-label="Матчи в баре">
+          {([
+            {id:'online',label:'Онлайн',Icon:Radio},
+            {id:'upcoming',label:'Предстоящие',Icon:CalendarClock},
+          ] as const).map(({id,label,Icon})=><button key={id} type="button" role="tab" aria-selected={filter===id}
+            className="bar-broadcast-dock__item" onClick={()=>{setFilter(id);setPage(0);}}>
+            <span className="bar-broadcast-dock__circle"><Icon size={22} aria-hidden="true"/></span>
+            <span>{label}</span>
+          </button>)}
+        </div>
+      </nav>
     </main>
   );
 }
@@ -138,7 +147,7 @@ function MatchGroup({
               <span className="game-scoreboard__label bar-match-kind">
                 {match.kind === 'duel' ? 'Дуэль' : 'Турнир'}
                 {match.format
-                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика' }[match.format]}`
+                  ? ` · ${{ express: 'Экспресс', express_plus: 'Микс', classic: 'Классика', sniper: 'Снайпер', marathon: 'Марафон', rhythm: 'Ритм' }[match.format]}${match.format === 'marathon' ? ` · ${(match.marathonWindowMs ?? 7000) / 1000} сек` : ''}`
                   : ''}
                 {match.title ? ` · ${match.title}` : ''}
               </span>
@@ -170,7 +179,7 @@ function MatchGroup({
               />
               <strong className="game-scoreboard__value bar-score">
                 {match.group === 'online'
-                  ? `${match.players[0].goals} : ${match.players[1].goals}`
+                  ? `${match.players[0].score ?? match.players[0].goals} : ${match.players[1].score ?? match.players[1].goals}`
                   : '—'}
               </strong>
               <PlayerBadge
@@ -218,11 +227,11 @@ function PlayerBadge({
 }
 function BarHeader({ title, onBack }: { title: string; onBack: () => void }): JSX.Element {
   return (
-    <header className="bar-header">
-      <button type="button" className="icon-btn" aria-label="Назад" onClick={onBack}>
-        <ChevronLeft size={22} />
+    <header className="bar-header bonus-games-catalog__header">
+      <button type="button" className="icon-btn catalog-header-back" aria-label="Назад" onClick={onBack}>
+        <ArrowLeft size={16} />
       </button>
-      <h1>{title}</h1>
+      <h1 className="bonus-games-catalog__title screen-title-on-arena">{title}</h1>
     </header>
   );
 }
@@ -244,7 +253,7 @@ export function BarMatchScreen({ viewerId }: { viewerId?: string } = {}): JSX.El
   }, [live, buffer]);
   return (
     <main className="screen bar-screen bar-screen--match">
-      <BarHeader title="Трансляция" onBack={() => navigate('/bar')} />
+      <BarHeader title="Трансляция" onBack={() => navigate('/bar/broadcasts')} />
       <section className="game-scoreboard game-scoreboard--stable-surface bar-board">
         {status !== 'ready' && (
           <p role="status" className="bar-connection">
@@ -258,7 +267,8 @@ export function BarMatchScreen({ viewerId }: { viewerId?: string } = {}): JSX.El
               {live.match.kind === 'duel' ? 'Дуэль' : (live.match.title ?? 'Турнир')}
             </p>
             <p className="game-scoreboard__value bar-live-score">
-              {live.match.players[0].goals} : {live.match.players[1].goals}
+              {live.match.players[0].score ?? live.match.players[0].goals} :{' '}
+              {live.match.players[1].score ?? live.match.players[1].goals}
             </p>
             {live.match.group === 'finished' && (
               <p role="status" className="bar-final">

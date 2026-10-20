@@ -1019,11 +1019,11 @@ describe('TournamentOperations', () => {
     style.textContent = designSystemCss;
     document.head.append(style);
     try {
-      expect(getComputedStyle(screen.getByText('1-й тур')).color).toBe('rgb(23, 50, 77)');
+      expect(getComputedStyle(screen.getByText('1-й тур')).color).toBe('var(--liquid-muted)');
       const matchday = screen.getByText('1-й тур').closest('article');
       expect(matchday).not.toBeNull();
       expect(getComputedStyle(within(matchday!).getByText(/^1 сентября 2030/)).color).toBe(
-        'rgb(83, 107, 130)',
+        'var(--liquid-muted)',
       );
     } finally {
       style.remove();

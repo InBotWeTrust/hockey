@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import type { AdvancedTrainingV2Technique } from '@hockey/game-core';
 import { Check, ChevronRight, Star, TrendingUp, X } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import { AccessibleModal } from './AccessibleModal.js';
@@ -49,7 +50,7 @@ export function advancedTrainingFeedbackTone(
 }
 
 export interface AdvancedTrainingCatalogExercise {
-  key: AdvancedTrainingExerciseKey;
+  key: AdvancedTrainingExerciseKey | AdvancedTrainingV2Technique;
   position: number;
   title: string;
   description: string | null;
@@ -75,6 +76,7 @@ export function AdvancedTrainingHubCard({
   access,
   onOpen,
   loading = false,
+  inDevelopment = false,
 }: {
   completedCount: number;
   totalCount: number;
@@ -85,15 +87,16 @@ export function AdvancedTrainingHubCard({
   };
   onOpen: () => void;
   loading?: boolean;
+  inDevelopment?: boolean;
 }): JSX.Element {
   return (
     <button
       type="button"
       className="section-card-surface amateur-hub-card advanced-training-mode-card"
-      disabled={!loading && !unlocked}
-      aria-disabled={loading || !unlocked}
+      disabled={!inDevelopment && !loading && !unlocked}
+      aria-disabled={inDevelopment || loading || !unlocked}
       onClick={() => {
-        if (!loading && unlocked) onOpen();
+        if (!loading && (inDevelopment || unlocked)) onOpen();
       }}
       aria-label={`Продвинутый уровень, пройдено ${completedCount} из ${totalCount} упражнений`}
     >
@@ -176,7 +179,7 @@ export function AdvancedTrainingCatalog({
   onStart,
 }: {
   catalog: AdvancedTrainingCatalogModel;
-  onStart: (key: AdvancedTrainingExerciseKey) => void;
+  onStart: (key: AdvancedTrainingCatalogExercise['key']) => void;
 }): JSX.Element {
   const [selectedExercise, setSelectedExercise] =
     useState<AdvancedTrainingCatalogExercise | null>(null);
@@ -276,7 +279,7 @@ export function AdvancedTrainingCatalog({
                   </span>
                   {exercise.skill && exercise.goal ? (
                     <div className="advanced-training-exercise-card__meta">
-                      <span className="advanced-training-exercise-card__skill">{exercise.skill}</span>
+                      <span className="advanced-training-exercise-card__skill">{({notice:'Наблюдение',anticipate:'Предугадывание',decide:'Выбор решения',pace:'Темп'} as Record<string,string>)[exercise.skill] ?? exercise.skill}</span>
                       <span aria-hidden="true">·</span>
                       <span>Цель: {exercise.goal}</span>
                     </div>

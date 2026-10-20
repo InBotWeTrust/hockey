@@ -76,10 +76,10 @@ function playerWord(count:number):string {
 }
 function FanRating({userId,managing,initialTab,onClose,onManage,onBack,notice}:{userId:string;managing:boolean;initialTab:'fans'|'following';onClose:()=>void;onManage:()=>void;onBack:()=>void;notice:string|null}):JSX.Element {
  const {api,viewerId}=useSocial();const [selected,setSelected]=useState<SocialUser|null>(null);
- return <><ExperienceRatingModal currentUserId={viewerId??''} onCurrentUser={()=>{}} onClose={onClose} source={{key:['social',viewerId,'fan-rating'],title:managing?'Управление болельщиками':'Зрелищность',heading:'Болельщики',icon:managing?<User aria-hidden="true"/>:<Users aria-hidden="true"/>,load:async cursor=>{const page=await api.fanRating(cursor??undefined);return {rows:page.items.map(p=>({place:p.place,userId:p.id,displayName:p.displayName,avatarUrl:p.avatarUrl,experience:p.count})),nextCursor:page.nextCursor,...(page.currentUser?{currentUser:{place:page.currentUser.place,userId:page.currentUser.id,displayName:page.currentUser.displayName,avatarUrl:page.currentUser.avatarUrl,experience:page.currentUser.count}}:{})};},headerAction:<button className="icon-btn" aria-label={managing?'Назад в рейтинг':'Управление болельщиками'} onClick={managing?onBack:onManage}>{managing?<ArrowLeft size={16}/>:<Settings size={16}/>}</button>,...(managing?{content:<FansDialog userId={userId} initialTab={initialTab} notice={notice}/>} : {}),onPlayerClick:row=>setSelected({id:String(row.user_id),displayName:String(row.display_name),avatarUrl:typeof row.avatar_url==='string'?row.avatar_url:null})}}/>{selected&&<SocialUserPreview user={selected} onClose={()=>setSelected(null)}/>}</>;
+ return <><ExperienceRatingModal currentUserId={viewerId??''} onCurrentUser={()=>{}} onClose={onClose} source={{key:['social',viewerId,'fan-rating'],title:managing?'Управление болельщиками':'Зрелищность',heading:'Болельщики',icon:managing?<User aria-hidden="true"/>:<Users aria-hidden="true"/>,load:async cursor=>{const page=await api.fanRating(cursor??undefined);return {rows:page.items.map(p=>({place:p.place,userId:p.id,displayName:p.displayName,avatarUrl:p.avatarUrl,experience:p.count})),nextCursor:page.nextCursor,...(page.currentUser?{currentUser:{place:page.currentUser.place,userId:page.currentUser.id,displayName:page.currentUser.displayName,avatarUrl:page.currentUser.avatarUrl,experience:page.currentUser.count}}:{})};},headerAction:<button className="icon-btn" aria-label={managing?'Назад в рейтинг':'Управление болельщиками'} onClick={managing?onBack:onManage}>{managing?<ArrowLeft size={16}/>:<Settings size={16}/>}</button>,...(managing?{content:<SocialConnections userId={userId} initialTab={initialTab} notice={notice}/>} : {}),onPlayerClick:row=>setSelected({id:String(row.user_id),displayName:String(row.display_name),avatarUrl:typeof row.avatar_url==='string'?row.avatar_url:null})}}/>{selected&&<SocialUserPreview user={selected} onClose={()=>setSelected(null)}/>}</>;
 }
 
-function FansDialog({userId,initialTab,notice}:{userId:string;initialTab:'fans'|'following';notice?:string|null}):JSX.Element {
+export function SocialConnections({userId,initialTab='fans',notice,showListHeading=false}:{showListHeading?:boolean;userId:string;initialTab?:'fans'|'following';notice?:string|null}):JSX.Element {
  const {api,viewerId}=useSocial(); const [tab,setTab]=useState<'fans'|'following'>(initialTab);
  const [selected,setSelected]=useState<SocialUser|null>(null);
  const [removeTarget,setRemoveTarget]=useState<SocialUser|null>(null);
@@ -90,6 +90,7 @@ function FansDialog({userId,initialTab,notice}:{userId:string;initialTab:'fans'|
   void client.invalidateQueries({queryKey:['social',viewerId,'people']});
  }});
  const own=viewerId===userId;
+ const summary=useQuery({queryKey:['social',viewerId,'summary',userId],queryFn:()=>api.summary(userId),enabled:Boolean(viewerId&&userId),staleTime:60_000});
  const unfollow=useMutation({mutationFn:(id:string)=>api.follow(id,false),onSuccess:async()=>{
   setUnfollowTarget(null);
   await client.invalidateQueries({predicate:q=>q.queryKey[0]==='social'&&q.queryKey[1]===viewerId});
@@ -97,7 +98,9 @@ function FansDialog({userId,initialTab,notice}:{userId:string;initialTab:'fans'|
  const rows=useSocialPage(['people',userId,tab],c=>api.people(userId,tab,c));
  return <>
   <div className="social-people-sheet">
+  {showListHeading&&<h2 className="section-label">{tab==='fans'?'Мои болельщики':own?'Болею за':'Болеет за'}{summary.data ? ` · ${tab==='fans'?summary.data.followersCount:summary.data.followingCount}` : ''}</h2>}
   <div style={{marginBottom:12}}><SegmentedTabs ariaLabel="Списки игроков" activeTab={tab} onChange={setTab} items={[{id:'fans',label:'Мои болельщики'},{id:'following',label:own?'Болею за':'Болеет за'}]}/></div>
+
   {notice&&<p role="status" className="modal-copy">{notice}</p>}
   {rows.isLoading?<p className="modal-copy">Загрузка…</p>:rows.isError?<p role="alert" className="modal-copy">Не удалось загрузить список <button className="btn btn--ghost" onClick={()=>void rows.refetch()}>Повторить</button></p>:<div className="social-people-list">
    {!rows.items.length&&<p className="modal-copy">Здесь пока никого нет</p>}

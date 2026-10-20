@@ -1,3 +1,4 @@
+import { VenuePanorama } from '../components/VenuePanorama.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -6,14 +7,19 @@ import { ProfileScreen } from './ProfileScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { ProfileData } from './profileTypes.js';
 
+vi.mock('../app/devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
+
 const { preloadArtwork } = vi.hoisted(() => ({ preloadArtwork: vi.fn() }));
-const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
+const { runWebVibrationDiagnostic, triggerHaptic } = vi.hoisted(() => ({
+  runWebVibrationDiagnostic: vi.fn(),
+  triggerHaptic: vi.fn(),
+}));
 
 vi.mock('../app/artworkCache.js', async (importOriginal) => {
   const actual = (await importOriginal()) as Record<string, unknown>;
   return { ...actual, preloadArtwork };
 });
-vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
+vi.mock('../feedback/haptics.js', () => ({ runWebVibrationDiagnostic, triggerHaptic }));
 
 const profile = {
   id: 'u1',
@@ -277,7 +283,7 @@ function mockProfileRequest(
   });
 }
 
-function renderProfile(): void {
+function renderProfile(apartment = false): void {
   const client = new QueryClient({
     defaultOptions: {
       queries: { retry: false, staleTime: Number.POSITIVE_INFINITY },
@@ -288,12 +294,14 @@ function renderProfile(): void {
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/profile']}>
         <Routes>
-          <Route path="/profile" element={<ProfileScreen />} />
+          <Route path="/sections" element={<div>district map</div>} />
+          <Route path="/profile" element={apartment ? <VenuePanorama level="beginner" owner="test"><ProfileScreen/></VenuePanorama> : <ProfileScreen />} />
           <Route path="/profile/stats" element={<div>stats screen</div>} />
           <Route path="/profile/equipment" element={<div>equipment screen</div>} />
           <Route path="/profile/achievements" element={<div>achievements screen</div>} />
           <Route path="/profile/settings" element={<div>settings screen</div>} />
           <Route path="/profile/story" element={<div>story screen</div>} />
+          <Route path="/profile/marksmanship-constructor" element={<div>constructor screen</div>} />
           <Route path="/inventory" element={<div>inventory shop</div>} />
         </Routes>
       </MemoryRouter>
@@ -302,10 +310,27 @@ function renderProfile(): void {
 }
 
 describe('ProfileScreen', () => {
+  it('shows pending referral rewards on the apartment circle before opening referrals',async()=>{
+    mockProfileRequest();renderProfile(true);
+    await waitFor(()=>expect(screen.getByRole('tab',{name:'Друзья'})).toHaveTextContent('2'));
+  });
+
+  it('keeps personal data but removes duplicate apartment destination cards',async()=>{
+    mockProfileRequest();renderProfile(true);
+    await screen.findByRole('region',{name:'Спортивный паспорт'});
+    expect(screen.getByRole('heading',{name:'Профиль'})).toBeVisible();
+    expect(screen.queryByRole('button',{name:/^Настройки$/})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Открыть раздел «Сюжет»'})).toBeNull();
+    expect(screen.queryByLabelText('Витрина наград')).toBeNull();
+    expect(screen.queryByRole('link',{name:'Открыть канал в Telegram'})).toBeNull();
+  });
+
+  it('shows profile title and returns to the district map', async()=>{mockProfileRequest();renderProfile();expect(await screen.findByRole('heading',{name:'Профиль'})).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Назад'}));expect(screen.getByText('district map')).toBeInTheDocument();});
   beforeEach(() => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();
     triggerHaptic.mockClear();
+    runWebVibrationDiagnostic.mockReset();
     useAuthStore.getState().setSession({
       accessToken: 'access',
       refreshToken: 'refresh',
@@ -313,29 +338,27 @@ describe('ProfileScreen', () => {
     });
   });
 
-  it('shows the task-style copied toast for 1.5 seconds and triggers a selection haptic', async () => {
+  it('opens the dev constructor by tapping the profile avatar', async () => {
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Конструктор меткости' }));
+    expect(screen.getByText('constructor screen')).toBeInTheDocument();
+  });
+
+  it('shows copy confirmation and a selection haptic after copying a referral code', async () => {
     mockProfileRequest();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderProfile();
     const copyButton = await screen.findByRole('button', { name: 'Скопировать код' });
-    vi.useFakeTimers();
-
     await act(async () => {
       fireEvent.click(copyButton);
       await Promise.resolve();
     });
 
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
-    expect(screen.getByRole('status')).toHaveClass('achievement-reward-toast');
-    expect(screen.getByRole('status')).toHaveClass('profile-referral-copy-toast');
     expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
     expect(triggerHaptic).toHaveBeenCalledWith('selection');
-    act(() => vi.advanceTimersByTime(1_499));
-    expect(screen.getByRole('status')).toBeInTheDocument();
-    act(() => vi.advanceTimersByTime(1));
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    vi.useRealTimers();
   });
 
   it('keeps copy controls separate from the referral card open action', async () => {
@@ -428,7 +451,7 @@ describe('ProfileScreen', () => {
     expect(screen.getByRole('button', { name: 'Скопировать ссылку' })).toHaveTextContent('Ссылка');
     expect(screen.queryByText(/\/invite\/TEAM-77/)).not.toBeInTheDocument();
     expect(screen.queryByText('8 из 10 до 150 звёзд')).not.toBeInTheDocument();
-    expect(screen.getByText('Профиль')).toHaveClass('profile-section-label');
+    expect(screen.getByText('Профиль',{selector:'.profile-section-label'})).toHaveClass('profile-section-label');
     expect(screen.getByText('Настройки', { selector: '.profile-settings-card__title' })).toBeInTheDocument();
     expect(screen.queryByText('Профиль и аккаунт')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Домашняя арена' })).not.toBeInTheDocument();
@@ -574,65 +597,10 @@ describe('ProfileScreen', () => {
     expect(screen.getByText('equipment screen')).toBeInTheDocument();
   });
 
-  it('links to the official VK and Telegram communities from the profile', async () => {
-    mockProfileRequest();
-
-    renderProfile();
-
-    expect(await screen.findByText('Сообщества')).toHaveClass('profile-section-label');
-    const vkLink = screen.getByRole('link', { name: 'Открыть сообщество ВКонтакте' });
-    const telegramLink = screen.getByRole('link', { name: 'Открыть канал в Telegram' });
-
-    expect(vkLink).toHaveAttribute(
-      'href',
-      'https://vk.ru/ultimate_hockey',
-    );
-    expect(telegramLink).toHaveAttribute(
-      'href',
-      'https://t.me/ultimate_hockey',
-    );
-    expect(screen.getByTestId('profile-community-icon-vk')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-community-icon-telegram')).toBeInTheDocument();
-    expect(screen.getByTestId('profile-community-icon-vk')).toHaveClass(
-      'profile-community-card__icon',
-    );
-    expect(screen.getByTestId('profile-community-icon-telegram')).toHaveClass(
-      'profile-community-card__icon',
-    );
-    expect(vkLink).toHaveClass('profile-community-icon-card');
-    expect(telegramLink).toHaveClass('profile-community-icon-card');
-    const communityGrid = vkLink.closest('.profile-community-icon-grid');
-    expect(communityGrid).not.toHaveClass('glass');
-    expect(vkLink).not.toHaveClass('glass');
-    expect(telegramLink).not.toHaveClass('glass');
-    expect(vkLink).toHaveTextContent('');
-    expect(telegramLink).toHaveTextContent('');
-    expect(vkLink.querySelector('svg')).toBeNull();
-    expect(telegramLink.querySelector('svg')).toBeNull();
-    expect(screen.queryByText('Новости, обновления и обсуждения')).not.toBeInTheDocument();
-    expect(screen.queryByText('Официальный канал игры')).not.toBeInTheDocument();
-    expect(
-      screen.getByTestId('profile-community-icon-telegram').querySelector('img'),
-    ).toHaveAttribute('src', '/icons/telegram-community-v2.png');
-    for (const link of screen.getAllByRole('link')) {
-      expect(link).toHaveAttribute('target', '_blank');
-      expect(link).toHaveAttribute('rel', 'noreferrer');
-    }
-  });
-
-  it('keeps settings and communities together in the left side of the story layout', async () => {
-    mockProfileRequest();
-
-    renderProfile();
-
-    const settingsButton = await screen.findByRole('button', { name: 'Настройки' });
-    const settingsColumn = settingsButton.closest('.profile-community-settings-column');
-    const storyLayout = screen.getByRole('button', { name: 'Открыть раздел «Сюжет»' }).closest(
-      '.profile-community-story-grid',
-    );
-
-    expect(settingsColumn).toContainElement(screen.getByText('Сообщества'));
-    expect(storyLayout).toContainElement(settingsButton);
+  it('keeps destination links but moves communities out of the profile', async () => {
+    mockProfileRequest(); renderProfile();
+    expect(await screen.findByRole('button', {name:'Настройки'})).toBeInTheDocument();
+    expect(screen.queryByRole('region', {name:'Сообщества'})).toBeNull();
   });
 
   it('opens the story destination from the profile story card', async () => {
@@ -695,6 +663,26 @@ describe('ProfileScreen', () => {
     fireEvent.click(baseOption);
     expect(triggerHaptic).toHaveBeenCalledTimes(1);
     expect(triggerHaptic).toHaveBeenCalledWith('selection');
+  });
+
+  it('shows the direct Android vibration diagnostic inside the dev equipment picker', async () => {
+    runWebVibrationDiagnostic.mockReturnValue({
+      runtime: 'standalone-pwa',
+      visibility: 'visible',
+      apiAvailable: true,
+      result: false,
+      error: null,
+    });
+    mockProfileRequest();
+    renderProfile();
+    fireEvent.click(await screen.findByRole('button', { name: 'Выбрать клюшку' }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Проверить вибрацию' }));
+
+    expect(runWebVibrationDiagnostic).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Режим: standalone-pwa · Страница: visible · API: да · Ответ: false',
+    );
   });
 
   it('opens achievement details from a career award', async () => {

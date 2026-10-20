@@ -20,6 +20,10 @@ const NON_TRANSACTIONAL_STATEMENT_SEPARATOR = /^\s*--\s*hockey:migration-stateme
 // development database. Their SQL content is unchanged; preserve the ledger
 // history so the runner never executes the same schema/data changes twice.
 const RENAMED_MIGRATION_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  '156_amateur_duel_limit_reservations.sql': ['154_amateur_duel_limit_reservations.sql'],
+  '157_ordinary_duel_reward_snapshot.sql': ['155_ordinary_duel_reward_snapshot.sql'],
+  '158_inventory_star_purchase_requests.sql': ['156_inventory_star_purchase_requests.sql'],
+  '159_monthly_duel_format_rewards.sql': ['157_monthly_duel_format_rewards.sql'],
   '138_tiered_achievements.sql': ['135_tiered_achievements.sql'],
   '139_remove_recurring_duel_star_reward.sql': ['136_remove_recurring_duel_star_reward.sql'],
   '140_fix_tiered_achievement_copy.sql': ['137_fix_tiered_achievement_copy.sql'],
@@ -43,7 +47,9 @@ export async function applyMigrations(pool: Pool, dir: string): Promise<Migratio
 
   const applied: string[] = [];
   for (const file of files) {
-    if (alreadyApplied.has(file)) continue;
+    const equivalentApplied = Object.entries(RENAMED_MIGRATION_ALIASES).some(([current, legacy]) =>
+      [current, ...legacy].includes(file) && [current, ...legacy].some(name => alreadyApplied.has(name)));
+    if (alreadyApplied.has(file) || equivalentApplied) continue;
     const sql = await fs.readFile(path.join(dir, file), 'utf8');
     const runsInTransaction = !NON_TRANSACTIONAL_DIRECTIVE.test(sql);
     const statements = runsInTransaction
@@ -55,6 +61,7 @@ export async function applyMigrations(pool: Pool, dir: string): Promise<Migratio
       for (const statement of statements) await client.query(statement);
       await client.query('insert into _migrations (name) values ($1)', [file]);
       if (runsInTransaction) await client.query('commit');
+      alreadyApplied.add(file);
       applied.push(file);
     } catch (err) {
       if (runsInTransaction) await client.query('rollback');

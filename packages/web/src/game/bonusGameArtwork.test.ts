@@ -2,9 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { catalogBonusGameArtwork, versionBonusGameArtwork } from './bonusGameArtwork.js';
 
 describe('catalogBonusGameArtwork', () => {
-  it.each([['philadelphia', '20261012-philadelphia-v4'], ['chicago', '20261012-chicago-v2']])('refreshes the cache URL for the new %s preview', (city, version) => {
-    expect(versionBonusGameArtwork(`/bonus-games/nhl-cities/previews/${city}.webp`)).toBe(`/bonus-games/nhl-cities/previews/${city}.webp?v=${version}`);
-  });
   it('versions challenge stories without invalidating unrelated artwork', () => {
     for (const folder of ['level-previews', 'finales']) {
       expect(versionBonusGameArtwork(`/bonus-games/${folder}/beach.webp`)).toBe(
@@ -25,4 +22,15 @@ describe('catalogBonusGameArtwork', () => {
       'https://cdn.example.com/beach.webp',
     );
   });
+});
+
+it('versions all new Rhythm city images without invalidating existing city caches', async () => {
+  const {versionBonusGameGoalkeeper} = await import('./bonusGameArtwork.js');
+  for (const slug of ['raleigh','columbus','buffalo','miami','ottawa','tampa','st-louis','saint-paul','anaheim','san-jose']) {
+    for(const kind of ['arenas','previews'])
+      expect(versionBonusGameArtwork(`/bonus-games/nhl-cities/${kind}/${slug}.webp`)).toContain('?v=20261018-rhythm-cities-v1');
+    for(const pose of ['ready','save'])
+      expect(versionBonusGameGoalkeeper(`/bonus-games/nhl-cities/goalkeepers/${slug}-${pose}.webp`)).toContain('?v=20261018-rhythm-cities-v1');
+  }
+  expect(versionBonusGameGoalkeeper('/bonus-games/nhl-cities/goalkeepers/toronto-ready.webp')).toContain('20261001-nhl-city-tours-v1');
 });

@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Ticker } from 'pixi.js';
-import { getBonusChallengeShooterMotionTime,
-  simulateGoal, simulateGoalie, getSessionPhaseOffsets, type GoalieConfig } from '@hockey/game-core';
+import { getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode, getBonusChallengeShooterMotionTime,
+  createRhythmMovementSampler, simulateGoal, simulateGoalie, getSessionPhaseOffsets, type GoalieConfig } from '@hockey/game-core';
 import { createGameLoop } from './loop.js';
 
 const stationaryCustomGoalie: GoalieConfig = {
@@ -52,6 +52,58 @@ function makeTicker(): TestTicker {
 }
 
 describe('createGameLoop', () => {
+
+  it.each(['express','express_plus','classic','sniper','marathon','rhythm'])('preserves flight, frozen result and smooth resume in %s', (kind) => {
+    const now=vi.spyOn(performance,'now').mockReturnValue(1000);
+    const player=vi.fn(),goal=vi.fn(),goalie=vi.fn(),puck=vi.fn();
+    const sample=createRhythmMovementSampler({seed:'sequence',userId:'local',periodNumber:1,elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:600,baselineShooterSpeed:.75,currentShooterSpeed:.75,loadout:{stick:null,skates:null,nutrition:null}});
+    const loop=makeLoop({getGoalieId:()=> 'rookie',getSeed:()=> 'sequence',
+      getSpeedOverrides:()=>({goalFreq:.5,goalieFreq:.6,shooterFreq:.75,puckSpeed:.85}),
+      playerRenderer:{update:player} as never,goalRenderer:{update:goal} as never,goalieRenderer:{update:goalie} as never,
+      puckRenderer:{isHeld:()=>true,isFlying:()=>false,resetAtStart:vi.fn(),update:puck} as never,
+      ...(kind==='rhythm'?{getShooterMotionTime:(ms:number,pauses:readonly {tapTime:number;flightMs:number}[])=>sample.motionAt(ms,pauses)}:{})});
+    const ticker=makeTicker();loop.attach(ticker);const tick=ticker.add.mock.calls[0]![0] as ()=>void;
+    now.mockReturnValue(1100);tick();
+    const startPlayer=player.mock.calls.at(-1)![1],startGoal=goal.mock.calls.at(-1)![1];
+    loop.beginShooterPause(400);
+    now.mockReturnValue(1300);tick();
+    expect(player.mock.calls.at(-1)![1]).toBeCloseTo(startPlayer,8);
+    expect(goal.mock.calls.at(-1)![1]).not.toBe(startGoal);
+    now.mockReturnValue(1500);tick();loop.beginScenePause();
+    const scene=loop.getSceneT(),frozenPlayer=player.mock.calls.at(-1)![1],frozenGoal=goal.mock.calls.at(-1)![1],frozenGoalie=JSON.stringify(goalie.mock.calls.at(-1)![0]);
+    const puckFrames=puck.mock.calls.length;
+    for(const time of [1600,1800,2100,2499,2500]){now.mockReturnValue(time);tick();
+      expect(loop.getSceneT()).toBe(scene);
+      expect(player.mock.calls.at(-1)![1]).toBeCloseTo(frozenPlayer,8);
+      expect(goal.mock.calls.at(-1)![1]).toBe(frozenGoal);
+      expect(JSON.stringify(goalie.mock.calls.at(-1)![0])).toBe(frozenGoalie);
+    }
+    expect(puck.mock.calls.length).toBeGreaterThan(puckFrames);
+    loop.endScenePause();loop.endShooterPause();now.mockReturnValue(2516);tick();
+    expect(loop.getSceneT()).toBe(scene+16);
+    expect(Math.abs(player.mock.calls.at(-1)![1]-frozenPlayer)).toBeLessThan(20);
+    loop.detach();now.mockRestore();
+  });
+  it('excludes modal time when reattaching the same scene', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const goal = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie', goalRenderer: { update: goal } as never });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    now.mockReturnValue(1500); tick();
+    const before = loop.getShooterT();
+    const goalBefore = goal.mock.calls.at(-1)![1];
+    loop.detach(true);
+    now.mockReturnValue(31500);
+    loop.attach(ticker); tick();
+    expect(loop.getShooterT()).toBe(before);
+    expect(goal.mock.calls.at(-1)![1]).toBe(goalBefore);
+    now.mockReturnValue(31516); tick();
+    expect(loop.getShooterT()).toBe(before + 16);
+    loop.detach(); now.mockRestore();
+  });
+
   it('keeps zero-frequency tutorial goals centered across time', () => {
     const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
     const goal = vi.fn();
@@ -126,6 +178,60 @@ describe('createGameLoop', () => {
     expect(loop.getShooterT()).toBe(1200);
     expect(loop.getShooterMotionT()).toBe(918);
     now.mockRestore();
+  });
+  it('renders the same episode sample that game-core evaluates', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const episode = getAdvancedTrainingEpisode('near_goalie', 'left');
+    const sample = sampleAdvancedTrainingEpisode(episode, episode.intervalStartMs);
+    const goalUpdate = vi.fn();
+    const goalieUpdate = vi.fn();
+    const playerUpdate = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: episode.intervalStartMs,
+        shooterElapsedMs: episode.intervalStartMs }),
+      getEpisodeSample: (ms) => sampleAdvancedTrainingEpisode(episode, ms),
+      goalRenderer: { update: goalUpdate } as never,
+      goalieRenderer: { update: goalieUpdate } as never,
+      playerRenderer: { update: playerUpdate } as never });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    (ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void)(ticker);
+    expect(goalUpdate.mock.calls[0]?.[1] * 0.9).toBeCloseTo(sample.goalOffsetX);
+    expect(goalieUpdate.mock.calls[0]?.[0].position.x).toBeCloseTo(
+      286 + (sample.goalieX - 286) / 0.9);
+    expect(playerUpdate.mock.calls[0]?.[1]).toBeCloseTo(sample.playerX);
+    nowSpy.mockRestore();
+  });
+  it('slows time continuously and stops exactly at a demonstration frame', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const onClockTick = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: 100, shooterElapsedMs: 100 }),
+      getTimeScale: () => 0.5, getMaxSceneTimeMs: () => 200, onClockTick });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void;
+    nowSpy.mockReturnValue(1100);
+    tick(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(150, 150);
+    nowSpy.mockReturnValue(1300);
+    tick(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(200, 200);
+    nowSpy.mockReturnValue(1500);
+    tick(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(200, 200);
+    nowSpy.mockRestore();
+  });
+  it('reports the actual scene and shooter clocks used by the render tick', () => {
+    const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const onClockTick = vi.fn();
+    const loop = makeLoop({ getGoalieId: () => 'rookie',
+      getInitialClocks: () => ({ sceneElapsedMs: 2400, shooterElapsedMs: 2400 }), onClockTick });
+    const ticker = makeTicker();
+    loop.attach(ticker);
+    (ticker.add.mock.calls[0]?.[0] as (ticker: Ticker) => void)(ticker);
+    expect(onClockTick).toHaveBeenLastCalledWith(2400, 2400);
+    nowSpy.mockRestore();
   });
   it('renders the supplied goalie configuration when no goalie id is available', () => {
     const nowSpy = vi.spyOn(performance, 'now').mockReturnValue(1000);
@@ -536,6 +642,39 @@ describe('createGameLoop', () => {
     nowSpy.mockRestore();
   });
 
+  it('keeps the resting player still while goal and goalie move, then resumes smoothly', () => {
+    const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
+    const player = vi.fn(), goal = vi.fn(), goalie = vi.fn();
+    let resting = true;
+    const loop = makeLoop({
+      getGoalieId: () => 'rookie',
+      getSpeedOverrides: () => ({ goalFreq: 1, goalieFreq: 1, shooterFreq: 1, puckSpeed: 1 }),
+      playerRenderer: { update: player } as never,
+      goalRenderer: { update: goal } as never,
+      goalieRenderer: { update: goalie } as never,
+      getDuelCondition: () => resting ? ({ puckSpeedDelta: 0, shooterSpeedMultiplier: 1,
+        canShoot: false, status: 'exhausted_stop', fatigueLevel: 'resting', stumbleActive: false,
+        shooterXOffsetPx: 0, fatigueMs: 0, nutritionConsumed: 0, skatesConsumed: 0 }) : null,
+    });
+    const ticker = makeTicker(); loop.attach(ticker);
+    const tick = ticker.add.mock.calls[0]![0] as () => void;
+    now.mockReturnValue(2000); tick();
+    const stoppedX = player.mock.calls.at(-1)![1];
+    const firstGoalX = goal.mock.calls.at(-1)![1];
+    const firstGoalieX = goalie.mock.calls.at(-1)![0].position.x;
+    now.mockReturnValue(6500); tick();
+    expect(player.mock.calls.at(-1)![1]).toBe(stoppedX);
+    expect(player.mock.calls.at(-1)![3].resting).toBe(true);
+    expect(goal.mock.calls.at(-1)![1]).not.toBe(firstGoalX);
+    expect(goalie.mock.calls.at(-1)![0].position.x).not.toBe(firstGoalieX);
+    resting = false; now.mockReturnValue(7000); tick();
+    expect(player.mock.calls.at(-1)![3].resting).toBe(false);
+    expect(player.mock.calls.at(-1)![1]).toBeCloseTo(stoppedX);
+    now.mockReturnValue(7200); tick();
+    expect(player.mock.calls.at(-1)![1]).not.toBe(stoppedX);
+    loop.detach(); now.mockRestore();
+  });
+
   it('keeps reporting the latest paused duel condition while frozen', () => {
     const nowSpy = vi.spyOn(performance, 'now');
     nowSpy.mockReturnValue(1000);
@@ -783,16 +922,4 @@ it('rocks slipping goals visibly by about eight degrees and clears rotation at t
   expect(rotation.mock.calls.at(-1)![0]).toBeLessThan(.15);
   slipping=false;tick();expect(rotation).toHaveBeenLastCalledWith(0);
   loop.detach();now.mockRestore();
-});
-
-it('caps both scene and shooter clocks at an opt-in period deadline', () => {
-  const now = vi.spyOn(performance, 'now').mockReturnValue(1000);
-  const loop = makeLoop({ getGoalieId: () => 'rookie', getMaxSceneTimeMs: () => 100 });
-  const ticker = makeTicker();
-  loop.attach(ticker);
-  const tick = ticker.add.mock.calls[0]![0] as () => void;
-  tick(); now.mockReturnValue(1250); tick();
-  expect(loop.getSceneT()).toBe(100);
-  expect(loop.getShooterT()).toBe(100);
-  loop.detach(); now.mockRestore();
 });

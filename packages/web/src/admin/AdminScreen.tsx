@@ -11,6 +11,7 @@ import { createPortal } from 'react-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowDown,
+  ArrowLeft,
   ArrowUp,
   BarChart3,
   Bell,
@@ -39,11 +40,13 @@ import {
   Trophy,
   Upload,
   UserCheck,
+  UserRound,
   Users,
   Wallet,
   X,
 } from 'lucide-react';
 import { ApiError } from '../api/apiFetch.js';
+import { onboardingQueryKeys } from '../api/onboarding.js';
 import { rewardColor } from '../app/rewardColors.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ChannelPostEditorSheet } from '../chat/components/ChannelPostEditorSheet.js';
@@ -60,6 +63,9 @@ import { AchievementDetailsSheet, AchievementTile } from '../screens/profileSect
 import { WeeklyChallengesAdmin } from './WeeklyChallengesAdmin.js';
 import { BonusGamesAdmin } from './BonusGamesAdmin.js';
 import { OnboardingAdmin } from './OnboardingAdmin.js';
+import { UnsavedBarDialog } from './UnsavedBarDialog.js';
+import { BarAdmin, BAR_ADMIN_DIRTY_EVENT } from './BarAdmin.js';
+import { ArsenichAdmin } from './ArsenichAdmin.js';
 import { ReferralsAdmin } from './ReferralsAdmin.js';
 import { TournamentAdmin } from '../tournament/TournamentAdmin.js';
 import { tournamentTimezoneLabel } from '../tournament/timezoneLabel.js';
@@ -180,6 +186,8 @@ type AdminTab =
   | 'tournaments'
   | 'feedback'
   | 'onboarding'
+  | 'bar'
+  | 'arsenich'
   | 'settings';
 type AdminAchievementsTab = 'achievements' | 'challenges';
 type SortField = 'name' | 'goals' | 'accuracy';
@@ -205,6 +213,8 @@ const tabs: Array<{ id: AdminTab; label: string; icon: JSX.Element }> = [
   { id: 'tournaments', label: 'Турниры', icon: <Trophy size={15} /> },
   { id: 'feedback', label: 'Отзывы', icon: <MessageSquare size={15} /> },
   { id: 'onboarding', label: 'Онбординг', icon: <UserCheck size={15} /> },
+  { id: 'bar', label: 'Бар', icon: <Gamepad2 size={15} /> },
+  { id: 'arsenich', label: 'Арсенич', icon: <UserRound size={15} /> },
   { id: 'settings', label: 'Параметры', icon: <SlidersHorizontal size={15} /> },
 ];
 
@@ -481,7 +491,7 @@ function inventoryItemKindLabel(kind: AdminInventoryItemKind): string {
 }
 
 function msToMinutes(value: number): number {
-  return Math.round(value / 60_000);
+  return value / 60_000;
 }
 
 function minutesToMs(value: string): number {
@@ -624,7 +634,7 @@ function inventoryResourceUnitForKind(kind: AdminInventoryItemKind): AdminInvent
 }
 
 const adminInventoryHintStyle: CSSProperties = {
-  color: 'rgba(71, 85, 105, 0.78)',
+  color: 'var(--liquid-muted)',
   fontSize: 9.5,
   fontWeight: 500,
   lineHeight: 1.18,
@@ -710,7 +720,14 @@ function niceChartMax(value: number): number {
 export function AdminScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const barDirty = useRef(false);
+  useEffect(() => {
+    const listener = (event: Event) => { barDirty.current = Boolean((event as CustomEvent).detail); };
+    window.addEventListener(BAR_ADMIN_DIRTY_EVENT, listener);
+    return () => window.removeEventListener(BAR_ADMIN_DIRTY_EVENT, listener);
+  }, []);
   const [tab, setTab] = useState<AdminTab>('dashboard');
+  const [barExitTarget, setBarExitTarget] = useState<AdminTab | null>(null);
   const [adminMenuOpen, setAdminMenuOpen] = useState(false);
   const adminMenuButtonRef = useRef<HTMLButtonElement>(null);
   const adminDrawerRef = useRef<HTMLElement>(null);
@@ -739,6 +756,7 @@ export function AdminScreen(): JSX.Element {
 
   useEffect(() => {
     const resetToDashboard = (): void => {
+      if (barDirty.current) { setBarExitTarget('dashboard'); setAdminMenuOpen(false); return; }
       setTab('dashboard');
       setAdminMenuOpen(false);
     };
@@ -939,6 +957,9 @@ export function AdminScreen(): JSX.Element {
       }}
     >
       <header className="admin-screen__toolbar">
+        <a className="icon-btn" href="/sections?home=1" aria-label="На карту" title="На карту">
+          <ArrowLeft size={20} />
+        </a>
         <div className="section-label admin-screen__current-section">
           Админ · {tabs.find((item) => item.id === tab)?.label ?? 'Обзор'}
         </div>
@@ -1006,6 +1027,7 @@ export function AdminScreen(): JSX.Element {
                       }
                       aria-current={tab === item.id ? 'page' : undefined}
                       onClick={() => {
+                        if (tab === 'bar' && barDirty.current && item.id !== 'bar') { setBarExitTarget(item.id); setAdminMenuOpen(false); return; }
                         setTab(item.id);
                         setAdminMenuOpen(false);
                       }}
@@ -1202,6 +1224,9 @@ export function AdminScreen(): JSX.Element {
         />
       )}
       {tab === 'onboarding' && <OnboardingAdmin />}
+      {barExitTarget && <UnsavedBarDialog title="Выйти без сохранения расстановки?" discardLabel="Выйти" onCancel={()=>setBarExitTarget(null)} onDiscard={()=>{setTab(barExitTarget);setBarExitTarget(null);}}/>}
+      {tab === 'bar' && <BarAdmin />}
+      {tab === 'arsenich' && <ArsenichAdmin />}
       {tab === 'settings' && (
         <SettingsPanel
           loading={settings.isLoading}
@@ -1238,7 +1263,7 @@ function DashboardPanel({
         margin: '2px 0 -4px 0',
       }}
     >
-      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+      <div className="section-label" style={{ margin: '0 0 0 0' }}>
         Обзор
       </div>
       <GlassSelect
@@ -1381,7 +1406,7 @@ function DashboardMiniStat({
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 16,
         padding: '10px 9px',
-        background: 'rgba(255, 255, 255, 0.32)',
+        background: 'var(--liquid-inset-bg)',
         minWidth: 0,
       }}
     >
@@ -1707,7 +1732,7 @@ function MiniLineChart({
             <text
               x={chartLeft - 7}
               y={y + 4}
-              fill="rgba(15, 23, 42, 0.52)"
+              fill="var(--liquid-muted)"
               fontSize="9"
               fontWeight="700"
               textAnchor="end"
@@ -1774,7 +1799,7 @@ function MiniLineChart({
             width={tooltipWidth}
             height={tooltipHeight}
             rx="9"
-            fill="rgba(15, 23, 42, 0.92)"
+            fill="var(--liquid-muted)"
           />
           <text x={tooltipX + 8} y={tooltipY + 13} fill="#fff" fontSize="9" fontWeight="800">
             {shortDateText(activeSeriesPoint.date)}
@@ -1785,7 +1810,7 @@ function MiniLineChart({
         </g>
       ) : null}
       {first && (
-        <text x={chartLeft} y={height - 5} fill="rgba(15, 23, 42, 0.58)" fontSize="10">
+        <text x={chartLeft} y={height - 5} fill="var(--liquid-muted)" fontSize="10">
           {shortDateText(first)}
         </text>
       )}
@@ -1793,7 +1818,7 @@ function MiniLineChart({
         <text
           x={width / 2}
           y={height - 5}
-          fill="rgba(15, 23, 42, 0.58)"
+          fill="var(--liquid-muted)"
           fontSize="10"
           textAnchor="middle"
         >
@@ -1804,7 +1829,7 @@ function MiniLineChart({
         <text
           x={chartRight}
           y={height - 5}
-          fill="rgba(15, 23, 42, 0.58)"
+          fill="var(--liquid-muted)"
           fontSize="10"
           textAnchor="end"
         >
@@ -1866,7 +1891,7 @@ function UsersPanel({
 }): JSX.Element {
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Игроки ({loading ? '-' : numberText(total)})
       </div>
       <label
@@ -1968,7 +1993,7 @@ function UsersPanel({
                 width: '100%',
                 height: 44,
                 borderRadius: 14,
-                background: 'rgba(255, 255, 255, 0.52)',
+                background: 'var(--liquid-inset-bg)',
                 gap: 7,
                 fontSize: 12,
                 fontWeight: 850,
@@ -2132,7 +2157,7 @@ function UserNotificationStats({
             width: 32,
             height: 32,
             borderRadius: 12,
-            background: subscribed && subscribed.count > 0 ? 'rgba(15, 23, 42, 0.92)' : '#eef4fb',
+            background: subscribed && subscribed.count > 0 ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
             color: subscribed && subscribed.count > 0 ? '#ffffff' : 'var(--muted)',
             display: 'flex',
             alignItems: 'center',
@@ -2172,7 +2197,7 @@ function UserNotificationStats({
                 border: '1px solid rgba(255, 255, 255, 0.72)',
                 borderRadius: 14,
                 padding: '8px 9px',
-                background: 'rgba(255, 255, 255, 0.32)',
+                background: 'var(--liquid-inset-bg)',
                 minWidth: 0,
               }}
             >
@@ -2219,7 +2244,7 @@ function UserAvatar({ user }: { user: AdminUser }): JSX.Element {
         width: 42,
         height: 42,
         borderRadius: 999,
-        background: 'rgba(15, 23, 42, 0.92)',
+        background: 'var(--liquid-inset-bg)',
         color: '#ffffff',
         fontSize: 16,
         fontWeight: 950,
@@ -2243,6 +2268,7 @@ function UserDetailsModal({
   onClose: () => void;
 }): JSX.Element {
   const queryClient = useQueryClient();
+  const currentUserId = useAuthStore((state) => state.user?.id);
   const [authoritativeUser, setAuthoritativeUser] = useState<AdminUser | null>(null);
   const detail = useQuery({
     queryKey: ['admin', 'user', userId],
@@ -2297,6 +2323,9 @@ function UserDetailsModal({
         current === undefined ? current : { ...current, user: response.user },
       );
       void queryClient.invalidateQueries({ queryKey: ['admin', 'users'] });
+      if (response.user.id === currentUserId) {
+        void queryClient.invalidateQueries({ queryKey: onboardingQueryKeys.required() });
+      }
       setEditMode(false);
       setConfirmAction(null);
     },
@@ -2347,7 +2376,7 @@ function UserDetailsModal({
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -2381,7 +2410,7 @@ function UserDetailsModal({
             right: 14,
             width: 34,
             height: 34,
-            background: 'rgba(255,255,255,0.62)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <X size={16} />
@@ -2835,7 +2864,7 @@ function IdentityAvatar({ identity }: { identity: AdminIdentity }): JSX.Element 
         width: 36,
         height: 36,
         borderRadius: 999,
-        background: identity.linked || identity.active ? 'rgba(15, 23, 42, 0.92)' : 'transparent',
+        background: identity.linked || identity.active ? 'var(--liquid-selected-bg)' : 'transparent',
         border: identity.linked || identity.active ? 'none' : '1px solid rgba(15, 23, 42, 0.24)',
         color: identity.linked || identity.active ? '#ffffff' : 'var(--muted)',
         fontSize: 14,
@@ -3114,7 +3143,7 @@ function NotificationsPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Уведомления ({numberText(notifications.length)})
       </div>
       <section
@@ -3132,7 +3161,7 @@ function NotificationsPanel({
             border: '1px solid rgba(255, 255, 255, 0.72)',
             borderRadius: 16,
             padding: 10,
-            background: 'rgba(255, 255, 255, 0.28)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>Активные</div>
@@ -3145,7 +3174,7 @@ function NotificationsPanel({
             border: '1px solid rgba(255, 255, 255, 0.72)',
             borderRadius: 16,
             padding: 10,
-            background: 'rgba(255, 255, 255, 0.28)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>Всего</div>
@@ -3207,7 +3236,7 @@ function PushMonitoringPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '8px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '8px 0 -4px 0' }}>
         Мониторинг доставок
       </div>
       <section
@@ -3267,7 +3296,7 @@ function PushMonitoringPanel({
                       border: '1px solid rgba(255, 255, 255, 0.72)',
                       borderRadius: 15,
                       padding: '9px 10px',
-                      background: 'rgba(255, 255, 255, 0.24)',
+                      background: 'var(--liquid-inset-bg)',
                       color: 'var(--muted)',
                       fontSize: 11,
                       fontWeight: 850,
@@ -3288,8 +3317,8 @@ function PushMonitoringPanel({
                         padding: '9px 10px',
                         background:
                           alert.severity === 'danger'
-                            ? 'rgba(254, 226, 226, 0.56)'
-                            : 'rgba(254, 243, 199, 0.56)',
+                            ? 'rgba(115, 38, 45, 0.28)'
+                            : 'rgba(104, 77, 26, 0.28)',
                       }}
                     >
                       <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
@@ -3298,7 +3327,7 @@ function PushMonitoringPanel({
                       <div
                         style={{
                           marginTop: 3,
-                          color: 'rgba(15, 23, 42, 0.72)',
+                          color: 'var(--liquid-muted)',
                           fontSize: 11,
                           fontWeight: 800,
                           lineHeight: 1.35,
@@ -3324,7 +3353,7 @@ function PushMonitoringPanel({
                       border: '1px solid rgba(255, 255, 255, 0.72)',
                       borderRadius: 15,
                       padding: '9px 10px',
-                      background: 'rgba(255, 255, 255, 0.26)',
+                      background: 'var(--liquid-inset-bg)',
                     }}
                   >
                     <div style={{ minWidth: 0 }}>
@@ -3416,7 +3445,7 @@ function PushMonitoringPanel({
                         <div
                           style={{
                             marginTop: 3,
-                            color: '#b91c1c',
+                            color: 'var(--red-deep)',
                             fontSize: 10,
                             fontWeight: 850,
                             overflowWrap: 'anywhere',
@@ -3485,7 +3514,7 @@ function NotificationTemplateCard({
           <div
             style={{
               marginTop: 5,
-              color: 'rgba(15, 23, 42, 0.78)',
+              color: 'var(--liquid-muted)',
               fontSize: 13,
               fontWeight: 750,
               lineHeight: 1.35,
@@ -3532,7 +3561,7 @@ function NotificationInfo({ label, value }: { label: string; value: string }): J
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 14,
         padding: '8px 9px',
-        background: 'rgba(255, 255, 255, 0.3)',
+        background: 'var(--liquid-inset-bg)',
         minWidth: 0,
       }}
     >
@@ -3700,7 +3729,7 @@ function AdminChatAvatarControl({
       style={{
         borderRadius: 16,
         padding: 10,
-        background: 'rgba(255,255,255,0.44)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.7)',
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1fr) auto',
@@ -4361,7 +4390,7 @@ function ChatProfileEditorModal({
         position: 'fixed',
         inset: 0,
         zIndex: 1000,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         display: 'flex',
@@ -4559,7 +4588,7 @@ function ChannelPanel({
           uploadAvatarMutation.mutate({ chatId, file });
         }}
       />
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Новостной канал
       </div>
       <section
@@ -4841,7 +4870,7 @@ function ChannelPanel({
             <ArrowDown size={14} style={{ transform: 'rotate(90deg)' }} />
             Назад
           </button>
-          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
             Посты ({numberText(data?.posts.length ?? 0)})
           </div>
           {loading && <AdminPlainState>Загрузка постов...</AdminPlainState>}
@@ -5034,7 +5063,7 @@ function AnticheatPanel({
           margin: '2px 0 -4px 0',
         }}
       >
-        <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+        <div className="section-label" style={{ margin: '0 0 0 0' }}>
           Античит
         </div>
         <GlassSelect
@@ -5062,7 +5091,7 @@ function AnticheatPanel({
         ))}
       </section>
       <section style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Логи ({loading ? '-' : numberText(data?.logs.length ?? 0)})
         </div>
         {loading && <AdminPlainState>Загрузка логов античита...</AdminPlainState>}
@@ -5104,7 +5133,7 @@ function MismatchLogCard({ log }: { log: AdminMismatchLog }): JSX.Element {
               width: 42,
               height: 42,
               borderRadius: 999,
-              background: 'rgba(15, 23, 42, 0.92)',
+              background: 'var(--liquid-inset-bg)',
               color: '#ffffff',
               display: 'flex',
               alignItems: 'center',
@@ -5174,7 +5203,7 @@ function MismatchLogCard({ log }: { log: AdminMismatchLog }): JSX.Element {
             margin: '8px 0 0',
             padding: 10,
             borderRadius: 14,
-            background: 'rgba(15, 23, 42, 0.88)',
+            background: 'var(--liquid-inset-bg)',
             color: '#ffffff',
             overflowX: 'auto',
             fontSize: 10,
@@ -5195,7 +5224,7 @@ function MismatchInfo({ label, value }: { label: string; value: string }): JSX.E
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 14,
         padding: '8px 9px',
-        background: 'rgba(255, 255, 255, 0.3)',
+        background: 'var(--liquid-inset-bg)',
         minWidth: 0,
       }}
     >
@@ -5274,7 +5303,7 @@ function PaymentsPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Платежи ({numberText(total)})
       </div>
       <section style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8 }}>
@@ -5453,7 +5482,7 @@ function CoinPackagesPanel({
       <div
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Пакеты монет ({numberText(packages.length)})
         </div>
         <button type="button" className="btn btn--cta" onClick={() => openEditor(null)}>
@@ -5721,7 +5750,7 @@ function FeedbackPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Обратная связь ({numberText(total)})
       </div>
       <section
@@ -5807,7 +5836,7 @@ function FeedbackMetric({
         border: '1px solid rgba(255, 255, 255, 0.72)',
         borderRadius: 15,
         padding: '8px 8px 9px',
-        background: 'rgba(255, 255, 255, 0.24)',
+        background: 'var(--liquid-inset-bg)',
       }}
     >
       <div style={{ color: 'var(--muted)', fontSize: 10, fontWeight: 900 }}>{label}</div>
@@ -5927,7 +5956,7 @@ function FeedbackCard({
       </div>
       <div
         style={{
-          color: 'rgba(15, 23, 42, 0.76)',
+          color: 'var(--liquid-muted)',
           fontSize: 13,
           fontWeight: 700,
           lineHeight: 1.45,
@@ -5970,7 +5999,7 @@ function InventoryPanel({
           gap: 10,
         }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Инвентарь ({numberText(items.length)})
         </div>
         <button
@@ -6110,7 +6139,7 @@ function InventoryThumb({ item }: { item: AdminInventoryItem }): JSX.Element {
         width: 56,
         height: 56,
         borderRadius: 14,
-        background: 'rgba(15, 23, 42, 0.9)',
+        background: 'var(--liquid-inset-bg)',
         color: '#ffffff',
         display: 'flex',
         alignItems: 'center',
@@ -6924,7 +6953,7 @@ function AchievementsAdminPanel({
       {sectionTab === 'challenges' && <WeeklyChallengesAdmin />}
       {sectionTab === 'achievements' && (
         <>
-          <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+          <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
             Задания
           </div>
           <section className="glass" style={{ borderRadius: 20, padding: 14 }}>
@@ -7091,7 +7120,7 @@ function AchievementAdminCard({
           alt=""
           width={58}
           height={58}
-          style={{ borderRadius: 8, objectFit: 'cover', background: 'rgba(255,255,255,0.5)' }}
+          style={{ borderRadius: 8, objectFit: 'cover', background: 'var(--liquid-inset-bg)' }}
         />
         <div style={{ minWidth: 0 }}>
           <div style={{ color: 'var(--ink)', fontSize: 15, fontWeight: 950 }}>
@@ -7507,7 +7536,7 @@ function DuelTemplatesPanel({
           gap: 10,
         }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           {duelView === 'templates'
             ? `Шаблоны дуэлей (${numberText(templates.length)})`
             : 'История дуэлей'}
@@ -8223,6 +8252,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="1"
+              step="any"
               value={periodMinutes}
               onChange={(event) => setPeriodMinutes(event.target.value)}
             />
@@ -8231,6 +8261,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="0"
+              step="any"
               value={breakMinutes}
               onChange={(event) => setBreakMinutes(event.target.value)}
             />
@@ -8239,6 +8270,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="1"
+              step="any"
               value={challengeMinutes}
               onChange={(event) => setChallengeMinutes(event.target.value)}
             />
@@ -8247,6 +8279,7 @@ function DuelTemplateEditor({
             <input
               type="number"
               min="1"
+              step="any"
               value={readyMinutes}
               onChange={(event) => setReadyMinutes(event.target.value)}
             />
@@ -8301,7 +8334,7 @@ function DuelTemplateEditor({
             padding: 12,
             display: 'grid',
             gap: 10,
-            background: 'rgba(255,255,255,0.34)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
@@ -8370,7 +8403,7 @@ function DuelTemplateEditor({
             padding: 12,
             display: 'grid',
             gap: 10,
-            background: 'rgba(255,255,255,0.34)',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 950 }}>
@@ -8385,7 +8418,7 @@ function DuelTemplateEditor({
                 padding: 10,
                 display: 'grid',
                 gap: 8,
-                background: 'rgba(255,255,255,0.42)',
+                background: 'var(--liquid-inset-bg)',
               }}
             >
               <div style={{ color: 'var(--ink)', fontSize: 12, fontWeight: 950 }}>
@@ -8489,12 +8522,12 @@ function SettingsPanel({
           <ChevronRight size={15} style={{ transform: 'rotate(180deg)' }} />
           Назад
         </button>
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           {activeSection.number}. {activeSection.title}
         </div>
         {activeSection.id === 'amateur' && (
           <p className="glass" style={{ padding: 14, margin: 0, borderRadius: 14 }}>
-            Месячный рейтинг: общий зачёт и форматы Экспресс, Микс, Классика, Снайпер и Марафон настраиваются отдельно.
+            Месячный рейтинг: общий зачёт и форматы Экспресс, Микс, Классика, Снайпер, Марафон и Ритм настраиваются отдельно.
             Выключенный зачёт остаётся в таблице, но наград и поздравления не даёт.
             Если все суммы места равны нулю, поздравления тоже не будет.
             Изменения действуют только для ещё не закрытого месяца; после закрытия настройки и выплаты фиксируются.
@@ -8526,7 +8559,7 @@ function SettingsPanel({
 
   return (
     <>
-      <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+      <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
         Параметры
       </div>
       <section
@@ -8566,7 +8599,7 @@ function SettingsPanel({
                     width: 30,
                     height: 30,
                     borderRadius: 999,
-                    background: 'rgba(15, 23, 42, 0.92)',
+                    background: 'var(--liquid-inset-bg)',
                     color: '#ffffff',
                     display: 'inline-flex',
                     alignItems: 'center',

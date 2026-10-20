@@ -264,6 +264,21 @@ function renderCatalog(): QueryClient {
 }
 
 describe('BonusGamesScreen', () => {
+  it('does not reserve an empty progress block when the catalog has no allowance data', async () => {
+    mockCatalog([card({ title: 'No allowance preview' })]);
+    const fetchWithAllowances = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      const response = await fetchWithAllowances(input, init);
+      if (!String(input).endsWith('/api/bonus-games')) return response;
+      const data = await response.json();
+      delete data.attempt_allowances;
+      return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    });
+    renderCatalog();
+    await screen.findByRole('heading', { name: 'No allowance preview' });
+    expect(screen.queryByRole('region', { name: /Прогресс игр/ })).not.toBeInTheDocument();
+  });
+
   beforeEach(() => {
     vi.restoreAllMocks();
     preloadArtwork.mockClear();
@@ -278,6 +293,11 @@ describe('BonusGamesScreen', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it('places all six skill circles in persistent panorama navigation', () => {
+    mockCatalog([]);renderCatalog();
+    expect(screen.getByRole('region',{name:'Навигация: Бонусные игры'})).toBeInTheDocument();
+    for (const name of ['Скорость','Точность','Меткость','Выносливость','Ритм','Испытания']) expect(screen.getByRole('tab',{name})).toBeInTheDocument();
+  });
   it('shows the marksmanship tab with a point target and timed unlimited attempt', async () => {
     mockCatalog([
       card({
@@ -825,12 +845,9 @@ describe('BonusGamesScreen', () => {
       'true',
     );
     expect(screen.getByRole('tablist', { name: 'Навык' })).toHaveClass(
-      'segmented-tabs',
-      'segmented-tabs--scrollable',
+      'section-scene__dock',
     );
-    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveClass(
-      'segmented-tabs__item--active',
-    );
+    expect(screen.getByRole('tab', { name: 'Скорость' })).toHaveAttribute('aria-selected','true');
     expect(await screen.findByText('Скоростной пляж')).toBeInTheDocument();
     expect(screen.queryByText('Точный пляж')).not.toBeInTheDocument();
 
@@ -982,13 +999,13 @@ describe('BonusGamesScreen', () => {
     expect(screen.queryByText('Разделы')).not.toBeInTheDocument();
   });
 
-  it('returns a legacy bonus catalog route to the amateur Sections stack', async () => {
+  it('returns from bonus games to the Sections tab', async () => {
     mockCatalog([]);
     renderCatalog();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Назад' }));
 
-    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=amateur&from=sections');
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/sections$/);
   });
 
   it('explains the bonus game rules in an accessible modal', async () => {
@@ -1787,7 +1804,8 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByText('0 из 2 попыток')).toBeInTheDocument();
     expect(screen.getByText('0/1 игр')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Попытки закончились' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Попытки закончились' }));
+    expect(within(await screen.findByRole('dialog')).getByRole('button',{name:'Попытки закончились'})).toBeDisabled();
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
     ).toHaveLength(0);
@@ -1820,9 +1838,11 @@ describe('BonusGamesScreen', () => {
     expect(within(nextGame!).getByText('Не пройдена')).toHaveClass(
       'bonus-game-card__status--available',
     );
-    expect(within(nextGame!).getByRole('button', { name: 'Попытки закончились' })).toHaveClass(
-      'bonus-game-card__hit-area--unavailable',
-    );
+    expect(within(nextGame!).getByRole('button', { name: 'Попытки закончились' })).not.toBeDisabled();
+    fireEvent.click(within(nextGame!).getByRole('button', {name:'Попытки закончились'}));
+    const preview = await screen.findByRole('dialog');
+    expect(within(preview).getByRole('button', {name:'Попытки закончились'})).toBeDisabled();
+
   });
 
   it('does not expose a rejected catalog request error', async () => {

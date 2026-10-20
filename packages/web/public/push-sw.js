@@ -10,7 +10,7 @@ self.addEventListener('push', (event) => {
   const options = {
     body: payload.body || 'Проверка уведомлений',
     icon: payload.icon || '/icons/icon-192.png',
-    badge: payload.badge || '/icons/icon-192.png',
+    badge: payload.badge || '/icons/notification-badge.png',
     silent: Boolean(payload.silent),
     tag: payload.tag || 'ultimate-hockey-test-push',
     data: {

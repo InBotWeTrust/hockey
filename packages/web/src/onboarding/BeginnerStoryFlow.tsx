@@ -1,3 +1,5 @@
+import { StoryProgress } from './StoryProgress.js';
+import { StoryReplayNavigation } from './StoryReplayNavigation.js';
 import { prepareStoryImages, storyImagesReady, storyImageUrl } from './storyImages.js';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, X } from 'lucide-react';
@@ -102,6 +104,9 @@ export function BeginnerStoryFlow({
   const [typingDone, setTypingDone] = useState(false);
   const [headlights, setHeadlights] = useState(false);
   const scenes = useMemo(() => beginnerStoryScenes(unlockGoalsRequired), [unlockGoalsRequired]);
+  const resultScene = useRef<'goal' | 'miss'>('goal');
+  const replayScenes: BeginnerStoryScene[] = ['court', 'car', 'stranger', 'mentor', 'shot', resultScene.current, 'name', 'threshold', 'arena', 'finale'];
+  const replayIndex = replayScenes.indexOf(scene);
   const isShot = scene === 'shot';
   const content = isShot ? null : scenes[scene];
   const activeContent = content ?? scenes.court;
@@ -198,6 +203,7 @@ export function BeginnerStoryFlow({
 
   function transitionTo(next: BeginnerStoryScene): void {
     if (loadingScene) return;
+    if (next === 'goal' || next === 'miss') resultScene.current = next;
     pendingScene.current = next;
     const token = ++navigation.current;
     const show = () => {
@@ -276,6 +282,8 @@ export function BeginnerStoryFlow({
       aria-label={mode === 'required' ? 'Обязательный онбординг' : 'Путь со двора'}
       data-testid="beginner-story"
     >
+      <StoryProgress index={replayIndex} count={replayScenes.length} />
+      {mode === 'replay' && <StoryReplayNavigation previousDisabled={replayIndex === 0 || loadingScene} nextDisabled={replayIndex === replayScenes.length - 1 || loadingScene} onPrevious={() => transitionTo(replayScenes[replayIndex - 1]!)} onNext={() => transitionTo(replayScenes[replayIndex + 1]!)} />}
       {mode === 'replay' ? (
         <button
           type="button"

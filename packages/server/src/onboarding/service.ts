@@ -1,6 +1,6 @@
 import { createHmac } from 'node:crypto';
 import {
-  GAME_CORE_VERSION,
+  GAME_CORE_VERSION, isShotCoreVersionCompatible,
   getGoalie,
   getSessionPhaseOffsets,
   resolveEmptyGoalShot,
@@ -192,7 +192,7 @@ export async function submitTutorialShot(
       409,
     );
   }
-  if (state.gameCoreVersion !== GAME_CORE_VERSION) {
+  if (!isShotCoreVersionCompatible(state.gameCoreVersion)) {
     throw new AppError(
       'onboarding_game_core_version_mismatch',
       'onboarding tutorial game core version is no longer available',
@@ -212,7 +212,7 @@ export async function submitTutorialShot(
     shooterTapTime: input.input.shooterTapTime,
     shooterFrequency: state.speeds.shooterFrequency,
     goalieFrequency: state.speeds.goalieFrequency,
-    goalFrequency: state.speeds.goalFrequency,
+    goalFrequency: 0,
   };
   const resolved = resolveEmptyGoalShot(
     shotInput,

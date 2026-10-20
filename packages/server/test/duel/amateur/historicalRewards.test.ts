@@ -47,22 +47,22 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
     await pool.query(
       await fs.readFile(path.join(migrations, '177_playoff_pair_day_schedule.sql'), 'utf8'),
     );
-    // Current scored-format readers require additive fields, without migrating
-    // or normalizing the deliberately pre-121 reward fixtures.
-    await pool.query(`
-      alter table amateur_duel_template
-        add column marathon_window_ms integer not null default 7000,
-        add column sniper_scoring_rules jsonb,
-        add column marathon_speed_stages jsonb;
-      alter table amateur_duel_match add column state_revision bigint not null default 0;
-      alter table amateur_duel_participant
-        add column period_paused_ms integer not null default 0,
-        add column period_paused_at timestamptz,
-        add column recovery_until timestamptz,
-        add column result_paused_ms integer not null default 0,
-        add column result_pause_starts_at timestamptz,
-        add column result_pause_ends_at timestamptz;
-    `);
+    // Current snapshot readers need additive fight clocks and tables, while
+    // the migration under test must retain all historical reward values.
+    for (const name of ['183_ordinary_duel_fight_clocks.sql', '184_ordinary_duel_fights.sql']) {
+      await pool.query(await fs.readFile(path.join(migrations, name), 'utf8'));
+    }
+    // Current readers select these additive format fields; leave historical
+    // rules, rewards and balances untouched for the migration-121 assertions.
+    await pool.query(`alter table amateur_duel_template
+      add column marathon_window_ms integer not null default 7000,
+      add column sniper_scoring_rules jsonb,
+      add column marathon_speed_stages jsonb`);
+    await pool.query(`alter table amateur_duel_participant
+      add column fight_aid_until timestamptz,
+      add column result_paused_ms integer not null default 0,
+      add column result_pause_starts_at timestamptz,
+      add column result_pause_ends_at timestamptz`);
     await pool.end();
     const { databaseUrl, redisUrl } = getTestUrls();
     app = await buildApp({

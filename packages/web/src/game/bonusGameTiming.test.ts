@@ -239,6 +239,19 @@ describe('deriveEnduranceClock', () => {
     });
   });
 
+  it('preserves the unspent goal time through a missed-shot modal and resumes at its end', () => {
+    const attempt = enduranceAttempt({
+      server_now: '2026-08-24T10:00:03.750Z',
+      goal_window_started_at: '2026-08-24T10:00:04.750Z',
+      goal_window_ends_at: '2026-08-24T10:00:08.000Z',
+    });
+    expect(deriveEnduranceClock(attempt, 1_000, 1_000).goalRemainingMs).toBe(3_250);
+    expect(deriveEnduranceClock(attempt, 1_000, 1_999).goalRemainingMs).toBe(3_250);
+    expect(deriveEnduranceClock(attempt, 1_000, 2_000).goalRemainingMs).toBe(3_250);
+    expect(deriveEnduranceClock(attempt, 1_000, 2_100).goalRemainingMs).toBe(3_150);
+    expect(deriveEnduranceClock(attempt, 1_000, 2_000).totalRemainingMs).toBe(175_250);
+  });
+
   it('clamps malformed deadlines independently', () => {
     expect(
       deriveEnduranceClock(

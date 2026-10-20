@@ -1,0 +1,180 @@
+import { useAuthStore } from '../../auth/authStore.js';
+import { useEffect, useRef, useState } from 'react';
+import {
+  activePlayer,
+  automaticAction,
+  turnDuration,
+  applyAction,
+  createGame,
+  timeoutAction,
+  type Action,
+  type Game,
+} from './rules.js';
+import { attemptCheat, catchCheat } from './cheating.js';
+import type { ComputerOpponentId } from './computerOpponents.js';
+import { botView, chooseBotAction } from './bot.js';
+import type { CompletedCardGame } from './cardHistory.js';
+export interface DurakController {
+  game: Game;
+  dispatch: (action: Action) => void;
+  surrender: () => void;
+  restart: (next?: Game) => void;
+  remainingSeconds: number | null;
+  thinking: boolean;
+  challengeCheat?: () => boolean;
+}
+export function useDurakGame(
+  initial?: Game,
+  opponentId: ComputerOpponentId = 'maria',
+  onComplete?: (match: CompletedCardGame) => void,
+): DurakController {
+  const owner = useAuthStore(state => state.user?.id);
+  const storageKey = !initial && owner && opponentId === 'maria' ? `bar-maria-game:${owner}` : null;
+  const completion = useRef(onComplete);
+  completion.current = onComplete;
+  const session = useRef({ id: crypto.randomUUID(), startedAt: new Date().toISOString(), surrendered: false, caughtCheats: 0, reported: initial?.result !== null && initial?.result !== undefined });
+  const [game, setGame] = useState(() => {
+    if (storageKey) {
+      try { const saved = JSON.parse(sessionStorage.getItem(storageKey) ?? 'null') as Game | null; if (saved && Array.isArray(saved.hands) && saved.hands.length === 2 && saved.revision >= 0) return saved; } catch { /* A damaged local snapshot starts a new party. */ }
+    }
+    return initial ?? createGame();
+  });
+  useEffect(() => { if (storageKey) sessionStorage.setItem(storageKey, JSON.stringify(game)); }, [game, storageKey]);
+  const [generation, setGeneration] = useState(0);
+  const [remainingSeconds, setRemaining] = useState<number | null>(null);
+  const pendingCheat = useRef<{ before: Game; staged: Game } | null>(null);
+  const cheats = useRef(0);
+  const skipCheat = useRef(false);
+  const stateRef = useRef(game);
+  stateRef.current = game;
+  useEffect(() => {
+    if (game.result === null || session.current.reported || !completion.current) return;
+    session.current.reported = true;
+    completion.current({ id: session.current.id, character: opponentId,
+      result: game.result === 'draw' ? 'draw' : game.result === 0 ? 'win' : 'loss',
+      startedAt: session.current.startedAt, endedAt: new Date().toISOString(),
+      surrendered: session.current.surrendered, caughtCheats: session.current.caughtCheats });
+  }, [game,opponentId]);
+  const schedule = useRef<{ game: Game; actor: number; deadline: number } | null>(null);
+  useEffect(() => {
+    if (game.result !== null) {
+      setRemaining(null);
+      return;
+    }
+    const actor = activePlayer(game);
+    const bot = actor === 1;
+    const previous = schedule.current;
+    const followup = bot && previous?.actor === 1;
+    const pace =
+      opponentId === 'grigory'
+        ? 0.7
+        : opponentId === 'arsenich'
+          ? 1.4
+          : opponentId === 'daria'
+            ? 0.9
+            : 1;
+    const automatic = automaticAction(game);
+    const delay = automatic
+      ? 3000
+      : bot
+        ? followup
+          ? (800 + Math.random() * 400) * pace
+          : 3000 + Math.random() * 2000
+        : turnDuration(game);
+    const deadline = previous?.game === game ? previous.deadline : Date.now() + delay;
+    schedule.current = { game, actor, deadline };
+    let fired = false;
+    setRemaining(bot ? null : Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+    const tick = () => {
+      if (fired || stateRef.current !== game) return;
+      if (!bot) setRemaining(Math.max(0, Math.ceil((deadline - Date.now()) / 1000)));
+      if (Date.now() >= deadline) {
+        fired = true;
+        if (!automatic && bot && opponentId === 'grigory') {
+          const blocked = skipCheat.current;
+          skipCheat.current = false;
+          const staged =
+            !blocked && cheats.current < 2 && Math.random() < 0.4 ? attemptCheat(game) : null;
+          if (staged) {
+            cheats.current++;
+            pendingCheat.current = { before: game, staged };
+            stateRef.current = staged;
+            setGame(staged);
+            return;
+          }
+        }
+        const action =
+          automatic ??
+          (bot ? chooseBotAction(botView(game, 1), opponentId) : timeoutAction(game, 0));
+        if (action)
+          setGame((current) => {
+            if (current !== game) return current;
+            const next = applyAction(current, actor, action);
+            if (next !== current) pendingCheat.current = null;
+            stateRef.current = next;
+            return next;
+          });
+      }
+    };
+    const timeout = window.setTimeout(tick, Math.max(0, deadline - Date.now()));
+    const interval = window.setInterval(tick, 100);
+    document.addEventListener('visibilitychange', tick);
+    return () => {
+      window.clearTimeout(timeout);
+      window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', tick);
+    };
+  }, [game, generation, opponentId]);
+  const dispatch = (action: Action) => {
+    const current = stateRef.current;
+    const next = applyAction(current, 0, action);
+    if (next !== current) pendingCheat.current = null;
+    stateRef.current = next;
+    setGame(next);
+  };
+  const challengeCheat = () => {
+    const pending = pendingCheat.current;
+    if (!pending || stateRef.current !== pending.staged) return false;
+    pendingCheat.current = null;
+    skipCheat.current = true;
+    session.current.caughtCheats++;
+    const next = catchCheat(pending.before, pending.staged);
+    stateRef.current = next;
+    setGame(next);
+    return true;
+  };
+  const surrender = () => {
+    const current = stateRef.current;
+    if (current.result !== null) return;
+    session.current.surrendered = true;
+    const next: Game = { ...current, phase: 'ended', result: 1, revision: current.revision + 1 };
+    stateRef.current = next;
+    setGame(next);
+  };
+  const restart = (next?: Game) => {
+    session.current = {
+      id: crypto.randomUUID(),
+      startedAt: new Date().toISOString(),
+      surrendered: false,
+      caughtCheats: 0,
+      reported: next?.result !== null && next?.result !== undefined,
+    };
+    schedule.current = null;
+    pendingCheat.current = null;
+    cheats.current = 0;
+    skipCheat.current = false;
+    const fresh = next ?? createGame();
+    stateRef.current = fresh;
+    setGame(fresh);
+    setGeneration((n) => n + 1);
+  };
+  return {
+    game,
+    challengeCheat,
+    dispatch,
+    restart,
+    surrender,
+    remainingSeconds,
+    thinking: game.result === null && activePlayer(game) === 1,
+  };
+}

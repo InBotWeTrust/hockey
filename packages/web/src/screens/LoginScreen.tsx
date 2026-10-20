@@ -199,7 +199,7 @@ export function LoginScreen(): JSX.Element {
               onClick={() => void openMobileAuth('telegram')}
               style={{
                 alignSelf: 'center',
-                background: '#229ed9',
+                background: 'var(--liquid-selected-bg)',
                 color: '#fff',
                 justifyContent: 'center',
               }}
@@ -215,7 +215,7 @@ export function LoginScreen(): JSX.Element {
               onClick={() => void openMobileAuth('vk')}
               style={{
                 alignSelf: 'center',
-                background: '#0077ff',
+                background: 'var(--liquid-selected-bg)',
                 color: '#fff',
                 justifyContent: 'center',
               }}
@@ -246,7 +246,7 @@ export function LoginScreen(): JSX.Element {
               style={{
                 alignSelf: 'center',
                 padding: '0 14px',
-                background: '#0077ff',
+                background: 'var(--liquid-selected-bg)',
                 color: '#ffffff',
                 justifyContent: 'center',
                 fontWeight: 700,
@@ -317,7 +317,7 @@ export function LoginScreen(): JSX.Element {
                 height: 58,
                 borderRadius: 24,
                 border: '1px solid rgba(255,255,255,0.82)',
-                background: 'rgba(246, 250, 255, 0.82)',
+                background: 'var(--liquid-inset-bg)',
                 color: 'var(--ink)',
                 padding: '0 20px',
                 fontSize: 22,

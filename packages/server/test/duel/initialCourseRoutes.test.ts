@@ -1,9 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../../src/releaseGates.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/releaseGates.js')>()),
-  INITIAL_TRAINING_RELEASED: true,
-}));
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
@@ -11,6 +6,7 @@ import type { Pool } from 'pg';
 import {
   getDailyPeriodSpeedPreset,
   getSessionPhaseOffsets,
+  resolvePerspectiveCourtEmptyGoalShot,
   simulateShooter,
 } from '@hockey/game-core';
 import { buildApp } from '../../src/app.js';
@@ -92,17 +88,27 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
       `insert into game_settings (key, value, label, description)
        values ('training.initial_course.config', $1::jsonb, 'Начальное обучение', 'Test config')
        on conflict (key) do update set value = excluded.value`,
-      [
-        JSON.stringify({
-          ...DEFAULT_INITIAL_TRAINING_CONFIG,
-          enabled: true,
-          targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'first-shot': 1 },
-        }),
-      ],
+      [JSON.stringify({
+        ...DEFAULT_INITIAL_TRAINING_CONFIG,
+        enabled: true,
+        targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'first-shot': 1 },
+      })],
     );
   });
 
   const headers = () => ({ authorization: `Bearer ${accessToken}` });
+
+  it('retains the original advanced catalog and excludes unfinished course endpoints', async () => {
+    const catalog = await app.inject({ method: 'GET', url: '/duel/training/course', headers: headers() });
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json().advanced_training).toMatchObject({ total_count: 8 });
+    expect(catalog.json().advanced_training.exercises.map((entry: { key: string }) => entry.key))
+      .toEqual(['board-side', 'open-net', 'crossing', 'goalie-leaving', 'narrow-gap',
+        'counter-direction', 'second-tempo', 'rhythm-reset']);
+    const missing = await app.inject({ method: 'GET',
+      url: '/duel/training/advanced/open-windows/catalog', headers: headers() });
+    expect(missing.statusCode).toBe(404);
+  });
 
   it('returns seven sequential cards and locks open training', async () => {
     const catalog = await app.inject({
@@ -137,7 +143,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     expect(openTraining.json().error.code).toBe('initial_training_required');
   });
 
-  it('publishes completion from the five durable exercise rows', async () => {
+  it('publishes completion from the seven durable exercise rows', async () => {
     expect(await isInitialTrainingCompleted(pool, userId)).toBe(false);
     for (const exerciseKey of INITIAL_TRAINING_EXERCISE_KEYS) {
       await pool.query(
@@ -167,7 +173,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     expect(response.json().error.code).toBe('initial_training_exercise_locked');
   });
 
-  it('unlocks game pace after both slower goalie exercises and uses first-period speed', async () => {
+  it('unlocks game pace after the preceding exercises and uses first-period speed', async () => {
     for (const exerciseKey of INITIAL_TRAINING_EXERCISE_KEYS.slice(0, 6)) {
       await pool.query(
         `insert into initial_training_completion
@@ -192,6 +198,181 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
         goal_frequency: getDailyPeriodSpeedPreset(1).goalFrequency,
       },
     });
+  });
+
+  it('does not advance the right-side stage for a verified goal from the center', async () => {
+    for (const exerciseKey of INITIAL_TRAINING_EXERCISE_KEYS.slice(0, 3)) {
+      await pool.query(
+        `insert into initial_training_completion
+           (user_id, exercise_key, reward_stars, reward_experience)
+         values ($1, $2, 1, 1)`,
+        [userId, exerciseKey],
+      );
+    }
+    const started = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/moving-goal/start',
+      headers: headers(),
+    });
+    expect(started.statusCode).toBe(200);
+    const session = started.json();
+    expect(session).toMatchObject({
+      target_goals: 9,
+      required_zone: 'right',
+      scene: {
+        has_goalie: false,
+        speeds: { goal_frequency: getDailyPeriodSpeedPreset(1).goalFrequency },
+      },
+    });
+    const offsets = getSessionPhaseOffsets(session.seed);
+    const speeds = session.scene.speeds;
+    let centerGoalTime: number | null = null;
+    for (let time = 0; time < 20_000; time += 5) {
+      const shooterX = simulateShooter(time + offsets.shooter, speeds.shooter_frequency).x;
+      if (shooterX < 209 || shooterX >= 363) continue;
+      const result = resolvePerspectiveCourtEmptyGoalShot(
+        {
+          tapTime: time,
+          shooterTapTime: time,
+          puckSpeedPerMs: speeds.puck_speed_per_ms,
+          shooterFrequency: speeds.shooter_frequency,
+          goalieFrequency: speeds.goalie_frequency,
+          goalFrequency: speeds.goal_frequency,
+        },
+        session.scene.goalie_config,
+        offsets,
+      );
+      if (result.type === 'goal') {
+        centerGoalTime = time;
+        break;
+      }
+    }
+    expect(centerGoalTime).not.toBeNull();
+    const shot = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/moving-goal/shot',
+      headers: headers(),
+      payload: {
+        run_id: session.run_id,
+        shot_index: 1,
+        input: { tapTime: centerGoalTime, shooterTapTime: centerGoalTime },
+        claimed_result: 'goal',
+      },
+    });
+    expect(shot.statusCode).toBe(200);
+    expect(shot.json()).toMatchObject({
+      server_result: 'goal',
+      credited_goal: false,
+      feedback_code: 'goal_wrong_zone',
+      completed: false,
+      state: { shots_taken: 1, goals: 0, required_zone: 'right' },
+    });
+
+    let rightGoalTime: number | null = null;
+    for (let time = 0; time < 20_000; time += 5) {
+      const shooterX = simulateShooter(time + offsets.shooter, speeds.shooter_frequency).x;
+      if (shooterX < 363) continue;
+      const result = resolvePerspectiveCourtEmptyGoalShot(
+        {
+          tapTime: time,
+          shooterTapTime: time,
+          puckSpeedPerMs: speeds.puck_speed_per_ms,
+          shooterFrequency: speeds.shooter_frequency,
+          goalieFrequency: speeds.goalie_frequency,
+          goalFrequency: speeds.goal_frequency,
+        },
+        session.scene.goalie_config,
+        offsets,
+      );
+      if (result.type === 'goal') {
+        rightGoalTime = time;
+        break;
+      }
+    }
+    expect(rightGoalTime).not.toBeNull();
+    const rightShot = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/moving-goal/shot',
+      headers: headers(),
+      payload: {
+        run_id: session.run_id,
+        shot_index: 2,
+        input: { tapTime: rightGoalTime, shooterTapTime: rightGoalTime },
+        claimed_result: 'goal',
+      },
+    });
+    expect(rightShot.statusCode).toBe(200);
+    expect(rightShot.json()).toMatchObject({
+      credited_goal: true,
+      state: { shots_taken: 2, goals: 1, required_zone: 'right' },
+    });
+  });
+
+  it('prioritizes the required zone over miss direction only when the shot starts elsewhere', async () => {
+    for (const exerciseKey of INITIAL_TRAINING_EXERCISE_KEYS.slice(0, 3)) {
+      await pool.query(
+        `insert into initial_training_completion
+           (user_id, exercise_key, reward_stars, reward_experience)
+         values ($1, $2, 1, 1)`,
+        [userId, exerciseKey],
+      );
+    }
+    const started = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/moving-goal/start',
+      headers: headers(),
+    });
+    expect(started.statusCode).toBe(200);
+    const session = started.json();
+    const offsets = getSessionPhaseOffsets(session.seed);
+    const speeds = session.scene.speeds;
+    const findMiss = (fromRight: boolean): number | null => {
+      for (let time = 0; time < 20_000; time += 5) {
+        const shooterX = simulateShooter(time + offsets.shooter, speeds.shooter_frequency).x;
+        if (fromRight ? shooterX < 363 : shooterX < 209 || shooterX >= 363) continue;
+        const result = resolvePerspectiveCourtEmptyGoalShot(
+          {
+            tapTime: time,
+            shooterTapTime: time,
+            puckSpeedPerMs: speeds.puck_speed_per_ms,
+            shooterFrequency: speeds.shooter_frequency,
+            goalieFrequency: speeds.goalie_frequency,
+            goalFrequency: speeds.goal_frequency,
+          },
+          session.scene.goalie_config,
+          offsets,
+        );
+        if (result.type === 'miss') return time;
+      }
+      return null;
+    };
+    const centerMissTime = findMiss(false);
+    const rightMissTime = findMiss(true);
+    expect(centerMissTime).not.toBeNull();
+    expect(rightMissTime).not.toBeNull();
+    for (const [shotIndex, tapTime, wrongZone] of [
+      [1, centerMissTime, true],
+      [2, rightMissTime, false],
+    ] as const) {
+      const shot = await app.inject({
+        method: 'POST',
+        url: '/duel/training/course/moving-goal/shot',
+        headers: headers(),
+        payload: {
+          run_id: session.run_id,
+          shot_index: shotIndex,
+          input: { tapTime, shooterTapTime: tapTime },
+          claimed_result: 'miss',
+        },
+      });
+      expect(shot.statusCode).toBe(200);
+      expect(shot.json()).toMatchObject({
+        server_result: 'miss',
+        credited_goal: false,
+        feedback_code: wrongZone ? 'shot_wrong_zone' : expect.stringMatching(/^miss_(left|right)$/),
+        state: { shots_taken: shotIndex, goals: 0, required_zone: 'right' },
+      });
+    }
   });
 
   it('grants the first-clear reward once and unlocks the next exercise', async () => {

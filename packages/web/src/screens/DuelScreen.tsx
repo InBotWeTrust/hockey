@@ -442,7 +442,7 @@ export function DuelScreen(): JSX.Element {
             borderRadius: 36,
             overflow: 'hidden',
             border: '3px solid #1e3a5f',
-            background: '#EAF1F8',
+            background: 'var(--liquid-inset-bg)',
           }}
         >
           <PerspectiveRink />
@@ -462,7 +462,7 @@ export function DuelScreen(): JSX.Element {
                 height: 30,
                 borderRadius: 999,
                 border: '1px solid rgba(255, 255, 255, 0.6)',
-                background: 'rgba(255, 255, 255, 0.45)',
+                background: 'var(--liquid-inset-bg)',
                 backdropFilter: 'blur(10px)',
                 WebkitBackdropFilter: 'blur(10px)',
                 color: 'var(--ink)',
@@ -581,7 +581,7 @@ function PerspectiveRink(): JSX.Element {
         height: '100%',
         pointerEvents: 'none',
         overflow: 'hidden',
-        background: '#dceaf5',
+        background: 'var(--liquid-inset-bg)',
       }}
     >
       <img

@@ -1,4 +1,7 @@
+import { useVenueNavigation } from '../components/VenuePanorama.js';
+import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import {DistrictPageHeader} from '../components/DistrictPageHeader.js';
 import { SocialProfile } from '../social/SocialProfile.js';
 import { ProfileBio } from '../social/ProfileBio.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -26,7 +29,11 @@ import {
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { DuelEquipmentSelectionRadio } from '../components/duel/DuelLockerTab.js';
 import { CommunityLinks } from '../components/CommunityLinks.js';
-import { triggerHaptic } from '../feedback/haptics.js';
+import {
+  runWebVibrationDiagnostic,
+  triggerHaptic,
+  type WebVibrationDiagnostic,
+} from '../feedback/haptics.js';
 import { copyText } from '../platform/clipboard.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from './inventoryArtwork.js';
@@ -54,6 +61,7 @@ import type { ExperienceRatingPlayer } from '../api/experienceRating.js';
 import { StatRatingModal } from '../profile/StatRatingModal.js';
 import type { StatRatingMetric, StatRatingPlayer } from '../api/statRating.js';
 import { preloadArtwork, profileArtworkUrls } from '../app/artworkCache.js';
+import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from '../app/devOnlyFeatures.js';
 import { fetchReferralSummary, type ReferralSummary } from '../api/referrals.js';
 
 export type TrophySectionKey = keyof NonNullable<ProfileData['trophyDetails']>;
@@ -238,6 +246,7 @@ function EquipmentPanel({
               {recoveryItem?.title ?? 'Нет в запасе'}
             </span>
           </button>
+          <VisitorCardSlot {...(inventory?.visitorCard ? { card: inventory.visitorCard } : {})} />
         </span>
       </div>
     </section>
@@ -261,6 +270,11 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
   }, [copyToastSequence]);
   return (
     <section className="profile-referral-section" aria-label="Приглашай друзей">
+      {copyToastSequence > 0 ? (
+        <div role="status" aria-live="polite" className="achievement-reward-toast profile-referral-copy-toast">
+          <strong className="achievement-reward-toast__title">Скопировано</strong>
+        </div>
+      ) : null}
       <button type="button" className="section-label profile-section-label" aria-label="Открыть приглашённых друзей" onClick={onOpen}>
         Приглашай друзей
         {(summary?.totalInvited ?? 0) > 0 ? <span className="profile-referral-section__count"> · {summary?.totalInvited}</span> : null}
@@ -293,14 +307,10 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
           <ChevronRight size={20} aria-hidden="true" />
         </span>
       </div>
-      {copyToastSequence > 0 ? (
-        <div className="achievement-reward-toast profile-referral-copy-toast" role="status" aria-live="polite">
-          <strong className="achievement-reward-toast__title">Скопировано</strong>
-        </div>
-      ) : null}
     </section>
   );
 }
+
 
 function formatRecoveryDuration(minutes: number): string {
   if (minutes === 60) return '1 час';
@@ -435,6 +445,7 @@ function EquipmentPickerModal({
   onClose: () => void;
   onSelect: (item: InventoryItem | null) => void;
 }): JSX.Element {
+  const [hapticDiagnostic, setHapticDiagnostic] = useState<WebVibrationDiagnostic | null>(null);
   const label = kind === 'stickItemId' ? 'клюшку' : kind === 'skatesItemId' ? 'коньки' : 'питание';
   const group = kind === 'stickItemId' ? 'stick' : kind === 'skatesItemId' ? 'skates' : 'nutrition';
   const defaultTitle =
@@ -501,6 +512,25 @@ function EquipmentPickerModal({
           );
         })}
       </div>
+      {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
+        <div className="profile-haptic-diagnostic">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => setHapticDiagnostic(runWebVibrationDiagnostic())}
+          >
+            Проверить вибрацию
+          </button>
+          {hapticDiagnostic ? (
+            <p role="status">
+              Режим: {hapticDiagnostic.runtime} · Страница: {hapticDiagnostic.visibility} · API:{' '}
+              {hapticDiagnostic.apiAvailable ? 'да' : 'нет'} · Ответ:{' '}
+              {hapticDiagnostic.result === null ? 'нет' : String(hapticDiagnostic.result)}
+              {hapticDiagnostic.error ? ` · Ошибка: ${hapticDiagnostic.error}` : ''}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
     </AccessibleModal>
   );
 }
@@ -584,7 +614,7 @@ export function TrophyHistoryModal({
   );
 }
 
-function TrophyShowcase({
+export function TrophyShowcase({
   profile,
   onOpen,
 }: {
@@ -646,6 +676,10 @@ function SportingMetrics({
   profile: ProfileData;
   onOpenRating: (metric: StatRatingMetric) => void;
 }): JSX.Element {
+  const apartment = useVenueNavigation() !== null;
+  const streakDays = profile.stats.playStreakDays;
+  const dayWord = new Intl.PluralRules('ru-RU').select(streakDays);
+  const streakLabel = `${formatProfileNumber(streakDays)} ${dayWord === 'one' ? 'день' : dayWord === 'few' ? 'дня' : 'дней'}`;
   const registeredDate = new Date(profile.registeredAt);
   const registeredLabel = Number.isNaN(registeredDate.getTime())
     ? '—'
@@ -666,7 +700,7 @@ function SportingMetrics({
       metric: 'accuracy',
     },
     {
-      value: (
+      value: apartment ? <span className="apartment-streak-value">{streakLabel}<small>Рекорд: {formatProfileNumber(profile.stats.bestPlayStreakDays ?? streakDays)}</small></span> : (
         <>
           {formatProfileNumber(profile.stats.playStreakDays)}{' '}
           <span className="profile-streak-record">
@@ -675,7 +709,7 @@ function SportingMetrics({
           </span>
         </>
       ),
-      label: 'Дней подряд',
+      label: apartment ? 'Дней в игре подряд' : 'Дней подряд',
       metric: 'streak',
     },
     {
@@ -692,12 +726,12 @@ function SportingMetrics({
     },
   ];
   return (
-    <div className="profile-sporting-metrics" aria-label="Главные показатели">
+    <div className={`profile-sporting-metrics ${apartment ? 'glass' : ''}`} aria-label="Главные показатели">
       {items.map(({ value, label, metric }) => {
         const content = (
           <>
             <strong>
-              <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>
+              {apartment ? value : <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>}
             </strong>
             <span>{label}</span>
           </>
@@ -725,6 +759,7 @@ function SportingMetrics({
 function ProfileLoadError({ onRetry }: { onRetry: () => void }): JSX.Element {
   return (
     <main className="screen profile-screen profile-screen--status">
+      <DistrictPageHeader title="Профиль"/>
       <section className="profile-error-state" role="alert">
         <h1>Не удалось загрузить профиль</h1>
         <p>Баланс и прогресс не показаны, чтобы не выдать ошибку за реальные данные.</p>
@@ -737,6 +772,7 @@ function ProfileLoadError({ onRetry }: { onRetry: () => void }): JSX.Element {
 }
 
 export function ProfileScreen(): JSX.Element {
+  const apartment = useVenueNavigation() !== null;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [pickerKind, setPickerKind] = useState<keyof InventoryState['equipped'] | null>(null);
@@ -815,11 +851,12 @@ export function ProfileScreen(): JSX.Element {
     const inventory = inventoryQuery.data;
     if (profile === undefined || inventory === undefined) return;
     preloadArtwork(profileArtworkUrls(profile, inventory));
-  }, [inventoryQuery.data, profileQuery.data]);
+  }, [apartment, inventoryQuery.data, profileQuery.data]);
 
   if (profileQuery.isLoading) {
     return (
       <main className="screen profile-screen profile-screen--status" aria-busy="true">
+        <DistrictPageHeader title="Профиль"/>
         <p>Загружаем профиль…</p>
       </main>
     );
@@ -846,19 +883,36 @@ export function ProfileScreen(): JSX.Element {
     <main
       className={`screen profile-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(profile.competitionLevel)}`}
     >
-      <section className="profile-passport glass" aria-label="Спортивный паспорт">
+      <DistrictPageHeader title="Профиль"/>
+      <section className={`profile-passport ${apartment ? 'profile-passport--separate' : 'glass'}`} aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
+          <div className={apartment ? 'glass apartment-profile-identity' : undefined}>
           <SocialProfile userId={profile.id} renderIdentity={counts=><div className="public-profile-social-identity"><div className="profile-identity__main">
-            <div className="profile-identity__avatar">
-              {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
-                <img src={profile.avatarUrl} alt="" />
-              ) : (
-                <span>{initial}</span>
-              )}
-            </div>
-            <div className="profile-identity__copy">
+            {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
+              <button
+                type="button"
+                className="profile-identity__avatar"
+                aria-label="Конструктор меткости"
+                onClick={() => navigate('/profile/marksmanship-constructor')}
+              >
+                {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
+                  <img src={profile.avatarUrl} alt="" />
+                ) : (
+                  <span>{initial}</span>
+                )}
+              </button>
+            ) : (
+              <div className="profile-identity__avatar">
+                {profile.avatarUrl !== undefined && profile.avatarUrl !== null ? (
+                  <img src={profile.avatarUrl} alt="" />
+                ) : (
+                  <span>{initial}</span>
+                )}
+              </div>
+            )}
+            {!apartment && <div className="profile-identity__copy">
               {counts}
-            </div>
+            </div>}
             <button
               type="button"
               className="profile-early-player-badge"
@@ -876,7 +930,8 @@ export function ProfileScreen(): JSX.Element {
           <span className="profile-identity__name public-profile-name-status"><span className="public-profile-name-text" title={profile.displayName}>{profile.displayName}</span><span className="profile-identity__level public-profile-status">{getLevelLabel(profile.competitionLevel)}</span></span>
           <ProfileBio userId={profile.id}/>
           </div>}/>
-          <div className="profile-balances" aria-label="Баланс игрока">
+          </div>
+          <div className={`profile-balances ${apartment ? 'glass' : ''}`} aria-label="Баланс игрока">
             <ProfileBalance
               label="Монеты"
               value={currencyBalance}
@@ -908,7 +963,7 @@ export function ProfileScreen(): JSX.Element {
           </div>
         </div>
         <SportingMetrics profile={profile} onOpenRating={setStatRatingMetric} />
-        <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />
+        {!apartment && <TrophyShowcase profile={profile} onOpen={setSelectedTrophySection} />}
       </section>
 
       {experienceRatingOpen ? (
@@ -961,6 +1016,7 @@ export function ProfileScreen(): JSX.Element {
       ) : null}
 
       <section className="profile-sports-data" aria-label="Спортивные данные игрока">
+        {!apartment && <>
         <EquipmentPanel
           inventory={inventoryQuery.data}
           onOpen={() => navigate('/profile/equipment')}
@@ -974,7 +1030,8 @@ export function ProfileScreen(): JSX.Element {
           onChoose={setSelectedAchievement}
           hidden
         />
-        <CommunityLinks />
+        </>}
+        {!apartment && <CommunityLinks />}
       </section>
       {pickerKind !== null && inventoryQuery.data !== undefined ? (
         <EquipmentPickerModal

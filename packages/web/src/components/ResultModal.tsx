@@ -96,20 +96,22 @@ export function ResultModal({
           animation: `result-card ${durationMs}ms cubic-bezier(0.22, 0.68, 0, 1.4) forwards`,
         }}
       >
-        <div
-          style={{
-            fontFamily: 'var(--font-sans)',
-            fontWeight: 900,
-            fontSize: contained
-              ? 'clamp(18px, 13cqw, 30px)'
-              : (theme.titleSize ?? 'clamp(38px, 6vmin, 58px)'),
-            lineHeight: 1,
-            letterSpacing: theme.letterSpacing ?? '0.06em',
-            color: '#111827',
-            textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
-          }}
-        >
-          {title ?? theme.title}
+        <div>
+          <div
+            style={{
+              fontFamily: 'var(--font-sans)',
+              fontWeight: 900,
+              fontSize: contained
+                ? 'clamp(18px, 13cqw, 30px)'
+                : (theme.titleSize ?? 'clamp(38px, 6vmin, 58px)'),
+              lineHeight: 1,
+              letterSpacing: theme.letterSpacing ?? '0.06em',
+              color: '#111827',
+              textShadow: '0 1px 0 rgba(255, 255, 255, 0.42)',
+            }}
+          >
+            {title ?? theme.title}
+          </div>
         </div>
         {details && details.length > 0 ? (
           <div className="result-modal__details">

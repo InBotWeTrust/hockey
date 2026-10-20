@@ -11,6 +11,9 @@ describe('server anchored scored clock', () => {
     expect(scoredActiveDeltaMs(5000,6500,start,end)).toBe(500);
     expect(scoredActiveDeltaMs(5700,6500,start,end)).toBe(300);
   });
+  it('freezes interpolation during a fight or medical aid', () => {
+    expect(scoredActiveDeltaMs(5000, 9000, null, null, true)).toBe(0);
+  });
   it('preserves ordinary continuous clocks', () => {
     expect(scoredActiveDeltaMs(5000,6500)).toBe(1500);
   });

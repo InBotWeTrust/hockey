@@ -1,19 +1,23 @@
+import { fileURLToPath } from 'node:url';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { Pool } from 'pg';
-import { createTestPool, hasIntegrationEnv } from '../helpers/testDb.js';
+import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
+import { applyMigrations } from '../../src/db/migrations.js';
 import { getBarBoard, getBarLive } from '../../src/bar/service.js';
 
 // Run only against isolated migrated storage. All synthetic writes roll back.
 describe.skipIf(!hasIntegrationEnv)('bar on the production schema', () => {
   let pool: Pool;
-  beforeAll(() => {
+  beforeAll(async () => {
     pool = createTestPool();
+    await resetDatabase(pool);
+    await applyMigrations(pool, fileURLToPath(new URL('../../db/migrations/', import.meta.url)));
   });
   afterAll(async () => {
     await pool?.end();
   });
-  it('projects both players and confirmed shots without fight migrations', async () => {
+  it('projects both players and confirmed shots on the current migrated schema', async () => {
     const client = await pool.connect();
     const now = new Date();
     const users = [randomUUID(), randomUUID()];

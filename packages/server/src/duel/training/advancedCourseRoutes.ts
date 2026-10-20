@@ -5,7 +5,7 @@ import { z } from 'zod';
 import {
   ADVANCED_TRAINING_SCENARIOS,
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
-  GAME_CORE_VERSION,
+  GAME_CORE_VERSION, isShotCoreVersionCompatible,
   STICK_NEUTRAL,
   classifyMarksmanshipShot,
   createRng,
@@ -22,10 +22,6 @@ import {
 } from '@hockey/game-core';
 import { observeCareerExperience } from '../../achievements/service.js';
 import { AppError } from '../../plugins/errors.js';
-import {
-  ADVANCED_TRAINING_RELEASED,
-  REQUIRE_BEGINNER_TRAINING_FOR_ADVANCED,
-} from '../../releaseGates.js';
 import { assertFullAmateurAccess } from '../../profile/amateurAccess.js';
 import { assertGameplayActionAllowed, lockUserGameplay } from '../gameplayLocks.js';
 import { getConfiguredDailyPeriodSpeedPreset, getGameSettings } from '../gameSettings.js';
@@ -125,14 +121,8 @@ async function assertAccess(
   userId: string,
   exerciseKey: AdvancedTrainingExerciseKey,
 ): Promise<void> {
-  if (!ADVANCED_TRAINING_RELEASED) {
-    throw new AppError('advanced_training_disabled', 'advanced training is disabled', 409);
-  }
   await assertFullAmateurAccess(client, userId);
-  if (
-    REQUIRE_BEGINNER_TRAINING_FOR_ADVANCED &&
-    !(await isInitialTrainingCompleted(client, userId))
-  ) {
+  if (!(await isInitialTrainingCompleted(client, userId))) {
     throw new AppError('initial_training_required', 'initial training course is required', 403);
   }
   const config = await loadAdvancedTrainingConfig(client);
@@ -228,7 +218,7 @@ export const advancedTrainingCourseRoutes: FastifyPluginAsync<{
         : null;
       const canReuseFreshRun =
         active?.exercise_key === exerciseKey &&
-        active.game_core_version === GAME_CORE_VERSION &&
+        isShotCoreVersionCompatible(active.game_core_version) &&
         active.stage === 'practice' &&
         active.situation_index === 0 &&
         active.successes === 0 &&
@@ -315,7 +305,7 @@ export const advancedTrainingCourseRoutes: FastifyPluginAsync<{
       );
       if (replay.rows[0]?.evaluation.response) return replay.rows[0].evaluation.response;
       if (run.state !== 'active') throw new AppError('advanced_training_run_closed', 'run is closed', 409);
-      if (run.game_core_version !== GAME_CORE_VERSION) throw new AppError('advanced_training_game_core_version_mismatch', 'run version mismatch', 409);
+      if (!isShotCoreVersionCompatible(run.game_core_version)) throw new AppError('advanced_training_game_core_version_mismatch', 'run version mismatch', 409);
       const count = await client.query<{ count: number }>(
         `select count(*)::int as count from advanced_training_shot where run_id = $1`,
         [run.id],

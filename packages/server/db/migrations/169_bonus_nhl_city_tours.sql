@@ -64,14 +64,13 @@ update bonus_game game
        updated_at = now()
   from bonus_nhl_city_seed seed
  where game.skill_code = 'speed'
-   and game.status = 'active'
    and game.sort_order = seed.sort_order
    and seed.skill_code = 'speed';
 
 create temporary table bonus_accuracy_rules_snapshot on commit drop as
 select sort_order, total_periods, break_duration_ms, qualification_rules, period_rules
   from bonus_game
- where skill_code = 'accuracy' and status = 'active' and sort_order between 1 and 13;
+ where skill_code = 'accuracy' and sort_order between 1 and 13;
 
 update bonus_game game
    set slug = 'accuracy-' || seed.city_slug,
@@ -106,7 +105,6 @@ update bonus_game game
   join bonus_accuracy_rules_snapshot source
     on source.sort_order = seed.source_accuracy_order
  where game.skill_code = 'accuracy'
-   and game.status = 'active'
    and game.sort_order = seed.sort_order
    and seed.skill_code = 'accuracy';
 

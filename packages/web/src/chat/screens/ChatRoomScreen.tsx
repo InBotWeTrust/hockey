@@ -270,13 +270,13 @@ function DuelInviteMetric({ label, value }: { label: string; value: string }): J
         minWidth: 0,
         padding: '7px 8px',
         borderRadius: 12,
-        background: 'rgba(255,255,255,0.5)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(148, 163, 184, 0.28)',
       }}
     >
       <div
         style={{
-          color: 'rgba(71, 85, 105, 0.72)',
+          color: 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 900,
           letterSpacing: 0,
@@ -344,7 +344,7 @@ function DuelInviteActions({
           style={{
             padding: '8px 10px',
             borderRadius: 999,
-            background: 'rgba(15, 23, 42, 0.08)',
+            background: 'var(--liquid-inset-bg)',
             color: 'var(--ink)',
             fontSize: 12,
             fontWeight: 900,
@@ -365,8 +365,7 @@ function DuelInviteActions({
               padding: '8px 10px',
               fontSize: 12,
               color: '#fff',
-              background:
-                'linear-gradient(180deg, rgba(34, 197, 94, 0.84), rgba(21, 128, 61, 0.88))',
+              background: 'linear-gradient(180deg, rgba(34, 197, 94, 0.84), rgba(21, 128, 61, 0.88))',
               border: '1px solid rgba(22, 101, 52, 0.38)',
               boxShadow: '0 8px 16px rgba(22, 101, 52, 0.16)',
             }}
@@ -383,8 +382,7 @@ function DuelInviteActions({
               padding: '8px 10px',
               fontSize: 12,
               color: '#fff',
-              background:
-                'linear-gradient(180deg, rgba(244, 63, 94, 0.82), rgba(190, 18, 60, 0.88))',
+              background: 'linear-gradient(180deg, rgba(244, 63, 94, 0.82), rgba(190, 18, 60, 0.88))',
               border: '1px solid rgba(159, 18, 57, 0.38)',
               boxShadow: '0 8px 16px rgba(159, 18, 57, 0.15)',
             }}
@@ -450,27 +448,6 @@ export function ChatRoomScreen(): JSX.Element {
   const emptyUnreadRefetchChatIdRef = useRef<string | null>(null);
   const [voiceState, setVoiceState] = useState<VoiceRecordingState>('idle');
   latestGotoRef.current = goto;
-  // Android (especially MIUI WebView) and some iOS Safari builds don't shrink
-  // `100dvh` when the soft keyboard opens, so the composer ends up beneath
-  // the keyboard. visualViewport.height is the source of truth — track it
-  // and pin the screen height to it so the layout adapts in real time.
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null);
-  useEffect(() => {
-    const vv = typeof window !== 'undefined' ? window.visualViewport : null;
-    const desktopPointer =
-      typeof window !== 'undefined' &&
-      window.matchMedia?.('(hover: hover) and (pointer: fine)').matches;
-    if (desktopPointer) return;
-    if (!vv) return;
-    const update = (): void => setViewportHeight(vv.height);
-    update();
-    vv.addEventListener('resize', update);
-    vv.addEventListener('scroll', update);
-    return () => {
-      vv.removeEventListener('resize', update);
-      vv.removeEventListener('scroll', update);
-    };
-  }, []);
   // Auto-follow only when the user is already near the bottom; pagination
   // (loading older messages) keeps the viewport stable instead of jumping.
   const isNearBottomRef = useRef(true);
@@ -1359,20 +1336,12 @@ export function ChatRoomScreen(): JSX.Element {
     <main
       className="screen"
       style={{
-        // `position: fixed` was previously used to pin the chat to the viewport,
-        // but `app-shell` has `transform: translateZ(0)` which turns any
-        // descendant `fixed` element into a containing-block-relative `absolute`
-        // — so the document scroll dragged the header up and pushed the input
-        // below the screen. Sizing exactly to the visual viewport + clipping
-        // overflow keeps the header pinned and the messages list owning its
-        // own scroll. visualViewport.height adapts to the soft keyboard
-        // (where 100dvh on Android often does not), so the composer stays
-        // visible while typing. Fallback to 100dvh on browsers without
-        // visualViewport.
+        // Share the shell viewport, including keyboard resize and Safari panning.
         position: 'relative',
         display: 'flex',
         flexDirection: 'column',
-        height: viewportHeight !== null ? `${viewportHeight}px` : '100dvh',
+        height: 'var(--app-viewport-height, 100dvh)',
+        minHeight: 0,
         overflow: 'hidden',
       }}
     >
@@ -1642,7 +1611,7 @@ export function ChatRoomScreen(): JSX.Element {
                     gap: 8,
                     padding: '8px 10px',
                     borderRadius: 16,
-                    background: 'rgba(255,255,255,0.72)',
+                    background: 'var(--liquid-inset-bg)',
                     border: '1px solid rgba(255,255,255,0.74)',
                   }}
                 >
@@ -1713,7 +1682,7 @@ export function ChatRoomScreen(): JSX.Element {
                       minWidth: 32,
                       minHeight: 32,
                       borderRadius: 10,
-                      background: 'rgba(255,255,255,0.88)',
+                      background: 'var(--liquid-inset-bg)',
                       color: 'var(--ink)',
                     }}
                   >
@@ -1793,7 +1762,7 @@ export function ChatRoomScreen(): JSX.Element {
               margin: '0 auto',
               objectFit: 'contain',
               borderRadius: 18,
-              background: 'rgba(15, 23, 42, 0.08)',
+              background: 'var(--liquid-inset-bg)',
             }}
           />
         </AccessibleModal>

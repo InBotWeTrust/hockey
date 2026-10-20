@@ -151,9 +151,9 @@ export function GameScoreboard({
               row.variant === 'secondary' ? ' game-scoreboard__row--secondary' : ''
             }${row.metrics.length >= 4 ? ' game-scoreboard__row--dense' : ''}`}
             data-testid={`scoreboard-row-${row.id}`}
-            style={{ gridTemplateColumns: row.metrics.some(metric => (metric.columnWeight ?? (metric.id === 'score' && metric.value.length > 7 ? 2 : 1)) !== 1)
-              ? row.metrics.map(metric => `minmax(0, ${metric.columnWeight ?? (metric.id === 'score' && metric.value.length > 7 ? 2 : 1)}fr)`).join(' ')
-              : `repeat(${row.metrics.length}, minmax(0, 1fr))` }}
+            style={{ gridTemplateColumns: row.metrics.map((metric) =>
+              `minmax(0, ${metric.columnWeight ?? (metric.id === 'score' && metric.value.length > 7 ? 2 : 1)}fr)`,
+            ).join(' ') }}
           >
             {row.metrics.map((metric) => {
               const tone = metric.tone ?? 'default';

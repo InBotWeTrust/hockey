@@ -27,12 +27,7 @@ export interface PixiStageProps {
   resolutionLimit?: number | undefined;
 }
 
-export function PixiStage({
-  onReady,
-  onResize,
-  preloadAssets = [],
-  resolutionLimit = 3,
-}: PixiStageProps): JSX.Element {
+export function PixiStage({ onReady, onResize, preloadAssets = [], resolutionLimit = 3 }: PixiStageProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const callbacksRef = useRef({ onReady, onResize });
   callbacksRef.current = { onReady, onResize };

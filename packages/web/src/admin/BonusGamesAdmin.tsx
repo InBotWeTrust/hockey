@@ -445,7 +445,7 @@ export function BonusGamesAdmin(): JSX.Element {
       <div
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}
       >
-        <div className="section-label" style={{ margin: '2px 0 -4px -14px' }}>
+        <div className="section-label" style={{ margin: '2px 0 -4px 0' }}>
           Бонусные игры ({games.length})
         </div>
         <button
@@ -574,7 +574,7 @@ function BonusGameCard({
         ) : (
           <div
             aria-label="Медиа площадки не загружено"
-            style={{ width: 84, height: 70, borderRadius: 14, background: 'rgba(255,255,255,0.4)' }}
+            style={{ width: 84, height: 70, borderRadius: 14, background: 'var(--liquid-inset-bg)' }}
           />
         )}
         <div style={{ minWidth: 0 }}>

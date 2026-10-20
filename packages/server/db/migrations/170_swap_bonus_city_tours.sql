@@ -76,18 +76,18 @@ update bonus_game game
        goalkeeper_ready_url = '/bonus-games/' || seed.asset_family || '/goalkeepers/' || seed.city_slug || '-ready.webp',
        goalkeeper_save_url = '/bonus-games/' || seed.asset_family || '/goalkeepers/' || seed.city_slug || '-save.webp',
        reward_coins = case game.skill_code
-         when 'marksmanship' then (select source.reward_coins from bonus_game source where source.skill_code = 'speed' and source.status = 'active' and source.sort_order = game.sort_order)
-         when 'endurance' then (select source.reward_coins from bonus_game source where source.skill_code = 'accuracy' and source.status = 'active' and source.sort_order = game.sort_order)
+         when 'marksmanship' then (select source.reward_coins from bonus_game source where source.skill_code = 'speed' and source.sort_order = game.sort_order)
+         when 'endurance' then (select source.reward_coins from bonus_game source where source.skill_code = 'accuracy' and source.sort_order = game.sort_order)
          else game.reward_coins
        end,
        reward_stars = case game.skill_code
-         when 'marksmanship' then (select source.reward_stars from bonus_game source where source.skill_code = 'speed' and source.status = 'active' and source.sort_order = game.sort_order)
-         when 'endurance' then (select source.reward_stars from bonus_game source where source.skill_code = 'accuracy' and source.status = 'active' and source.sort_order = game.sort_order)
+         when 'marksmanship' then (select source.reward_stars from bonus_game source where source.skill_code = 'speed' and source.sort_order = game.sort_order)
+         when 'endurance' then (select source.reward_stars from bonus_game source where source.skill_code = 'accuracy' and source.sort_order = game.sort_order)
          else game.reward_stars
        end,
        reward_experience = case game.skill_code
-         when 'marksmanship' then (select source.reward_experience from bonus_game source where source.skill_code = 'speed' and source.status = 'active' and source.sort_order = game.sort_order)
-         when 'endurance' then (select source.reward_experience from bonus_game source where source.skill_code = 'accuracy' and source.status = 'active' and source.sort_order = game.sort_order)
+         when 'marksmanship' then (select source.reward_experience from bonus_game source where source.skill_code = 'speed' and source.sort_order = game.sort_order)
+         when 'endurance' then (select source.reward_experience from bonus_game source where source.skill_code = 'accuracy' and source.sort_order = game.sort_order)
          else game.reward_experience
        end,
        preview_revision = preview_revision + 1,

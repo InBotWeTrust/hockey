@@ -16,12 +16,18 @@ function expectTextOrder(text: string, parts: string[]): void {
 }
 
 describe('ScoreBoard', () => {
+  it('keeps long feedback from widening the rink scoreboard stack', () => {
+    const stackRule = designSystemCss.match(/\.game-scoreboard-stack \{(?<body>[\s\S]*?)\n\}/)?.groups?.body;
+    expect(stackRule).toContain('grid-template-columns: minmax(0, 1fr);');
+    expect(stackRule).toContain('width: 100%;');
+    expect(stackRule).toContain('min-width: 0;');
+  });
+
   it('uses a translucent liquid-glass surface instead of an opaque fill', () => {
-    const scoreboardRule = designSystemCss.match(/\.game-scoreboard \{(?<body>[\s\S]*?)\n\}/)?.groups
+    const scoreboardRule = designSystemCss.match(/\.modal-card\.bar-conversation \{(?<body>[\s\S]*?)\n\}/)?.groups
       ?.body;
 
-    expect(scoreboardRule).toContain('rgba(7, 24, 45, 0.12)');
-    expect(scoreboardRule).toContain('rgba(15, 51, 78, 0.06)');
+    expect(scoreboardRule).toContain('background: var(--liquid-chrome-bg)');
     expect(scoreboardRule).toContain('backdrop-filter: blur(18px) saturate(145%);');
     expect(scoreboardRule).not.toMatch(/rgba\([^)]*,\s*(?:0\.8[5-9]|0\.9\d?|1)\)/);
     expect(designSystemCss).toContain('@media (prefers-reduced-transparency: reduce)');
@@ -64,7 +70,7 @@ describe('ScoreBoard', () => {
       'game-scoreboard--stable-surface',
     );
     expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
     });
     expect(screen.getByTestId('scoreboard-row-opponent')).toHaveClass(
       'game-scoreboard__row--secondary',

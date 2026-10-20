@@ -1,3 +1,7 @@
+import { SectionPanorama } from '../components/SectionPanorama.js';
+import { ShopProductCard } from '../shop/ShopProductCard.js';
+import { ShopPurchaseModal } from '../shop/ShopPurchaseModal.js';
+import { VisitorShop } from '../bar/VisitorShop.js';
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -5,7 +9,6 @@ import { triggerHaptic } from '../feedback/haptics.js';
 import type { UseMutationResult } from '@tanstack/react-query';
 import {
   ArrowLeft,
-  ChevronRight,
   CircleDollarSign,
   Gift,
   Landmark,
@@ -39,10 +42,8 @@ import {
   type ShopCategory,
 } from './inventoryShopCategories.js';
 import { formatInventoryResourceAmount } from './inventoryResourceLabels.js';
-import { FittedOneLineText } from './profileSections.js';
 import { updateCachedProfileBalances } from '../app/queryClient.js';
 import { preloadArtwork, shopArtworkUrls } from '../app/artworkCache.js';
-import { formatRussianCount } from '../lib/russianPlural.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { ApiError } from '../api/apiFetch.js';
 import {
@@ -65,11 +66,6 @@ type InventoryPurchaseInput = { item: InventoryItem; currency: 'coins' | 'stars'
 const inventoryStarPrice = (item: InventoryItem) => item.starPrice ?? Math.ceil(item.currencyPrice / 25);
 type HistoryFilter = InventoryTransactionFilter;
 
-const SHOP_TABS: Array<{ id: ShopTab; label: string }> = [
-  { id: 'goods', label: 'Товары' },
-  { id: 'bank', label: 'Банк' },
-  { id: 'history', label: 'История' },
-];
 const HISTORY_FILTERS: Array<{ id: HistoryFilter; label: string }> = [
   { id: 'all', label: 'Все' },
   { id: 'credit', label: 'Начисления' },
@@ -163,7 +159,7 @@ export function InventoryScreen(): JSX.Element {
   const returnedPaymentId = isPaymentReturn
     ? window.sessionStorage.getItem(PAYMENT_ID_STORAGE_KEY)
     : null;
-  const [activeTab, setActiveTab] = useState<ShopTab>(isPaymentReturn ? 'bank' : 'goods');
+  const activeTab: ShopTab = isPaymentReturn || searchParams.get('tab') === 'bank' ? 'bank' : searchParams.get('tab') === 'history' ? 'history' : 'goods';
   const [detailsItem, setDetailsItem] = useState<InventoryItem | null>(null);
   const [purchaseItem, setPurchaseItem] = useState<InventoryItem | null>(null);
   const purchaseRequestIds = useRef<{ coins: string | null; stars: string | null }>({ coins: null, stars: null });
@@ -273,17 +269,11 @@ export function InventoryScreen(): JSX.Element {
 
   const inventory = inventoryQuery.data;
   const tokens = inventory?.balances.tokens ?? 0;
-  const selectedCategory = parseShopCategory(searchParams.get('category'));
+  const selectedCategory = activeTab === 'goods' ? parseShopCategory(searchParams.get('category')) ?? 'stick' : null;
   useEffect(() => {
     if (inventory === undefined || activeTab !== 'goods') return;
     preloadArtwork(shopArtworkUrls(inventory, selectedCategory));
   }, [activeTab, inventory, selectedCategory]);
-  useEffect(() => {
-    if (selectedCategory !== null) setActiveTab('goods');
-  }, [selectedCategory]);
-  useEffect(() => {
-    if (isPaymentReturn) setActiveTab('bank');
-  }, [isPaymentReturn]);
   useEffect(() => {
     if (
       paymentStatusQuery.data === undefined ||
@@ -302,6 +292,7 @@ export function InventoryScreen(): JSX.Element {
     window.sessionStorage.removeItem(PAYMENT_ID_STORAGE_KEY);
     const next = new URLSearchParams(searchParams);
     next.delete('payment');
+    next.set('tab', 'bank');
     setSearchParams(next, { replace: true });
     void queryClient.invalidateQueries({ queryKey: ['profile'] });
     void queryClient.invalidateQueries({ queryKey: ['inventory', 'me'] });
@@ -315,26 +306,17 @@ export function InventoryScreen(): JSX.Element {
     setSearchParams,
   ]);
   const hasSelectedCategoryItems =
-    selectedCategory !== null && (inventory?.items[selectedCategory].length ?? 0) > 0;
-  const hasShopItems = SHOP_CATEGORY_ORDER.some(
-    (category) => (inventory?.items[category].length ?? 0) > 0,
-  );
-
-  const openCategory = (category: ShopCategory): void => {
-    const next = new URLSearchParams(searchParams);
-    next.set('category', category);
-    setSearchParams(next);
-  };
-
-  const closeCategory = (): void => {
-    const next = new URLSearchParams(searchParams);
-    next.delete('category');
-    setSearchParams(next, { replace: true });
-  };
-
-  const changeTab = (tab: ShopTab): void => {
-    setActiveTab(tab);
-    if (tab === 'bank' || tab === 'history') closeCategory();
+    selectedCategory !== null && (selectedCategory === 'bar' || (inventory?.items[selectedCategory].length ?? 0) > 0);
+  const bankScene = activeTab !== 'goods';
+  const scenePages = bankScene ? [
+    {id:'bank',label:'Банк',image:'/section-panoramas/bank-0.webp'},
+    {id:'history',label:'История',image:'/section-panoramas/bank-1.webp'},
+  ] : SHOP_CATEGORY_ORDER.map((category,index)=>({id:category,label:SHOP_CATEGORY_META[category].title,image:`/section-panoramas/shop-${index}.webp`}));
+  const selectScenePage = (id:string):void => {
+    const next=new URLSearchParams(searchParams);
+    if(bankScene){next.set('tab',id);next.delete('category');}
+    else {next.delete('tab');next.set('category',id);}
+    setSearchParams(next,{replace:true});
   };
 
   const openPurchase = (item: InventoryItem): void => {
@@ -365,134 +347,12 @@ export function InventoryScreen(): JSX.Element {
   };
 
   return (
-    <main
-      className={`screen inventory-shop-screen${selectedCategory === null ? '' : ` inventory-shop-screen--category ${SHOP_CATEGORY_META[selectedCategory].className}`}`}
-      style={{
-        ...(selectedCategory === null
-          ? {}
-          : {
-              '--shop-category-artwork': `url("${SHOP_CATEGORY_META[selectedCategory].backgroundUrl}")`,
-            }),
-        padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
-        overflowY: 'auto',
-        WebkitOverflowScrolling: 'touch',
-      }}
-    >
-      <section
-        style={{
-          width: '100%',
-          maxWidth: 760,
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 14,
-        }}
-      >
-        <div
-          className={`inventory-shop-header${selectedCategory === null ? '' : ' inventory-shop-header--category'}`}
-        >
-          <button
-            type="button"
-            className="icon-btn icon-btn--page-back"
-            onClick={() => {
-              if (selectedCategory !== null) {
-                closeCategory();
-                return;
-              }
-              navigate('/sections');
-            }}
-            aria-label={selectedCategory === null ? 'Назад' : 'К разделам магазина'}
-            title={selectedCategory === null ? 'Назад' : 'К разделам магазина'}
-            style={{
-              width: 40,
-              height: 40,
-              minWidth: 40,
-              minHeight: 40,
-              borderRadius: 999,
-              padding: 0,
-              display: 'inline-flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <ArrowLeft size={16} />
-          </button>
-          <h1
-            className="screen-title-on-arena"
-            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
-          >
-            <FittedOneLineText
-              className="inventory-shop-header__fitted-title"
-              maxFontSize={24}
-              minFontSize={14}
-            >
-              {selectedCategory === null ? 'Магазин' : SHOP_CATEGORY_META[selectedCategory].title}
-            </FittedOneLineText>
-          </h1>
-          <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
-        </div>
-
-        {selectedCategory === null && <ShopTabs activeTab={activeTab} onChange={changeTab} />}
-
-        {(isPaymentReturn || returnedPaymentResult !== null) && (
-          <PaymentReturnNotice
-            missingPaymentId={
-              isPaymentReturn && returnedPaymentResult === null && returnedPaymentId === null
-            }
-            isLoading={
-              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isLoading
-            }
-            isError={
-              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isError
-            }
-            status={returnedPaymentResult ?? paymentStatusQuery.data?.status}
-          />
-        )}
-
-        {inventoryQuery.isLoading ? (
-          <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
-            Загрузка...
-          </div>
-        ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
-          <InventoryEmptyState category />
-        ) : activeTab === 'goods' && selectedCategory !== null ? (
-          <GoodsCategoryCatalog
-            category={selectedCategory}
-            inventory={inventory}
-          tokens={tokens}
-          stars={inventory?.balances.stars ?? 0}
-            purchaseMutation={purchaseMutation}
-            onDetails={setDetailsItem}
-            onBuy={openPurchase}
-          />
-        ) : activeTab === 'goods' && !hasShopItems ? (
-          <InventoryEmptyState />
-        ) : activeTab === 'goods' ? (
-          <section aria-label="Товары" style={{ display: 'grid', gap: 8 }}>
-            <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
-              Товары
-            </div>
-            <GoodsCategoryOverview inventory={inventory} onOpenCategory={openCategory} />
-          </section>
-        ) : activeTab === 'bank' ? (
-          <BankTab
-            activePackageId={paymentPackageId}
-            error={
-              paymentRedirectError ??
-              (paymentMutation.isError
-                ? paymentMutation.error instanceof ApiError
-                  ? paymentMutation.error.message
-                  : 'Не удалось получить ответ об оплате. Повторное нажатие продолжит ту же оплату.'
-                : null)
-            }
-            onPurchase={setReceiptPackage}
-          />
-        ) : (
-          <TransactionHistorySection />
-        )}
-      </section>
-
+    <SectionPanorama
+      label={bankScene?'Банк':'Магазин'} pages={scenePages} selected={bankScene?activeTab:selectedCategory!}
+      onSelect={selectScenePage} panorama={`/section-panoramas/${bankScene?'bank':'shop'}-v1.webp`}
+      storageKey={`section-scroll:${ownerId??'guest'}:${bankScene?'bank':'shop'}`}
+      disabled={detailsItem!==null||purchaseItem!==null||receiptPackage!==null}
+      overlays={<>
       {detailsItem !== null && (
         <InventoryItemModal
           item={detailsItem}
@@ -545,42 +405,103 @@ export function InventoryScreen(): JSX.Element {
           </div>
         </div>
       )}
-    </main>
-  );
-}
-
-function GoodsCategoryOverview({
-  inventory,
-  onOpenCategory,
-}: {
-  inventory: InventoryState | undefined;
-  onOpenCategory: (category: ShopCategory) => void;
-}): JSX.Element {
-  return (
-    <div className="inventory-category-grid">
-      {SHOP_CATEGORY_ORDER.map((category) => {
-        const meta = SHOP_CATEGORY_META[category];
-        const count = uniqueShopItems(inventory?.items[category] ?? []).length;
-        return (
+      </>}
+    >
+      <section
+        style={{
+          width: '100%',
+          maxWidth: 760,
+          margin: '0 auto',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: 14,
+        }}
+      >
+        <div
+          className={`inventory-shop-header${selectedCategory === null ? '' : ' inventory-shop-header--category'}`}
+        >
           <button
-            key={category}
             type="button"
-            className={`section-card-surface amateur-hub-card inventory-category-card ${meta.className}`}
-            aria-label={`Открыть раздел ${meta.title}`}
-            onClick={() => onOpenCategory(category)}
+            className="icon-btn icon-btn--page-back"
+            onClick={() => navigate('/sections')}
+            aria-label="Назад" title="Назад"
+            style={{
+              width: 40,
+              height: 40,
+              minWidth: 40,
+              minHeight: 40,
+              borderRadius: 999,
+              padding: 0,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0,
+            }}
           >
-            <span className="amateur-hub-card__art" aria-hidden="true">
-              <img src={meta.artworkUrl} alt="" decoding="async" draggable={false} />
-            </span>
-            <span className="amateur-hub-card__copy">
-              <strong>{meta.title}</strong>
-              <span>{formatRussianCount(count, 'товар', 'товара', 'товаров')}</span>
-            </span>
-            <ChevronRight className="card-chevron" size={20} strokeWidth={2.7} aria-hidden="true" />
+            <ArrowLeft size={16} />
           </button>
-        );
-      })}
-    </div>
+          <h1
+            className="screen-title-on-arena"
+            style={{ margin: 0, minWidth: 0, fontSize: 24, fontWeight: 800 }}
+          >
+            {bankScene ? activeTab === 'history' ? 'История' : 'Банк' : SHOP_CATEGORY_META[selectedCategory!].title}
+          </h1>
+          <ShopBalanceBar tokens={tokens} stars={inventory?.balances.stars ?? 0} />
+        </div>
+
+
+        {(isPaymentReturn || returnedPaymentResult !== null) && (
+          <PaymentReturnNotice
+            missingPaymentId={
+              isPaymentReturn && returnedPaymentResult === null && returnedPaymentId === null
+            }
+            isLoading={
+              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isLoading
+            }
+            isError={
+              isPaymentReturn && returnedPaymentResult === null && paymentStatusQuery.isError
+            }
+            status={returnedPaymentResult ?? paymentStatusQuery.data?.status}
+          />
+        )}
+
+        {inventoryQuery.isLoading ? (
+          <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
+            Загрузка...
+          </div>
+        ) : activeTab === 'goods' && selectedCategory === 'bar' ? (
+          <VisitorShop />
+        ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
+          <InventoryEmptyState category />
+        ) : activeTab === 'goods' && selectedCategory !== null && selectedCategory !== 'bar' ? (
+          <GoodsCategoryCatalog
+            category={selectedCategory}
+            inventory={inventory}
+          tokens={tokens}
+          stars={inventory?.balances.stars ?? 0}
+            purchaseMutation={purchaseMutation}
+            onDetails={setDetailsItem}
+            onBuy={openPurchase}
+          />
+        ) : activeTab === 'bank' ? (
+          <BankTab
+            activePackageId={paymentPackageId}
+            error={
+              paymentRedirectError ??
+              (paymentMutation.isError
+                ? paymentMutation.error instanceof ApiError
+                  ? paymentMutation.error.message
+                  : 'Не удалось получить ответ об оплате. Повторное нажатие продолжит ту же оплату.'
+                : null)
+            }
+            onPurchase={setReceiptPackage}
+          />
+        ) : (
+          <TransactionHistorySection />
+        )}
+      </section>
+
+    </SectionPanorama>
   );
 }
 
@@ -593,7 +514,7 @@ function GoodsCategoryCatalog({
   onDetails,
   onBuy,
 }: {
-  category: ShopCategory;
+  category: Exclude<ShopCategory, 'bar'>;
   inventory: InventoryState | undefined;
   tokens: number;
   stars: number;
@@ -633,23 +554,6 @@ function GoodsCategoryCatalog({
   );
 }
 
-function ShopTabs({
-  activeTab,
-  onChange,
-}: {
-  activeTab: ShopTab;
-  onChange: (tab: ShopTab) => void;
-}): JSX.Element {
-  return (
-    <SegmentedTabs
-      items={SHOP_TABS}
-      activeTab={activeTab}
-      ariaLabel="Разделы магазина"
-      onChange={onChange}
-    />
-  );
-}
-
 function BankTab({
   activePackageId,
   error,
@@ -666,7 +570,7 @@ function BankTab({
 
   return (
     <section aria-label="Банк" style={{ display: 'grid', gap: 8 }}>
-      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+      <div className="section-label" style={{ margin: '0 0 0 0' }}>
         Банк
       </div>
       {packagesQuery.isLoading ? (
@@ -897,134 +801,7 @@ function InventoryProductCard({
   onDetails: () => void;
   onBuy: () => void;
 }): JSX.Element {
-  return (
-    <article
-      className="glass inventory-product-card"
-      style={{
-        minWidth: 0,
-        minHeight: 116,
-        padding: 10,
-        borderRadius: 22,
-        display: 'grid',
-        gridTemplateColumns: '94px minmax(0, 1fr) auto',
-        alignItems: 'center',
-        gap: 12,
-        overflow: 'hidden',
-      }}
-    >
-      <button
-        type="button"
-        onClick={onDetails}
-        aria-label={`Подробнее о ${item.title}`}
-        style={{
-          minWidth: 0,
-          height: 94,
-          border: '1px solid rgba(255,255,255,0.78)',
-          padding: 0,
-          overflow: 'hidden',
-          background: 'rgba(255,255,255,0.3)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.78), 0 8px 14px rgba(15,23,42,0.08)',
-          cursor: 'pointer',
-        }}
-      >
-        <img
-          src={artworkForInventoryItem(item)}
-          alt=""
-          style={{ width: '100%', height: '100%', display: 'block', objectFit: 'cover' }}
-        />
-      </button>
-      <button
-        type="button"
-        onClick={onDetails}
-        aria-label={`Открыть ${item.title}`}
-        style={{
-          minWidth: 0,
-          border: 0,
-          padding: 0,
-          background: 'transparent',
-          color: 'inherit',
-          display: 'grid',
-          gap: 5,
-          alignContent: 'start',
-          textAlign: 'left',
-          cursor: 'pointer',
-        }}
-      >
-        <h2
-          style={{
-            margin: 0,
-            minWidth: 0,
-            color: 'var(--ink)',
-            fontWeight: 950,
-            lineHeight: 1.1,
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            display: '-webkit-box',
-            WebkitLineClamp: 2,
-            WebkitBoxOrient: 'vertical',
-          }}
-        >
-          {item.title}
-        </h2>
-        <div
-          style={{
-            minHeight: '2.4em',
-            color: 'var(--muted)',
-            fontWeight: 800,
-            lineHeight: 1.2,
-          }}
-        >
-          {purchaseBundleLabel(item)}
-        </div>
-        <div
-          aria-label={`${numberText(item.currencyPrice)} монет или ${numberText(inventoryStarPrice(item))} звёзд`}
-          style={{
-            fontSize: 13,
-            fontWeight: 950,
-            lineHeight: 1.1,
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 5,
-            whiteSpace: 'nowrap',
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          <span style={{ color: rewardColor('coin'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <CircleDollarSign size={14} fill="none" stroke="currentColor" aria-hidden="true" />
-            {numberText(item.currencyPrice)}
-          </span>
-          <span style={{ color: 'var(--muted)', fontSize: 11 }}>или</span>
-          <span style={{ color: rewardColor('star'), display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-            <Star size={13} fill="currentColor" aria-hidden="true" />
-            {numberText(inventoryStarPrice(item))}
-          </span>
-        </div>
-      </button>
-      <button
-        type="button"
-        className="btn btn--cta"
-        disabled={!canBuy || isBuying}
-        onClick={onBuy}
-        aria-label={
-          !coinAffordable && canBuy
-            ? `Выбрать способ покупки ${item.title}`
-            : canBuy
-            ? `Купить ${item.title} за ${numberText(item.currencyPrice)} монет`
-            : `Не хватает монет на ${item.title}`
-        }
-        style={{
-          minWidth: 86,
-          minHeight: 38,
-          padding: '0 12px',
-          fontSize: 12,
-          opacity: !canBuy ? 0.5 : undefined,
-          cursor: !canBuy ? 'not-allowed' : undefined,
-        }}
-      >
-        {isBuying ? 'Покупка...' : canBuy ? 'Купить' : 'Не хватает'}
-      </button>
-    </article>
-  );
+  return <ShopProductCard title={item.title} artworkUrl={artworkForInventoryItem(item)} description={purchaseBundleLabel(item)} coinPrice={item.currencyPrice} starPrice={inventoryStarPrice(item)} canBuy={canBuy} coinAffordable={coinAffordable} isBuying={isBuying} onDetails={onDetails} onBuy={onBuy}/>;
 }
 
 function InventoryEmptyState({ category = false }: { category?: boolean }): JSX.Element {
@@ -1169,47 +946,7 @@ function PurchaseConfirmModal({
   onClose: () => void;
   onConfirm: (currency: 'coins' | 'stars') => void;
 }): JSX.Element {
-  return (
-    <AccessibleModal
-      title={`Купить ${item.kind === 'stick' ? 'клюшку ' : item.kind === 'skates' ? 'коньки ' : ''}«${item.title}»?`}
-      copy={`В инвентарь добавится ${purchaseBundleLabel(item)}.`}
-      onRequestClose={onClose}
-      closeBlocked={isSaving}
-      backdropStyle={{ zIndex: 430 }}
-      cardStyle={{ width: 'min(390px, calc(100vw - 28px))' }}
-      headerAction={
-        <button type="button" className="icon-btn" aria-label="Закрыть" disabled={isSaving} onClick={onClose}>
-          <X size={15} />
-        </button>
-      }
-    >
-      <div style={{ display: 'grid', gap: 14 }}>
-        {error !== null && (
-          <div role="alert" style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 800 }}>
-            {error}
-          </div>
-        )}
-        <div style={{ display: 'grid', gap: 8 }}>
-          <button
-            type="button"
-            className="modal-primary btn--cta"
-            onClick={() => onConfirm('coins')}
-            disabled={isSaving || !canBuyCoins}
-          >
-            {isSaving ? 'Покупка...' : `Купить за ${numberText(item.currencyPrice)} монет`}
-          </button>
-          <button
-            type="button"
-            className="modal-primary btn--cta"
-            onClick={() => onConfirm('stars')}
-            disabled={isSaving || !canBuyStars}
-          >
-            {isSaving ? 'Покупка...' : `Купить за ${numberText(inventoryStarPrice(item))} звёзд`}
-          </button>
-        </div>
-      </div>
-    </AccessibleModal>
-  );
+  return <ShopPurchaseModal title={`Купить ${item.kind === 'stick' ? 'клюшку ' : item.kind === 'skates' ? 'коньки ' : ''}«${item.title}»?`} copy={`В инвентарь добавится ${purchaseBundleLabel(item)}.`} coinPrice={item.currencyPrice} starPrice={inventoryStarPrice(item)} canBuyCoins={canBuyCoins} canBuyStars={canBuyStars} isSaving={isSaving} error={error} onClose={onClose} onConfirm={onConfirm}/>;
 }
 
 function ReceiptEmailModal({
@@ -1289,7 +1026,7 @@ function ReceiptEmailModal({
               minHeight: 46,
               borderRadius: 14,
               border: `1px solid ${error === null ? 'var(--border)' : 'var(--red-deep)'}`,
-              background: 'rgba(255, 255, 255, 0.72)',
+              background: 'var(--liquid-inset-bg)',
               padding: '0 14px',
               color: 'var(--text)',
               font: 'inherit',
@@ -1351,7 +1088,7 @@ function TransactionHistorySection(): JSX.Element {
 
   return (
     <section aria-label="История транзакций" style={{ display: 'grid', gap: 8 }}>
-      <div className="section-label" style={{ margin: '0 0 0 -14px' }}>
+      <div className="section-label" style={{ margin: '0 0 0 0' }}>
         История
       </div>
       <div className="inventory-history-filters">

@@ -31,6 +31,8 @@ interface BackgroundSnapshot {
 }
 
 const activeModalStack: symbol[] = [];
+const backgroundLocks = new WeakMap<HTMLElement, BackgroundSnapshot & { count: number }>();
+let deferredRestoreTarget: HTMLElement | null = null;
 
 export type DismissReason = 'backdrop' | 'escape' | 'close-button' | 'drag';
 
@@ -49,11 +51,13 @@ export function AccessibleModal({
   copy,
   onClose,
   onRequestClose,
+  onExitComplete,
   open = true,
   presentation = 'modal',
   onDragEnd,
   dragControls,
   dragListener,
+  smoothSheet = false,
   closeBlocked = false,
   initialFocusRef,
   restoreFocusTo,
@@ -69,12 +73,14 @@ export function AccessibleModal({
   ariaLabel?: string;
   copy?: ReactNode;
   onClose?: () => void;
+  onExitComplete?: () => void;
   onRequestClose?: (reason: DismissReason) => void;
   open?: boolean;
   presentation?: 'modal' | 'sheet';
   onDragEnd?: (offsetY: number, velocityY: number) => void;
   dragControls?: DragControls;
   dragListener?: boolean;
+  smoothSheet?: boolean;
   closeBlocked?: boolean;
   initialFocusRef?: RefObject<HTMLElement | null>;
   restoreFocusTo?: HTMLElement | null;
@@ -114,25 +120,30 @@ export function AccessibleModal({
     );
     const backgrounds = Array.from(document.body.children)
       .filter((element): element is HTMLElement => element instanceof HTMLElement)
-      .filter((element) => element !== portalBranch)
-      .map<BackgroundSnapshot>((element) => ({
-        element,
-        inert: element.getAttribute('inert'),
-        ariaHidden: element.getAttribute('aria-hidden'),
-      }));
-    for (const background of backgrounds) {
-      background.element.setAttribute('inert', '');
-      background.element.setAttribute('aria-hidden', 'true');
-    }
+      .filter((element) => element !== portalBranch && !element.hasAttribute('data-pwa-update-root'))
+      .map((element) => {
+        const existing = backgroundLocks.get(element);
+        const lock = existing ?? {
+          element, count: 0,
+          inert: element.getAttribute('inert'),
+          ariaHidden: element.getAttribute('aria-hidden'),
+        };
+        lock.count += 1;
+        backgroundLocks.set(element, lock);
+        element.setAttribute('inert', '');
+        element.setAttribute('aria-hidden', 'true');
+        return lock;
+      });
 
     const modalId = modalIdRef.current;
     activeModalStack.push(modalId);
 
     const initialFocus = initialFocusRef?.current ?? focusableElements(dialog)[0] ?? dialog;
-    initialFocus.focus();
+    if (!document.querySelector('[data-pwa-update-root]')) initialFocus.focus();
 
     const onKeyDown = (event: KeyboardEvent): void => {
       if (activeModalStack.at(-1) !== modalId) return;
+      if (document.querySelector('[data-pwa-update-root]')) return;
       if (event.key === 'Escape') {
         event.preventDefault();
         if (!closeBlockedRef.current) onRequestCloseRef.current('escape');
@@ -164,16 +175,27 @@ export function AccessibleModal({
       const stackIndex = activeModalStack.lastIndexOf(modalId);
       if (stackIndex !== -1) activeModalStack.splice(stackIndex, 1);
       for (const background of backgrounds) {
-        restoreAttribute(background.element, 'inert', background.inert);
-        restoreAttribute(background.element, 'aria-hidden', background.ariaHidden);
+        background.count -= 1;
+        if (background.count === 0) {
+          restoreAttribute(background.element, 'inert', background.inert);
+          restoreAttribute(background.element, 'aria-hidden', background.ariaHidden);
+          backgroundLocks.delete(background.element);
+        }
       }
       const restoreTarget = restoreTargetRef.current;
-      if (restoreTarget?.isConnected) restoreTarget.focus();
+      if (restoreTarget?.isConnected) {
+        if (restoreTarget.closest('[inert]')) deferredRestoreTarget = restoreTarget;
+        else restoreTarget.focus();
+      }
+      if (activeModalStack.length === 0) {
+        if (deferredRestoreTarget?.isConnected) deferredRestoreTarget.focus();
+        deferredRestoreTarget = null;
+      }
     };
   }, [initialFocusRef, open]);
 
   return createPortal(
-    <AnimatePresence>
+    <AnimatePresence {...(onExitComplete ? { onExitComplete } : {})}>
       {open && (
         <motion.div
           ref={backdropRef}
@@ -219,8 +241,8 @@ export function AccessibleModal({
                   : { opacity: 0, y: 10, scale: 0.96 }
             }
             transition={
-              reduceMotion
-                ? { type: 'tween', duration: 0.12 }
+              reduceMotion || smoothSheet
+                ? { type: 'tween', duration: reduceMotion ? 0.12 : 0.22, ease: 'easeOut' }
                 : {
                     type: 'spring',
                     stiffness: presentation === 'sheet' ? 430 : 360,
@@ -233,6 +255,7 @@ export function AccessibleModal({
             {...(dragListener === undefined ? {} : { dragListener })}
             dragConstraints={{ top: 0, bottom: 0 }}
             dragElastic={{ top: 0.06, bottom: 0.62 }}
+            {...(smoothSheet ? { dragMomentum: false, dragTransition: { bounceStiffness: 600, bounceDamping: 50 } } : {})}
             dragSnapToOrigin
             {...(onDragEnd === undefined
               ? {}

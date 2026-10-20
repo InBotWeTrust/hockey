@@ -53,12 +53,12 @@ export function ChannelPostCard({
   return (
     <article
       data-message-id={post.id}
-      className="glass"
+      className="glass chat-reading-surface"
       style={{
         borderRadius: 18,
         padding: 14,
         marginBottom: 10,
-        color: 'var(--ink)',
+        color: 'var(--liquid-ink)',
       }}
     >
       {attachments.length > 0 && (
@@ -115,7 +115,7 @@ export function ChannelPostCard({
                   gap: 10,
                   padding: '10px 12px',
                   borderRadius: 16,
-                  background: 'rgba(255,255,255,0.65)',
+                  background: 'var(--liquid-inset-bg)',
                   color: 'inherit',
                   textDecoration: 'none',
                 }}

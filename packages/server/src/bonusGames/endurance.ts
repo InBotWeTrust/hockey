@@ -26,3 +26,17 @@ export function nextEnduranceGoalWindow(input: {
     endsAt: new Date(startsAt.getTime() + input.goalWindowMs),
   };
 }
+
+/** Keep the unspent goal window while the result modal prevents another shot. */
+export function pauseEnduranceGoalWindow(input: {
+  goalWindowEndsAt: Date;
+  shotStartedAt: Date;
+  flightMs: number;
+}): { startsAt: Date; endsAt: Date } | null {
+  const resultStartsAtMs = input.shotStartedAt.getTime() + input.flightMs;
+  if (resultStartsAtMs >= input.goalWindowEndsAt.getTime()) return null;
+  return {
+    startsAt: new Date(resultStartsAtMs + BONUS_SHOT_RESULT_PAUSE_MS),
+    endsAt: new Date(input.goalWindowEndsAt.getTime() + BONUS_SHOT_RESULT_PAUSE_MS),
+  };
+}

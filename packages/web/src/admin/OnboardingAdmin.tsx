@@ -215,7 +215,7 @@ export function OnboardingAdmin(): JSX.Element {
 
   return (
     <section style={{ display: 'grid', gap: 12 }} aria-label="Управление онбордингом">
-      <div className="section-label" style={{ marginLeft: -14 }}>
+      <div className="section-label" style={{ marginLeft: 0 }}>
         Онбординг
       </div>
       <div className="glass" style={{ padding: 6, borderRadius: 18, display: 'flex', gap: 6 }}>
@@ -264,7 +264,7 @@ export function OnboardingAdmin(): JSX.Element {
         </button>
       </div>
       {error && (
-        <div className="glass" role="alert" style={{ padding: 12, color: '#9f1239' }}>
+        <div className="glass" role="alert" style={{ padding: 12, color: 'var(--red-deep)' }}>
           {error}
         </div>
       )}

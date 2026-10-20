@@ -4,6 +4,21 @@ import { getApiBaseUrl } from '../platform/runtime.js';
 const GENERIC_SERVER_ERROR_MESSAGE = 'Не удалось выполнить запрос. Попробуйте ещё раз.';
 
 const SERVER_ERROR_MESSAGES: Record<string, string> = {
+  bar_insufficient_funds: 'Не хватает монет или звёзд для покупки.',
+  bar_price_changed: 'Условия покупки изменились. Обнови товары.',
+  bar_game_limit: 'На сегодня игр с персонажами больше нет.',
+  conversation_limit: 'Сообщения закончились. Можно докупить запас у Игоря.',
+  bar_settings_conflict: 'Настройки бара уже изменились. Обнови страницу.',
+  bar_unavailable: 'Бар пока недоступен. Попробуй позже.',
+  bar_star_capacity: 'Для такой ставки на балансе не хватит места под выигрыш. Укажи меньше.',
+  bar_no_stars: 'Для игры нужна хотя бы одна звезда.',
+  bar_invalid_stake: 'Укажи целое число звёзд.',
+  bar_offer_expired: 'Предложение устарело. Попроси новую ставку.',
+  bar_insufficient_stars: 'Не хватает звёзд. Измени ставку.',
+  bar_input_rate: 'Слишком частые движения. Попробуй ещё раз.',
+  bar_game_busy: 'Сначала заверши текущую партию в баре.',
+  bar_game_changed: 'Состояние партии изменилось. Обновляем поле.',
+  bar_invite_expired: 'Приглашение уже недоступно.',
   payments_unavailable: 'Пополнение монет временно недоступно. Загляните позже.',
   coin_package_unavailable: 'Пакет больше недоступен. Обновите каталог и выберите другой.',
   payment_balance_capacity:

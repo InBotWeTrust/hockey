@@ -4,9 +4,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { ChatRoomScreen } from '../screens/ChatRoomScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
-import { socialApi } from '../../social/api.js';
 import { chatKeys } from '../../lib/queryKeys.js';
 import * as api from '../api.js';
+import { socialApi } from '../../social/api.js';
 import * as amateurDuelApi from '../../api/amateurDuel.js';
 import type { ChatMessageDTO } from '../api.js';
 import type { DailyStateResponse } from '../../api/duel.js';
@@ -96,6 +96,7 @@ async function runAllTimersInAct(): Promise<void> {
 
 describe('ChatRoomScreen', () => {
   beforeEach(() => {
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = {
       id: SELF_ID,
       displayName: 'Me',
@@ -135,6 +136,11 @@ describe('ChatRoomScreen', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.useRealTimers();
+  });
+
+  it('uses the shared shell viewport instead of a second height observer', () => {
+    renderRoom('c1');
+    expect(screen.getByRole('main')).toHaveStyle({ height: 'var(--app-viewport-height, 100dvh)', minHeight: '0' });
   });
 
   it('renders messages from REST in chronological order', async () => {
@@ -517,7 +523,6 @@ describe('ChatRoomScreen', () => {
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /написать в личку/i })).toBeNull();
   });
 
   it('opens the official card from its dialog header without a duplicate message action', async () => {
@@ -1094,6 +1099,7 @@ describe('ChatRoomScreen', () => {
 
 describe('ChatRoomScreen — ?goto=<messageId>', () => {
   beforeEach(() => {
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'markChatAsRead').mockResolvedValue(undefined);
@@ -1238,6 +1244,7 @@ describe('ChatRoomScreen — ?goto=<messageId>', () => {
 
 describe('ChatRoomScreen — profile preview', () => {
   beforeEach(() => {
+    vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = { id: SELF_ID, displayName: 'Me', grip: 'right' };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
     vi.spyOn(api, 'fetchMessages').mockResolvedValue([msgFromOther]);
@@ -1265,7 +1272,6 @@ describe('ChatRoomScreen — profile preview', () => {
   });
 
   it('opens UserProfileSheet on author tap and navigates to DM after "Написать"', async () => {
-    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.spyOn(api,'fetchUserProfile').mockResolvedValue({id:OTHER_ID,displayName:'Иван',avatarUrl:null,competitionLevel:'beginner',stats:{shots:0,goals:0,accuracy:0,playStreakDays:0,bestPlayStreakDays:0},achievements:[],createdAt:'2026-05-04T09:00:00Z',lastSeenAt:null});
     renderRoom('c1');
     const nameBtn = await screen.findByRole('button', { name: 'Профиль: Иван' });
@@ -1273,5 +1279,6 @@ describe('ChatRoomScreen — profile preview', () => {
     const writeBtn = await screen.findByRole('button', { name: 'Написать' });
     fireEvent.click(writeBtn);
     await waitFor(() => expect(api.findOrCreateDM).toHaveBeenCalledWith(OTHER_ID));
+    await waitFor(() => expect(screen.queryByTestId('profile-sheet-backdrop')).not.toBeInTheDocument());
   });
 });

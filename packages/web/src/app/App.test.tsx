@@ -1,4 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
+import type * as PlayViewModule from '../game/PlayView.js';
+
+vi.mock('./devOnlyFeatures.js', () => ({ MARKSMANSHIP_CONSTRUCTOR_ENABLED: true }));
 import { queryClient } from './queryClient.js';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
@@ -26,8 +29,15 @@ const prepareInitialPlayerExperience = vi.hoisted(() => vi.fn());
 
 vi.mock('./playerStartup.js', () => ({ prepareInitialPlayerExperience }));
 
-vi.mock('../game/PlayView.js', () => ({
+vi.mock('../game/PlayView.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof PlayViewModule>()),
   PlayView: () => <div data-testid="play-view" />,
+}));
+
+vi.mock('../game/MarksmanshipConstructorCourt.js', () => ({
+  getConstructorScene: () => ({ playerX: 286, goalOffsetX: 0,
+    goalieState: { position: { x: 286, y: 100 }, width: 64, height: 64 } }),
+  MarksmanshipConstructorCourt: () => <div aria-label="Площадка конструктора" />,
 }));
 
 vi.mock('../components/DuelInviteToast.js', () => ({
@@ -101,6 +111,10 @@ describe('App routing + auth', () => {
     localStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined),
+    });
     useAuthStore.getState().clearSession();
     vi.mocked(fetchRequiredOnboarding).mockReset().mockResolvedValue({ required: null });
     vi.mocked(startOnboarding).mockReset();
@@ -118,6 +132,47 @@ describe('App routing + auth', () => {
       receivedAtPerformanceMs: null,
     });
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
+  });
+
+  it.each(['/locker-room', '/profile/equipment'])('opens private standalone locker from %s', async path => {
+    await import('../screens/LockerRoomScreen.js');
+    useAuthStore.getState().setSession({ accessToken: 'test', refreshToken: 'test', user: { id: 'u', displayName: 'A', competitionLevel: 'beginner' } });
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => new Response(JSON.stringify(String(input).includes('/inventory/me') ? { balances: {tokens:0,stars:0,experience:0}, equipped: {stickItemId:null,skatesItemId:null,nutritionItemId:null}, items: {stick:[],skates:[],nutrition:[],recovery:[]} } : { competitionLevel: 'beginner' }), { status: 200 }));
+    window.history.replaceState({}, '', path); const historyLength=window.history.length; render(<App/>);
+    expect(await screen.findByRole('tab', { name: 'Инвентарь' })).toHaveAttribute('aria-selected', 'true');
+    expect(window.location.pathname).toBe('/locker-room');
+    expect(window.history.length).toBe(historyLength);
+    expect(document.querySelector('.apartment-scene')).toBeNull();
+    expect(screen.getAllByRole('link', { name: 'На карту' })).toHaveLength(1);
+  });
+  it('requires authentication for the standalone locker route', async () => {
+    window.history.replaceState({}, '', '/locker-room'); render(<App/>);
+    await screen.findByRole('heading', { name: /Вход|хоккей|Добро/i });
+    expect(window.location.pathname).toBe('/login');
+    expect(document.querySelector('.locker-room-scene')).toBeNull();
+  });
+
+  it('opens a local second-period daily preview without authentication', async () => {
+    // This tests the route, not cold Vite module compilation. Load the real
+    // lazy screen before starting the DOM assertion's short wait budget.
+    await import('../screens/DailyScreen.js');
+    window.history.replaceState({}, '', '/dev/daily-period-preview');
+    render(<App />);
+
+    expect(await screen.findByText('Предпросмотр · ежедневная игра')).toBeInTheDocument();
+    expect(screen.getByText('2-й период')).toBeInTheDocument();
+  });
+
+  it('opens the dev marksmanship constructor from its direct route', async () => {
+    useAuthStore.getState().setSession({
+      accessToken: 'access',
+      refreshToken: 'refresh',
+      user: { id: 'u1', displayName: 'Alice T' },
+    });
+    window.history.replaceState({}, '', '/profile/marksmanship-constructor');
+    render(<App />);
+    expect(await screen.findByRole('heading', { name: 'Конструктор меткости' })).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'Навигация' })).not.toBeInTheDocument();
   });
 
   it('does not mount the browser service-worker update prompt inside Android', () => {
@@ -160,7 +215,7 @@ describe('App routing + auth', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('Ты в любительской лиге')).toBeInTheDocument();
+    expect(await screen.findByRole('main', { name: 'Обязательный онбординг' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByTestId('chat-realtime')).not.toBeInTheDocument();
     expect(screen.queryByTestId('duel-invite-toast')).not.toBeInTheDocument();
@@ -194,14 +249,14 @@ describe('App routing + auth', () => {
     window.history.replaceState({}, '', '/profile');
     window.history.pushState({}, '', '/inventory');
     render(<App />);
-    await screen.findByText('Обязательный шаг');
+    await screen.findByRole('main', { name: 'Обязательный онбординг' });
 
     await act(async () => {
       window.history.replaceState({}, '', '/profile');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
-    expect(screen.getByText('Обязательный шаг')).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: 'Обязательный онбординг' })).toBeInTheDocument();
     expect(screen.queryByText('Инвентарь')).not.toBeInTheDocument();
   });
 
@@ -212,7 +267,7 @@ describe('App routing + auth', () => {
 
   it('shows /prices to a logged-out visitor without private app controls', async () => {
     window.history.replaceState({}, '', '/prices');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           packages: [
@@ -266,7 +321,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/prices');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           packages: [
@@ -326,7 +381,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/bonus-games');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ games: [], active_attempt: null }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -336,6 +391,8 @@ describe('App routing + auth', () => {
     render(<App />);
 
     expect(await screen.findByRole('heading', { name: 'Бонусные игры' })).toBeInTheDocument();
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
+    expect(document.querySelector('.app-shell--bottom-nav-visible')).toBeNull();
     const ambientLights = screen.getByTestId('arena-ambient-lights');
     expect(ambientLights).toHaveAttribute('aria-hidden', 'true');
     expect(ambientLights.children).toHaveLength(10);
@@ -348,7 +405,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/profile/achievements');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -359,10 +416,7 @@ describe('App routing + auth', () => {
 
     expect(await screen.findByRole('heading', { name: 'Задания' })).toBeInTheDocument();
     expect(window.location.pathname).toBe('/profile/achievements');
-    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Назад' }));
     expect(window.location.pathname).toBe('/profile');
@@ -375,7 +429,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/profile/achievements');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -388,10 +442,7 @@ describe('App routing + auth', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Челленджи' }));
 
     expect(window.location.pathname).toBe('/profile/achievements/weekly-challenge');
-    expect(screen.getByRole('button', { name: 'Раздевалка' })).toHaveAttribute(
-      'aria-current',
-      'page',
-    );
+    expect(document.querySelector('.bottom-nav-shell')).toBeNull();
   });
 
   it('loads a bonus attempt detail on the authenticated play route', async () => {
@@ -482,6 +533,11 @@ describe('App routing + auth', () => {
 });
 
 describe('app backdrop variants', () => {
+  it('uses the beginner yard for amateur training only', () => {
+    expect(arenaBackgroundClass('amateur', true)).toBe('arena-bg--beginner');
+    expect(arenaBackgroundClass('amateur', false)).toBe('arena-bg--amateur');
+    expect(arenaBackgroundClass('professional', true)).toBe('arena-bg--professional');
+  });
   it('maps every competition level to matching arena and locker-room backgrounds', () => {
     for (const level of ['beginner', 'amateur', 'professional'] as const) {
       expect(arenaBackgroundClass(level)).toBe(`arena-bg--${level}`);
@@ -496,15 +552,11 @@ describe('app backdrop variants', () => {
     expect(arenaCourtImage('professional')).toBe('/sprites/app-arena-ice.webp');
   });
 
-  it('renders lazy route loading text with a high-contrast arena treatment', () => {
+  it('uses the same dark loading screen for lazy routes and startup', () => {
     render(<RouteLoading />);
-
-    const loading = screen.getByRole('status');
-    expect(loading).toHaveClass('route-loading');
-    expect(loading).toHaveStyle({
-      color: '#0f172a',
-      background: 'rgba(255, 255, 255, 0.9)',
-    });
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.getByLabelText('Загрузка приложения')).toHaveClass('onboarding-flow--startup');
+    expect(document.querySelector('.route-loading')).toBeNull();
   });
 
   it('uses the dedicated login rink background on the sign-in screen', () => {

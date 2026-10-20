@@ -1,3 +1,5 @@
+import { useNavigationActivity } from './useNavigationActivity.js';
+import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { useEffect, useRef } from 'react';
 import { useLocation, useNavigate, type Location } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
@@ -5,8 +7,6 @@ import { Gamepad2, MessageCircle, Package, ShieldCheck, User } from 'lucide-reac
 import { apiFetch } from '../api/apiFetch.js';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { fetchAdminAttention } from '../admin/api.js';
-import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
-import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
 import {
   countClaimableWeeklyChallenges,
   fetchWeeklyChallenge,
@@ -14,13 +14,10 @@ import {
 } from '../api/weeklyChallenge.js';
 import { useAuthStore } from '../auth/authStore.js';
 import type { AuthUser } from '../auth/authStore.js';
-import { fetchChatList, fetchUnreadCounts, type ChatDTO } from '../chat/api.js';
-import { useChatStore } from '../chat/chatStore.js';
-import { chatKeys } from '../lib/queryKeys.js';
 
 export const NAV_HEIGHT = 68;
 
-const ICON_SIZE = 22;
+const ICON_SIZE = 18;
 const LAST_GAME_ROUTE_KEY = 'hockey.nav.lastGameRoute';
 const LAST_SECTIONS_ROUTE_KEY = 'hockey.nav.lastSectionsRoute';
 const LAST_CHAT_ROUTE_KEY = 'hockey.nav.lastChatRoute';
@@ -31,18 +28,6 @@ const DEFAULT_CHAT_ROUTE = '/chat';
 const DEFAULT_PROFILE_ROUTE = '/profile';
 export const ADMIN_NAV_HOME_EVENT = 'hockey:admin-nav-home';
 
-function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
-  if (match.status === 'invited') {
-    return match.me.side === 'opponent' && match.me.state === 'invited';
-  }
-  if (match.status === 'ready_check') {
-    return match.me.state !== 'ready' || match.opponent.state === 'ready';
-  }
-  if (match.status === 'active') {
-    return match.me.state === 'accepted' || match.me.state === 'period_active';
-  }
-  return false;
-}
 
 function routeFromLocation(location: ReturnType<typeof useLocation>): string {
   return `${location.pathname}${location.search}${location.hash}`;
@@ -104,6 +89,8 @@ function normalizeNavLocation(location: string | NavLocation): NavLocation {
 }
 
 export function isOpenRinkRoute(location: NavLocation): boolean {
+  if (location.pathname.startsWith('/bar/games/match/')) return true;
+  if ((location.pathname === '/bar/cards/maria' || location.pathname.startsWith('/bar/cards/computer/')) || (location.pathname.startsWith('/bar/cards/match/') || location.pathname.startsWith('/bar/cards/room/'))) return true;
   if (/^\/bonus-games\/[^/]+\/play$/.test(location.pathname)) return true;
   if (location.pathname !== '/') return false;
   const params = new URLSearchParams(location.search);
@@ -114,10 +101,16 @@ export function isOpenRinkRoute(location: NavLocation): boolean {
   return view === 'amateur' && params.has('match') && params.get('play') === '1';
 }
 
+const isBarRoute=(pathname:string):boolean=>pathname==='/bar'||pathname.startsWith('/bar/');
+
 export function isBottomNavVisible(location: string | NavLocation, user: AuthUser | null): boolean {
   const { pathname } = normalizeNavLocation(location);
   const isInChatRoom = /^\/chat\/[^/]+(?:\/posts\/[^/]+\/comments)?$/.test(pathname);
   return (
+    !isBarRoute(pathname) &&
+    !/^\/(?:profile|chat)(?:\/|$)/.test(pathname) &&
+    pathname !== '/sections' &&
+    pathname !== '/sections/' &&
     pathname !== '/login' &&
     pathname !== '/prices' &&
     pathname !== '/terms' &&
@@ -132,7 +125,7 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
   );
 }
 
-export function BottomNav(): JSX.Element | null {
+export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.Element | null {
   const user = useAuthStore((s) => s.user);
   const updateUser = useAuthStore((s) => s.updateUser);
   const location = useLocation();
@@ -146,39 +139,7 @@ export function BottomNav(): JSX.Element | null {
     readRememberedRoute(LAST_PROFILE_ROUTE_KEY, DEFAULT_PROFILE_ROUTE),
   );
 
-  const liveUnread = useChatStore((s) => s.unreadByChat);
-  // Observe the list cache without adding another list request. The list can
-  // refresh independently of the unread endpoint (e.g. after reconnect).
-  const { data: chatList } = useQuery<ChatDTO[]>({
-    queryKey: chatKeys.list(),
-    queryFn: fetchChatList,
-    enabled: false,
-  });
-  const effectiveUnread = { ...liveUnread };
-  for (const chat of chatList ?? []) {
-    effectiveUnread[chat.id] = Math.max(chat.unreadCount, liveUnread[chat.id] ?? 0);
-  }
-  const totalUnread = Object.values(effectiveUnread).filter((count) => count > 0).length;
-  const setUnread = useChatStore((s) => s.setUnread);
-
-  const { data: unreadMap } = useQuery<Record<string, number>>({
-    queryKey: chatKeys.unread(),
-    queryFn: fetchUnreadCounts,
-    enabled: Boolean(user) && !isDemo,
-    refetchInterval: 30_000,
-  });
-  const { data: amateurEvents } = useQuery({
-    queryKey: ['amateur-duel', 'events'],
-    queryFn: fetchAmateurEvents,
-    enabled: Boolean(user) && !isDemo,
-    refetchInterval: 15_000,
-  });
-  const { data: classicTournamentGames } = useQuery({
-    queryKey: ['tournaments', 'classic', 'active'],
-    queryFn: fetchActiveClassicTournamentGames,
-    enabled: Boolean(user) && !isDemo,
-    refetchInterval: 30_000,
-  });
+  const { totalUnread, gameActionCount } = useNavigationActivity(Boolean(user) && !isDemo);
   const { data: weeklyChallenge } = useQuery({
     queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
@@ -209,9 +170,6 @@ export function BottomNav(): JSX.Element | null {
         user?.competitionLevel === undefined),
   });
 
-  useEffect(() => {
-    if (unreadMap) setUnread(unreadMap);
-  }, [unreadMap, setUnread]);
 
   useEffect(() => {
     if (!refreshedUser) return;
@@ -250,8 +208,10 @@ export function BottomNav(): JSX.Element | null {
     }
   }, [isDemo, location]);
 
+  const cardInviteCount = useCardInvites(s => s.incoming.length);
+
   // Hide nav inside a chat room — composer takes the nav's spot.
-  if (!isBottomNavVisible(location, user)) {
+  if (isBarRoute(location.pathname) || (!preview && !isBottomNavVisible(location, user))) {
     return null;
   }
 
@@ -263,11 +223,6 @@ export function BottomNav(): JSX.Element | null {
   const showAdmin = !isDemo && user?.role === 'admin';
   const navCount = showAdmin ? 5 : 4;
   const activeIndex = isGame ? 0 : isSections ? 1 : isChat ? 2 : isProfile ? 3 : 4;
-  const gameActionCount =
-    (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
-    (classicTournamentGames?.games ?? []).filter(
-      (game) => game.state !== 'closed' && String(game.state) !== 'completed',
-    ).length;
   const competitionLevel = user?.competitionLevel ?? refreshedUser?.competitionLevel;
   const weeklyChallengesAvailable =
     competitionLevel === 'amateur' || competitionLevel === 'professional';
@@ -277,7 +232,7 @@ export function BottomNav(): JSX.Element | null {
         ...(weeklyChallenge?.pendingRewards ?? []),
       ])
     : 0;
-  const sectionActionCount = weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
+  const sectionActionCount = cardInviteCount + weeklyChallengeActionCount + (achievements?.unclaimedCount ?? 0);
   const openLastGameRoute = (): void => {
     rememberRoute(LAST_GAME_ROUTE_KEY, DEFAULT_GAME_ROUTE);
     navigate(DEFAULT_GAME_ROUTE);
@@ -326,7 +281,7 @@ export function BottomNav(): JSX.Element | null {
 
   return (
     <div
-      className="bottom-nav-shell glass-edge-fade glass-edge-fade--bottom"
+      className="bottom-nav-shell"
       style={{
         position: 'absolute',
         left: 0,
@@ -369,7 +324,7 @@ export function BottomNav(): JSX.Element | null {
           active={isGame}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Gamepad2 size={ICON_SIZE} strokeWidth={2} />
+              <Gamepad2 size={ICON_SIZE} strokeWidth={1.5} />
               {!isDemo && gameActionCount > 0 && (
                 <span
                   aria-label={`События игры: ${gameActionCount}`}
@@ -405,7 +360,7 @@ export function BottomNav(): JSX.Element | null {
           active={isSections}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <Package size={ICON_SIZE} strokeWidth={2} />
+              <Package size={ICON_SIZE} strokeWidth={1.5} />
               {!isDemo && sectionActionCount > 0 && (
                 <span
                   aria-label={`События разделов: ${sectionActionCount}`}
@@ -441,7 +396,7 @@ export function BottomNav(): JSX.Element | null {
           active={isChat}
           icon={
             <span style={{ position: 'relative', display: 'inline-flex' }}>
-              <MessageCircle size={ICON_SIZE} strokeWidth={2} />
+              <MessageCircle size={ICON_SIZE} strokeWidth={1.5} />
               {!isDemo && totalUnread > 0 && (
                 <span
                   aria-label={`Непрочитанные: ${totalUnread}`}
@@ -475,7 +430,7 @@ export function BottomNav(): JSX.Element | null {
           label="Раздевалка"
           disabled={isDemo}
           active={isProfile}
-          icon={<span style={{ position: 'relative', display: 'inline-flex' }}><User size={ICON_SIZE} strokeWidth={2} />{(user?.unclaimedReferralRewardsCount ?? 0) > 0 ? <span className="bottom-nav__badge" aria-label={`Награды за приглашения: ${user!.unclaimedReferralRewardsCount}`}>{user!.unclaimedReferralRewardsCount! > 99 ? '99+' : user!.unclaimedReferralRewardsCount}</span> : null}</span>}
+          icon={<span style={{ position: 'relative', display: 'inline-flex' }}><User size={ICON_SIZE} strokeWidth={1.5} />{(user?.unclaimedReferralRewardsCount ?? 0) > 0 ? <span className="bottom-nav__badge" aria-label={`Награды за приглашения: ${user!.unclaimedReferralRewardsCount}`}>{user!.unclaimedReferralRewardsCount! > 99 ? '99+' : user!.unclaimedReferralRewardsCount}</span> : null}</span>}
           onClick={openProfileRoute}
         />
         {showAdmin && (
@@ -484,7 +439,7 @@ export function BottomNav(): JSX.Element | null {
             active={isAdmin}
             icon={
               <span style={{ position: 'relative', display: 'inline-flex' }}>
-                <ShieldCheck size={ICON_SIZE} strokeWidth={2} />
+                <ShieldCheck size={ICON_SIZE} strokeWidth={1.5} />
                 {(adminAttention?.totalCount ?? 0) > 0 && (
                   <span
                     aria-label={`События администратора: ${adminAttention!.totalCount}`}

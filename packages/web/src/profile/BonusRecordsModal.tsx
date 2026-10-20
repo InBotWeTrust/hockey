@@ -12,11 +12,19 @@ import { AccessibleModal } from '../components/AccessibleModal.js';
 import { TournamentStandingsTable } from '../tournament/TournamentStandingsTable.js';
 
 export { formatRecordDuration as formatBonusDuration } from '../lib/recordDuration.js';
+export function formatBonusPreviewRecord(
+  skill: string,
+  result: { elapsedMs: number; shots: number; goals: number; bestSeries?: number },
+): string {
+  return skill === 'rhythm' ? formatBonusDuration(result.elapsedMs) : formatBonusRecord(skill, result);
+}
+
 export function formatBonusRecord(
   skill: string,
-  result: { elapsedMs: number; shots: number; goals: number },
+  result: { elapsedMs: number; shots: number; goals: number; bestSeries?: number },
 ): string {
   const shots = formatRussianCount(result.shots, 'бросок', 'броска', 'бросков');
+  if (skill === 'rhythm') return `${formatBonusDuration(result.elapsedMs)} · серия ${result.bestSeries ?? 0} · ${result.shots ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1}).format(result.goals/result.shots*100) : 0}% · ${shots}`;
   if (skill === 'accuracy') {
     const accuracy = result.shots > 0 ? Math.round(result.goals / result.shots * 100) : 0;
     return `${result.goals} из ${result.shots} (${accuracy}%) · ${formatBonusDuration(result.elapsedMs)}`;
@@ -68,6 +76,7 @@ export function BonusRecordsModal({
     accuracy: 'Точность',
     marksmanship: 'Меткость',
     endurance: 'Выносливость',
+    rhythm: 'Ритм',
     challenge: 'Испытание',
   }[skill];
   const explanation = {
@@ -75,6 +84,7 @@ export function BonusRecordsModal({
     accuracy: 'Выше тот, у кого выше процент попадания. При равном проценте выше тот, кто справился быстрее',
     marksmanship: 'Время до набора нужных очков. При равенстве сравниваем число бросков.',
     endurance: 'Среднее время на один гол. Чем меньше, тем выше место.',
+    rhythm: 'Быстрее набери нужный счёт. При равном времени: длиннее серия, выше точность, меньше бросков.',
     challenge: '',
   }[skill];
 

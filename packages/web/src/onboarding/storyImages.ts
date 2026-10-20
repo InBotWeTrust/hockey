@@ -19,7 +19,7 @@ export function prepareStoryImages(urls: string[]): Promise<void> {
     if (existing) return existing;
     const image = new Image();
     image.decoding = 'async';
-    image.fetchPriority = raw.includes('scene-01-court') ? 'high' : 'low';
+    image.fetchPriority = raw.includes('scene-01-court') || raw.includes('/amateur/scene-01-') ? 'high' : 'low';
     image.src = url;
     const promise = image.decode().then(() => { decoded.add(url); }).catch((error: unknown) => {
       loading.delete(url);

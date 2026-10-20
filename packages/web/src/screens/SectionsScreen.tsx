@@ -1,7 +1,16 @@
-import { useEffect, useState } from 'react';
+import { StartupSplash } from '../onboarding/StartupSplash.js';
+import { useGameInvites } from '../bar/games/gameInviteStore.js';
+import {caretakerBlocked} from '../city/caretakerSchedule.js';
+import type {GameDockStatus} from '../city/gameDockStatus.js';
+import { useNavigationActivity } from '../components/useNavigationActivity.js';
+import { useCardInvites } from '../bar/cards/cardInvites.js';
+import { fetchAdminAttention } from '../admin/api.js';
+import { CityMap } from '../city/CityMap.js';
+import { lazy, Suspense, useEffect, useState } from 'react';
+const CityGameHub=lazy(()=>import('./DailyScreen.js').then(module=>({default:module.GameHub})));
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { useNavigate } from 'react-router-dom';
-import { Check, ChevronRight } from 'lucide-react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Check } from 'lucide-react';
 import { achievementKeys, fetchAchievements } from '../api/achievements.js';
 import { apiFetch } from '../api/apiFetch.js';
 import {
@@ -27,28 +36,44 @@ import { MonthlyRatingRewardModal } from '../components/duel/MonthlyRatingReward
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import { fetchBonusGames } from '../api/bonusGames.js';
 import { preloadInitialTrainingHubArtwork } from '../components/InitialTrainingCourse.js';
+import { useAuthStore } from '../auth/authStore.js';
 
 const DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED = 300;
-const SECTION_ARTWORK_SIZE = 86;
 const MONTHLY_RATING_CONGRATULATIONS_KEY = [
   'amateur-duel',
   'rating',
   'congratulations',
   'pending',
 ] as const;
+const BONUS_PROGRESS_STORAGE_PREFIX = 'hockey.bonusGamesProgress.v1:';
 
-const SECTION_ARTWORK = {
-  bar: '/bar/bar-repair-card-v3.webp',
-  achievements: '/achievements/first-goal.webp',
-  daily: '/daily-game/start.webp',
-  training: '/modes/training-evening.webp',
-  amateur: '/modes/amateur-game-v3.webp',
-  pro: '/modes/pro-game.webp',
-  shop: '/modes/shop-retail-v2.webp',
-  bonusGames: '/bonus-games/section-card-v5.webp',
-} as const;
+type StoredBonusProgress = { completed: number; total: number };
 
-type SectionTone = 'active' | 'default' | 'muted';
+function readStoredBonusProgress(userId: string | undefined): StoredBonusProgress | null {
+  if (userId === undefined) return null;
+  try {
+    const parsed = JSON.parse(
+      window.localStorage.getItem(`${BONUS_PROGRESS_STORAGE_PREFIX}${userId}`) ?? 'null',
+    ) as Partial<StoredBonusProgress> | null;
+    return parsed !== null && Number.isInteger(parsed.completed) && Number.isInteger(parsed.total)
+      ? { completed: parsed.completed!, total: parsed.total! }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeBonusProgress(userId: string | undefined, progress: StoredBonusProgress): void {
+  if (userId === undefined) return;
+  try {
+    window.localStorage.setItem(
+      `${BONUS_PROGRESS_STORAGE_PREFIX}${userId}`,
+      JSON.stringify(progress),
+    );
+  } catch {
+    // Cached progress is optional; live catalog data remains authoritative.
+  }
+}
 
 function numberText(value: number): string {
   return new Intl.NumberFormat('ru-RU', { useGrouping: false }).format(value);
@@ -56,6 +81,9 @@ function numberText(value: number): string {
 
 export function SectionsScreen(): JSX.Element {
   const navigate = useNavigate();
+  const [searchParams]=useSearchParams();
+  const [gameStatus,setGameStatus]=useState<GameDockStatus>({label:null,urgent:false});
+  const [gameOpenRequest,setGameOpenRequest]=useState(0);
   const queryClient = useQueryClient();
   const dailyData = useDailyStore((s) => s.data);
   const refreshDaily = useDailyStore((s) => s.refresh);
@@ -64,6 +92,12 @@ export function SectionsScreen(): JSX.Element {
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
+  const user = useAuthStore((state) => state.user);
+  const userId = user?.id;
+  const { totalUnread, gameActionCount } = useNavigationActivity(Boolean(user));
+  const cardInviteCount = useCardInvites(state => state.incoming.length);
+  const gameInviteCount = useGameInvites(state => state.owner === userId ? state.incoming.length : 0);
+  const [storedBonusProgress] = useState(() => readStoredBonusProgress(userId));
   const weeklyChallenge = useQuery({
     queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
@@ -76,9 +110,24 @@ export function SectionsScreen(): JSX.Element {
     queryKey: ['bonus-games'],
     queryFn: fetchBonusGames,
   });
+  useEffect(() => {
+    if (bonusGamesQuery.data === undefined) return;
+    storeBonusProgress(userId, {
+      completed: bonusGamesQuery.data.games.filter((game) => game.is_completed).length,
+      total: bonusGamesQuery.data.games.length,
+    });
+  }, [bonusGamesQuery.data, userId]);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile', 'sections'],
     queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  });
+  const isAdmin = (profileQuery.data?.role ?? user?.role) === 'admin';
+  const adminAttention = useQuery({
+    queryKey: ['admin', 'attention'],
+    queryFn: fetchAdminAttention,
+    enabled: Boolean(user) && isAdmin,
+    refetchInterval: 15_000,
+    refetchOnWindowFocus: true,
   });
   const failureQuery = useQuery({
     queryKey: ['weekly-challenge', 'failure', 'pending'],
@@ -90,11 +139,13 @@ export function SectionsScreen(): JSX.Element {
   });
 
   const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
-  const bonusGamesMeta = bonusGamesQuery.isError
-    ? 'Прогресс недоступен'
-    : bonusGamesQuery.data
+  const bonusGamesMeta = bonusGamesQuery.data
       ? `Пройдено: ${bonusGamesQuery.data.games.filter((game) => game.is_completed).length}/${bonusGamesQuery.data.games.length}`
-      : 'Пройдено: —/—';
+      : storedBonusProgress
+        ? `Пройдено: ${storedBonusProgress.completed}/${storedBonusProgress.total}`
+        : bonusGamesQuery.isError
+          ? 'Прогресс недоступен'
+          : 'Пройдено: —/—';
   const profileQueueReady = profileQuery.isSuccess;
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
@@ -193,8 +244,6 @@ export function SectionsScreen(): JSX.Element {
     0,
     dailyData?.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
   );
-  const amateurGoals = Math.min(amateurUnlockGoalsRequired, dailyData?.lifetime_total_goals ?? 0);
-  const amateurGoalsRemaining = Math.max(0, amateurUnlockGoalsRequired - amateurGoals);
   const isAmateurUnlocked =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
@@ -228,108 +277,29 @@ export function SectionsScreen(): JSX.Element {
     `Уровни: ${numberText(achievementProgress.levels.completed)}/${numberText(achievementProgress.levels.total)}`,
   ] as const;
 
-  const openAmateurs = (): void => {
-    navigate('/?view=amateur&from=sections');
-  };
+  if (!profileQuery.data) {
+    return <StartupSplash
+      message={profileQuery.isError ? 'Не удалось загрузить карту.' : 'Идёт загрузка…'}
+      {...(profileQuery.isError ? {retry: () => { void profileQuery.refetch(); }} : {})}
+    />;
+  }
 
   return (
     <main
-      className="screen"
+      className="screen sections-city-screen"
       style={{
+        position: 'relative',
         padding: 'calc(18px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
       }}
     >
-      <section
-        style={{
-          width: '100%',
-          maxWidth: 760,
-          margin: '0 auto',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}
-      >
-        <section className="sections-group" aria-labelledby="sections-quick-access-title">
-          <h2 id="sections-quick-access-title" className="section-label sections-group__title">
-            Быстрый доступ
-          </h2>
-          <div className="sections-quick-grid">
-            <QuickSectionCard
-              title="Ежедневная игра"
-              meta={`${numberText(dailyData?.daily_total_shots ?? 0)}/${numberText(dailyShotsLimit)} бросков сегодня`}
-              tone="active"
-              size="wide"
-              artworkSrc={SECTION_ARTWORK.daily}
-              onClick={() => navigate('/daily')}
-            />
-            <QuickSectionCard
-              title="Тренировка"
-              meta={trainingMeta}
-              tone="active"
-              artworkSrc={SECTION_ARTWORK.training}
-              onClick={() => navigate('/?view=training&from=sections')}
-            />
-            <QuickSectionCard
-              title="Задания"
-              meta={achievementsMeta}
-              tone={sectionTasksActionCount > 0 ? 'active' : 'default'}
-              artworkSrc={SECTION_ARTWORK.achievements}
-              attention={sectionTasksActionCount > 0}
-              onClick={() => navigate('/achievements')}
-            />
-            <QuickSectionCard
-              title="Магазин"
-              meta="Инвентарь и валюта"
-              tone="default"
-              size="tall"
-              artworkSrc={SECTION_ARTWORK.shop}
-              onClick={() => navigate('/inventory')}
-            />
-            <QuickSectionCard
-              title="Бар «4-й период»"
-              meta="Трансляции и обсуждения"
-              tone="default"
-              size="wide"
-              artworkSrc={SECTION_ARTWORK.bar}
-              onClick={() => navigate('/bar')}
-            />
-          </div>
-        </section>
+      <CityMap maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
+        onOpenDailyPlay={()=>navigate('/?view=daily')}
+        onOpenTraining={()=>navigate('/?view=training')}
+        onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
+        onOpenAmateurMatch={id=>navigate(`/?view=amateur&match=${encodeURIComponent(id)}&play=1`)}
+      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount+gameInviteCount} onNavigate={navigate}/>
 
-        <section className="sections-group" aria-labelledby="sections-modes-title">
-          <h2 id="sections-modes-title" className="section-label sections-group__title">
-            Игровые режимы
-          </h2>
-          <div className="sections-mode-list">
-            <SectionCard
-              title="Бонусные игры"
-              supportingText={bonusGamesMeta}
-              tone="default"
-              artworkSrc={SECTION_ARTWORK.bonusGames}
-              onClick={() => navigate('/bonus-games')}
-            />
-            <SectionCard
-              title="Любители"
-              supportingText={
-                isAmateurUnlocked
-                  ? 'Дуэли и турниры'
-                  : `Осталось ${numberText(amateurGoalsRemaining)} шайб до статуса «Любитель»`
-              }
-              tone="default"
-              artworkSrc={SECTION_ARTWORK.amateur}
-              onClick={openAmateurs}
-            />
-            <SectionCard
-              title="Профессионалы"
-              supportingText="Игры самого высокого уровня"
-              tone="muted"
-              artworkSrc={SECTION_ARTWORK.pro}
-              onClick={() => navigate('/?view=pro&from=sections')}
-            />
-          </div>
-        </section>
-      </section>
 
       {activeCongratulation !== null && (
         <RegularSeasonPodiumModal
@@ -400,179 +370,5 @@ export function SectionsScreen(): JSX.Element {
         </section>
       )}
     </main>
-  );
-}
-
-function QuickSectionCard({
-  title,
-  meta,
-  tone,
-  size = 'compact',
-  artworkSrc,
-  attention,
-  onClick,
-}: {
-  title: string;
-  meta: string | readonly string[];
-  tone: Exclude<SectionTone, 'muted'>;
-  size?: 'compact' | 'wide' | 'tall' | undefined;
-  artworkSrc: string;
-  attention?: boolean | undefined;
-  onClick: () => void;
-}): JSX.Element {
-  const metaLines = typeof meta === 'string' ? [meta] : meta;
-  return (
-    <button
-      type="button"
-      className={`section-card-surface sections-quick-card sections-quick-card--${tone}${size === 'wide' ? ' sections-quick-card--wide' : ''}${size === 'tall' ? ' sections-quick-card--tall' : ''}`}
-      aria-label={title}
-      onClick={onClick}
-    >
-      <span className="sections-quick-card__art" aria-hidden="true">
-        <img src={artworkSrc} alt="" draggable={false} />
-      </span>
-      <span className="sections-quick-card__content">
-        <span className="sections-quick-card__title-row">
-          <span className="sections-quick-card__title">{title}</span>
-          {attention && (
-            <span className="sections-quick-card__attention" aria-label="Требуется действие" />
-          )}
-        </span>
-        <span
-          className={`sections-quick-card__meta${metaLines.length > 1 ? ' sections-quick-card__meta--multiline' : ''}`}
-        >
-          {metaLines.map((line) => (
-            <span key={line}>{line}</span>
-          ))}
-        </span>
-      </span>
-      {size !== 'compact' && (
-        <ChevronRight className="card-chevron" aria-hidden="true" size={19} strokeWidth={2.7} />
-      )}
-    </button>
-  );
-}
-
-function SectionCard({
-  title,
-  supportingText,
-  tone,
-  artworkSrc,
-  progress,
-  onClick,
-}: {
-  title: string;
-  supportingText: string;
-  tone: SectionTone;
-  artworkSrc: string;
-  progress?: number | undefined;
-  onClick: () => void;
-}): JSX.Element {
-  const muted = tone === 'muted';
-  return (
-    <button
-      type="button"
-      className={`section-card-surface section-card-surface--${tone}`}
-      onClick={onClick}
-      aria-label={title}
-      style={{
-        position: 'relative',
-        overflow: 'hidden',
-        borderRadius: 22,
-        padding: 14,
-        display: 'grid',
-        gridTemplateColumns: `${SECTION_ARTWORK_SIZE}px minmax(0, 1fr) 20px`,
-        gap: 12,
-        alignItems: 'center',
-        width: '100%',
-        minHeight: 116,
-        color: 'inherit',
-        textAlign: 'left',
-        cursor: 'pointer',
-        appearance: 'none',
-        WebkitAppearance: 'none',
-        border: '1px solid rgba(255,255,255,0.68)',
-        boxShadow: '0 8px 22px rgba(15,23,42,0.1), inset 0 1px 0 rgba(255,255,255,0.78)',
-      }}
-    >
-      {progress !== undefined && (
-        <div
-          aria-label={`Прогресс ${progress}%`}
-          style={{
-            position: 'absolute',
-            left: 0,
-            right: 0,
-            bottom: 0,
-            height: 3,
-            background: 'rgba(15,23,42,0.08)',
-          }}
-        >
-          <div
-            style={{
-              width: `${Math.max(0, Math.min(100, progress))}%`,
-              height: '100%',
-              background: 'linear-gradient(90deg, rgba(34,158,217,0.72), var(--blue-accent))',
-            }}
-          />
-        </div>
-      )}
-      <span
-        aria-label={`Изображение раздела ${title}`}
-        style={{
-          width: SECTION_ARTWORK_SIZE,
-          height: SECTION_ARTWORK_SIZE,
-          aspectRatio: '1 / 1',
-          borderRadius: 22,
-          display: 'block',
-          overflow: 'hidden',
-          background: muted ? 'rgba(255,255,255,0.34)' : 'rgba(255,255,255,0.58)',
-          border: '1px solid rgba(255,255,255,0.78)',
-          boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.8), 0 8px 18px rgba(15,23,42,0.12)',
-        }}
-      >
-        <img
-          src={artworkSrc}
-          alt=""
-          draggable={false}
-          style={{
-            width: '100%',
-            height: '100%',
-            display: 'block',
-            objectFit: 'cover',
-            filter: muted ? 'grayscale(1) saturate(0.12)' : 'none',
-            opacity: muted ? 0.62 : 1,
-          }}
-        />
-      </span>
-      <span style={{ minWidth: 0, display: 'flex', flexDirection: 'column', gap: 7 }}>
-        <span
-          style={{
-            color: 'var(--ink)',
-            fontSize: 19,
-            lineHeight: 1.05,
-            fontWeight: 950,
-          }}
-        >
-          {title}
-        </span>
-        <span
-          style={{
-            color: 'rgba(15,23,42,0.62)',
-            fontSize: 12,
-            fontWeight: 850,
-            fontVariantNumeric: 'tabular-nums',
-          }}
-        >
-          {supportingText}
-        </span>
-      </span>
-      <ChevronRight
-        className="card-chevron"
-        aria-hidden="true"
-        size={19}
-        strokeWidth={2.7}
-        style={{ justifySelf: 'end' }}
-      />
-    </button>
   );
 }

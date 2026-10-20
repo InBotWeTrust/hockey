@@ -1,3 +1,4 @@
+import {BONUS_RHYTHM_SETTLEMENT_GRACE_MS} from './rhythm.js';
 import { settleBonusRecord } from './records.js';
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
@@ -201,7 +202,8 @@ export async function reconcileBonusAttempt(
         current = await finishPeriod(client, current, now);
       } else {
         const periodEnd = new Date(current.period_started_at.getTime() + periodRule.durationMs);
-        if (now >= periodEnd) {
+        const settlementEnd = new Date(periodEnd.getTime() + (qualificationRules.type === 'rhythm_in_time' ? BONUS_RHYTHM_SETTLEMENT_GRACE_MS : 0));
+        if (now >= settlementEnd) {
           await closeBonusPeriod(client, current, periodEnd, 'timeout');
           current = await finishPeriod(client, current, periodEnd);
         }

@@ -1,7 +1,7 @@
 import { act, render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { afterEach, describe, it, expect, vi } from 'vitest';
-import { BarScreen } from './BarScreen.js';
+import { BarScreen, BarBroadcastsScreen } from './BarScreen.js';
 import type { BarSocketOptions } from './BarSocket.js';
 import type { BarMatch } from './types.js';
 let options: BarSocketOptions;
@@ -55,10 +55,30 @@ const match: BarMatch = {
   ],
 };
 describe('bar board', () => {
+  it('uses bottom circle navigation and exits to the bar without changing its selected slot',()=>{
+    const previousSlot=sessionStorage.getItem('bar-active-slot');
+    sessionStorage.setItem('bar-active-slot','bar-10');
+    const view=render(<MemoryRouter initialEntries={['/bar/broadcasts']}><Routes>
+      <Route path="/bar/broadcasts" element={<BarBroadcastsScreen/>}/>
+      <Route path="/bar" element={<h1>Бар у телевизора</h1>}/>
+    </Routes></MemoryRouter>);
+    const dock=screen.getByRole('navigation',{name:'Разделы трансляций'});
+    expect(dock).toContainElement(screen.getByRole('button',{name:'Выход в бар'}));
+    expect(dock).toContainElement(screen.getByRole('tab',{name:'Онлайн'}));
+    expect(dock).toContainElement(screen.getByRole('tab',{name:'Предстоящие'}));
+    expect(screen.queryByText('Выбери события')).not.toBeInTheDocument();
+    expect(view.container.querySelector('.bar-filters')).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Выход в бар'}));
+    expect(screen.getByRole('heading',{name:'Бар у телевизора'})).toBeInTheDocument();
+    expect(sessionStorage.getItem('bar-active-slot')).toBe('bar-10');
+    expect(disconnect).toHaveBeenCalled();
+    if(previousSlot===null)sessionStorage.removeItem('bar-active-slot');
+    else sessionStorage.setItem('bar-active-slot',previousSlot);
+  });
   it('filters online matches and targeted invitations, and replaces expired cards', () => {
     render(
       <MemoryRouter>
-        <BarScreen />
+        <BarBroadcastsScreen />
       </MemoryRouter>,
     );
     act(() => {
@@ -100,7 +120,7 @@ describe('bar board', () => {
   it('shows the scheduled tournament start only for upcoming meetings', () => {
     render(
       <MemoryRouter>
-        <BarScreen />
+        <BarBroadcastsScreen />
       </MemoryRouter>,
     );
     const startsAt = '2026-10-08T16:00:00Z';
@@ -121,10 +141,35 @@ describe('bar board', () => {
   it('disconnects the board subscription when leaving the page', () => {
     const view = render(
       <MemoryRouter>
-        <BarScreen />
+        <BarBroadcastsScreen />
       </MemoryRouter>,
     );
     view.unmount();
     expect(disconnect).toHaveBeenCalled();
   });
+});
+
+it('opens the bar at the manager and pages to the online terminal', () => {
+  render(
+    <MemoryRouter>
+      <Routes>
+        <Route path="/" element={<BarScreen />} />
+        <Route path="/bar/cards/online" element={<div>Выбор соперника</div>} />
+      </Routes>
+    </MemoryRouter>,
+  );
+  expect(screen.getByRole('heading', {name:'Вероника'})).toBeInTheDocument();
+  expect(
+    screen.getByRole('navigation', { name: 'Места в баре' }).querySelectorAll('button'),
+  ).toHaveLength(10);
+  fireEvent.click(screen.getByRole('button', { name: 'Следующая страница' }));
+  expect(screen.getByRole('heading', {name:'Играть онлайн'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', { name: 'Играть онлайн' }));
+  expect(screen.queryByRole('tab', {name:'Карты'})).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button', {name:'Найти соперников'}));
+  expect(screen.getByRole('tab', { name: 'Карты' })).toBeInTheDocument();
+  expect(screen.getByRole('tab', { name: 'Бильярд' })).toBeEnabled();
+  expect(screen.getByRole('tab', { name: 'Дартс' })).toBeEnabled();
+  expect(screen.getByRole('button', { name: 'Начать поиск' })).toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Найти соперников' })).not.toBeInTheDocument();
 });

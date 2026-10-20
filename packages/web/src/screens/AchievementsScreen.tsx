@@ -1,3 +1,4 @@
+import { useVenueNavigation, useVenueAttention } from '../components/VenuePanorama.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
@@ -199,6 +200,9 @@ export function AchievementsScreen({
       weeklyChallengeQuery.data?.challenge,
       ...(weeklyChallengeQuery.data?.pendingRewards ?? []),
     ]) > 0;
+  const venue = useVenueNavigation();
+  useVenueAttention('tasks', achievementsQuery.data?.unclaimedCount ?? 0);
+  useVenueAttention('challenges', competitionLevel === 'beginner' ? 0 : countClaimableWeeklyChallenges([weeklyChallengeQuery.data?.challenge, ...(weeklyChallengeQuery.data?.pendingRewards ?? [])]));
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
     [achievements, filter],
@@ -299,17 +303,19 @@ export function AchievementsScreen({
             Задания
           </h1>
         </div>
-        <SegmentedTabs
-          items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
-            ...tab,
-            attention: tab.id === 'achievements' ? achievementsAttention : challengeAttention,
-          }))}
-          activeTab="achievements"
-          ariaLabel="Разделы заданий"
-          onChange={(tab) => {
-            if (tab === 'challenges') navigate(weeklyChallengeRoute);
-          }}
-        />
+        {!venue && (
+          <SegmentedTabs
+            items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
+              ...tab,
+              attention: tab.id === 'achievements' ? achievementsAttention : challengeAttention,
+            }))}
+            activeTab="achievements"
+            ariaLabel="Разделы заданий"
+            onChange={(tab) => {
+              if (tab === 'challenges') navigate(weeklyChallengeRoute);
+            }}
+          />
+        )}
         <div className="section-label section-label--page achievement-counts">
           Задания · {selectedFilterCounts.completed}/{selectedFilterCounts.total}, уровни · {selectedFilterCounts.levels.completed}/{selectedFilterCounts.levels.total}
         </div>

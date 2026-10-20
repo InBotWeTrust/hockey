@@ -1,4 +1,8 @@
 import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
+import { LONG_COURT_RINK_ASPECT_RATIO, LONG_COURT_GAME_LAYER_STYLE } from './matchCourt.js';
+export { LONG_COURT_GAME_LAYER_STYLE } from './matchCourt.js';
+import { PERSPECTIVE_PLAYER_OPTIONS, PERSPECTIVE_GOAL_OPTIONS, PERSPECTIVE_GOALIE_OPTIONS, PERSPECTIVE_PUCK_OPTIONS } from './perspectiveActors.js';
+export { PERSPECTIVE_PLAYER_OPTIONS, PERSPECTIVE_GOAL_OPTIONS, PERSPECTIVE_GOALIE_OPTIONS, PERSPECTIVE_PUCK_OPTIONS } from './perspectiveActors.js';
 import {resolveCyberpunkCourtShot,type CyberpunkRules,type CyberpunkPanelEvent} from '@hockey/game-core';
 import { SnowBurst } from './renderer/SnowBurst.js';
 import type { SkidVisual } from './loop.js';
@@ -36,12 +40,13 @@ import {
   simulateGoalie,
   type DailyPeriodSpeedPreset,
   type DuelPlayerCondition,
-  type BonusChallengeShotPause,
   type GoalieConfig,
   type SessionPhaseOffsets,
   type ShotInput,
   type ShotResult,
+  type AdvancedTrainingEpisodeSample,
   type StickEffects,
+  type BonusChallengeShotPause,
 } from '@hockey/game-core';
 import { useAuthStore } from '../auth/authStore.js';
 import { triggerShotOutcomeHaptic } from '../feedback/haptics.js';
@@ -78,10 +83,6 @@ import {
   TRAINING_LONG_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BACKGROUND,
   TRAINING_NEW_COURT_BG_CROP_BOTTOM,
-  TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
-  TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
-  TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
   TRAINING_NEW_COURT_HITBOX_GOALIE_HEIGHT_SCALE,
   TRAINING_NEW_COURT_HITBOX_GOALIE_INSET,
   TRAINING_NEW_COURT_HITBOX_GOALIE_WIDTH_SCALE,
@@ -89,11 +90,6 @@ import {
   TRAINING_NEW_COURT_HITBOX_GOAL_INSET,
   TRAINING_NEW_COURT_HITBOX_GOAL_WIDTH_SCALE,
   TRAINING_NEW_COURT_POST_EDGE_DISTANCE,
-  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
-  TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
-  TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  TRAINING_NEW_COURT_VISUAL_Y_SCALE,
   distanceToNewTrainingCourtGoalEdge,
   resolveNewTrainingCourtShot,
   type TrainingCourtDesign,
@@ -122,13 +118,6 @@ type RouteCameraPhase = 'settled' | 'zoomed' | 'exiting';
 
 const PLAY_ROUTE_TRANSITION_MS = 580;
 
-const LONG_COURT_RINK_ASPECT_RATIO = '1212 / 2000';
-
-export const LONG_COURT_GAME_LAYER_STYLE: CSSProperties = {
-  top: '24.55%',
-  height: '74.2%',
-  bottom: 'auto',
-};
 
 function shouldReduceMotion(): boolean {
   if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false;
@@ -310,10 +299,16 @@ export interface PlayViewProps<TState> {
   scoreboardShotsTotal?: number | undefined;
   shots: number;
   shotIndexBase?: number | undefined;
+  sceneShotIndex?: number | undefined;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
   timerLabel?: string | undefined;
   autoShotDelayMs?: number | undefined;
+  maxSceneTimeMs?: number | undefined;
+  sceneTimeScale?: ((sceneMs: number) => number) | undefined;
+  episodeSampler?: ((sceneMs: number) => AdvancedTrainingEpisodeSample) | undefined;
+  practiceShotWindow?: { armStartMs: number; targetMs: number; endMs: number } | undefined;
+  shotTriggerKey?: number | undefined;
   scoreboardNotice?: string | undefined;
   scoreboardModel?:
     | GameScoreboardModel
@@ -321,6 +316,8 @@ export interface PlayViewProps<TState> {
     | undefined;
   scoreboardAccessory?: ReactNode;
   shotButtonLabel?: string | undefined;
+  hidePrimaryAction?: boolean | undefined;
+  observationAction?: ((sceneMs: number) => void) | undefined;
   primaryActionBlocked?: boolean | undefined;
   inactiveAction?: (() => unknown | Promise<unknown>) | undefined;
   onInactiveActionStart?: (() => void) | undefined;
@@ -330,6 +327,9 @@ export interface PlayViewProps<TState> {
   continuousClockDuringResult?: boolean | undefined;
   waitForShotResponseBeforeResultClose?: boolean | undefined;
   freezeRenderingDuringResult?: boolean | undefined;
+  holdSceneAfterResult?: boolean | undefined;
+  resumeHeldResultKey?: number | undefined;
+  preserveSceneOnModalReturn?: boolean | undefined;
   backLabel?: string | undefined;
   bottomInset?: string | undefined;
   sessionStartedAt?: string | null | undefined;
@@ -348,6 +348,7 @@ export interface PlayViewProps<TState> {
   applyShotStateAtContact?: boolean | undefined;
   scoreboardEndsAt?: number | undefined;
   onTimerExpired?: (() => void | Promise<void>) | undefined;
+  onSceneClock?: ((sceneElapsedMs: number, shooterElapsedMs: number) => void) | undefined;
   optimisticAddShot: (claimed: ShotResult['type']) => void;
   submitShot: (args: {
     shotIndex: number;
@@ -369,8 +370,11 @@ export interface PlayViewProps<TState> {
   hideScoreboard?: boolean | undefined;
   scoreboardDimmed?: boolean | undefined;
   overlayControls?: ReactNode;
-  rinkUnderlay?: ReactNode;
   rinkOverlay?: ReactNode;
+  rinkCover?: ReactNode;
+  rinkUnderlay?: ReactNode;
+  overlayControlsTop?: string | undefined;
+  overlayControlsCentered?: boolean | undefined;
   gameLayerStyle?: CSSProperties | undefined;
   playerGrip?: 'left' | 'right' | undefined;
   playerOptions?: PlayerOptions | undefined;
@@ -398,6 +402,7 @@ export interface PlayViewProps<TState> {
       ) => DuelPlayerCondition | null)
     | undefined;
   hudAddon?: ReactNode;
+  rightHudAddon?: ReactNode;
   statusNotice?: ReactNode;
   statusNoticeTone?: 'success' | 'warning' | 'error' | 'slip' | 'magnetic' | undefined;
   statusNoticeClassName?: string | undefined;
@@ -440,32 +445,6 @@ interface PlaySessionSnapshot {
   shotsTotal: number | undefined;
 }
 
-const PERSPECTIVE_PLAYER_OPTIONS: PlayerOptions = {
-  spriteUrls: {
-    left: '/sprites/ultimate-player-left.webp',
-    right: '/sprites/ultimate-player-right.webp',
-  },
-  shotSpriteUrls: {
-    left: '/sprites/ultimate-player-left-shoot.webp',
-    right: '/sprites/ultimate-player-right-shoot.webp',
-  },
-  stumbleSpriteUrl: '/sprites/player-falling.webp',
-  restSpriteUrl: '/sprites/player-rest.webp',
-  spriteWidth: 101,
-  spriteAspect: 942 / 1067,
-  stumbleSpriteWidth: 110,
-  stumbleSpriteAspect: 1130 / 1150,
-  stumbleRotation: 0,
-  restSpriteWidth: 84,
-  restSpriteAspect: 1000 / 1374,
-  restRotation: 0,
-  baseRotation: 0,
-  shotMaxRotation: 0,
-  shotDurationMs: 500,
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-};
-
 export const TRAINING_STREET_PLAYER_OPTIONS: PlayerOptions = {
   ...PERSPECTIVE_PLAYER_OPTIONS,
   spriteUrls: {
@@ -478,49 +457,16 @@ export const TRAINING_STREET_PLAYER_OPTIONS: PlayerOptions = {
   },
 };
 
-const PERSPECTIVE_GOAL_OPTIONS: GoalOptions = {
-  spriteUrl: '/sprites/test-goal-clean.webp',
-  gateWidth: 92,
-  gateAspect: 1097 / 734,
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_GOAL_VISUAL_Y_OFFSET,
-  visualOffsetXScale: TRAINING_NEW_COURT_GOAL_VISUAL_OFFSET_X_SCALE,
-  spriteAnchorY: 1,
-};
-
 export const TRAINING_COURSE_GOAL_OPTIONS: GoalOptions = {
   ...PERSPECTIVE_GOAL_OPTIONS,
   spriteUrl: '/sprites/training-course-goal-transparent.png',
   gateAspect: 1533 / 1026,
 };
 
-const PERSPECTIVE_GOALIE_OPTIONS: GoalieOptions = {
-  idleSpriteUrl: '/sprites/test-goalie-black.webp',
-  saveSpriteUrl: '/sprites/test-goalie-black-save.webp',
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_GOALIE_VISUAL_Y_OFFSET,
-  visualXScale: TRAINING_NEW_COURT_GOALIE_VISUAL_X_SCALE,
-  sizeScale: 1.134,
-  idleSizeScale: 1.22,
-  saveSizeScale: 0.96,
-  saveVisualYOffset: 10,
-};
-
 export const TRAINING_AMATEUR_GOALIE_OPTIONS: GoalieOptions = {
   ...PERSPECTIVE_GOALIE_OPTIONS,
   idleSpriteUrl: '/sprites/training-goalie-amateur.webp',
   saveSpriteUrl: '/sprites/training-goalie-amateur-save.webp',
-};
-
-const PERSPECTIVE_PUCK_OPTIONS: PuckOptions = {
-  radiusScaleX: 1.16,
-  radiusScaleY: 0.82,
-  rotation: 0,
-  visualYScale: TRAINING_NEW_COURT_VISUAL_Y_SCALE,
-  visualYOffset: TRAINING_NEW_COURT_VISUAL_Y_OFFSET,
-  bladeOffsetX: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_X,
-  bladeOffsetY: TRAINING_NEW_COURT_PUCK_BLADE_OFFSET_Y,
-  flightVisualYOffset: TRAINING_NEW_COURT_PUCK_FLIGHT_VISUAL_Y_OFFSET,
 };
 
 const PERSPECTIVE_HITBOX_OPTIONS: HitboxesOptions = {
@@ -673,14 +619,22 @@ export function PlayView<TState>({
   scoreboardShotsTotal,
   shots,
   shotIndexBase,
+  sceneShotIndex,
   shotsTotal,
   timer,
   timerLabel,
   autoShotDelayMs,
+  maxSceneTimeMs,
+  sceneTimeScale,
+  episodeSampler,
+  practiceShotWindow,
+  shotTriggerKey,
   scoreboardNotice,
   scoreboardModel,
   scoreboardAccessory,
   shotButtonLabel = 'БРОСОК',
+  hidePrimaryAction = false,
+  observationAction,
   primaryActionBlocked = false,
   inactiveAction,
   onInactiveActionStart,
@@ -690,6 +644,9 @@ export function PlayView<TState>({
   continuousClockDuringResult = false,
   waitForShotResponseBeforeResultClose = false,
   freezeRenderingDuringResult = false,
+  holdSceneAfterResult = false,
+  resumeHeldResultKey,
+  preserveSceneOnModalReturn = false,
   backLabel = 'К режимам',
   bottomInset = 'var(--app-play-safe-bottom)',
   sessionStartedAt,
@@ -708,6 +665,7 @@ export function PlayView<TState>({
   applyShotStateAtContact = false,
   scoreboardEndsAt,
   onTimerExpired,
+  onSceneClock,
   optimisticAddShot,
   submitShot,
   applyState,
@@ -720,8 +678,11 @@ export function PlayView<TState>({
   hideScoreboard = true,
   scoreboardDimmed = false,
   overlayControls,
-  rinkUnderlay,
   rinkOverlay,
+  rinkCover,
+  rinkUnderlay,
+  overlayControlsTop,
+  overlayControlsCentered = false,
   gameLayerStyle = LONG_COURT_GAME_LAYER_STYLE,
   playerGrip,
   playerOptions = PERSPECTIVE_PLAYER_OPTIONS,
@@ -743,6 +704,7 @@ export function PlayView<TState>({
   skidVisual,
   beachWindTarget,
   hudAddon,
+  rightHudAddon,
   statusNotice,
   statusNoticeTone,
   statusNoticeClassName,
@@ -792,12 +754,29 @@ export function PlayView<TState>({
   }, [statusNotice, statusNoticeDelayMs]);
   const sessionRef = useRef(session);
   sessionRef.current = session;
+  const sceneShotIndexRef = useRef(sceneShotIndex);
+  sceneShotIndexRef.current = sceneShotIndex;
+  const onSceneClockRef = useRef(onSceneClock);
+  onSceneClockRef.current = onSceneClock;
   const periodExpiredRef = useRef(false);
   const expiryCheckRef = useRef<() => boolean>(() => false);
   const sampledPeriodElapsed = getPeriodElapsedMs?.();
   expiryCheckRef.current = () => stopAtPeriodEnd && periodEndsAt !== undefined && (
     getPeriodElapsedMs ? getPeriodElapsedMs() >= ((sampledPeriodElapsed ?? 0) + (periodRemainingMs ?? 0)) : Date.now() >= periodEndsAt
   );
+  const maxSceneTimeRef = useRef(maxSceneTimeMs);
+  maxSceneTimeRef.current = maxSceneTimeMs;
+  const sceneTimeScaleRef = useRef(sceneTimeScale);
+  sceneTimeScaleRef.current = sceneTimeScale;
+  const episodeSamplerRef = useRef(episodeSampler);
+  episodeSamplerRef.current = episodeSampler;
+  const practiceShotWindowRef = useRef(practiceShotWindow);
+  practiceShotWindowRef.current = practiceShotWindow;
+  const queuedPracticeShotRef = useRef<number | null>(null);
+  const queuedShotHandlerRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    queuedPracticeShotRef.current = null;
+  }, [active, clockRebaseKey, practiceShotWindow?.targetMs]);
   const sessionTimingRef = useRef<PlaySessionTiming>({
     resultPauseStartsAt: resultPauseStartsAt ?? null,
     resultPauseEndsAt: resultPauseEndsAt ?? null,
@@ -924,8 +903,10 @@ export function PlayView<TState>({
   const pendingMidShotApplyRef = useRef<(() => void) | null>(null);
   const pendingClockRebaseRef = useRef(false);
   const shotAnimationInProgressRef = useRef(false);
+  const shotContactSceneTimeRef = useRef<number | null>(null);
   const shotSubmitPendingRef = useRef(false);
   const resultVisualCompleteRef = useRef(false);
+  const heldResultRef = useRef(false);
   const pendingResultCloseRef = useRef<(() => void) | null>(null);
   const resultVisibilityRef = useRef(false);
   const [pixiReady, setPixiReady] = useState(false);
@@ -979,9 +960,9 @@ export function PlayView<TState>({
   const cyberpunkRef=useRef(cyberpunkEnvironment);cyberpunkRef.current=cyberpunkEnvironment;
   const shotResolverRef = useRef(shotResolver);
   shotResolverRef.current = shotResolver;
+  const duelConditionRef = useRef(duelCondition);
   const shooterMotionTimeRef = useRef(shooterMotionTime);
   shooterMotionTimeRef.current = shooterMotionTime;
-  const duelConditionRef = useRef(duelCondition);
   duelConditionRef.current = duelCondition;
   const readyPresenceRef = useRef(readyPresence);
   readyPresenceRef.current = readyPresence;
@@ -1222,6 +1203,7 @@ export function PlayView<TState>({
       }
       for (const id of shotTimeoutsRef.current) window.clearTimeout(id);
       shotTimeoutsRef.current = [];
+      shotContactSceneTimeRef.current = null;
       goalRef.current?.destroy();
       goalieRef.current?.destroy();
       playerRef.current?.destroy();
@@ -1540,21 +1522,33 @@ export function PlayView<TState>({
         hitboxRenderer: hitboxes,
         getScale: () => scaleRef.current,
         getSeed: () => sessionRef.current.seed ?? 'fallback',
-        getShotIndex: () => sessionRef.current.shots + 1,
+        getShotIndex: () => sceneShotIndexRef.current ?? sessionRef.current.shots + 1,
         getGoalieId: () => sessionRef.current.goalieId,
         getGoalieConfig: () => goalieConfigRef.current,
         getSpeedOverrides: () => speedsRef.current,
         getInitialClocks: () => computeInitialPlayClocks(sessionTimingRef.current),
-        getMaxSceneTimeMs: () => expiryCheckRef.current() && !shotAnimationInProgressRef.current ? loopRef.current?.getSceneT() ?? 0 : undefined,
+        getMaxSceneTimeMs: () => {
+          if (expiryCheckRef.current() && !shotAnimationInProgressRef.current)
+            return loopRef.current?.getSceneT() ?? 0;
+          const limit = queuedPracticeShotRef.current ?? maxSceneTimeRef.current;
+          const contact = shotContactSceneTimeRef.current;
+          return contact === null ? limit : Math.min(limit ?? Infinity, contact);
+        },
+        getTimeScale: (sceneMs) => shotAnimationInProgressRef.current
+          ? 1 : sceneTimeScaleRef.current?.(sceneMs) ?? 1,
         ...(courtMotionTimeRef.current ? { getCourtMotionTime: (target: 'goal' | 'goalie', ms: number) =>
           courtMotionTimeRef.current!(target, ms) } : {}),
+        getEpisodeSample: (sceneMs) => episodeSamplerRef.current?.(sceneMs) ?? null,
         getDuelCondition: (elapsedMs, activeSpeeds, reusable) =>
           duelConditionRef.current?.(elapsedMs, activeSpeeds, reusable) ?? null,
-        onDuelConditionChange: syncCurrentDuelCondition,
-        ...(shooterMotionTimeRef.current ? {
-          getShooterMotionTime: (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
-            shooterMotionTimeRef.current!(ms, pauses),
-        } : {}),
+        // Ready lobbies create this loop before a format's motion hook is present.
+        // Read availability dynamically, just like the callback's current implementation.
+        get getShooterMotionTime() {
+          return shooterMotionTimeRef.current
+            ? (ms: number, pauses: readonly BonusChallengeShotPause[]) =>
+                shooterMotionTimeRef.current!(ms, pauses)
+            : undefined;
+        },
         ...(skidVisualRef.current ? {
           getSkidVisual: (ms: number) => skidVisualRef.current?.(ms) ?? null,
           onEntitiesRendered: (ms: number) => {
@@ -1565,7 +1559,8 @@ export function PlayView<TState>({
               entity.y + (sprite?.y ?? 0) + (sprite?.height ?? 0) * .4, scaleRef.current, reduceMotion, ms);
           },
         } : {}),
-        onClockTick: (sceneElapsedMs) => {
+        onDuelConditionChange: syncCurrentDuelCondition,
+        onClockTick: (sceneElapsedMs, shooterElapsedMs) => {
           if (waterRulesRef.current !== beachEnvironmentRef.current?.puddles && beachEnvironmentRef.current && beachWaterRef.current) {
             beachWaterRef.current.setRules(beachEnvironmentRef.current.puddles);
             waterRulesRef.current = beachEnvironmentRef.current.puddles;
@@ -1584,6 +1579,12 @@ export function PlayView<TState>({
             const sprite = entity.children[wind === 'goal' ? 1 : 0];
             beachWindRef.current.update(sceneElapsedMs, wind, entity.x + (sprite?.x ?? 0),
               entity.y + (sprite?.y ?? 0), scaleRef.current, reduceMotion);
+          }
+          onSceneClockRef.current?.(sceneElapsedMs, shooterElapsedMs);
+          const target = queuedPracticeShotRef.current;
+          if (target !== null && sceneElapsedMs >= target) {
+            queuedPracticeShotRef.current = null;
+            queuedShotHandlerRef.current();
           }
         },
       });
@@ -1642,8 +1643,27 @@ export function PlayView<TState>({
       pendingClockRebaseRef.current = true;
       return;
     }
+    if (heldResultRef.current) {
+      puckRef.current?.release();
+      goalieRef.current?.setSavePose(false);
+      heldResultRef.current = false;
+    }
     loop.rebaseTime(computeInitialPlayClocks(sessionTimingRef.current));
   }, [clockRebaseKey, pixiReady]);
+
+  const lastResumeHeldResultKeyRef = useRef(resumeHeldResultKey);
+  useLayoutEffect(() => {
+    if (resumeHeldResultKey === undefined ||
+      resumeHeldResultKey === lastResumeHeldResultKeyRef.current) return;
+    lastResumeHeldResultKeyRef.current = resumeHeldResultKey;
+    if (!heldResultRef.current) return;
+    heldResultRef.current = false;
+    puckRef.current?.release();
+    goalieRef.current?.setSavePose(false);
+    loopRef.current?.endScenePause();
+    loopRef.current?.endShooterPause();
+    if (freezeRenderingDuringResult && tickerRef.current) loopRef.current?.attach(tickerRef.current);
+  }, [resumeHeldResultKey, freezeRenderingDuringResult]);
 
   // React to suppressedByModal flips after Pixi is up. handleReady applies
   // the initial state inline; this hook handles transitions only.
@@ -1665,7 +1685,7 @@ export function PlayView<TState>({
         cancelAnimationFrame(entranceRafRef.current);
         entranceRafRef.current = null;
       }
-      loop.detach();
+      loop.detach(preserveSceneOnModalReturn);
       setIsEntrancePlaying(false);
       goal.container.visible = !showIceCar;
       goal.update(scaleRef.current, 0);
@@ -1706,6 +1726,14 @@ export function PlayView<TState>({
       loop.attach(ticker);
       return;
     }
+    if (active && preserveSceneOnModalReturn) {
+      goal.container.visible = true;
+      player.container.visible = true;
+      goalie.container.visible = !hideGoalieRef.current;
+      puck.container.visible = true;
+      loop.attach(ticker);
+      return;
+    }
     if (skipNextUnsuppressedEntranceRef.current) {
       skipNextUnsuppressedEntranceRef.current = false;
       goal.container.visible = true;
@@ -1733,6 +1761,7 @@ export function PlayView<TState>({
     drawReadyPresence,
     goalsOnlyWhileInactive,
     pixiReady,
+    preserveSceneOnModalReturn,
     readyPresence,
     showIceCar,
     startEntranceAnimation,
@@ -1828,18 +1857,28 @@ export function PlayView<TState>({
     const duelShotCondition = duelConditionRef.current?.(tapTime, overrides) ?? null;
     if (duelShotCondition && !duelShotCondition.canShoot) return;
     const shooterMotionT = loop.getShooterMotionT();
-    const bonusCondition = shooterMotionT !== undefined
-      ? duelShotCondition as (DuelPlayerCondition & { goalSpeedMultiplier?: number; goalieSpeedMultiplier?: number }) | null
-      : null;
-    activeCfg.goalFrequency *= bonusCondition?.goalSpeedMultiplier ?? 1;
-    activeCfg.frequency *= bonusCondition?.goalieSpeedMultiplier ?? 1;
     const effectiveShooterFreq = shooterMotionT !== undefined ? overrides.shooterFreq : Math.max(
       0.1,
       overrides.shooterFreq * (duelShotCondition?.shooterSpeedMultiplier ?? 1),
     );
-    const sx =
+    const effectiveGoalFreq = overrides.goalFreq === 0 ? 0 : Math.max(
+      0.1,
+      overrides.goalFreq * (('goalSpeedMultiplier' in (duelShotCondition ?? {}))
+        ? Number((duelShotCondition as { goalSpeedMultiplier?: number }).goalSpeedMultiplier ?? 1)
+        : 1),
+    );
+    const effectiveGoalieFreq = Math.max(
+      0.1,
+      overrides.goalieFreq * (('goalieSpeedMultiplier' in (duelShotCondition ?? {}))
+        ? Number((duelShotCondition as { goalieSpeedMultiplier?: number }).goalieSpeedMultiplier ?? 1)
+        : 1),
+    );
+    activeCfg.frequency = effectiveGoalieFreq;
+    activeCfg.goalFrequency = effectiveGoalFreq;
+    const ordinaryShooterX =
       computeShooterX((shooterMotionT ?? shooterTapTime) + offsets.shooter, effectiveShooterFreq) +
       (duelShotCondition?.shooterXOffsetPx ?? 0);
+    const sx = episodeSamplerRef.current?.(tapTime).playerX ?? ordinaryShooterX;
     const puckSpeed = beachEnvironmentRef.current
       ? getBeachPuckSpeed(overrides.puckSpeed, (duelShotCondition as BonusChallengeCondition | null)?.puckSpeedMultiplier ?? 1)
       : clampPuckSpeed(
@@ -1856,8 +1895,8 @@ export function PlayView<TState>({
       ...(shooterMotionT !== undefined ? { shooterMotionTime: shooterMotionT } : {}),
       puckSpeedPerMs: puckSpeed,
       shooterFrequency: effectiveShooterFreq,
-      goalieFrequency: activeCfg.frequency,
-      goalFrequency: activeCfg.goalFrequency,
+      goalieFrequency: effectiveGoalieFreq,
+      goalFrequency: effectiveGoalFreq,
     };
     const beachRules = beachEnvironmentRef.current;
     const cyberpunk=cyberpunkRef.current;
@@ -1895,8 +1934,12 @@ export function PlayView<TState>({
     const tGoalCross = courtMotionTimeRef.current?.('goal', rawGoalCross) ?? rawGoalCross;
     const rawGoalieCross = tapTime + (beachShot?.flight.arrivalMsAtY(GOALIE_Y) ?? (PUCK_START.y - GOALIE_Y) / puckSpeed);
     const tGoalieCross = courtMotionTimeRef.current?.('goalie', rawGoalieCross) ?? rawGoalieCross;
+    const authoredEpisode = episodeSamplerRef.current !== undefined;
     if (beachShot?.blockedByWater) {
       subText = 'Шайба застряла в луже';
+    } else if (authoredEpisode) {
+      subText = result.type === 'goal' ? 'Отличный бросок!'
+        : result.type === 'save' ? 'Вратарь на месте!' : 'Мимо ворот';
     } else if (result.type === 'save') {
       const gs = simulateGoalie(activeCfg, seed, shotIndex, tGoalieCross, offsets.goalie);
       const rel = sx - gs.position.x;
@@ -1942,6 +1985,9 @@ export function PlayView<TState>({
     setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
+    // The scene reaches contact even if the outcome timer is delayed by a slow frame.
+    // Keep the puck renderer alive; only the simulation clock is bounded here.
+    shotContactSceneTimeRef.current = continuousClockDuringResult ? null : tapTime + flightMs;
     loop.beginShooterPause(flightMs);
     playerRef.current?.playShot();
     const beachRenderPoint = (elapsed: number) => {
@@ -1956,7 +2002,7 @@ export function PlayView<TState>({
       end: targetPoint,
     };
     const reboundObstacles =
-      displayKind === 'miss'
+      displayKind === 'miss' && !authoredEpisode
         ? puckReboundObstacles(
             simulateGoal(activeCfg, tGoalCross, offsets.goal).offsetX,
             simulateGoalie(activeCfg, seed, shotIndex, courtMotionTimeRef.current?.('goalie', rawGoalCross) ?? rawGoalCross, offsets.goalie),
@@ -1994,6 +2040,7 @@ export function PlayView<TState>({
       beachReleaseTimeRef.current = null;
       if (continuousClockDuringResult) loop.endShooterPause(flightMs);
       else loop.beginScenePause();
+      shotContactSceneTimeRef.current = null;
       if (outcomeMotion && visualOutcomeDurationMs > 0) {
         puck.playOutcomeMotion(
           outcomeContact,
@@ -2030,7 +2077,7 @@ export function PlayView<TState>({
     }
 
     scheduleShotTimeout(() => {
-      if (!continuousClockDuringResult) {
+      if (!continuousClockDuringResult && !holdSceneAfterResult) {
         loop.endScenePause();
         loop.endShooterPause();
       }
@@ -2038,9 +2085,13 @@ export function PlayView<TState>({
         pendingClockRebaseRef.current = false;
         scheduleClockRebaseFromLatestTiming();
       }
-      puck.release();
-      if (result.type === 'save') goalie.setSavePose(false);
-      if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
+      if (!holdSceneAfterResult) {
+        puck.release();
+        if (result.type === 'save') goalie.setSavePose(false);
+        if (freezeRenderingDuringResult && tickerRef.current) loop.attach(tickerRef.current);
+      } else {
+        heldResultRef.current = true;
+      }
       shotAnimationInProgressRef.current = false;
       resultVisualCompleteRef.current = true;
       setIsShotInProgress(false);
@@ -2121,6 +2172,7 @@ export function PlayView<TState>({
     continuousClockDuringResult,
     waitForShotResponseBeforeResultClose,
     freezeRenderingDuringResult,
+    holdSceneAfterResult,
     optimisticAddShot,
     submitShot,
     applyState,
@@ -2135,18 +2187,25 @@ export function PlayView<TState>({
   ]);
 
   const autoShotHandlerRef = useRef(handleShotTap);
+  queuedShotHandlerRef.current = handleShotTap;
   useEffect(() => {
     autoShotHandlerRef.current = handleShotTap;
   }, [handleShotTap]);
 
   useEffect(() => {
     if (!active || !pixiReady || autoShotDelayMs === undefined) return;
-    const timeout = window.setTimeout(
-      () => autoShotHandlerRef.current(),
-      Math.max(0, autoShotDelayMs),
-    );
+    const timeout = window.setTimeout(() => {
+      autoShotHandlerRef.current();
+    }, Math.max(0, autoShotDelayMs));
     return () => window.clearTimeout(timeout);
   }, [active, autoShotDelayMs, clockRebaseKey, pixiReady]);
+
+  const previousShotTriggerKey = useRef(shotTriggerKey);
+  useEffect(() => {
+    if (shotTriggerKey === undefined || shotTriggerKey === previousShotTriggerKey.current) return;
+    previousShotTriggerKey.current = shotTriggerKey;
+    if (active && pixiReady) autoShotHandlerRef.current();
+  }, [active, pixiReady, shotTriggerKey]);
 
   const handleInactiveAction = useCallback(async (): Promise<void> => {
     if (!inactiveAction || isInactiveActionPending) return;
@@ -2183,8 +2242,21 @@ export function PlayView<TState>({
       void handleInactiveAction();
       return;
     }
+    if (observationAction) {
+      observationAction(loopRef.current?.getSceneT() ?? 0);
+      return;
+    }
+    if (queuedPracticeShotRef.current !== null) return;
+    const practiceWindow = practiceShotWindowRef.current;
+    const sceneMs = loopRef.current?.getSceneT();
+    if (practiceWindow && sceneMs !== undefined &&
+      sceneMs >= practiceWindow.armStartMs && sceneMs <= practiceWindow.targetMs) {
+      queuedPracticeShotRef.current = practiceWindow.targetMs;
+      return;
+    }
     handleShotTap();
-  }, [handleInactiveAction, handleShotTap, inactiveAction, primaryActionBlocked]);
+  }, [handleInactiveAction, handleShotTap, inactiveAction, observationAction,
+    primaryActionBlocked]);
 
   const timerValue = timer ?? formatMs(scoreboardRemaining);
   const visibleScoreboardGoals = scoreboardSnapshot?.goals ?? scoreboardGoals ?? goals;
@@ -2227,20 +2299,22 @@ export function PlayView<TState>({
     !hideRinkScoreboard &&
     (showDuelStumbleNotice || Boolean(duelFatigueNotice) || (statusNoticeUnderScoreboard && Boolean(effectiveStatusNotice)));
   const iceNoticeClass = noticesOnIce && !noticeInScoreboard ? ' duel-condition-notice--ice' : '';
+  const challengeNoticeClass = statusNoticeClassName === 'bonus-challenge-environment-notice'
+    ? ' bonus-challenge-environment-notice' : '';
   const gameNotice = showDuelStumbleNotice ? (
-    <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
+    <FittedNotice fit={noticeInScoreboard || noticesOnIce}
       role="status"
       aria-live="polite"
-      className={`duel-stumble-notice${iceNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
+      className={`duel-stumble-notice${iceNoticeClass}${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}`}
       style={routeGameStyle}
     >
       Споткнулся · бросок недоступен
     </FittedNotice>
   ) : duelFatigueNotice ? (
-    <FittedNotice fit={noticeInScoreboard && statusNoticeClassName === 'bonus-challenge-environment-notice'}
+    <FittedNotice fit={noticeInScoreboard || noticesOnIce}
       role="status"
       aria-live="polite"
-      className={`duel-fatigue-notice${iceNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
+      className={`duel-fatigue-notice${iceNoticeClass}${challengeNoticeClass}${noticeInScoreboard ? ' initial-training-feedback-notice--scoreboard' : ''}${
         currentDuelCondition?.status === 'exhausted_stop'
           ? ' duel-rest-notice'
           : currentDuelCondition?.status === 'nutrition_slowdown' ||
@@ -2313,8 +2387,8 @@ export function PlayView<TState>({
                   ...(scoreboardOpponent !== undefined ? { opponent: scoreboardOpponent } : {}),
                 }))}
             />
-            {scoreboardAccessory}
             {noticeInScoreboard && gameNotice}
+            {scoreboardAccessory}
           </div>
         )
       }
@@ -2455,8 +2529,11 @@ export function PlayView<TState>({
             <div
               style={{
                 position: 'absolute',
-                top: 'clamp(112px, 22%, 148px)',
-                left: 'clamp(10px, 3.4%, 18px)',
+                top: overlayControlsTop ?? 'clamp(112px, 22%, 148px)',
+                left: overlayControlsCentered ? '50%' : 'clamp(10px, 3.4%, 18px)',
+                transform: overlayControlsCentered ? 'translateX(-50%)' : undefined,
+                width: overlayControlsCentered ? 'max-content' : undefined,
+                maxWidth: 'calc(100% - 20px)',
                 zIndex: 7,
                 pointerEvents: 'auto',
                 ...routeGameStyle,
@@ -2465,6 +2542,7 @@ export function PlayView<TState>({
               {overlayControls}
             </div>
           )}
+          {rinkCover}
           {hudAddon && (
             <div
               style={{
@@ -2478,6 +2556,18 @@ export function PlayView<TState>({
               }}
             >
               {hudAddon}
+            </div>
+          )}
+          {rightHudAddon && (
+            <div style={{
+              position: 'absolute',
+              right: 'clamp(10px, 4.2%, 22px)',
+              bottom: 'clamp(16px, 3.4%, 30px)',
+              zIndex: 6,
+              pointerEvents: 'none',
+              ...routeGameStyle,
+            }}>
+              {rightHudAddon}
             </div>
           )}
           {!noticeInScoreboard && gameNotice}
@@ -2518,7 +2608,7 @@ export function PlayView<TState>({
             <Home size={22} />
           </button>
         )}
-        <button
+        {hidePrimaryAction ? <span aria-hidden="true" /> : <button
           type="button"
           className={isDuelRestBlocked ? 'btn btn--cta btn--duel-blocked' : 'btn btn--cta'}
           onClick={handlePrimaryTap}
@@ -2533,7 +2623,7 @@ export function PlayView<TState>({
           }}
         >
           {effectiveShotButtonLabel}
-        </button>
+        </button>}
         {hideSoundAction ? (
           <span aria-hidden="true" />
         ) : (
@@ -2547,10 +2637,7 @@ export function PlayView<TState>({
               width: 56,
               height: 56,
               borderRadius: 20,
-              background: 'rgba(15, 23, 42, 0.1)',
               color: 'var(--muted)',
-              border: '1px solid rgba(15, 23, 42, 0.08)',
-              opacity: 0.72,
             }}
           >
             <VolumeX size={22} />
@@ -2584,7 +2671,7 @@ export function PlayView<TState>({
               transform: 'translateX(-50%)',
               padding: '10px 16px',
               borderRadius: 999,
-              background: 'rgba(15, 23, 42, 0.92)',
+              background: 'var(--liquid-inset-bg)',
               color: '#ffffff',
               fontSize: 13,
               fontWeight: 700,

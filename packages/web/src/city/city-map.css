@@ -1,0 +1,74 @@
+.district-viewport{height:100%;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;cursor:grab}.district-world{position:relative;width:300dvh;height:100%}.district-world>img{width:100%;height:100%;display:block;object-fit:fill;user-select:none}.district-hit{position:absolute;transform:translate(-50%,-50%);background:transparent;border:0;border-radius:20px;cursor:pointer}
+.district{height:100%;position:relative;overflow:hidden;background:#142230}
+.district-panel{position:absolute;bottom:calc(12px + var(--bottom-nav-scroll-reserve,56px) + var(--bottom-nav-bottom-gap,8px) + env(safe-area-inset-bottom));left:12px;right:12px;overflow:hidden;border-radius:26px;border:1px solid var(--liquid-border,rgba(255,255,255,.38));background:var(--liquid-card-bg,linear-gradient(135deg,rgba(18,20,23,.28),rgba(30,32,35,.16)));backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%));-webkit-backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%));color:var(--liquid-ink,#f8f9fb);padding:14px 16px 0}
+.district-identity{display:flex;align-items:center;justify-content:space-between;gap:12px}.district-identity>div:first-child{min-width:0}.district-panel h1{margin:0;font-size:18px;line-height:1.2;font-weight:750}.district-panel p{margin:6px 0 0;font-size:12px;color:var(--liquid-muted,rgba(248,249,251,.82))}.district-actions{display:flex;gap:8px;flex-shrink:0}.district-actions .icon-btn{width:38px;height:38px;min-width:38px;border:1px solid rgba(225,235,255,.28);background:rgba(225,235,255,.06);color:inherit}.district-actions svg{width:19px;height:19px;stroke-width:1.5}
+.district-dock{margin:0 -16px;display:flex;align-items:center;gap:9px;padding:16px 14px 12px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x}.district-dock button{flex:0 0 48px;height:48px;padding:0;border:0;background:none;cursor:pointer}.district-dock span{display:block;width:46px;height:46px;background-size:460px auto;border-radius:50%;border:1px solid rgba(231,241,255,.4);filter:grayscale(1) brightness(.8);transform-origin:center bottom;transition:transform .18s ease,filter .18s ease}.district-dock button[aria-pressed=true] span{transform:scale(1.12);filter:grayscale(.3) brightness(1.1);border:var(--navigation-selected-border);box-shadow:var(--navigation-selected-shadow)}.district-dock button:hover span,.district-dock button:focus-visible span{transform:scale(1.22);filter:grayscale(.15) brightness(1.15)}.district-dock::-webkit-scrollbar{display:none}.district-viewport,.district-dock{overflow-anchor:none}.district-hit::after{content:'';position:absolute;inset:4% 0 0;pointer-events:none;opacity:0;background:radial-gradient(ellipse at 50% 55%,rgba(255,233,175,.3),rgba(235,246,255,.1) 40%,transparent 70%);mix-blend-mode:screen}.district-hit.is-flashing::after{animation:district-glint .85s ease-out both}@keyframes district-glint{0%{opacity:0;transform:translateX(-8%)}30%{opacity:.9}100%{opacity:0;transform:translateX(8%)}}@media(prefers-reduced-motion:reduce){.district-hit.is-flashing::after{animation:none}.district-dock span{transition:none}}
+.screen.sections-city-screen,.app-shell--bottom-nav-visible .app-content>.screen.sections-city-screen{padding:0!important;overflow:hidden}.sections-city-screen .district{--bottom-nav-scroll-reserve:0px}.sections-city-switch{position:absolute;z-index:15;top:calc(12px + var(--app-safe-top,0px));left:12px;display:flex;border-radius:18px;padding:4px;background:var(--liquid-card-bg);border:1px solid var(--liquid-border);backdrop-filter:var(--liquid-blur)}.sections-city-switch button{font:inherit;font-size:12px;padding:8px 12px;min-height:36px;border:0;border-radius:14px;color:var(--liquid-ink);background:transparent;cursor:pointer}.sections-city-switch button[aria-pressed=true]{background:var(--liquid-selected-bg)}.sections-classic{padding-top:58px}
+
+.district-world>img{position:absolute;inset:0;pointer-events:none}.district-light-enter{animation:district-light-fade 900ms ease-out both}@keyframes district-light-fade{from{opacity:0}to{opacity:1}}@media(prefers-reduced-motion:reduce){.district-light-enter{animation:none}}
+
+.sections-city-screen .district{--bottom-nav-bottom-gap:0px}
+.district-dock button{position:relative}
+.district-dock .district-profile{display:grid;place-items:center;filter:none;background:rgba(225,235,255,.12);overflow:hidden}
+.district-profile img{width:100%;height:100%;object-fit:cover}.district-profile svg{width:24px;height:24px;color:inherit}
+.district-badge{position:absolute;z-index:2;top:-4px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:rgb(220,38,38);color:white;font:800 10px/18px system-ui;text-align:center;box-shadow:0 0 0 1px rgba(218,230,246,.8);pointer-events:none}
+
+.district-panel{z-index:3}
+
+ .district-apartment-avatar{position:absolute;left:50%;top:40%;transform:translate(-50%,-50%);width:32px;height:32px;border-radius:50%;border:1px solid rgba(255,255,255,.8);background:rgba(24,30,38,.3);opacity:.5;display:grid;place-items:center;pointer-events:none}.district-apartment-avatar svg{width:20px;height:20px;color:white}.district-apartment{border-radius:8px}.district-apartment:hover .district-apartment-avatar,.district-apartment:focus-visible .district-apartment-avatar{opacity:.8}
+.district-game-anchor{position:absolute;z-index:4;width:clamp(260px,78vw,320px);max-width:calc(100vw - 32px);--city-panel-open-top:calc(12px + var(--app-safe-top,0px));top:var(--city-panel-open-top);transform:translateX(-50%)}
+
+.district-game-status{position:absolute;z-index:2;bottom:0;left:50%;transform:translateX(-50%);white-space:nowrap;font:700 10px/14px var(--font-mono,monospace);font-variant-numeric:tabular-nums;color:#fff;background:rgba(12,18,26,.96);padding:0 4px;border-radius:5px;pointer-events:none}
+
+.district .district-panel .district-navigation-toggle.icon-btn{position:absolute;top:0;left:50%;right:auto;transform:translateX(-50%);width:48px;height:20px;min-width:48px;min-height:20px;padding:0;border:0;background:transparent;box-shadow:none;backdrop-filter:none;-webkit-backdrop-filter:none;color:inherit;z-index:3}
+.district-navigation-handle{display:block;width:28px;height:3px;border-radius:3px;background:currentColor;opacity:.5}
+.district-navigation-toggle svg{width:17px;height:17px;stroke-width:1.5}
+.district-panel--collapsed{right:auto;width:56px;height:56px;padding:0;border-radius:50%;overflow:visible}
+.district .district-panel--collapsed .district-navigation-toggle.icon-btn{position:relative;inset:auto;transform:none;width:100%;height:100%;border:0;border-radius:50%;background:transparent;box-shadow:none}
+.district-panel--collapsed .district-navigation-toggle svg{width:25px;height:25px}
+.district-panel--collapsed .district-badge{top:-3px;right:-3px}
+.district-panel--collapsed .district-game-status{bottom:-2px}
+.district-navigation-toggle{-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+
+.district-panel:not(.district-panel--collapsed) .district-navigation-toggle.icon-btn:active{transform:translateX(-50%)}
+.district .district-panel--collapsed .district-navigation-toggle.icon-btn:active{transform:none}
+
+/* Keep labels outside the portrait and preserve the circle's notification overlays. */
+.district-dock button {flex:0 0 56px;width:56px;height:auto;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--liquid-ink);}
+.district-dock__label {display:block;width:56px;max-width:56px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:650 10px/13px var(--font-sans,system-ui);text-align:center;}
+.district-dock .district-game-status {bottom:19px;}
+
+.district-panel {bottom:var(--navigation-bottom);}
+.district-dock {gap:var(--navigation-gap);padding:var(--navigation-row-pad) 14px;}
+.district-dock button {flex-basis:var(--navigation-item);width:var(--navigation-item);gap:var(--navigation-label-gap);}
+.district-dock span {width:var(--navigation-circle);height:var(--navigation-circle);}
+.district-dock__label {font:var(--navigation-label-font);}
+.district-dock button[aria-pressed=true] span {filter:none;}
+.district-dock button:hover span,.district-dock button:focus-visible span {filter:none;}
+
+.district-hit.district-locker {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,.75);
+  background: transparent;
+  color: #fff;
+  box-shadow: 0 3px 10px #0005;
+}
+.district-locker:focus-visible { outline: 2px solid white; outline-offset: 3px; }
+
+/* Map shortcuts share the same transparent circle and white glyph. */
+.district-apartment-avatar {
+  top: 40%;
+  width: 44px;
+  height: 44px;
+  box-sizing: border-box;
+  border: 1px solid rgba(255,255,255,.75);
+  background: transparent;
+  color: #fff;
+  opacity: 1;
+  box-shadow: 0 3px 10px #0005;
+}
+.district-apartment-avatar svg { width:22px; height:22px; color:inherit; }
+.district-apartment:hover .district-apartment-avatar,
+.district-apartment:focus-visible .district-apartment-avatar { opacity:1; }

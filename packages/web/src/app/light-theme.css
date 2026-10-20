@@ -1,0 +1,86 @@
+/* Light materials share geometry with the dark theme. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --liquid-ink: #18212e;
+  --liquid-muted: #465466;
+  --liquid-muted-soft: #596779;
+  --liquid-card-bg: linear-gradient(135deg,rgba(255,255,255,.58),rgba(235,242,248,.40));
+  --liquid-chrome-bg: linear-gradient(135deg,rgba(255,255,255,.38),rgba(237,244,250,.24));
+  --liquid-modal-bg: linear-gradient(135deg,rgba(255,255,255,.94),rgba(237,243,249,.90));
+  --liquid-solid-bg: #f1f5f9;
+  --liquid-inset-bg: rgba(35,55,75,.08);
+  --liquid-selected-bg: rgba(255,255,255,.58);
+  --liquid-border: rgba(255,255,255,.72);
+  --liquid-border-soft: rgba(35,55,75,.18);
+  --liquid-shadow: 0 8px 24px rgba(15,30,50,.12),inset 0 1px 0 rgba(255,255,255,.8);
+  --liquid-selected-shadow: inset 0 1px 0 #ffffffb0,0 2px 8px #10203018;
+  --liquid-modal-shadow: 0 24px 60px #10203030,inset 0 1px 0 #fff;
+  --chat-reading-bg: rgba(248,250,253,.84);
+  --chat-reading-own-bg: rgba(224,237,246,.84);
+  --chat-reading-meta: #465466;
+  --liquid-toast-bg: rgba(245,248,252,.96);
+  --reward-coin: #156b40;
+  --reward-star: #825900;
+  --reward-experience: #205d9d;
+  --reward-token: #7540ad;
+  --red-deep: #a72d44;
+  --green-deep: #156b40;
+}
+:root[data-theme='dark'] { color-scheme: dark; }
+[data-theme='light'] :is(.chat-reading-surface,.modal-card,.duel-challenge-toast,.achievement-reward-toast) { color: var(--liquid-ink); text-shadow: none; }
+[data-theme='light'] :is(.profile-sporting-metrics__item strong,.profile-fitted-number,.profile-registration-date,.bar-identity__name,.bar-identity__role,.bar-identity__description,.chat-room-header__title,.profile-identity__name) { color: var(--liquid-ink); text-shadow: none; }
+[data-theme='light'] .profile-streak-record { color: var(--liquid-muted); }
+[data-theme='light'] .profile-sporting-metrics__item span { color: var(--liquid-muted); }
+[data-theme='light'] .chat-reading-surface { color: var(--liquid-ink); }
+[data-theme='light'] .app-shell .chat-reading-surface { color: var(--liquid-ink); }
+[data-theme='light'] :is(.icon-btn,.bottom-nav__icon-wrap) svg { filter: none; }
+[data-theme='light'] .app-shell .profile-logout-btn--danger { color: #8d2036; background: var(--liquid-card-bg); border-color: var(--liquid-border); backdrop-filter: var(--liquid-blur); -webkit-backdrop-filter: var(--liquid-blur); }
+[data-theme='light'] :is(.duel-challenge-toast,.achievement-reward-toast) { color: #18212e; }
+/* Text directly over scenery keeps a stable white foreground. */
+[data-theme='light'] :is(.screen-title-on-arena,.section-label--page,.bar-space__header) { color:#fff; text-shadow:0 1px 3px #0009; }
+@media (prefers-reduced-transparency: reduce) {
+  :root[data-theme='light'] { --liquid-card-bg:#eef3f8; --liquid-chrome-bg:#eef3f8; --liquid-modal-bg:#f7f9fc; --chat-reading-bg:#f7f9fc; --chat-reading-own-bg:#e0edf6; }
+}
+[data-theme='light'] :is(.bar-space .icon-btn,.bar-identity__toggle,.profile-identity__role,.profile-support-card,.profile-registration-account,.profile-settings-form,.duel-kind-picker,.duel-quick-pick) { color:var(--liquid-ink); }
+[data-theme='light'] :is(.modal-title,.modal-copy,.modal-primary,.btn,.pill,.chat-input textarea,.chat-input input,.chat-room-header__subtitle) { color:var(--liquid-ink); }
+[data-theme='light'] .app-shell .bar-space .bar-identity__toggle { color:var(--liquid-ink); }
+[data-theme='light'] .profile-registration-date__prefix { color:var(--liquid-muted); }
+[data-theme='light'] .profile-sporting-metrics__item .profile-fitted-number { color:var(--liquid-ink); }
+[data-theme='light'] :is(.profile-balance__amount svg,.profile-trophy-showcase svg,.profile-sporting-metrics__item strong,.profile-balance__value) { filter:none; text-shadow:none; }
+/* Standalone labels sit over scenery; labels inside glass use dark ink. */
+[data-theme='light'] .app-shell .section-label { color:#fff; text-shadow:0 1px 3px #0009; }
+[data-theme='light'] .app-shell :is(.glass,.modal-card,.section-card-surface) .section-label { color:var(--liquid-ink); text-shadow:none; }
+[data-theme='light'] .app-shell > h2, [data-theme='light'] .app-shell > section > h2 { color:#fff; text-shadow:0 1px 3px #0009; }
+[data-theme='light'] .bar-space .bar-space__actions .bar-identity__text { color:var(--liquid-ink); }
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  :root[data-theme='light'] { --liquid-card-bg:#eef3f8; --liquid-chrome-bg:#eef3f8; --liquid-modal-bg:#f7f9fc; }
+}
+
+
+/* Light theme interface glyphs use dark ink inside their surfaces. */
+[data-theme='light'] :is(.achievement-card__status--claimed,.bonus-game-card__completion-badge,.initial-training-exercise-card__completion,.advanced-training-exercise-card__completion,.profile-settings-grip-option__indicator) {
+  color: #18212e;
+  background: #eef3f8;
+}
+
+:root[data-theme='light'] {
+  --arena-cube-ink: #18212e;
+  --arena-cube-label: #235A91;
+  --arena-cube-copy: #18212e;
+  --arena-cube-text-shadow: none;
+}
+
+[data-theme='light'] .city-game-panel { color:var(--arena-cube-ink); text-shadow:none; }
+[data-theme='light'] .city-game-toggle strong { color:var(--arena-cube-label); }
+
+[data-theme='light'] .city-game-panel {
+  --cube-score-label: #286394;
+  --cube-timer-ink: #18212e;
+  --cube-timer-shadow: none;
+  --cube-label-shadow: none;
+  --cube-period-active-bg: #18212e;
+  --cube-period-active-ink: #fff;
+  --cube-period-ink: #18212e;
+  --cube-period-border: #18212e;
+  --cube-period-shadow: none;
+}

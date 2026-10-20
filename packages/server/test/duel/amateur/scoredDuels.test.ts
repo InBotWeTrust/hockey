@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import {STICK_NEUTRAL,classifyMarksmanshipShot,getGoalie,getSessionPhaseOffsets,DEFAULT_MARKSMANSHIP_V6_SCORING_RULES} from '@hockey/game-core';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../../src/app.js';
@@ -80,6 +81,42 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
         ...(kind === 'marathon' ? { marathon_window_ms: window } : {}),
       },
     });
+  it.each(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])('supports existing fight offers in %s', async (kind) => {
+    await app.pg.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fights','Test') on conflict(key) do update set value=excluded.value");
+    const invited = await challenge(kind);
+    expect(invited.statusCode).toBe(200);
+    const id = invited.json().match.id;
+    const post = (path: string, side: number, payload?: object) => app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${id}/${path}`,
+      headers: players[side]!.headers, ...(payload ? {payload} : {}),
+    });
+    expect((await post('accept', 1)).statusCode).toBe(200);
+    for (const side of [0, 1]) expect((await post('ready', side, {loadout: {}})).statusCode).toBe(200);
+    for (const side of [0, 1]) {
+      expect((await post('period/start', side)).statusCode).toBe(200);
+      await app.pg.query(`insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at)
+        values($1,$2,'00000000-0000-4000-8000-000000000001',now()+interval '1 minute')`, [id, players[side]!.id]);
+    }
+    const state = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+    expect(state.json().match.fight_enabled).toBe(true);
+    expect(state.json().match.fight_availability.allowed).toBe(true);
+    const offer = await post('fight/challenge', 0, {requestId: '00000000-0000-4000-8000-000000000002'});
+    expect(offer.statusCode).toBe(200);
+    expect(offer.json().fight.status).toBe('offered');
+    const replay = await post('fight/challenge', 0, {requestId: '00000000-0000-4000-8000-000000000002'});
+    expect(replay.json().fight.id).toBe(offer.json().fight.id);
+    const accepted = await post('fight/respond', 1, {requestId: '00000000-0000-4000-8000-000000000003', fightId: offer.json().fight.id, decision: 'accept'});
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.json().match.fight_paused_at).not.toBeNull();
+    const paused = await app.pg.query('select period_paused_at from amateur_duel_participant where match_id=$1', [id]);
+    expect(paused.rows).toHaveLength(2);
+    expect(paused.rows.every(row => row.period_paused_at !== null)).toBe(true);
+    const frozen = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+    const later = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+    expect(later.json().match.me.clock).toEqual(frozen.json().match.me.clock);
+    if (kind === 'rhythm') expect(later.json().match.me.rhythm_travel).toBe(frozen.json().match.me.rhythm_travel);
+
+  });
   it('exposes both formats with independent first-period Classic speeds and unlimited shots', async () => {
     const response = await app.inject({
       url: '/duel/amateur/templates',
@@ -98,6 +135,46 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
       expect(row.period_rules[0]).toMatchObject({ mode: 'time_attack', shotsLimit: null, durationMs: kind === 'sniper' ? 150000 : 240000 });
     }
   });
+
+  it('returns accepted and legacy shot categories for both players in result and history details', async () => {
+    const invited = await challenge('sniper');
+    const id = invited.json().match.id;
+    const post = (path:string,player:number,payload?:object) => app.inject({method:'POST',url:`/duel/amateur/matches/${id}/${path}`,headers:players[player]!.headers,...(payload?{payload}:{})});
+    expect((await post('accept',1)).statusCode).toBe(200);
+    for(const player of [0,1]) {
+      expect((await post('ready',player,{loadout:{}})).statusCode).toBe(200);
+    }
+    for(const player of [0,1]) expect((await post('period/start',player)).statusCode).toBe(200);
+    expect((await post('shot',0,{shot_index:1,input:{tapTime:0},claimed_result:'goal'})).statusCode).toBe(200);
+    const shot=(await app.pg.query('select * from shot_session where amateur_duel_match_id=$1',[id])).rows[0];
+    const matchRow=(await app.pg.query('select * from amateur_duel_match where id=$1',[id])).rows[0];
+    const rules=matchRow.rules_snapshot;
+    let accepted:ReturnType<typeof classifyMarksmanshipShot>|null=null;
+    let input=shot.input_payload;
+    for(let tapTime=0;tapTime<20000;tapTime+=50){
+      input={...shot.input_payload,tapTime,shooterTapTime:tapTime};
+      const classification=classifyMarksmanshipShot({stickEffects:STICK_NEUTRAL,shotInput:input,goalie:getGoalie(rules.goalieId),seed:shot.seed,shotIndex:1,phaseOffsets:getSessionPhaseOffsets(matchRow.match_seed),earliestTapTime:0,scoring:rules.sniperScoring??DEFAULT_MARKSMANSHIP_V6_SCORING_RULES});
+      if(classification.result.type==='goal'&&classification.v6Score){accepted=classification;break;}
+    }
+    expect(accepted?.v6Score).toBeTruthy();
+    const technique=accepted!.v6Score!.technique,points=accepted!.awardedPoints;
+    const legacyInput = { ...input };
+    delete legacyInput.sniperTechnique;
+    // Synthetic accepted rows in this dedicated test DB cover saved and legacy formats.
+    await app.pg.query("update shot_session set input_payload=$2,server_result='goal',awarded_points=$3 where id=$1",[shot.id,JSON.stringify({...input,sniperTechnique:technique}),points]);
+    await app.pg.query("insert into shot_session(user_id,mode,amateur_duel_match_id,period_number,shot_index,seed,input_payload,server_result,game_core_version,created_at,awarded_points) values($1,'amateur_duel',$2,1,1,$3,$4,'goal',$5,now(),$6)",[players[1]!.id,id,shot.seed,JSON.stringify(legacyInput),shot.game_core_version,points]);
+    await app.pg.query("update amateur_duel_participant set shots_taken=1,goals=1,period_started_at=now()-interval '194 seconds' where match_id=$1",[id]);
+    const result=await post('settle',0);
+    expect(result.statusCode).toBe(200);
+    const expected=[{category:technique,count:1,points:points/10}];
+    expect(result.json().match.me.sniper_breakdown).toEqual(expected);
+    expect(result.json().match.opponent.sniper_breakdown).toEqual(expected);
+    const details=await app.inject({url:`/duel/amateur/matches/${id}`,headers:players[0]!.headers});
+    expect(details.statusCode).toBe(200);
+    expect(details.json().match.me.sniper_breakdown).toEqual(expected);
+    expect(details.json().match.opponent.sniper_breakdown).toEqual(expected);
+  });
+
   it('returns the same confirmed shot on retry without duplicating statistics', async () => {
     const invited = await challenge('sniper');
     const id = invited.json().match.id;
@@ -166,40 +243,37 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
         expect((await post('period/start', player)).statusCode).toBe(200);
       const duration = kind === 'sniper' ? 150000 : 240000;
       expect(invited.json().match.rules.periodRules[0].durationMs).toBe(duration);
-      // Isolate the siren boundary from random skate stumbles at the same timestamp.
-      await app.pg.query(
-        `update amateur_duel_match set rules_snapshot =
-          jsonb_set(jsonb_set(rules_snapshot,
-            '{noInventoryTiming,skates,stumbleDurationMinMs}', '0'::jsonb),
-            '{noInventoryTiming,skates,stumbleDurationMaxMs}', '0'::jsonb)
-          where id=$1`,
-        [id],
-      );
-      await app.pg.query(
-        "update amateur_duel_participant set period_started_at=now()-($2::int * interval '1 millisecond') where match_id=$1",
-        [id, duration],
-      );
-      const shot = (tapTime: number) => ({
-        shot_index: 1,
-        input: { tapTime },
-        claimed_result: 'goal',
-      });
-      expect((await post('shot', 0, shot(duration + 1))).statusCode).toBe(409);
-      const finalShot = await post('shot', 0, shot(duration));
-      expect(finalShot.statusCode, JSON.stringify(finalShot.json())).toBe(200);
-      const stored = await app.pg.query(
-        'select count(*)::int n from shot_session where amateur_duel_match_id=$1',
-        [id],
-      );
-      expect(stored.rows[0].n).toBe(1);
+      const boundaryNow = new Date();
+      // Assert logical siren boundaries independently of SQL and CPU latency.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(boundaryNow);
+      try {
+        await app.pg.query(
+          "update amateur_duel_participant set period_started_at=$2::timestamptz where match_id=$1",
+          [id, new Date(boundaryNow.getTime() - duration)],
+        );
+        const shot = (tapTime: number) => ({
+          shot_index: 1,
+          input: { tapTime },
+          claimed_result: 'goal',
+        });
+        expect((await post('shot', 0, shot(duration + 1))).statusCode).toBe(409);
+        const finalShot = await post('shot', 0, shot(duration));
+        expect(finalShot.statusCode, finalShot.body).toBe(200);
+        const stored = await app.pg.query(
+          'select count(*)::int n from shot_session where amateur_duel_match_id=$1',
+          [id],
+        );
+        expect(stored.rows[0].n).toBe(1);
+      } finally { vi.useRealTimers(); }
     },
   );
   it.each(['sniper','marathon'])('finishes %s immediately only at its effective deadline', async (kind) => {
     const id=(await challenge(kind)).json().match.id;
     const post=(path:string,player:number,payload?:object)=>app.inject({method:'POST',url:`/duel/amateur/matches/${id}/${path}`,headers:players[player]!.headers,...(payload?{payload}:{})});
     await post('accept',1);
-    for (const player of [0, 1]) expect((await post('ready', player, {loadout:{}})).statusCode).toBe(200);
-    for (const player of [0, 1]) expect((await post('period/start', player)).statusCode).toBe(200);
+    for(const player of [0,1]) expect((await post('ready',player,{loadout:{}})).statusCode).toBe(200);
+    for(const player of [0,1]) expect((await post('period/start',player)).statusCode).toBe(200);
     expect((await post('period/finish',0)).statusCode).toBe(409);
     const duration=kind==='sniper'?150000:240000;
     await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond'),period_paused_ms=10000 where match_id=$1 and user_id=$3",[id,duration+100,players[0]!.id]);
@@ -262,7 +336,7 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
       const fight = await post('fight/challenge', 0, {
         requestId: '00000000-0000-4000-8000-000000000001',
       });
-      expect(fight.statusCode).toBe(404); // Scoped production release excludes the fight API.
+      expect(fight.statusCode).toBe(409);
       await app.pg.query(
         "update amateur_duel_participant set period_started_at=now()-interval '254 seconds' where match_id=$1",
         [id],

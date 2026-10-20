@@ -1,6 +1,23 @@
-export { GAME_CORE_VERSION } from './version.js';
-// Bonus-only releases must not invalidate unrelated production game sessions.
-export const BONUS_GAME_CORE_VERSION = 71 as const;
+export { GAME_CORE_VERSION, isShotCoreVersionCompatible } from './version.js';
+export {
+  getAdvancedTrainingV2Scenario,
+  getAdvancedTrainingV2Side,
+  evaluateAdvancedTrainingV2Shot,
+  type AdvancedTrainingV2Technique,
+  type AdvancedTrainingV2Side,
+  type AdvancedTrainingV2Stage,
+  type AdvancedTrainingV2Scenario,
+} from './advancedTrainingV2.js';
+export { ADVANCED_TRAINING_V2_SCENARIOS, ADVANCED_TRAINING_V2_BANK_VERSION } from './advancedTrainingV2Scenarios.js';
+export { evaluateAdvancedTrainingContinuousShot, findNextAdvancedTrainingWindow,
+  getAdvancedTrainingContinuousSeed,
+  ADVANCED_TRAINING_WINDOW_SCAN_STEP_MS, ADVANCED_TRAINING_WINDOW_SCAN_HORIZON_MS,
+  type AdvancedTrainingContinuousContext, type AdvancedTrainingWindow,
+} from './advancedTrainingContinuous.js';
+export { getAdvancedTrainingEpisode, sampleAdvancedTrainingEpisode,
+  evaluateAdvancedTrainingEpisodeShot, validateAdvancedTrainingEpisode,
+  type AdvancedTrainingEpisodeProfile, type AdvancedTrainingEpisodeSample,
+} from './advancedTrainingEpisode.js';
 export { createRng, type Rng } from './rng.js';
 export { RINK, GOAL, GOAL_OPENING, PUCK_START, type Vec2 } from './rink.js';
 export type { GoalieConfig, GoalieState, GoaliePatternId } from './goalie/types.js';
@@ -97,17 +114,13 @@ export {
   type MarksmanshipV6Technique,
 } from './marksmanshipV6.js';
 export {
-  getBonusChallengeCondition,
-  getBeachPuckSpeed,
-  createBonusChallengeMotionSampler,
-  getBonusChallengeShooterMotionTime,
-  type BonusChallengeShotPause,
-  type BonusChallengeCondition,
-  type BonusChallengeEnvironmentRules,
-  type BonusChallengeFatigueRules,
-  type BonusChallengeSpeedPhase,
-  type BonusChallengeStumbleWindow,
-} from './bonusChallenge.js';
+  buildMarksmanshipReplaySnapshot,
+  projectManualMarksmanship,
+  type ConstructorHitbox,
+  type ManualMarksmanshipInput,
+  type ManualProjection,
+  type MarksmanshipReplaySnapshot,
+} from './marksmanshipConstructor.js';
 export {
   ADVANCED_TRAINING_EXERCISE_KEYS,
   ADVANCED_TRAINING_SCENARIOS,
@@ -136,6 +149,7 @@ export type { SessionPhaseOffsets } from './session.js';
 export { getSessionPhaseOffsets, deriveShotSeed } from './session.js';
 export {
   DEFAULT_DUEL_INVENTORY_TIMING,
+  DUEL_STUMBLE_HOLD_MS,
   duelInventorySpeedPointsToPuckSpeedDelta,
   duelSpeedPressureMultiplier,
   createDuelStumbleRandomness,
@@ -153,7 +167,18 @@ export {
   type DuelPlayerFatigueLevel,
   type DuelPlayerConditionStatus,
 } from './duelInventory.js';
-
+export {
+  getBonusChallengeCondition,
+  getBeachPuckSpeed,
+  createBonusChallengeMotionSampler,
+  getBonusChallengeShooterMotionTime,
+  type BonusChallengeShotPause,
+  type BonusChallengeCondition,
+  type BonusChallengeEnvironmentRules,
+  type BonusChallengeFatigueRules,
+  type BonusChallengeSpeedPhase,
+  type BonusChallengeStumbleWindow,
+} from './bonusChallenge.js';
 export {
   sampleBeachPuddles,
   traceBeachPuckFlight,
@@ -176,3 +201,24 @@ export * from './skiEnvironment.js';
 export * from "./cyberpunkEnvironment.js";
 
 export * from "./cyberpunkCourtShot.js";
+
+export * from './fight/types.js';
+export * from './fight/config.js';
+export * from './fight/engine.js';
+
+export * from './fight/movement.js';
+
+export * from './fight/responsiveInput.js';
+
+export * as durak from "./durak.js";
+export * as durakTable from './durakTable.js';
+
+export * from "./barLayout.js";
+
+export * from './barGames/runtime.js';
+
+export { countRhythmBoardContacts, projectRhythm, compareRhythmSeries, createRhythmMovementSampler } from './rhythm.js';
+export type { RhythmShot, RhythmProjection, RhythmFlightPause } from './rhythm.js';
+
+export * from './visitorCard.js';
+export * from './visitorPhrases.js';

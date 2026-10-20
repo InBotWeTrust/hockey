@@ -8,12 +8,7 @@ interface AppToastProps {
   durationMs?: number;
 }
 
-export function AppToast({
-  message,
-  onDismiss,
-  variant = 'default',
-  durationMs = 4_500,
-}: AppToastProps): JSX.Element {
+export function AppToast({ message, onDismiss, variant = 'default', durationMs = 4500 }: AppToastProps): JSX.Element {
   const onDismissRef = useRef(onDismiss);
   useEffect(() => {
     onDismissRef.current = onDismiss;

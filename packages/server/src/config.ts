@@ -26,17 +26,22 @@ const fcmKeys = ['FCM_PROJECT_ID', 'FCM_CLIENT_EMAIL', 'FCM_PRIVATE_KEY'] as con
 
 const schema = z
   .object({
+    DEPLOYMENT_ENV: z.enum(['dev', 'production']).default('production'),
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     HOST: z.string().default('0.0.0.0'),
     PORT: z.coerce.number().default(3000),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
+    OPENAI_API_KEY: optionalNonEmptyString,
+    CLOSEROUTER_API_KEY: optionalNonEmptyString,
+    BAR_CLOSEROUTER_PROVIDER: z.string().regex(/^(auto|provider-\d+)$/).default('auto'),
+    BAR_CLOSEROUTER_MODEL: z.string().min(1).default('openai/gpt-5.6-terra'),
+    BAR_CONVERSATION_MODEL: z.string().min(1).default('gpt-5.6-terra'),
     DATABASE_URL: z.string().url(),
     REDIS_URL: z.string().url(),
     JWT_SECRET: z.string().min(16),
     REFRESH_SECRET: z.string().min(16),
     ACCESS_TOKEN_TTL_SEC: z.coerce.number().int().min(60).max(30 * 24 * 60 * 60).optional(),
     BONUS_DAILY_ATTEMPT_LIMIT: z.coerce.number().int().min(1).max(100).optional(),
-    BONUS_CHALLENGES_ENABLED: z.union([z.boolean(), z.enum(['true', 'false']).transform((value) => value === 'true')]).optional(),
     TELEGRAM_BOT_TOKEN: z.string().min(1),
     VK_APP_ID: optionalNonEmptyString,
     ACCOUNT_RECOVERY_TELEGRAM_PROVIDER_UIDS: optionalNonEmptyString,

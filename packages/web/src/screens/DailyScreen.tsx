@@ -1,13 +1,27 @@
-import { marathonWindowEndAtShot, marathonWindowRemainingMs } from '../components/duel/marathonClock.js';
+import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
+import { useVenueNavigation } from '../components/VenuePanorama.js';
+import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
+import { createRhythmMovementSampler } from '@hockey/game-core';
+import {gameDockStatus,type GameDockStatus} from '../city/gameDockStatus.js';
+import {CityGamePanel} from '../city/CityGamePanel.js';
+import {isActionableDuelEvent} from '../components/useNavigationActivity.js';
 import { finishAmateurDuelPeriod } from '../api/amateurDuel.js';
-import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
-import { duelTemplateChoices } from '../components/duel/duelTemplateChoices.js';
 import { EnduranceTimer, enduranceTimerTone } from '../components/EnduranceTimer.js';
+import { marathonWindowEndAtShot, marathonWindowRemainingMs } from '../components/duel/marathonClock.js';
+import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
+import { formatRecordDuration } from '../lib/recordDuration.js';
 import { FittedHudLabel } from '../components/FittedHudLabel.js';
 import { MarksmanshipScoreNotice, marksmanshipV6TechniqueLabel } from '../components/MarksmanshipScoreNotice.js';
-import { formatRecordDuration } from '../lib/recordDuration.js';
 import { duelDisplayScore, duelFormatLabel, duelScorePairText } from '../components/duel/scoredDuel.js';
+import { duelTemplateChoices } from '../components/duel/duelTemplateChoices.js';
 import { classifyMarksmanshipShot } from '@hockey/game-core';
+import { DuelKindPreferenceButton } from '../components/DuelKindPreferenceButton.js';
+import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from '../game/matchCourt.js';
+import { useDuelFightSocket } from '../hooks/useDuelFightSocket.js';
+import { FightControls } from '../components/duel/fight/FightControls.js';
+import { FightView } from '../game/fight/FightView.js';
+import { FightResultModal } from '../components/duel/fight/FightResultModal.js';
+import { FightModal } from '../components/duel/fight/FightModal.js';
 import {
   useCallback,
   useEffect,
@@ -111,11 +125,9 @@ import {
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
-import {
-  AdvancedTrainingCatalog,
-  type AdvancedTrainingExerciseKey,
-} from '../components/AdvancedTrainingCourse.js';
+import { AdvancedTrainingCatalog } from '../components/AdvancedTrainingCourse.js';
 import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
+import type { AdvancedTrainingExerciseKey } from '../components/AdvancedTrainingCourse.js';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import type { ProfileData } from './profileTypes.js';
 import {
@@ -200,7 +212,11 @@ type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
-interface ArenaEntry {
+export interface ArenaEntry {
+  dockTimer?:string;
+  dockState?: 'ready'|'active'|'break'|'done'|'blocked';
+  attention?: boolean;
+  deadlineAt?: number | undefined;
   id: string;
   kind: ArenaEntryKind;
   eyebrow: string;
@@ -228,6 +244,7 @@ const DUEL_KIND_ARTWORK_IMAGES: Record<AmateurDuelKind, string> = {
   classic: '/modes/amateur-duel.webp',
   sniper: '/modes/amateur-duel-card.webp',
   marathon: '/modes/amateur-duel.webp',
+  rhythm: '/modes/amateur-duel.webp',
 };
 const TRAINING_HITBOX_TOGGLE_STORAGE_KEY = 'hockey.trainingHitboxesVisible';
 const TRAINING_SPEED_OVERRIDES_STORAGE_KEY = 'hockey.trainingSpeedOverrides';
@@ -298,8 +315,6 @@ function readTrainingSpeedOverrides(): SpeedOverrides | null {
   }
 }
 
-const AMATEUR_DAILY_COURT_BACKGROUND = '/sprites/amateur-daily-court.webp';
-const AMATEUR_TOURNAMENT_COURT_BACKGROUND = '/sprites/amateur-tournament-court.webp';
 
 export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
   return usesAmateurCourt
@@ -308,6 +323,10 @@ export function dailyCharacterVisuals(usesAmateurCourt: boolean) {
         playerOptions: TRAINING_STREET_PLAYER_OPTIONS,
         goalieOptions: TRAINING_AMATEUR_GOALIE_OPTIONS,
       };
+}
+
+export function demoCharacterVisuals() {
+  return dailyCharacterVisuals(false);
 }
 const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
   '/sprites/arena-ice-court.webp',
@@ -1023,12 +1042,18 @@ function TournamentGameContextCard({
   );
 }
 
-function GameHub({
+export function GameHub({
+  presentation = 'arena',
+  onDockStatusChange,
+  openRequest=0,
   onOpenDailyPlay,
   onOpenTraining,
   onOpenTrainingPlay,
   onOpenAmateurMatch,
 }: {
+  presentation?: 'arena'|'city';
+  onDockStatusChange?:(status:GameDockStatus)=>void;
+  openRequest?:number;
   onOpenDailyPlay: (options?: PlayOpenOptions) => void;
   onOpenTraining: () => void;
   onOpenTrainingPlay: (options?: PlayOpenOptions) => void;
@@ -1041,6 +1066,7 @@ function GameHub({
     queryFn: () => apiFetch<ProfileData>('/me'),
   });
   const data = useDailyStore((s) => s.data)!;
+  const panelOwner = useAuthStore((s)=>s.user?.id??'anonymous');
   const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
   const amateurAccess = deriveAmateurAccess({
     competitionLevel,
@@ -1088,12 +1114,14 @@ function GameHub({
     queryKey: ['amateur-duel', 'events'],
     queryFn: fetchAmateurEvents,
     enabled: data.lifetime_total_goals >= amateurUnlockGoalsRequired,
-    refetchInterval: 30_000,
+    refetchInterval: presentation==='city'?false:30_000,
+    refetchOnMount: presentation==='city'?false:true,
   });
   const classicTournamentGames = useQuery({
     queryKey: ['tournaments', 'classic', 'active'],
     queryFn: fetchActiveClassicTournamentGames,
-    refetchInterval: 30_000,
+    refetchInterval: presentation==='city'?false:30_000,
+    refetchOnMount: presentation==='city'?false:true,
   });
   const amateurEventItems = amateurEvents.data?.events ?? [];
   const duelStatsCurrentMatch = duelStatsMatch
@@ -1113,6 +1141,7 @@ function GameHub({
 
   useEffect(() => {
     if (
+      presentation !== 'city' &&
       data.state !== 'period_active' &&
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
@@ -1125,6 +1154,7 @@ function GameHub({
     const id = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(id);
   }, [
+    presentation,
     activeDuelEvents.length,
     classicTournamentGames.data?.games?.length,
     data.state,
@@ -1358,6 +1388,8 @@ function GameHub({
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
+    dockTimer: isDailyInProgress?dailyHubScoreboard.timer:formatHms(nextDayRemaining),
+    dockState: data.state==='closed'?'done':isDailyLockedByTraining?'blocked':data.state==='period_active'?'active':data.state==='break_active'?'break':'ready',
     kind: 'daily',
     eyebrow: 'Ежедневная игра',
     title: dailyEventTitle,
@@ -1393,6 +1425,8 @@ function GameHub({
   };
   const trainingArenaEntry: ArenaEntry = {
     id: 'training',
+    dockTimer: trainingData?formatHms(Math.max(0,timestampMs(trainingData.next_day_starts_at)-now)):'',
+    dockState: trainingData?.state==='closed'?'done':!trainingData||trainingData.gameplay_lock?.blocked?'blocked':trainingData.state==='active'?'active':'ready',
     kind: 'training',
     eyebrow: 'Тренировка',
     title: 'Тренировка',
@@ -1412,6 +1446,9 @@ function GameHub({
       (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
+      attention: isActionableDuelEvent(event),
+      dockState: event.me.state==='period_active'?'active':event.me.state==='break_active'?'break':isActionableDuelEvent(event)?'ready':'blocked',
+      deadlineAt: timestampMs(event.status==='ready_check'||event.status==='invited'?event.ready_expires_at:timestampMs(event.starts_at)>now?event.starts_at:event.me.state==='period_active'?event.period_ends_at:event.me.state==='break_active'?event.break_ends_at:event.ends_at)||undefined,
       kind: 'duel',
       eyebrow: 'Активная дуэль',
       eyebrowStatus: duelOutcomeText(event),
@@ -1509,6 +1546,9 @@ function GameHub({
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          attention: !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
+          dockState: waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
+          deadlineAt: timestampMs(isReady?game.readiness_ends_at:isBreak?game.break_ends_at:isActive?game.closes_at:game.starts_at),
           kind: 'duel',
           eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
           title: game.tournament_title,
@@ -1623,6 +1663,9 @@ function GameHub({
         : 0;
       return {
         id: `classic-${game.tournament_id}`,
+        attention: !completed,
+        dockState: completed?'done':locked?'blocked':isBreak?'break':game.state==='period_active'?'active':'ready',
+        deadlineAt: timestampMs(isBreak?game.break_ends_at:game.closes_at),
         kind: 'classic',
         eyebrow: `Турнир · ${game.tournament_day}-й тур`,
         title: game.tournament_title,
@@ -1715,6 +1758,8 @@ function GameHub({
     dailyArenaEntry,
     trainingArenaEntry,
   ];
+  const dockStatus=gameDockStatus(arenaEntries);
+  useEffect(()=>{onDockStatusChange?.({label:dockStatus.label,urgent:dockStatus.urgent});},[onDockStatusChange,dockStatus.label,dockStatus.urgent]);
   const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
   const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
 
@@ -1754,19 +1799,10 @@ function GameHub({
     [activeCubeEntryId, arenaEntries],
   );
 
+  const Container=presentation==='arena'?'main':'div';
   return (
-    <main
-      className="screen"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        width: '100%',
-        height: '100dvh',
-        padding: 0,
-        overflow: 'hidden',
-        background: '#06111d',
-      }}
-    >
+    <Container className={presentation==='arena'?'screen':undefined} style={presentation==='arena'?{position:'fixed',inset:0,width:'100%',height:'100dvh',padding:0,overflow:'hidden',background:'#06111d'}:{display:'contents'}}>
+      {presentation==='city'?<CityGamePanel key={panelOwner} storageKey={`city-game-panel-expanded-v1:${panelOwner}`} openRequest={openRequest} entries={arenaEntries} activeIndex={activeCubeIndex} onActiveIndexChange={handleArenaActiveIndexChange} renderFace={entry=><ArenaCubeFace entry={entry}/>} renderActions={entry=><ArenaCubeActions entry={entry}/>}/>:<>
       <section
         aria-label="Игровая арена"
         style={{
@@ -1788,6 +1824,7 @@ function GameHub({
           backgroundImage={arenaCourtImage(profileQuery.data?.competitionLevel)}
         />
       </section>
+      </>}
 
       {modeInfoModal && (
         <ModeInfoModal
@@ -1817,7 +1854,7 @@ function GameHub({
           onClose={() => setRecoveryTarget(null)}
         />
       )}
-    </main>
+    </Container>
   );
 }
 
@@ -1975,7 +2012,7 @@ function ArenaVideoCube({
                     padding: 0,
                     border: 0,
                     borderRadius: 999,
-                    background: active ? 'rgba(244, 253, 255, 0.96)' : 'rgba(178, 232, 255, 0.42)',
+                    background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)' ,
                     boxShadow: active
                       ? '0 0 7px rgba(212, 249, 255, 0.74)'
                       : '0 0 5px rgba(86, 205, 255, 0.24)',
@@ -1987,18 +2024,26 @@ function ArenaVideoCube({
             })}
           </div>
           <ArenaCubeFace entry={activeEntry} />
-          {activeEntry.secondaryActions !== undefined ? (
-            activeEntry.secondaryActions
-          ) : activeEntry.disabled ? null : (
+          <ArenaCubeActions entry={activeEntry}/>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function ArenaCubeActions({entry}:{entry:ArenaEntry}):JSX.Element{
+ return <>{entry.secondaryActions !== undefined ? (
+            entry.secondaryActions
+          ) : entry.disabled ? null : (
             <button
               type="button"
               className="btn btn--cta"
-              disabled={activeEntry.disabled}
-              onClick={activeEntry.onEnter}
+              disabled={entry.disabled}
+              onClick={entry.onEnter}
               style={{
                 position: 'relative',
                 zIndex: 3,
-                width: '70%',
+                width: 'min(160px, 70%)',
                 minWidth: 0,
                 minHeight: 'clamp(36px, 4.8vh, 44px)',
                 margin: '0 auto',
@@ -2006,27 +2051,22 @@ function ArenaVideoCube({
                 boxSizing: 'border-box',
                 justifyContent: 'center',
                 fontSize:
-                  activeEntry.ctaLabel === 'Сократить восстановление'
+                  entry.ctaLabel === 'Сократить восстановление'
                     ? 'clamp(11px, 1.4vh, 12px)'
                     : 'clamp(12px, 1.65vh, 14px)',
-                fontWeight: activeEntry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
+                fontWeight: entry.ctaLabel === 'Сократить восстановление' ? 700 : 900,
                 letterSpacing: '0.06em',
                 lineHeight: 1,
-                background:
-                  'linear-gradient(180deg, rgba(246, 252, 255, 0.98), rgba(214, 234, 247, 0.96))',
-                color: '#132033',
+                background: 'var(--liquid-inset-bg)',
+                color: 'var(--liquid-ink)',
                 border: '1px solid rgba(255, 255, 255, 0.78)',
                 boxShadow:
                   '0 0 14px rgba(138, 221, 255, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.86)',
               }}
             >
-              {activeEntry.ctaLabel}
+              {entry.ctaLabel}
             </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
+          )}</>;
 }
 
 function ArenaTableauNavButton({
@@ -2070,7 +2110,7 @@ function ArenaTableauNavButton({
   );
 }
 
-function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
+export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
   const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
 
   return (
@@ -2086,9 +2126,9 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         alignItems: 'stretch',
         padding: '0 clamp(38px, 11vw, 46px)',
         boxSizing: 'border-box',
-        color: '#e9fbff',
+        color: 'var(--arena-cube-ink, #e9fbff)',
         fontFamily: 'var(--font-mono)',
-        textShadow: '0 0 8px rgba(122, 229, 255, 0.36)',
+        textShadow: 'var(--arena-cube-text-shadow, 0 0 8px rgba(122, 229, 255, 0.36))',
       }}
     >
       <div
@@ -2096,7 +2136,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           minHeight: 0,
           height: '100%',
           display: 'grid',
-          gridTemplateRows: 'auto auto auto auto',
+          gridAutoRows: 'auto',
           alignContent: 'space-evenly',
           justifyItems: 'center',
           gap: 'clamp(4px, 0.7vh, 6px)',
@@ -2107,13 +2147,13 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
         <div style={{ display: 'grid', justifyItems: 'center', gap: 2 }}>
           <div
             style={{
-              color: 'rgba(205, 246, 255, 0.88)',
+              color: 'var(--arena-cube-label, rgba(205, 246, 255, 0.88))',
               fontSize: 'clamp(7px, 1.08vh, 9px)',
               fontWeight: 950,
               letterSpacing: showDuelIdentity ? '0.08em' : '0.16em',
               textTransform: 'uppercase',
               lineHeight: 1.05,
-              textShadow: '0 0 8px rgba(99, 218, 255, 0.44)',
+              textShadow: 'var(--arena-cube-text-shadow, 0 0 8px rgba(99, 218, 255, 0.44))',
             }}
           >
             {entry.eyebrow}
@@ -2126,7 +2166,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
                 color: 'rgba(247, 254, 255, 0.92)',
                 marginTop: 3,
                 textAlign: 'center',
-                textShadow: '0 0 9px rgba(144, 231, 255, 0.58)',
+                textShadow: 'var(--arena-cube-text-shadow, 0 0 9px rgba(144, 231, 255, 0.58))',
               }}
             >
               {entry.typeLabel}
@@ -2161,7 +2201,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
               <div
                 className="arena-duel-opponent-name"
                 style={{
-                  color: '#f7feff',
+                  color: 'var(--arena-cube-ink, #f7feff)',
                   lineHeight: 0.95,
                   fontWeight: 950,
                   overflow: 'hidden',
@@ -2185,7 +2225,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           <div
             className={`arena-cube-title${entry.title.length > 28 ? ' arena-cube-title--long' : ''}${entry.compactTitle ? ' arena-cube-title--compact' : ''}`}
             style={{
-              color: '#f7feff',
+              color: 'var(--arena-cube-ink, #f7feff)',
               fontSize: entry.compactTitle
                 ? entry.title === 'Восстановление'
                   ? '19px'
@@ -2208,18 +2248,18 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             {entry.title}
           </div>
         )}
-        <div
+        {entry.subtitle&&<div
           className={entry.compactSubtitle ? 'arena-cube-subtitle--compact' : undefined}
           style={{
             maxWidth: entry.compactSubtitle ? 'min(84%, 300px)' : 'min(72%, 280px)',
             margin: '0 auto',
-            color: 'rgba(234, 246, 255, 0.9)',
+            color: 'var(--arena-cube-copy, rgba(234, 246, 255, 0.9))',
             fontSize: entry.compactSubtitle
               ? 'clamp(8px, 1.12vh, 9px)'
               : 'clamp(9px, 1.24vh, 10px)',
             fontWeight: 850,
             lineHeight: entry.compactSubtitle ? 1.08 : 1.12,
-            textShadow: '0 0 7px rgba(0, 12, 24, 0.88)',
+            textShadow: 'var(--arena-cube-text-shadow, 0 0 7px rgba(0, 12, 24, 0.88))',
           }}
         >
           {entry.subtitleLines ? (
@@ -2231,7 +2271,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
           ) : (
             entry.subtitle
           )}
-        </div>
+        </div>}
         <div
           style={{
             display: 'flex',
@@ -2253,12 +2293,12 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
             <div
               style={{
                 width: '100%',
-                color: '#e9fbff',
+                color: 'var(--arena-cube-ink, #e9fbff)',
                 fontSize: 'clamp(12px, 1.85vh, 16px)',
                 fontWeight: 950,
                 lineHeight: 1.05,
                 textAlign: 'center',
-                textShadow: '0 0 8px rgba(100, 218, 255, 0.38)',
+                textShadow: 'var(--arena-cube-text-shadow, 0 0 8px rgba(100, 218, 255, 0.38))',
               }}
             >
               {entry.meta}
@@ -2270,7 +2310,7 @@ function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
   );
 }
 
-function DailyHubScoreboard({
+export function DailyHubScoreboard({
   activePeriod,
   align = 'center',
   ariaLabel,
@@ -2302,10 +2342,9 @@ function DailyHubScoreboard({
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : spacious
-              ? 'max-content max-content'
-              : 'minmax(0, 1fr) auto',
+            : 'repeat(2, minmax(0, 1fr))',
         alignItems: 'center',
+        justifyContent: spacious ? 'center' : undefined,
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
         gap:
           align === 'left'
@@ -2710,13 +2749,13 @@ function DailyPeriodTab({
         fontFamily: 'var(--font-mono)',
         fontSize: 11,
         fontWeight: 900,
-        background: active ? 'rgba(107, 224, 255, 0.24)' : 'rgba(7, 32, 52, 0.28)',
+        background: active ? 'var(--cube-period-active-bg, var(--liquid-selected-bg))' : 'var(--liquid-inset-bg)',
         border: active
-          ? '1px solid rgba(182, 238, 255, 0.72)'
-          : '1px solid rgba(118, 215, 255, 0.24)',
-        color: active ? '#e9fbff' : 'rgba(174, 233, 255, 0.46)',
+          ? '1px solid var(--cube-period-border, rgba(182, 238, 255, 0.72))'
+          : '1px solid var(--cube-period-border, rgba(118, 215, 255, 0.24))',
+        color: active ? 'var(--cube-period-active-ink, #e9fbff)' : 'var(--cube-period-ink, rgba(174, 233, 255, 0.46))',
         boxShadow: active
-          ? '0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24)'
+          ? 'var(--cube-period-shadow, 0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24))'
           : 'none',
       }}
     >
@@ -2749,7 +2788,7 @@ function DailyEventScoreboardColumn({
       <DailyEventScoreboardLabel align={align}>{label}</DailyEventScoreboardLabel>
       <span
         style={{
-          color: '#e9fbff',
+          color: 'var(--cube-timer-ink, #e9fbff)',
           fontFamily: 'var(--font-mono)',
           fontSize: 'clamp(13px, 2.05vh, 18px)',
           fontWeight: 950,
@@ -2757,7 +2796,7 @@ function DailyEventScoreboardColumn({
           letterSpacing: '0.06em',
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
-          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
+          textShadow: 'var(--cube-timer-shadow, 0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38))',
         }}
       >
         {value}
@@ -2776,7 +2815,7 @@ function DailyEventScoreboardLabel({
   return (
     <span
       style={{
-        color: 'rgba(187, 238, 255, 0.72)',
+        color: 'var(--cube-score-label, rgba(187, 238, 255, 0.72))',
         fontSize: 'clamp(6px, 0.95vh, 8px)',
         fontWeight: 900,
         letterSpacing: '0.16em',
@@ -2785,7 +2824,7 @@ function DailyEventScoreboardLabel({
         overflowWrap: 'anywhere',
         textAlign: align,
         whiteSpace: 'normal',
-        textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
+        textShadow: 'var(--cube-label-shadow, 0 0 7px rgba(88, 207, 255, 0.36))',
       }}
     >
       {children}
@@ -2813,7 +2852,7 @@ function ModeInfoModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         zIndex: 250,
@@ -2885,7 +2924,7 @@ export function DailyGameStatsModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         zIndex: 260,
@@ -2929,7 +2968,7 @@ export function DailyGameStatsModal({
             <div
               style={{
                 marginTop: 5,
-                color: 'rgba(15, 23, 42, 0.55)',
+                color: 'var(--liquid-muted)',
                 fontSize: 12,
                 fontWeight: 800,
               }}
@@ -2945,7 +2984,7 @@ export function DailyGameStatsModal({
         {!stats ? (
           <div
             style={{
-              color: 'rgba(15, 23, 42, 0.64)',
+              color: 'var(--liquid-muted)',
               fontSize: 13,
               fontWeight: 700,
               lineHeight: 1.55,
@@ -3031,7 +3070,7 @@ function DuelStatsModal({
       style={{
         position: 'fixed',
         inset: 0,
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-scrim)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
         zIndex: 260,
@@ -3077,7 +3116,7 @@ function DuelStatsModal({
             <div
               style={{
                 marginTop: 5,
-                color: 'rgba(15, 23, 42, 0.55)',
+                color: 'var(--liquid-muted)',
                 fontSize: 12,
                 fontWeight: 800,
                 overflowWrap: 'anywhere',
@@ -3169,13 +3208,13 @@ function DuelStatsInfoGrid({
             minWidth: 0,
             borderRadius: 14,
             padding: '10px 9px',
-            background: 'rgba(255, 255, 255, 0.42)',
+            background: 'var(--liquid-inset-bg)',
             border: '1px solid rgba(255, 255, 255, 0.58)',
           }}
         >
           <div
             style={{
-              color: 'rgba(15, 23, 42, 0.52)',
+              color: 'var(--liquid-muted)',
               fontSize: 9,
               fontWeight: 900,
               letterSpacing: '0.12em',
@@ -3224,7 +3263,7 @@ function DuelStatsParticipantRow({
       style={{
         borderRadius: 16,
         padding: '11px 12px',
-        background: 'rgba(255, 255, 255, 0.42)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.58)',
       }}
     >
@@ -3249,7 +3288,7 @@ function DuelStatsParticipantRow({
         </div>
         <div
           style={{
-            color: 'rgba(15, 23, 42, 0.5)',
+            color: 'var(--liquid-muted)',
             fontSize: 10,
             fontWeight: 900,
             textTransform: 'uppercase',
@@ -3270,7 +3309,7 @@ function DuelStatsParticipantRow({
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
-                color: 'rgba(15, 23, 42, 0.46)',
+                color: 'var(--liquid-muted)',
                 fontSize: 8,
                 fontWeight: 900,
                 letterSpacing: '0.08em',
@@ -3319,14 +3358,14 @@ function DailyStatsMetric({ label, value }: { label: string; value: string }): J
         borderRadius: 16,
         padding: '12px 8px',
         textAlign: 'center',
-        background: 'rgba(255, 255, 255, 0.52)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.7)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
       }}
     >
       <div
         style={{
-          color: 'rgba(15, 23, 42, 0.52)',
+          color: 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 900,
           letterSpacing: '0.12em',
@@ -3375,7 +3414,7 @@ function DailyStatsPeriodRow({
         gap: 10,
         borderRadius: 16,
         padding: '10px 12px',
-        background: 'rgba(255, 255, 255, 0.42)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.58)',
       }}
     >
@@ -3392,7 +3431,7 @@ function DailyStatsPeriodRow({
         <div
           style={{
             marginTop: 3,
-            color: 'rgba(15, 23, 42, 0.44)',
+            color: 'var(--liquid-muted)',
             fontSize: 10,
             fontWeight: 800,
             lineHeight: 1.15,
@@ -3403,7 +3442,7 @@ function DailyStatsPeriodRow({
       </div>
       <div
         style={{
-          color: period ? 'rgba(15, 23, 42, 0.78)' : 'rgba(15, 23, 42, 0.32)',
+          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
           fontFamily: 'var(--font-mono)',
           fontSize: 14,
           fontWeight: 800,
@@ -3416,7 +3455,7 @@ function DailyStatsPeriodRow({
       <div
         style={{
           minWidth: 42,
-          color: period ? 'rgba(15, 23, 42, 0.58)' : 'rgba(15, 23, 42, 0.32)',
+          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
           fontFamily: 'var(--font-mono)',
           fontSize: 13,
           fontWeight: 800,
@@ -3443,6 +3482,7 @@ function ModeShell({
   variant?: 'default' | 'section-hub';
   className?: string;
 }): JSX.Element {
+  const venue = useVenueNavigation();
   const isSectionHub = variant === 'section-hub';
   return (
     <main
@@ -3475,7 +3515,7 @@ function ModeShell({
                 ? 'icon-btn icon-btn--page-back catalog-header-back'
                 : 'icon-btn icon-btn--page-back'
             }
-            onClick={onBack}
+            onClick={venue?.onBack ?? onBack}
             aria-label="Назад"
             title="Назад"
             style={
@@ -3597,7 +3637,6 @@ function TrainingPlaceholder({
   const [courseCatalogLoaded, setCourseCatalogLoaded] = useState(courseCatalog !== null);
   const [courseCatalogError, setCourseCatalogError] = useState(false);
   const [trainingLockModalOpen, setTrainingLockModalOpen] = useState(false);
-  const [sectionToast, setSectionToast] = useState<string | null>(null);
   const refreshedTrainingDayRef = useRef<string | null>(null);
 
   const refreshCourseCatalog = useCallback(async (): Promise<void> => {
@@ -3677,6 +3716,7 @@ function TrainingPlaceholder({
 
   const trainingParams = new URLSearchParams(location.search);
   const trainingSection = trainingParams.get('section');
+  const trainingExercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
 
   const openTrainingExercise = (path: string): void => {
     if (courseCatalog?.gameplay_lock?.blocked) {
@@ -3730,6 +3770,10 @@ function TrainingPlaceholder({
       </AccessibleModal>
     ) : null;
 
+  if (!trainingExercisesEnabled && (trainingSection === 'course' || trainingSection === 'advanced')) {
+    return <ModeShell title="Тренировка" onBack={onBack} variant="section-hub"><p className="modal-copy">В разработке</p></ModeShell>;
+  }
+
   if (
     !courseCatalogLoaded &&
     !autoPlay &&
@@ -3774,7 +3818,7 @@ function TrainingPlaceholder({
     const fromSectionsSuffix = params.get('from') === 'sections' ? '&from=sections' : '';
     const exercise = courseCatalog.exercises.find((item) => item.key === exerciseParam);
     if (
-      section === 'course' &&
+      trainingExercisesEnabled && section === 'course' &&
       exercise &&
       exercise.state !== 'locked' &&
       !courseCatalog.gameplay_lock?.blocked
@@ -3814,7 +3858,7 @@ function TrainingPlaceholder({
         />
       );
     }
-    if (section === 'course') {
+    if (trainingExercisesEnabled && section === 'course') {
       return (
         <>
           <ModeShell
@@ -3836,7 +3880,7 @@ function TrainingPlaceholder({
         </>
       );
     }
-    if (section === 'advanced') {
+    if (trainingExercisesEnabled && section === 'advanced') {
       const advanced = courseCatalog.advanced_training;
       const advancedExercise = advanced.exercises.find((item) => item.key === exerciseParam);
       if (
@@ -3881,25 +3925,20 @@ function TrainingPlaceholder({
     }
     if (!autoPlay && section !== 'open') {
       return (
-        <>
-          <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
-            <InitialTrainingHub
-              catalog={courseCatalog}
-              onOpenCourse={() => setSectionToast('Раздел в разработке')}
-              onOpenTraining={() =>
-                navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
-              }
-              onOpenAdvanced={() => setSectionToast('Раздел в разработке')}
-            />
-          </ModeShell>
-          {sectionToast !== null ? (
-            <AppToast
-              message={sectionToast}
-              onDismiss={() => setSectionToast(null)}
-              durationMs={1_500}
-            />
-          ) : null}
-        </>
+        <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
+          <InitialTrainingHub
+            catalog={courseCatalog}
+            onOpenCourse={() =>
+              navigate(`/?view=training&section=course${fromSectionsSuffix}`, { replace: true })
+            }
+            onOpenTraining={() =>
+              navigate(`/?view=training&section=open${fromSectionsSuffix}`, { replace: true })
+            }
+            onOpenAdvanced={() =>
+              navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
+            }
+          />
+        </ModeShell>
       );
     }
   }
@@ -4052,6 +4091,7 @@ function duelKindText(kind: AmateurDuelKind): string {
   if (kind === 'express_plus') return 'Микс';
   if (kind === 'sniper') return 'Снайпер';
   if (kind === 'marathon') return 'Марафон';
+  if (kind === 'rhythm') return 'Ритм';
   return 'Классика';
 }
 
@@ -4127,6 +4167,7 @@ const DUEL_TEMPLATE_KIND_ORDER: Record<AmateurDuelKind, number> = {
   classic: 2,
   sniper: 3,
   marathon: 4,
+  rhythm: 5,
 };
 
 function sortDuelTemplates(templates: AmateurDuelTemplate[]): AmateurDuelTemplate[] {
@@ -4269,7 +4310,7 @@ function DuelDevStatePanel({
         margin: '0 auto',
         borderRadius: 18,
         padding: '12px 14px',
-        background: 'rgba(225, 238, 249, 0.92)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.82)',
         boxShadow: '0 16px 38px rgba(15, 23, 42, 0.18)',
         backdropFilter: 'blur(18px) saturate(140%)',
@@ -4301,7 +4342,7 @@ function DuelDevStatePanel({
       <div
         style={{
           marginTop: 8,
-          color: 'rgba(15, 23, 42, 0.68)',
+          color: 'var(--liquid-muted)',
           fontSize: 12,
           fontWeight: 750,
           lineHeight: 1.35,
@@ -4411,6 +4452,7 @@ const DUEL_KIND_OPTIONS: AmateurDuelKind[] = [
   'classic',
   'sniper',
   'marathon',
+  'rhythm',
 ];
 
 function DuelKindPreferencePicker({
@@ -4503,59 +4545,10 @@ function DuelKindPreferencePicker({
   );
 }
 
-function DuelKindPreferenceButton({
-  label,
-  checked,
-  active,
-  onClick,
-  disabled = false,
-  ariaDisabled = false,
-  title,
-}: {
-  label: string;
-  checked: boolean;
-  active: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  ariaDisabled?: boolean;
-  title?: string | undefined;
-}): JSX.Element {
-  return (
-    <button
-      type="button"
-      aria-pressed={checked}
-      aria-disabled={ariaDisabled}
-      disabled={disabled}
-      title={title}
-      onClick={onClick}
-      style={{
-        minWidth: 0,
-        minHeight: 30,
-        borderRadius: 999,
-        border: active ? '1px solid rgba(15,23,42,0.32)' : '1px solid rgba(255,255,255,0.7)',
-        background: active ? 'rgba(31,42,61,0.92)' : 'rgba(255,255,255,0.46)',
-        color: active ? '#fff' : 'var(--ink)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: '0 9px',
-        fontSize: 10,
-        fontWeight: 900,
-        lineHeight: 1,
-        letterSpacing: '0',
-        boxShadow: 'none',
-        whiteSpace: 'nowrap',
-        cursor: 'pointer',
-        opacity: ariaDisabled ? 0.58 : 1,
-      }}
-    >
-      {label}
-    </button>
-  );
-}
 
 function MatchmakingRulesContent(): JSX.Element {
   const ruleItems: Array<{ title: string; text: string }> = [
+    { title: 'Ритм', text: 'Один период без ограничения бросков. В счёт идут серии от четырёх голов подряд. Четвёртый гол засчитывает все четыре, каждый следующий добавляет одно очко. Промах или третье касание борта обрывает серию. После каждого гола касания считаются заново. При равном счёте решают длинные серии.' },
     {
       title: 'Снайпер',
       text: '1 период, 3 минуты. Очки за сложность гола по правилам Меткости; при равенстве решает точность.',
@@ -5775,7 +5768,7 @@ export function AmateurDuelPlayView({
     guardAmateurMutation(amateurAccess, () => undefined);
   };
   const match = useAmateurDuelStore((s) => s.match);
-
+  const fightSocket=useDuelFightSocket(matchId,match?.id===matchId&&(match.fight_enabled===true||!!match.fight_paused_at)&&match.source!=='tournament');
   const loading = useAmateurDuelStore((s) => s.loading);
   const error = useAmateurDuelStore((s) => s.error);
   const inFlight = useAmateurDuelStore((s) => s.inFlight);
@@ -5799,10 +5792,13 @@ export function AmateurDuelPlayView({
   const submitShot = useAmateurDuelStore((s) => s.submitShot);
   const [shotRequestActive, setShotRequestActive] = useState(false);
   const [shotAnimationActive, setShotAnimationActive] = useState(false);
+  const rhythmPendingShotRef=useRef<{index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
+  const [rhythmNoticeExpiry,setRhythmNoticeExpiry]=useState<{matchId:string;index:number;goalTravel:number;travel:number;boardContacts?:number}|null>(null);
+  const [rhythmVisibleShot,setRhythmVisibleShot]=useState<{index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
   const marathonFrozenMsRef = useRef<number | null>(null);
   const [marathonFrozenMs, setMarathonFrozenMs] = useState<number | null>(null);
   const [localShotClock, setLocalShotClock] = useState<{
-    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number;
+    startsAt: string; endsAt: string; previousEndsAt: string | null; goalAtMs: number; goal: boolean; frozenWindowMs: number; previousWindowEndsAt: number; sceneTapTime: number; flightMs: number; shotIndex:number;
   } | null>(null);
   const [sniperScoreParts, setSniperScoreParts] = useState<readonly { points: number; label: string }[] | null>(null);
   const sniperPendingPartsRef = useRef<readonly { points: number; label: string }[] | null>(null);
@@ -5815,6 +5811,8 @@ export function AmateurDuelPlayView({
   }, []);
   useEffect(() => {
     setLocalShotClock(null);
+    rhythmPendingShotRef.current=null;
+    setRhythmVisibleShot(null);
     setSniperScoreParts(null);
     sniperPendingPartsRef.current = null;
     sniperResultVisibleRef.current = false;
@@ -5882,9 +5880,9 @@ export function AmateurDuelPlayView({
   }, [matchId]);
 
   useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), match?.rules.duelKind === 'marathon' && match?.me.state === 'period_active' ? 100 : 1000);
+    const id = window.setInterval(() => setNow(Date.now()), match?.fight?.status === 'offered' || match?.fight_paused_at || match?.me.fight_aid_until || match?.me.recovery_until ? 50 : match?.rules.duelKind === 'marathon' && match?.me.state === 'period_active' ? 100 : 1000);
     return () => window.clearInterval(id);
-  }, [match?.rules.duelKind, match?.me.state]);
+  }, [match?.fight?.status, match?.fight_paused_at, match?.me.fight_aid_until, match?.me.recovery_until, match?.rules.duelKind, match?.me.state]);
 
   useEffect(() => {
     const inventory = inventoryQuery.data;
@@ -6027,6 +6025,8 @@ export function AmateurDuelPlayView({
     };
   }, [match?.id, match?.status, matchId, refresh]);
 
+  const rhythmMovementKey = match?.rules.duelKind === 'rhythm' ? JSON.stringify(rhythmMovementInputForMatch(match)) : null;
+  const rhythmSampler = useMemo(() => rhythmMovementKey ? createRhythmMovementSampler(JSON.parse(rhythmMovementKey)) : null, [rhythmMovementKey]);
   const duelCondition = useMemo(
     () => (match ? createDuelConditionForMatch(match) : () => null),
     [match],
@@ -6143,28 +6143,29 @@ export function AmateurDuelPlayView({
       tournamentAttempt.data?.attempt?.duelMatchId === match.id &&
       !['pending', 'ready_check', 'active'].includes(tournamentAttempt.data.attempt.status));
 
-  const duelNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
+  const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
   const localPausePending = localShotClock !== null &&
     (match.me.result_pause_ends_at ?? null) === localShotClock.previousEndsAt;
   const pauseStartsAt = localPausePending ? localShotClock.startsAt : match.me.result_pause_starts_at;
   const pauseEndsAt = localPausePending ? localShotClock.endsAt : match.me.result_pause_ends_at;
+  const fightClockPaused = !!match.me.fight_aid_until || (!!match.fight_paused_at && match.fight?.status !== 'offered');
   const scoredClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now),
     Date.parse(match.server_now) + Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now())),
-    pauseStartsAt, pauseEndsAt);
+    pauseStartsAt, pauseEndsAt, fightClockPaused);
   const pausedScoredClock = match.rules.shotResultPauseMs !== undefined;
   const continuousScoredPeriod = match.rules.scoredClockVersion === 2;
-  const wallClockDelta = () => Math.max(0, performance.now() - (match.received_at_performance_ms ?? performance.now()));
+  const wallClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now), fightNow, null, null, fightClockPaused);
   const periodClockDelta = () => continuousScoredPeriod ? wallClockDelta() : scoredClockDelta();
   const scoredRemainingMs = Math.max(0, (match.me.clock?.remainingMs ?? 0) - periodClockDelta());
   const authoritativeMarathonRemainingMs = Math.max(0,
     Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - Date.parse(match.server_now) -
-    (pausedScoredClock ? scoredClockDelta() : duelNow - Date.parse(match.server_now)));
+    (pausedScoredClock ? scoredClockDelta() : fightNow - Date.parse(match.server_now)));
 
   const windowMs = match.rules.marathonWindowMs ?? 7000;
   const resultPauseStart = pauseStartsAt ? Date.parse(pauseStartsAt) : 0;
   const marathonRemainingMs = continuousScoredPeriod
     ? marathonWindowRemainingMs({
-      nowMs: duelNow,
+      nowMs: fightClockPaused ? Date.parse(match.server_now) : fightNow,
       windowMs,
       startsAtMs: Date.parse(match.me.marathon_window_started_at ?? '') ||
         Date.parse(match.me.marathon_window_ends_at ?? match.server_now) - windowMs,
@@ -6178,21 +6179,45 @@ export function AmateurDuelPlayView({
         goal: localShotClock.goal,
       } : null,
     })
-    : Math.min(windowMs, Math.max(0, localPausePending && localShotClock.goal && duelNow >= resultPauseStart
+    : Math.min(windowMs, Math.max(0, localPausePending && localShotClock.goal && fightNow >= resultPauseStart
       ? localShotClock.goalAtMs + windowMs - ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta())
       : authoritativeMarathonRemainingMs));
+  const rhythmPauses = mergeRhythmFlightPauses(match.me.rhythm_shots ?? [], localShotClock ? [{tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs}] : []);
+  const rhythmNoticeShots=(match.me.rhythm_shots??[]).slice(0,rhythmVisibleShot?.index);
+  if(rhythmVisibleShot && rhythmNoticeShots.length<rhythmVisibleShot.index)
+    rhythmNoticeShots.push({tapTime:0,flightMs:0,travel:rhythmVisibleShot.travel,boardContacts:rhythmVisibleShot.boardContacts??0,goal:rhythmVisibleShot.goal});
   const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
-    (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && duelNow >= periodEndsAt);
+    (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
   const visibleMatch = periodLocallyExpired
-    ? duelExpiredPeriodPresentation(match, periodEndsAt ?? duelNow)
+    ? duelExpiredPeriodPresentation(match, periodEndsAt ?? fightNow)
     : match;
-
-
-
-
-
-
-
+  const fight = match.fight;
+  const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
+  const medicalAid = medicalAidUntilMs !== undefined;
+  const fightPaused = medicalAid || (!!match.fight_paused_at && fight?.status !== 'offered');
+  const fightOverlay = fightPaused && fight?.status !== 'offered' ? (
+    <FightModal {...(medicalAid ? {medicalAidUntilMs,nowMs:fightNow} : {})}>
+      {fight?.engine_state ? (
+        <FightView key={`${fight.id}:scene`}
+          state={fight.engine_state}
+          player={match.me.side === 'challenger' ? 0 : 1}
+          currentPlayer={{ name: match.me.display_name, avatarUrl: match.me.avatar_url }}
+          opponent={{ name: match.opponent.display_name, avatarUrl: match.opponent.avatar_url }}
+          nowMs={fightNow}
+          onAction={fightSocket.sendAction}
+          onMove={fightSocket.sendMove}
+          onInput={fightSocket.sendInput}
+          onAttack={fightSocket.sendAttack}
+          predictionReset={fightSocket.predictionReset}
+        />
+      ) : <p>Восстанавливаем состояние боя…</p>}
+      {(fight?.status === 'resolved' || fight?.status === 'cancelled') && <FightResultModal key={`${fight.id}:result`} won={fight.winner_user_id === match.me.user_id} draw={fight.status === 'cancelled'} interrupted={fight.reason === 'runtime_interrupted'} />}
+      {!fightSocket.connected && fight?.status !== 'resolved' && <p className="fight-connection" role="status">Восстанавливаем связь…</p>}
+      {fightSocket.error && fight?.status !== 'resolved' && <p className="fight-connection" role="status">{fightSocket.error}</p>}
+    </FightModal>
+  ) : null;
+  const fightRecovery=match.me.recovery_until?Math.max(0,Date.parse(match.me.recovery_until)-fightNow):0;
+  const fightAction = fight?.status === 'offered' || (match.fight_enabled && match.fight_availability?.allowed) ? <FightControls match={match} nowMs={fightNow} iconStyle={DUEL_INVENTORY_ICON_GLASS_STYLE}/> : null;
   if ((directPlayOnly && match.me.state !== 'period_active') || periodLocallyExpired ||
       (match.status === 'active' && match.me.state === 'completed')) {
     const timing = duelEventTiming(visibleMatch, now);
@@ -6240,7 +6265,7 @@ export function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(visibleMatch, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
-          primaryActionBlocked={duelBlocked }
+          primaryActionBlocked={duelBlocked || fightRecovery>0}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
@@ -6252,7 +6277,7 @@ export function AmateurDuelPlayView({
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          duelCondition={duelCondition}
+          duelCondition={(elapsed,speeds)=>{const condition=duelCondition(elapsed,speeds);return condition&&fightRecovery>0?{...condition,canShoot:false}:condition;}}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
@@ -6404,7 +6429,8 @@ export function AmateurDuelPlayView({
       <>
         <PlayView<AmateurDuelMatchState>
           noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
-          suppressedByModal={false}
+          suppressedByModal={!!fightOverlay}
+          preserveSceneOnModalReturn
           showIceCar={false}
           playEntranceOnMount={playEntranceOnMount}
           onEntranceConsumed={onEntranceConsumed}
@@ -6412,7 +6438,7 @@ export function AmateurDuelPlayView({
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
           active={match.status === 'active' && !duelBlocked && amateurAccess.hasFullAccess}
-          primaryActionBlocked={duelBlocked }
+          primaryActionBlocked={duelBlocked || fightRecovery>0 || fightPaused}
           {...(!amateurAccess.hasFullAccess ? { inactiveAction: showAmateurRestriction } : {})}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
@@ -6432,11 +6458,11 @@ export function AmateurDuelPlayView({
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
           }
           periodEndsAt={periodEndsAt}
-          onTimerExpired={refresh}
+          {...(fightPaused ? { timer: formatMs(match.me.clock?.remainingMs ?? Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
           backLabel={duelBackLabel(match.source, false)}
           scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
           canStartAction={
-            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'
+            match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'
               ? () =>
                   periodEndsAt === undefined ||
                   periodEndsAt === null ||
@@ -6479,7 +6505,16 @@ export function AmateurDuelPlayView({
             applyShotStateAtContact: true,
             shotResultPauseMs: match.rules.shotResultPauseMs,
           } : {})}
-          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          separatePeriodClock={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon' || match.rules.duelKind === 'rhythm'}
+          onSceneClock={rhythmSampler && (match.rules.rhythmVersion === 3 || match.rules.rhythmVersion === 4) ? (scene) => {
+            const latest=rhythmNoticeShots.at(-1);
+            if (!latest?.goal || (rhythmNoticeExpiry?.matchId===match.id && rhythmNoticeExpiry.index===rhythmNoticeShots.length && rhythmNoticeExpiry.goalTravel===latest.travel)) return;
+            const travel=rhythmSampler.travelAt(scene,rhythmPauses);
+            const boardContacts=rhythmSampler.boardContactsAt(scene,rhythmPauses);
+            const expired=match.rules.rhythmVersion===4 ? boardContacts-(latest.boardContacts??0)>=3 : travel-latest.travel>2+1e-9;
+            if (expired) setRhythmNoticeExpiry({matchId:match.id,index:rhythmNoticeShots.length,goalTravel:latest.travel,travel,boardContacts});
+          } : undefined}
+          shooterMotionTime={rhythmSampler ? (ms, pauses) => rhythmSampler.motionAt(ms,mergeRhythmFlightPauses(match.me.rhythm_shots??[],pauses)) : undefined}
           onShotResolved={(context) => {
             setShotAnimationActive(true);
             if (!pausedScoredClock) return null;
@@ -6494,18 +6529,27 @@ export function AmateurDuelPlayView({
               ? previousWindowEndsAt + (Math.floor((startsAt - previousWindowEndsAt) / windowMs) + 1) * windowMs
               : previousWindowEndsAt;
             marathonFrozenMsRef.current = Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt));
-            setLocalShotClock({startsAt: new Date(startsAt).toISOString(),
+            setLocalShotClock({shotIndex:context.shotIndex,sceneTapTime:context.input.tapTime,flightMs,startsAt: new Date(startsAt).toISOString(),
               endsAt: new Date(startsAt + 1000).toISOString(),
               previousEndsAt: match.me.result_pause_ends_at ?? null,
               goalAtMs: (match.me.clock?.periodElapsedMs ?? 0) + periodClockDelta() + flightMs,
               goal: context.result.type === 'goal',
               previousWindowEndsAt,
               frozenWindowMs: Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt))});
+            if (rhythmSampler) {
+              rhythmPendingShotRef.current={index:context.shotIndex,
+                travel:rhythmSampler.travelAt(context.input.tapTime,rhythmPauses),boardContacts:rhythmSampler.boardContactsAt(context.input.tapTime,rhythmPauses),
+                goal:context.result.type==='goal'};
+              return {details:[]};
+            }
             return null;
           }}
           submitShot={async (args) => {
             setShotRequestActive(true);
-            const result = await submitShot(args).finally(() => setShotRequestActive(false));
+            const requestArgs = match.rules.duelKind === 'rhythm'
+              ? {...args, input:{...args.input, periodTapTime:args.input.tapTime + (args.shotIndex - 1) * (match.rules.shotResultPauseMs ?? 1000)}}
+              : args;
+            const result = await submitShot(requestArgs).finally(() => setShotRequestActive(false));
             if (pausedScoredClock) {
               if (result === null) setLocalShotClock(null);
               else setLocalShotClock((previous) => previous ? {...previous, goal: result.serverResult === 'goal'} : null);
@@ -6516,9 +6560,13 @@ export function AmateurDuelPlayView({
                 ? [{ points: points!, label: sniperPendingPartsRef.current?.[0]?.label ?? 'Гол' }] : null;
               if (sniperResultVisibleRef.current) showSniperScore(sniperPendingPartsRef.current);
             }
+            if (match.rules.duelKind === 'rhythm' && result)
+              return {...result,resultPresentation:{details:[]}};
             return result;
           }}
           onResultVisibilityChange={(visible) => {
+            if(visible && match.rules.duelKind==='rhythm' && rhythmPendingShotRef.current)
+              setRhythmVisibleShot({...rhythmPendingShotRef.current});
             if (visible && match.rules.duelKind === 'marathon') setMarathonFrozenMs(marathonFrozenMsRef.current ?? localShotClock?.frozenWindowMs ?? marathonRemainingMs);
             if (!visible) { setShotAnimationActive(false); setMarathonFrozenMs(null); marathonFrozenMsRef.current = null; }
             if (match.rules.duelKind !== 'sniper') return;
@@ -6526,28 +6574,49 @@ export function AmateurDuelPlayView({
             if (visible) showSniperScore(sniperPendingPartsRef.current);
           }}
           applyState={applyState}
-          duelCondition={duelCondition}
+          duelCondition={(elapsed, speeds) => {
+            const condition = duelCondition(elapsed, speeds);
+            if (!condition) return condition;
+            if (rhythmSampler && !rhythmSampler.conditionAt(elapsed).canShoot)
+              return {...condition,canShoot:false};
+            if (fightRecovery <= 0) return condition;
+            return { ...condition, canShoot: false };
+          }}
           longCourtBackground={amateurDuelCourtBackground(match)}
-          scoreboardAccessory={match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
+          scoreboardAccessory={match.rules.duelKind==='rhythm' && !periodLocallyExpired && scoredRemainingMs>0 ? (
+            <RhythmShotNotice shots={rhythmNoticeShots} version={match.rules.rhythmVersion??1}
+              travel={rhythmNoticeExpiry?.matchId===match.id && rhythmNoticeExpiry.index===rhythmNoticeShots.length && rhythmNoticeExpiry.goalTravel===rhythmNoticeShots.at(-1)?.travel ? rhythmNoticeExpiry.travel : undefined}
+              boardContacts={rhythmNoticeExpiry?.matchId===match.id && rhythmNoticeExpiry.index===rhythmNoticeShots.length && rhythmNoticeExpiry.goalTravel===rhythmNoticeShots.at(-1)?.travel ? rhythmNoticeExpiry.boardContacts : undefined}/>
+          ) : match.rules.duelKind === 'marathon' && !periodLocallyExpired ? (
             <EnduranceTimer windowMs={windowMs} remainingMs={marathonRemainingMs} tone={enduranceTimerTone(marathonRemainingMs)} />
           ) : match.rules.duelKind === 'sniper' && sniperScoreParts?.length && match.rules.sniperScoring ? (
             <MarksmanshipScoreNotice parts={sniperScoreParts} scoring={match.rules.sniperScoring} />
           ) : undefined}
           hudAddon={
             <>
-
+              {match.fight?.status === 'resolved' &&
+                match.fight.resolved_at &&
+                fightNow - Date.parse(match.fight.resolved_at) < 1500 && (
+                  <p role="status">
+                    {match.fight.winner_user_id === match.me.user_id
+                      ? 'Победа в драке! +1 ⭐ · +1 опыт'
+                      : 'Поражение · +1 опыт'}
+                  </p>
+                )}
               <DuelInventoryMiniHud
                 match={match}
                 liveCondition={liveDuelCondition}
-                {...(loadoutEditable
+                {...(loadoutEditable && !fightPaused
                   ? { onSelectKind: setSelectedLoadoutKind }
                   : {})}
               />
             </>
           }
+          rightHudAddon={fightAction}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {loadoutEditable && selectedLoadoutKind === 'stick' && (
+        {fightOverlay}
+        {!fightPaused && loadoutEditable && selectedLoadoutKind === 'stick' && (
           <DuelRinkLoadoutModal
             kind="stick"
             match={match}
@@ -6605,7 +6674,7 @@ export function AmateurDuelPlayView({
       </div>
       <DuelLoadoutSummary match={match} />
       <div style={{ color: 'var(--muted)', fontSize: 14, lineHeight: 1.45 }}>
-        {statusText}. {match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
+        {statusText}. {match.rules.duelKind==='rhythm' ? 'При равном счёте решают длины серий.' : match.rules.duelKind==='sniper' ? 'При равных очках решает точность.' : match.rules.duelKind==='marathon' ? 'При равном счёте решает среднее время на гол: 240 секунд / все забитые голы.' : 'При равных голах решает суммарное активное время периодов.'}
       </div>
       {error && (
         <div style={{ color: 'var(--red-deep)', fontSize: 13, fontWeight: 700 }}>{error}</div>
@@ -6651,7 +6720,7 @@ export function AmateurDuelPlayView({
   );
 }
 
-function DuelResultModal({
+export function DuelResultModal({
   match,
   onClose,
   closeLabel = 'Понятно',
@@ -6746,7 +6815,7 @@ function tournamentSeriesResultArtwork(
   return { src: '/tournament-results/series-win.webp', alt: 'Победа в серии' };
 }
 
-function DuelResultCard({
+export function DuelResultCard({
   match,
   isLoadingDetails = false,
   compact = false,
@@ -6818,6 +6887,12 @@ function DuelResultCard({
   const hasPeriodDetails = mePeriods.length > 0 || opponentPeriods.length > 0;
   const hasMultiplePeriods = match.rules.totalPeriods > 1;
   const tiebreaker = duelTiebreakerExplanation(match);
+  const fightRewardRow = match.fight_rewards?.map((reward) => (
+    <div key={reward.fight_id} aria-label="Результат драки" className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
+      <span><strong>Драка:</strong> {reward.won ? 'победа' : 'поражение'}</span>
+      <DuelEarnedRewards reward={reward} />
+    </div>
+  )) ?? null;
 
   return (
     <div
@@ -6846,12 +6921,16 @@ function DuelResultCard({
                 <DuelResultCompactFact label="Очки" value={pointsText} />
                 <DuelEarnedRewards reward={match.earned_reward ?? null} />
               </div>
+              {fightRewardRow}
               <DuelResultCompactFact label="Начало" value={formatShortDateTime(match.starts_at)} />
             </div>
             <section className="duel-result-card__compact-summary">
               <div className="section-label" style={{ margin: 0, padding: 0 }}>
                 Итоговый результат
               </div>
+              {(match.rules.duelKind === 'rhythm' || match.rules.duelKind === 'sniper') && (
+                <DuelResultDetailRow label="Счёт" value={duelScorePairText(match.rules.duelKind,match.me,match.opponent)}/>
+              )}
               <DuelResultCompactStatsTable
                 label="Итоговый результат"
                 me={{
@@ -6966,10 +7045,10 @@ function DuelResultCard({
                   )}
                 </div>
                 <strong className="tournament-duel-result__game-score">
-                  {duelDisplayScore(match.rules.duelKind, match.me)}:{duelDisplayScore(match.rules.duelKind, match.opponent)}
+                  {duelScorePairText(match.rules.duelKind, match.me, match.opponent)}
                 </strong>
               </div>
-              <div className="tournament-duel-result__meta">
+              <div className="tournament-duel-result__meta" style={match.fight_rewards?.length ? {flexDirection:'column',alignItems:'stretch',gap:6} : undefined}>
                 {match.source !== 'tournament' ? (
                   <span className="duel-result-card__points-rewards duel-result-card__points-rewards--single-line">
                     <span>
@@ -6991,6 +7070,7 @@ function DuelResultCard({
                     <strong>Формат:</strong> {duelFormatLabel(match.rules)}
                   </span>
                 )}
+                {fightRewardRow}
                 {series !== null && series.winsRequired > 1 && (
                   <span>
                     <strong>Счёт в серии:</strong>{' '}
@@ -7018,6 +7098,13 @@ function DuelResultCard({
               </div>
             )}
           </>
+        )}
+        {match.rules.duelKind === 'sniper' && <SniperBreakdown me={match.me} opponent={match.opponent}/>}
+        {match.rules.duelKind === 'rhythm' && (
+          <div style={{marginTop:10,display:'grid',gap:8}}>
+            <DuelResultDetailRow label="Вы" value={<RhythmSeriesValues label="Вы" series={match.me.rhythm_series??[]}/>}/>
+            <DuelResultDetailRow label="Соперник" value={<RhythmSeriesValues label="Соперник" series={match.opponent.rhythm_series??[]}/>}/>
+          </div>
         )}
         {(compact || hasMultiplePeriods) && (
           <DuelInventoryUsageSummary
@@ -7063,9 +7150,9 @@ function DuelResultCard({
                   marginTop: 8,
                   borderRadius: 16,
                   padding: '12px 14px',
-                  background: 'rgba(255,255,255,0.42)',
+                  background: 'var(--liquid-inset-bg)',
                   border: '1px solid rgba(255,255,255,0.62)',
-                  color: 'rgba(15, 23, 42, 0.58)',
+                  color: 'var(--liquid-muted)',
                   fontSize: 12,
                   fontWeight: 750,
                   lineHeight: 1.35,
@@ -7337,6 +7424,7 @@ function duelTiebreakerExplanation(
       duelDisplayScore(match.rules.duelKind, match.opponent)
   )
     return null;
+  if (match.rules.duelKind === 'rhythm') return null;
   if (match.rules.duelKind === 'marathon')
     return {
       label: 'Среднее время на гол',
@@ -7541,7 +7629,7 @@ function DuelResultPeriodComparison({
             style={{
               borderRadius: 16,
               padding: 10,
-              background: 'rgba(255,255,255,0.42)',
+              background: 'var(--liquid-inset-bg)',
               border: '1px solid rgba(255,255,255,0.62)',
             }}
           >
@@ -7579,7 +7667,7 @@ function DuelResultPeriodComparison({
                 style={{
                   borderRadius: 999,
                   padding: '5px 9px',
-                  background: 'rgba(255,255,255,0.48)',
+                  background: 'var(--liquid-inset-bg)',
                   border: '1px solid rgba(255,255,255,0.62)',
                   color: 'var(--ink)',
                   fontFamily: 'var(--font-mono)',
@@ -7595,7 +7683,7 @@ function DuelResultPeriodComparison({
                 strokeWidth={2.4}
                 aria-hidden="true"
                 style={{
-                  color: 'rgba(15,23,42,0.58)',
+                  color: 'var(--liquid-muted)',
                   transform: isOpen ? 'rotate(90deg)' : 'rotate(0deg)',
                   transition: 'transform 140ms ease',
                 }}
@@ -7608,7 +7696,7 @@ function DuelResultPeriodComparison({
                   display: 'grid',
                   gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
                   gap: 8,
-                  marginTop: hasMultiplePeriods ? 8 : 0,
+                  marginTop: 10,
                 }}
               >
                 <DuelResultParticipantPeriodStats title="Вы" period={mePeriod} />
@@ -7708,13 +7796,13 @@ function DuelResultParticipantPeriodStats({
         minWidth: 0,
         borderRadius: 14,
         padding: '9px 8px',
-        background: muted ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.54)',
+        background: muted ? 'var(--liquid-inset-bg)' : 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255,255,255,0.62)',
       }}
     >
       <div
         style={{
-          color: muted ? 'rgba(15,23,42,0.38)' : 'rgba(15,23,42,0.72)',
+          color: muted ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
           fontSize: 9,
           fontWeight: 950,
           lineHeight: 1.1,
@@ -7733,7 +7821,7 @@ function DuelResultParticipantPeriodStats({
           display: 'grid',
           gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
           gap: '6px 8px',
-          color: muted ? 'rgba(15,23,42,0.35)' : 'var(--ink)',
+          color: muted ? 'var(--liquid-muted)' : 'var(--ink)',
           fontSize: 11,
           fontWeight: 850,
         }}
@@ -7755,7 +7843,7 @@ function DuelResultTinyStat({ label, value }: { label: string; value: string }):
     <div style={{ minWidth: 0 }}>
       <div
         style={{
-          color: 'rgba(15,23,42,0.46)',
+          color: 'var(--liquid-muted)',
           fontSize: 8,
           fontWeight: 900,
           lineHeight: 1,
@@ -7793,13 +7881,29 @@ export function DuelResultCompactFact({ label, value }: { label: string; value: 
   );
 }
 
+function RhythmSeriesValues({series,label}: {series:readonly number[];label:string}): JSX.Element {
+  const counts = new Map<number,number>();
+  for (const length of series) counts.set(length,(counts.get(length)??0)+1);
+  const groups = [...counts].sort(([a],[b])=>b-a);
+  return (
+    <span role="list" aria-label={label} style={{display:'flex',flexWrap:'wrap',gap:'4px 12px'}}>
+      {groups.length === 0 ? '—' : groups.map(([length,count])=>(
+        <span role="listitem" key={length} style={{display:'inline-flex',alignItems:'baseline',gap:3,whiteSpace:'nowrap'}}>
+          <span>{length}</span>
+          <span style={{fontSize:10,fontWeight:650}}>×{count}</span>
+        </span>
+      ))}
+    </span>
+  );
+}
+
 function DuelResultDetailRow({
   label,
   value,
   tone,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
   tone?: 'star';
 }): JSX.Element {
   return (
@@ -7973,7 +8077,7 @@ function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element 
         style={{
           borderRadius: 999,
           padding: '7px 10px 7px 8px',
-          background: 'rgba(15, 23, 42, 0.08)',
+          background: 'var(--liquid-inset-bg)',
           color: 'var(--ink)',
           fontSize: 11,
           fontWeight: 900,
@@ -8030,7 +8134,7 @@ function duelOpponentStatus(match: AmateurDuelMatch): {
     };
   }
   if (participant.state === 'break_active') {
-    return { label: 'перерыв', color: '#64748b', glow: 'rgba(100, 116, 139, 0.18)' };
+    return { label: 'перерыв', color: 'var(--liquid-muted)', glow: 'rgba(100, 116, 139, 0.18)' };
   }
   if (participant.state === 'completed') {
     return { label: 'завершил', color: '#6366f1', glow: 'rgba(99, 102, 241, 0.2)' };
@@ -8162,7 +8266,7 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     avatarUrl: opponent.avatar_url,
     goals: duelDisplayScore(match.rules.duelKind, opponent),
     scoreSeparator: match.rules.duelKind === 'sniper' ? '\u2009:\u2009' : ':',
-    ...(['sniper','marathon'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
+    ...(['sniper','marathon', 'rhythm'].includes(match.rules.duelKind) ? {scoreColumnWeight:2} : {}),
     shots: opponent.shots_taken,
     shotsLabel,
     time,
@@ -8177,11 +8281,34 @@ const DUEL_INVENTORY_SLOTS = [
 ] as const;
 
 export const DUEL_INVENTORY_ICON_GLASS_STYLE: CSSProperties = {
-  background:
-    'radial-gradient(circle at 28% 0%, rgba(255,255,255,0.94), rgba(255,255,255,0) 42%), linear-gradient(145deg, rgba(255,255,255,0.76), rgba(226,242,250,0.5) 58%, rgba(255,255,255,0.64))',
+  background: 'var(--liquid-inset-bg)',
   border: '1px solid rgba(255,255,255,0.82)',
   boxShadow:
     '0 0 0 1px rgba(15,23,42,0.07), 0 8px 18px rgba(15,23,42,0.14), inset 0 1.5px 0 rgba(255,255,255,0.88), inset 0 -8px 16px rgba(15,23,42,0.06)',
+};
+
+const DUEL_INVENTORY_BADGE_STYLE: CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: -18,
+  width: 46,
+  height: 16,
+  boxSizing: 'border-box',
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  color: '#16233b',
+  fontFamily: 'var(--font-ui)',
+  fontSize: 9.5,
+  fontWeight: 800,
+  lineHeight: 1,
+  letterSpacing: 0,
+  whiteSpace: 'nowrap',
+  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
+  background: 'transparent',
+  padding: 0,
+  zIndex: 2,
 };
 
 const DUEL_EQUIPMENT_META: Record<InventoryEquipmentKind, { title: string; empty: string }> = {
@@ -8232,7 +8359,7 @@ function duelEquipmentStockLineStyle(): CSSProperties {
   return {
     display: 'inline-block',
     marginTop: 3,
-    color: '#334155',
+    color: 'var(--liquid-muted)',
     fontSize: 12,
     fontWeight: 920,
     lineHeight: 1.15,
@@ -8375,7 +8502,7 @@ function DuelInventorySlots({ match }: { match: AmateurDuelMatch }): JSX.Element
               gap: 7,
               alignItems: 'center',
               justifyItems: 'center',
-              background: item ? 'rgba(255,255,255,0.78)' : 'rgba(255,255,255,0.34)',
+              background: 'var(--liquid-inset-bg)',
               border: '1px solid rgba(255,255,255,0.74)',
               color: item ? 'var(--ink)' : 'var(--muted)',
               minWidth: 0,
@@ -8519,6 +8646,7 @@ function DuelRinkLoadoutHud({
             style={{
               position: 'relative',
               width: 31,
+              flexShrink: 0,
               height: 31,
               borderRadius: 999,
               overflow: 'visible',
@@ -8547,29 +8675,9 @@ function DuelRinkLoadoutHud({
               }}
             />
             {inventoryBadge && (
-              <span
-                aria-hidden="true"
-                style={{
-                  position: 'absolute',
-                  left: '50%',
-                  bottom: -16,
-                  minWidth: 'max-content',
-                  transform: 'translateX(-50%)',
-                  display: 'block',
-                  color: '#16233b',
-                  fontFamily: 'var(--font-ui)',
-                  fontSize: 9.5,
-                  fontWeight: 950,
-                  lineHeight: 1,
-                  letterSpacing: 0,
-                  textAlign: 'center',
-                  whiteSpace: 'nowrap',
-                  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
-                  zIndex: 2,
-                }}
-              >
+              <FittedHudLabel aria-hidden="true" style={DUEL_INVENTORY_BADGE_STYLE}>
                 {inventoryBadge}
-              </span>
+              </FittedHudLabel>
             )}
           </button>
         );
@@ -8656,7 +8764,7 @@ function DuelRinkLoadoutModal({
                   borderRadius: 14,
                   overflow: 'hidden',
                   border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(255,255,255,0.28)',
+                  background: 'var(--liquid-inset-bg)',
                 }}
               >
                 <img
@@ -8923,6 +9031,21 @@ function duelConditionLoadout(match: AmateurDuelMatch): DuelInventoryLoadoutSnap
   };
 }
 
+function mergeRhythmFlightPauses(...groups: readonly (readonly {tapTime:number;flightMs:number}[])[]) {
+  const result:Array<{tapTime:number;flightMs:number}>=[];
+  for(const group of groups) for(const pause of group)
+    if(!result.some(previous=>Math.abs(previous.tapTime-pause.tapTime)<0.01)) result.push(pause);
+  return result.sort((a,b)=>a.tapTime-b.tapTime);
+}
+
+function rhythmMovementInputForMatch(match: AmateurDuelMatchState) {
+  const base=periodSpeedPresetFor(1,match.rules.periodSpeedPresets);
+  const effective=periodSpeedPresetFor(1,match.period_speed_presets);
+  return {seed:match.match_seed!,userId:match.me.user_id,periodNumber:1,
+    elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:SHOOTER_AMPLITUDE*2,
+    baselineShooterSpeed:base.shooterFrequency,currentShooterSpeed:effective.shooterFrequency,loadout:{...duelConditionLoadout(match),stick:null}};
+}
+
 function createDuelConditionForMatch(
   match: AmateurDuelMatchState,
 ): (
@@ -9103,7 +9226,7 @@ function PeriodSpeedSummary({
       style={{
         padding: 12,
         borderRadius: 18,
-        background: 'rgba(255, 255, 255, 0.34)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(255, 255, 255, 0.64)',
         boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.68)',
         display: 'flex',
@@ -9122,7 +9245,7 @@ function PeriodSpeedSummary({
           <div key={item.label} style={{ minWidth: 0 }}>
             <div
               style={{
-                color: 'rgba(15, 23, 42, 0.54)',
+                color: 'var(--liquid-muted)',
                 fontSize: 'clamp(8px, 2.5vw, 10px)',
                 fontWeight: 800,
                 lineHeight: 1.1,
@@ -9158,8 +9281,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
       style={{
         padding: '10px 4px',
         borderRadius: 14,
-        background:
-          'linear-gradient(180deg, rgba(255, 255, 255, 0.7) 0%, rgba(226, 232, 240, 0.55) 100%)',
+        background: 'var(--liquid-inset-bg)',
         border: '1px solid rgba(15, 23, 42, 0.06)',
         boxShadow: 'inset 0 1px 0 rgba(255, 255, 255, 0.95)',
         textAlign: 'center',
@@ -9750,7 +9872,7 @@ function ClassicRinkLoadoutHud({
                   minWidth: 'max-content',
                   transform: 'translateX(-50%)',
                   display: 'block',
-                  color: '#16233b',
+                  color: 'var(--liquid-ink)',
                   fontFamily: 'var(--font-ui)',
                   fontSize: 9.5,
                   fontWeight: 950,
@@ -9829,7 +9951,7 @@ function ClassicRinkLoadoutModal({
                 borderRadius: 14,
                 overflow: 'hidden',
                 border: '1px solid rgba(255,255,255,0.78)',
-                background: 'rgba(255,255,255,0.28)',
+                background: 'var(--liquid-inset-bg)',
               }}
             >
               <img
@@ -9851,7 +9973,7 @@ function ClassicRinkLoadoutModal({
               </strong>
               <span
                 style={{
-                  color: 'rgba(15, 23, 42, 0.62)',
+                  color: 'var(--liquid-muted)',
                   fontSize: 12,
                   fontWeight: 760,
                   lineHeight: 1.25,
@@ -9889,7 +10011,7 @@ function ClassicRinkLoadoutModal({
                   borderRadius: 14,
                   overflow: 'hidden',
                   border: '1px solid rgba(255,255,255,0.78)',
-                  background: 'rgba(255,255,255,0.28)',
+                  background: 'var(--liquid-inset-bg)',
                 }}
               >
                 <img
@@ -9911,7 +10033,7 @@ function ClassicRinkLoadoutModal({
                 </strong>
                 <span
                   style={{
-                    color: 'rgba(15, 23, 42, 0.62)',
+                    color: 'var(--liquid-muted)',
                     fontSize: 12,
                     fontWeight: 760,
                     lineHeight: 1.25,
@@ -10292,7 +10414,7 @@ function TrainingHitboxesToggle({
         height: 34,
         padding: 0,
         borderRadius: 999,
-        background: checked ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+        background: checked ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
         border: checked
           ? '1px solid rgba(255, 255, 255, 0.34)'
           : '1px solid rgba(15, 23, 42, 0.12)',
@@ -10301,7 +10423,7 @@ function TrainingHitboxesToggle({
           : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
         backdropFilter: 'blur(12px)',
         WebkitBackdropFilter: 'blur(12px)',
-        color: checked ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+        color: checked ? '#ffffff' : 'var(--liquid-muted)',
         cursor: 'pointer',
       }}
     >
@@ -10387,7 +10509,7 @@ function TrainingSpeedControls({
           height: 34,
           padding: 0,
           borderRadius: 999,
-          background: hasCustomSpeeds ? 'rgba(8, 24, 43, 0.86)' : 'rgba(255, 255, 255, 0.82)',
+          background: hasCustomSpeeds ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
           border: hasCustomSpeeds
             ? '1px solid rgba(255, 255, 255, 0.34)'
             : '1px solid rgba(15, 23, 42, 0.12)',
@@ -10396,7 +10518,7 @@ function TrainingSpeedControls({
             : '0 8px 18px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255,255,255,0.86)',
           backdropFilter: 'blur(12px)',
           WebkitBackdropFilter: 'blur(12px)',
-          color: hasCustomSpeeds ? '#ffffff' : 'rgba(15, 23, 42, 0.68)',
+          color: hasCustomSpeeds ? '#ffffff' : 'var(--liquid-muted)',
           cursor: 'pointer',
         }}
       >
@@ -10651,6 +10773,59 @@ function TrainingPlayView({
   );
 }
 
+interface DailyPeriodPreviewState {
+  shots: number;
+  goals: number;
+}
+
+export function DailyPeriodPreviewScreen(): JSX.Element {
+  const navigate = useNavigate();
+  const [state, setState] = useState<DailyPeriodPreviewState>({ shots: 0, goals: 0 });
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const applyPreviewState = useCallback((next: DailyPeriodPreviewState): void => {
+    stateRef.current = next;
+    setState(next);
+  }, []);
+
+  return (
+    <>
+      <div className="visually-hidden">
+        <div>Предпросмотр · ежедневная игра</div>
+        <div>2-й период</div>
+      </div>
+      <PlayView<DailyPeriodPreviewState>
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => navigate('/demo')}
+        backLabel="К демо"
+        active={state.shots < 30}
+        seed="daily-period-two-preview"
+        goalieId="rookie"
+        periodNumber={2}
+        showPeriodFatigueNotice
+        goals={state.goals}
+        shots={state.shots}
+        shotsTotal={30}
+        timer="20:00"
+        optimisticAddShot={(claimedResult) => {
+          applyPreviewState({
+            shots: stateRef.current.shots + 1,
+            goals: stateRef.current.goals + (claimedResult === 'goal' ? 1 : 0),
+          });
+        }}
+        submitShot={async ({ claimedResult }) => ({
+          serverResult: claimedResult,
+          state: stateRef.current,
+        })}
+        applyState={applyPreviewState}
+        {...dailyCharacterVisuals(false)}
+      />
+    </>
+  );
+}
+
 export function DemoScreen(): JSX.Element {
   const navigate = useNavigate();
   const setSession = useAuthStore((s) => s.setSession);
@@ -10723,6 +10898,8 @@ export function DemoScreen(): JSX.Element {
         shotsTotal={DEMO_SHOTS_PER_PERIOD}
         timer="ДЕМО"
         timerLabel="РЕЖИМ"
+        speedOverrides={DEMO_SPEED_OVERRIDES}
+        {...demoCharacterVisuals()}
         backLabel="На вход"
         optimisticAddShot={() => {}}
         submitShot={submitDemoShot}
@@ -10746,7 +10923,14 @@ export function DemoScreen(): JSX.Element {
   );
 }
 
-function DemoCompletionModal({
+export const DEMO_SPEED_OVERRIDES: SpeedOverrides = {
+  goalFreq: 0.35,
+  goalieFreq: 0.4,
+  shooterFreq: 0.45,
+  puckSpeed: 1,
+};
+
+export function DemoCompletionModal({
   goals,
   shots,
   botUsername,
@@ -10770,50 +10954,18 @@ function DemoCompletionModal({
   const goalRate = formatGoalRate(goals, shots);
   return (
     <div
+      className="modal-backdrop"
       role="dialog"
       aria-modal="true"
       aria-label="Демо завершено"
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 430,
-        background: 'rgba(15, 23, 42, 0.22)',
-        backdropFilter: 'blur(8px) saturate(130%)',
-        WebkitBackdropFilter: 'blur(8px) saturate(130%)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
+      style={{ zIndex: 430 }}
     >
-      <div
-        style={{
-          width: '100%',
-          maxWidth: 368,
-          padding: '26px 22px 20px',
-          borderRadius: 28,
-          textAlign: 'center',
-          background:
-            'linear-gradient(180deg, rgba(255, 255, 255, 0.92) 0%, rgba(241, 245, 249, 0.9) 100%)',
-          backdropFilter: 'blur(22px) saturate(160%)',
-          WebkitBackdropFilter: 'blur(22px) saturate(160%)',
-          border: '1px solid rgba(255, 255, 255, 0.68)',
-          boxShadow:
-            '0 30px 80px rgba(15, 23, 42, 0.35), 0 0 0 1px rgba(15, 23, 42, 0.04), inset 0 1px 0 rgba(255, 255, 255, 0.9)',
-        }}
-      >
-        <div style={{ fontSize: 25, fontWeight: 900, letterSpacing: 0 }}>Первый период сыгран</div>
-        <div
-          style={{
-            marginTop: 10,
-            color: 'var(--muted)',
-            fontSize: 14,
-            lineHeight: 1.45,
-            fontWeight: 700,
-          }}
-        >
-          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые режимы игры
-        </div>
+      <div className="modal-card demo-completion-modal">
+        <h2 className="modal-title">Первый период сыгран</h2>
+        <p className="modal-copy">
+          Необходимо войти, чтобы играть сезон, сохранять прогресс и открывать новые
+          режимы&nbsp;игры
+        </p>
 
         <div
           style={{
@@ -10839,33 +10991,30 @@ function DemoCompletionModal({
         >
           <button
             type="button"
-            className="btn"
+            className="btn login-screen__auth-button login-screen__auth-button--vk"
             disabled={vkPending}
             onClick={onVkLogin}
             style={{
-              width: 242,
-              height: 42,
               padding: '0 14px',
-              borderRadius: 12,
-              background: '#0077ff',
+              background: 'var(--liquid-selected-bg)',
               color: '#ffffff',
               justifyContent: 'center',
-              fontSize: 16,
               fontWeight: 700,
               letterSpacing: 0,
               boxShadow: 'none',
               whiteSpace: 'nowrap',
             }}
           >
+            <img
+              src="/icons/vk-community.png"
+              alt=""
+              aria-hidden="true"
+              className="login-screen__auth-icon"
+            />
             Войти через ВКонтакте
           </button>
 
-          <TelegramLoginButton
-            botUsername={botUsername}
-            onAuth={onTelegramAuth}
-            cornerRadius={12}
-            size="large"
-          />
+          <TelegramLoginButton botUsername={botUsername} onAuth={onTelegramAuth} />
 
           {(telegramPending || telegramError || vkError) && (
             <div
@@ -10892,29 +11041,3 @@ function DemoCompletionModal({
     </div>
   );
 }
-
-
-
-const DUEL_INVENTORY_BADGE_STYLE: CSSProperties = {
-  position: 'absolute',
-  left: '50%',
-  bottom: -18,
-  width: 46,
-  height: 16,
-  boxSizing: 'border-box',
-  transform: 'translateX(-50%)',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  color: '#16233b',
-  fontFamily: 'var(--font-ui)',
-  fontSize: 9.5,
-  fontWeight: 800,
-  lineHeight: 1,
-  letterSpacing: 0,
-  whiteSpace: 'nowrap',
-  textShadow: '0 1px 0 rgba(255,255,255,0.92), 0 0 6px rgba(255,255,255,0.78)',
-  background: 'transparent',
-  padding: 0,
-  zIndex: 2,
-};

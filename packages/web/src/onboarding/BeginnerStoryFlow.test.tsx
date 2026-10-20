@@ -43,6 +43,23 @@ function advanceToShot(): void {
 }
 
 describe('BeginnerStoryFlow', () => {
+  it('shows progress dots in replay and follows the active screen', () => {
+    render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    expect(screen.getByRole('status', { name: 'Экран 1 из 10' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Следующий экран' }));
+    expect(screen.getByRole('status', { name: 'Экран 2 из 10' })).toBeInTheDocument();
+  });
+  it('shows bidirectional navigation only in story replay', () => {
+    const view = render(<BeginnerStoryFlow mode="replay" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Предыдущий экран' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Следующий экран' }));
+    expect(screen.getByTestId('beginner-story')).toHaveClass('beginner-story--car');
+    fireEvent.click(screen.getByRole('button', { name: 'Предыдущий экран' }));
+    expect(screen.getByTestId('beginner-story')).toHaveClass('beginner-story--court');
+    view.unmount();
+    render(<BeginnerStoryFlow mode="required" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    expect(screen.queryByRole('button', { name: 'Следующий экран' })).toBeNull();
+  });
   beforeEach(() => {
     vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: true }));
   });

@@ -4,12 +4,12 @@ import { achievementThumbnailUrl } from '../achievements/artwork.js';
 import { catalogBonusGameArtwork, versionBonusGameArtwork } from '../game/bonusGameArtwork.js';
 import { artworkForInventoryItem, placeholderArtworkForKind } from '../screens/inventoryArtwork.js';
 import {
-  SHOP_CATEGORY_META,
   SHOP_CATEGORY_ORDER,
   type ShopCategory,
 } from '../screens/inventoryShopCategories.js';
 import type { CompetitionLevel, ProfileData } from '../screens/profileTypes.js';
 import { arenaCourtImage, arenaVideoCubeImage } from '../screens/lockerRoomBackground.js';
+import { AMATEUR_DAILY_COURT_BACKGROUND } from '../game/matchCourt.js';
 
 const CRITICAL_ARTWORK = [
   '/backgrounds/arena-beginner-reference-v8.webp',
@@ -92,13 +92,14 @@ export function shopArtworkUrls(
     selectedCategory === null
       ? []
       : [
-          SHOP_CATEGORY_META[selectedCategory].backgroundUrl,
-          ...inventory.items[selectedCategory].map(artworkForInventoryItem),
+          ...(selectedCategory === 'bar'
+            ? ['/shop/products/bar-card-v1.webp', '/shop/products/bar-messages-10-v1.webp', '/shop/products/bar-messages-30-v1.webp', '/shop/products/bar-messages-100-v1.webp']
+            : inventory.items[selectedCategory].map(artworkForInventoryItem)),
         ];
   return [
     ...new Set([
-      '/shop/shop-background.webp',
-      ...SHOP_CATEGORY_ORDER.map((category) => SHOP_CATEGORY_META[category].artworkUrl),
+      '/section-panoramas/shop-v1.webp',
+      ...SHOP_CATEGORY_ORDER.map((_,index) => `/section-panoramas/shop-${index}.webp`),
       ...categoryArtwork,
     ]),
   ];
@@ -138,6 +139,7 @@ export function startupArtworkUrls(level: CompetitionLevel): readonly string[] {
   if (!urls.includes('/sprites/app-arena-ice.webp')) {
     urls.push('/sprites/app-arena-ice.webp');
   }
+  if (level !== 'beginner') urls.push(AMATEUR_DAILY_COURT_BACKGROUND);
   return urls;
 }
 

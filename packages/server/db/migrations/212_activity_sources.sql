@@ -79,22 +79,10 @@ create constraint trigger social_training after insert or update on training_ses
 create constraint trigger social_training_shot after insert on shot_session deferrable initially deferred for each row execute function social_capture_result();
 create constraint trigger social_initial_course after insert on initial_training_completion deferrable initially deferred for each row execute function social_capture_result();
 create constraint trigger social_advanced_course after insert on advanced_training_completion deferrable initially deferred for each row execute function social_capture_result();
-do $$ begin
- if to_regclass('advanced_training_v2_completion') is not null then
-  execute 'create constraint trigger social_advanced_course_v2 after insert on advanced_training_v2_completion deferrable initially deferred for each row execute function social_capture_result()';
- end if;
-end $$;
+create constraint trigger social_advanced_course_v2 after insert on advanced_training_v2_completion deferrable initially deferred for each row execute function social_capture_result();
 create constraint trigger social_achievement after insert or update on user_achievements deferrable initially deferred for each row execute function social_capture_result();
 create constraint trigger social_achievement_stage after insert or update on user_achievement_stages deferrable initially deferred for each row execute function social_capture_result();
 create constraint trigger social_duel after insert or update on amateur_duel_match deferrable initially deferred for each row execute function social_capture_result();
-do $$ begin
- if to_regclass('bar_computer_card_history') is not null then
-  execute 'create constraint trigger social_computer_cards after insert on bar_computer_card_history deferrable initially deferred for each row execute function social_capture_result()';
- end if;
- if to_regclass('bar_card_matches') is not null then
-  execute 'create constraint trigger social_online_cards after insert or update on bar_card_matches deferrable initially deferred for each row execute function social_capture_result()';
- end if;
- if to_regclass('bar_oleg_fights') is not null then
-  execute 'create constraint trigger social_bar_fight after insert or update on bar_oleg_fights deferrable initially deferred for each row execute function social_capture_result()';
- end if;
-end $$;
+create constraint trigger social_computer_cards after insert on bar_computer_card_history deferrable initially deferred for each row execute function social_capture_result();
+create constraint trigger social_online_cards after insert or update on bar_card_matches deferrable initially deferred for each row execute function social_capture_result();
+create constraint trigger social_bar_fight after insert or update on bar_oleg_fights deferrable initially deferred for each row execute function social_capture_result();

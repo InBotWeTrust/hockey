@@ -1,3 +1,5 @@
+import {BONUS_RHYTHM_SETTLEMENT_GRACE_MS} from './rhythm.js';
+import { countRhythmBoardContacts, projectRhythm } from '@hockey/game-core';
 import { bonusLocationCompletedSql } from './challengeLevels.js';
 import { getBonusRecordResult, settleBonusRecord } from './records.js';
 import { challengeLevelPreview, buildChallengeLevelEnvironment, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
@@ -8,7 +10,7 @@ import { createSkiAttemptSampler, resolveSkiCourtShot } from '@hockey/game-core'
 import { assertVersionedBeachEnvironment, resolveVersionedBeachShot } from './beachShot.js';
 import { randomUUID } from 'node:crypto';
 import {
-  GAME_CORE_VERSION,
+  GAME_CORE_VERSION, isShotCoreVersionCompatible,
   createWindSchedule, beachWindMotion, beachCleanupRules, sampleBeachPuddles, type BeachCleanupEvent,
   GOAL_OPENING,
   PUCK_START,
@@ -40,7 +42,11 @@ import {
   type BalanceSnapshot,
 } from './economy.js';
 import { assertBonusGameAccessibleToUser, lockBonusGameCatalogForRead } from './catalog.js';
-import { BONUS_SHOT_RESULT_PAUSE_MS, nextEnduranceGoalWindow } from './endurance.js';
+import {
+  BONUS_SHOT_RESULT_PAUSE_MS,
+  nextEnduranceGoalWindow,
+  pauseEnduranceGoalWindow,
+} from './endurance.js';
 import {
   toMarksmanshipScoreDetails,
   type MarksmanshipScoreDetails,
@@ -117,7 +123,7 @@ const LEGACY_BONUS_GAME_CORE_VERSIONS = [62, 63, 64, 65, 66, 67, 70, 71, 72, 73,
 
 export function supportsBonusGameCoreVersion(version: number): boolean {
   return (
-    version === GAME_CORE_VERSION ||
+    isShotCoreVersionCompatible(version) ||
     LEGACY_BONUS_GAME_CORE_VERSIONS.some((legacy) => version === legacy)
   );
 }
@@ -216,6 +222,7 @@ export function toBonusAttemptDto(
     closedAt: toIso(attempt.closed_at),
     shotsTaken: Number(attempt.shots_taken),
     currentPeriodShotsTaken: derived.currentPeriodShotsTaken,
+    rhythmShots: attempt.rhythm_shots ?? [],
     goals: Number(attempt.goals),
     totalPoints: Number(attempt.total_points),
     currentGoalStreak: Number(attempt.current_goal_streak),
@@ -263,7 +270,7 @@ export async function loadBonusAttemptDto(
     currentLoadout: derived.current_loadout,
   });
   dto.record = await getBonusRecordResult(client, attempt.id);
-  if (Number(attempt.game_core_version) >= 71 && attempt.rules_snapshot.challengeEnvironment) {
+  if (Number(attempt.game_core_version) >= 71 && (attempt.rules_snapshot.challengeEnvironment || attempt.rules_snapshot.skillCode === 'rhythm')) {
     dto.currentPeriodShotPauses = (await fetchBonusPeriodShotState(client, attempt.id, Number(attempt.current_period))).shotPauses;
   }
   if (attempt.rules_snapshot.challengeEnvironment?.beach?.interactive) {
@@ -337,7 +344,7 @@ async function lockUser(client: PoolClient, userId: string): Promise<LockedUserR
 }
 
 export function bonusDailyAttemptLimit(skillCode: BonusSkillCode): number {
-  return skillCode === 'marksmanship' || skillCode === 'endurance' ? 100 : 2;
+  return skillCode === 'marksmanship' || skillCode === 'endurance' || skillCode === 'rhythm' ? 100 : 2;
 }
 
 async function reserveDailyAttemptSlot(
@@ -408,7 +415,7 @@ export async function fetchBonusAttemptAllowances(
          from users
         where id = $1
      ), skills(skill_code) as (
-       values ('speed'::text), ('accuracy'::text), ('marksmanship'::text), ('endurance'::text),
+       values ('speed'::text), ('accuracy'::text), ('marksmanship'::text), ('endurance'::text), ('rhythm'::text),
               ('challenge'::text)
      )
      select skills.skill_code,
@@ -425,7 +432,7 @@ export async function fetchBonusAttemptAllowances(
   );
   const fallbackReset = new Date(now.getTime() + 86_400_000).toISOString();
   const result = {} as Record<BonusSkillCode, BonusAttemptAllowanceDTO>;
-  for (const skillCode of ['speed', 'accuracy', 'marksmanship', 'endurance', 'challenge'] as const) {
+  for (const skillCode of ['speed', 'accuracy', 'marksmanship', 'endurance', 'rhythm', 'challenge'] as const) {
     const row = rows.find((candidate) => candidate.skill_code === skillCode);
     const dailyLimit = configuredDailyLimit ?? bonusDailyAttemptLimit(skillCode);
     const used = Math.min(dailyLimit, Number(row?.used ?? 0));
@@ -1227,7 +1234,8 @@ export async function submitBonusShot(
     let attempt = owned;
     const isMarksmanship = ownedQualification.type === 'points_in_time';
     const isEndurance = ownedQualification.type === 'survive_goal_windows';
-    const acceptsLateSettlement = isMarksmanship || isEndurance;
+    const isRhythm = ownedQualification.type === 'rhythm_in_time';
+    const acceptsLateSettlement = isMarksmanship || isEndurance || isRhythm;
     const acceptedBeforeReconcile = acceptsLateSettlement
       ? await fetchAcceptedBonusShot(
           client,
@@ -1249,7 +1257,7 @@ export async function submitBonusShot(
         balances,
       };
     } else {
-      if (!acceptsLateSettlement) {
+      if (!acceptsLateSettlement || (isRhythm && attempt.period_started_at !== null && input.now.getTime() >= attempt.period_started_at.getTime() + attempt.rules_snapshot.periods[0]!.durationMs + BONUS_RHYTHM_SETTLEMENT_GRACE_MS)) {
         attempt = await reconcileBonusAttempt(client, attempt, input.now);
       }
 
@@ -1307,7 +1315,7 @@ export async function submitBonusShot(
             authoritativeShotStartedAt > attempt.goal_window_ends_at ||
             authoritativeShotStartedAt > periodEndsAt);
         if (
-          (isMarksmanship && authoritativeShotStartedAt > periodEndsAt) ||
+          ((isMarksmanship || isRhythm) && authoritativeShotStartedAt > periodEndsAt) ||
           enduranceDeadlineExceeded
         ) {
           attempt = await reconcileBonusAttempt(client, attempt, input.now);
@@ -1362,9 +1370,9 @@ export async function submitBonusShot(
             rule,
             attempt.rules_snapshot.challengeEnvironment,
           );
-          const useMotionClock = Number(attempt.game_core_version) >= 71 &&
+          const useMotionClock = isRhythm || (Number(attempt.game_core_version) >= 71 &&
             attempt.rules_snapshot.challengeEnvironment !== null &&
-            attempt.rules_snapshot.challengeEnvironment !== undefined;
+            attempt.rules_snapshot.challengeEnvironment !== undefined);
           const effectiveRule = {
             ...rule,
             puckSpeedPerMs: shotInput.puckSpeedPerMs ?? rule.puckSpeedPerMs,
@@ -1385,7 +1393,7 @@ export async function submitBonusShot(
           // Check wall-clock bounds before integrating a client-supplied elapsed time.
           if (useMotionClock) {
             shotInput.shooterMotionTime = getBonusChallengeShooterMotionTime(
-              attempt.rules_snapshot.challengeEnvironment!, input.input.tapTime,
+              attempt.rules_snapshot.challengeEnvironment ?? {}, input.input.tapTime,
               rule.shooterFrequency, periodShotState.shotPauses);
             if (attempt.rules_snapshot.challengeEnvironment?.beach?.interactive) {
               shotInput.shooterMotionTime = beachWindMotion(attempt.rules_snapshot.challengeEnvironment,
@@ -1444,7 +1452,13 @@ export async function submitBonusShot(
               STICK_NEUTRAL,
               getSessionPhaseOffsets(attempt.attempt_seed),
             ).type;
-          const awardedPoints = classification?.awardedPoints ?? 0;
+          const rhythmShots = isRhythm ? [...(attempt.rhythm_shots ?? []), {
+            travel: (shotInput.shooterMotionTime ?? input.input.shooterTapTime) * rule.shooterFrequency * 2 / 1000,
+            boardContacts: countRhythmBoardContacts(shotInput.shooterMotionTime ?? input.input.shooterTapTime,rule.shooterFrequency,getSessionPhaseOffsets(attempt.attempt_seed).shooter),
+            goal: serverResult === 'goal',
+          }] : [];
+          const rhythm = qualificationRules.type === 'rhythm_in_time' ? projectRhythm({shots:rhythmShots,travel:rhythmShots.at(-1)!.travel,minimumSeries:qualificationRules.minimumSeries,breakOnMiss:qualificationRules.breakOnMiss??false,...(qualificationRules.boardContactLimit ? {boardContactLimit:qualificationRules.boardContactLimit,currentBoardContacts:rhythmShots.at(-1)!.boardContacts} : {})}) : null;
+          const awardedPoints = rhythm ? rhythm.score - Number(attempt.total_points) : classification?.awardedPoints ?? 0;
           const scoreDetails = classification !== null && qualificationRules.type === 'points_in_time'
             ? toMarksmanshipScoreDetails(classification, qualificationRules.scoring)
             : null;
@@ -1506,16 +1520,18 @@ export async function submitBonusShot(
                       total_points = total_points + $3,
                       current_goal_streak = $4,
                       best_goal_streak = $5,
-                      updated_at = $6
+                      updated_at = $6,
+                      rhythm_shots = coalesce($7::jsonb, rhythm_shots)
                 where id = $1
                 returning *`,
               [
                 attempt.id,
                 serverResult === 'goal' ? 1 : 0,
                 awardedPoints,
-                nextStreak.current,
-                nextStreak.best,
+                rhythm?.currentSeries ?? nextStreak.current,
+                rhythm ? Math.max(0,...rhythm.series) : nextStreak.best,
                 input.now,
+                rhythm ? JSON.stringify(rhythmShots) : null,
               ],
             );
             attempt = updated.rows[0]!;
@@ -1544,10 +1560,26 @@ export async function submitBonusShot(
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else if (isEndurance) {
+              const pausedWindow = attempt.goal_window_ends_at === null
+                ? null
+                : pauseEnduranceGoalWindow({
+                    goalWindowEndsAt: attempt.goal_window_ends_at,
+                    shotStartedAt: authoritativeShotStartedAt,
+                    flightMs: (PUCK_START.y - GOAL_OPENING.y) / rule.puckSpeedPerMs,
+                  });
+              if (pausedWindow !== null) {
+                const windowUpdate = await client.query<BonusGameAttemptRow>(
+                  `update bonus_game_attempt
+                      set goal_window_started_at = $2, goal_window_ends_at = $3, updated_at = $4
+                    where id = $1 returning *`,
+                  [attempt.id, pausedWindow.startsAt, pausedWindow.endsAt, input.now],
+                );
+                attempt = windowUpdate.rows[0]!;
+              }
               attempt = await reconcileBonusAttempt(client, attempt, input.now);
               balances = await lockBonusEconomyBalances(client, input.userId, input.now);
             } else if (!isEndurance) {
-              const recordElapsedMs = await activeElapsedMs(client, attempt, isMarksmanship ? authoritativeShotStartedAt : input.now);
+              const recordElapsedMs = await activeElapsedMs(client, attempt, (isMarksmanship || isRhythm) ? authoritativeShotStartedAt : input.now);
               const qualification = evaluateBonusQualification(qualificationRules, {
                 goals: Number(attempt.goals),
                 shotsTaken: Number(attempt.shots_taken),
@@ -1555,7 +1587,7 @@ export async function submitBonusShot(
                 activeElapsedMs: await activeElapsedMs(
                   client,
                   attempt,
-                  isMarksmanship ? authoritativeShotStartedAt : input.now,
+                  (isMarksmanship || isRhythm) ? authoritativeShotStartedAt : input.now,
                 ),
                 totalPoints: Number(attempt.total_points),
               });
@@ -1584,7 +1616,7 @@ export async function submitBonusShot(
                 await settleBonusRecord(client, attempt, recordElapsedMs, input.now);
                 balances = await lockBonusEconomyBalances(client, input.userId, input.now);
               } else if (
-                isMarksmanship ||
+                isMarksmanship || isRhythm ||
                 (rule.shotsLimit !== null && expectedShotIndex >= rule.shotsLimit)
               ) {
                 attempt = await reconcileBonusAttempt(client, attempt, input.now);

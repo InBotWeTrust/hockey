@@ -1,9 +1,13 @@
+import {countRhythmBoardContacts,getSessionPhaseOffsets,projectRhythm, getBonusChallengeShooterMotionTime as rhythmMotionTime} from '@hockey/game-core';
+import {FittedNotice} from '../game/FittedNotice.js';
+import { EnduranceTimer, enduranceTimerTone } from '../components/EnduranceTimer.js';
+import { MarksmanshipScoreNotice, formatMarksmanshipPoints, marksmanshipResultPresentation } from '../components/MarksmanshipScoreNotice.js';
 import { ChallengeFinale } from '../game/ChallengeFinale.js';
 import { formatBonusDuration, formatBonusRecord } from '../profile/BonusRecordsModal.js';
 import {CyberpunkEffects} from '../game/CyberpunkEffects';
 import {cyberpunkNotice} from '../game/cyberpunkNotice';
 import {cyberpunkEarliestTap,sampleCyberpunkEnvironment,cyberpunkCrossings,cyberpunkShooterMotion,cyberpunkEnvironmentForHistory,type CyberpunkPanelEvent} from '@hockey/game-core';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   createSkiAttemptSampler, resolveSkiCourtShot, skiVisualAt, skiNotice, skiSnowStrength,
   type BonusChallengeShotPause,
@@ -19,14 +23,8 @@ import {
   STICK_NEUTRAL,
   type BonusChallengeEnvironmentRules,
   type GoalieConfig,
-  type MarksmanshipDifficultyCode,
-  type MarksmanshipScoringRules,
   type MarksmanshipShotClassification,
   type MarksmanshipSeriesGoal,
-  type MarksmanshipV3Reason,
-  type MarksmanshipV4Technique,
-  type MarksmanshipV5Technique,
-  type MarksmanshipV6Technique,
   type DuelPlayerCondition,
 } from '@hockey/game-core';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -36,7 +34,6 @@ import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
   BonusPeriodRule,
-  MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
 import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';
@@ -45,7 +42,7 @@ import type { GameScoreboardModel } from '../components/ScoreBoard.js';
 import { SkiSnowfall } from '../game/SkiSnowfall.js';
 import { SKI_ENTITY_SHEAR } from '../game/skiVisualProjection.js';
 import { skiNoticeTone } from '../game/skiNotice.js';
-import { PlayView, LONG_COURT_GAME_LAYER_STYLE, type PlayResultPresentation } from '../game/PlayView.js';
+import { PlayView, LONG_COURT_GAME_LAYER_STYLE } from '../game/PlayView.js';
 import {
   deriveBonusGameClockBasis,
   bonusPendingFlightMs,
@@ -94,202 +91,6 @@ function formatCountdown(ms: number): string {
   return `${minutes}:${seconds}`;
 }
 
-function formatTenths(ms: number): string {
-  return (Math.ceil(Math.max(0, ms) / 100) / 10).toFixed(1).replace('.', ',');
-}
-
-function formatPoints(value: number): string {
-  return new Intl.NumberFormat('ru-RU').format(value).replaceAll('\u00a0', ' ');
-}
-
-function formatMarksmanshipPoints(value: number, scoring: MarksmanshipScoringRules): string {
-  if (scoring.version !== 4 && scoring.version !== 5 && scoring.version !== 6) return formatPoints(value);
-  return new Intl.NumberFormat('ru-RU', { minimumFractionDigits: 1, maximumFractionDigits: 1 }).format(value / 10)
-    .replaceAll('\u00a0', ' ');
-}
-
-function marksmanshipV5TechniqueLabel(technique: MarksmanshipV5Technique): string {
-  switch (technique) {
-    case 'ordinary': return 'Простой';
-    case 'near_goalie': return 'Вратарь рядом';
-    case 'counter_direction': return 'Противоход';
-    case 'precise': return 'Меткий';
-    case 'behind_goalie': return 'За вратаря';
-    case 'corner': return 'Сложный в углу';
-    case 'edge': return 'На грани';
-    case 'super_precise': return 'Суперметкий';
-  }
-}
-
-function marksmanshipV6TechniqueLabel(technique: MarksmanshipV6Technique): string {
-  return technique === 'complex' ? 'Сложный' : marksmanshipV5TechniqueLabel(technique);
-}
-
-function marksmanshipV4TechniqueLabel(technique: MarksmanshipV4Technique): string {
-  switch (technique) {
-    case 'ordinary': return 'Простой';
-    case 'near_goalie': return 'Рядом с вратарём';
-    case 'board_side': return 'У борта';
-    case 'counter_direction': return 'Противоход';
-    case 'precise': return 'Меткий';
-    case 'behind_goalie': return 'За вратаря';
-    case 'super_precise': return 'Суперметкий';
-  }
-}
-
-function marksmanshipDifficultyLabel(code: MarksmanshipDifficultyCode): string {
-  switch (code) {
-    case 'open':
-      return 'Открытое окно';
-    case 'timed':
-      return 'Точный момент';
-    case 'precise':
-      return 'Точное окно';
-    case 'narrow':
-      return 'Узкое окно';
-    case 'very_narrow':
-      return 'Очень узкое окно';
-    case 'instant':
-      return 'Мгновенное окно';
-  }
-}
-
-function marksmanshipV3ReasonLabel(reason: MarksmanshipV3Reason): string {
-  switch (reason) {
-    case 'ordinary': return 'Обычный гол';
-    case 'timed': return 'Точный момент';
-    case 'narrow': return 'Узкий момент';
-    case 'instant': return 'Мгновенный момент';
-    case 'goalie_covers_goal': return 'Вратарь прикрывает ворота';
-    case 'near_goalie': return 'Рядом с вратарём';
-    case 'left_board': return 'От левого борта';
-    case 'right_board': return 'От правого борта';
-    case 'counter_direction': return 'Противоход';
-    case 'close_counter_direction': return 'Рядом с уходящим вратарём';
-  }
-}
-
-function marksmanshipResultPresentation(input: {
-  serverResult: 'goal' | 'save' | 'miss';
-  awardedPoints: number;
-  difficultyCode: MarksmanshipDifficultyCode | null;
-  counterDirection: boolean;
-  scoreDetails?: MarksmanshipScoreDetails | null;
-  scoring: MarksmanshipScoringRules;
-}): PlayResultPresentation | null {
-  const details = input.scoreDetails;
-  if (input.serverResult !== 'goal') return null;
-  if (input.awardedPoints <= 0) return null;
-  if (details?.version === 4 || details?.version === 5 || details?.version === 6) {
-    if (details.result !== 'goal' || details.technique === null ||
-      details.pointsTenths !== input.awardedPoints) return null;
-    return {
-      breakdown: [{ points: details.pointsTenths, label: details.version === 6
-        ? marksmanshipV6TechniqueLabel(details.technique)
-        : details.version === 5 ? marksmanshipV5TechniqueLabel(details.technique)
-          : marksmanshipV4TechniqueLabel(details.technique) }],
-    };
-  }
-  if (input.difficultyCode === null) return null;
-  if (details?.version === 3) {
-    if (details.reason === null || details.category !== input.awardedPoints) return null;
-    return {
-      breakdown: [{ points: input.awardedPoints, label: marksmanshipV3ReasonLabel(details.reason) }],
-    };
-  }
-  if (details?.version === 2) {
-    const geometry = details.geometry;
-    const breakdown = [
-      {
-        points: input.awardedPoints - details.seriesBonus - details.situationBonus,
-        label: marksmanshipDifficultyLabel(details.difficultyCode ?? input.difficultyCode),
-      },
-      ...(details.series.type === 'double'
-        ? [{ points: details.seriesBonus, label: 'Два за секунду' }]
-        : details.series.type === 'triple'
-          ? [{ points: details.seriesBonus, label: 'Три за прокат' }]
-          : []),
-      ...(geometry.counterDirection
-        ? [{ points: input.scoring.counterDirectionBonus, label: 'Противоход' }]
-        : []),
-      ...(geometry.closeToGoalie
-        ? [{ points: input.scoring.closeGoalieBonus, label: 'Рядом с вратарём' }]
-        : []),
-      ...(geometry.behindGoalie
-        ? [{ points: input.scoring.behindGoalieBonus, label: 'За вратаря' }]
-        : []),
-      ...(geometry.boardSide && details.windowDurationMs !== null && details.windowDurationMs < 160
-        ? [{ points: input.scoring.boardNarrowBonus, label: 'У борта · узкое окно' }]
-        : []),
-    ].filter((part) => part.points > 0);
-    return { breakdown };
-  }
-  const technique = input.counterDirection
-    ? 'Точный момент · противоход'
-    : marksmanshipDifficultyLabel(input.difficultyCode);
-  return { breakdown: [{ points: input.awardedPoints, label: technique }] };
-}
-
-function MarksmanshipScoreNotice({
-  parts,
-  scoring,
-}: {
-  parts: readonly { points: number; label: string }[];
-  scoring: MarksmanshipScoringRules;
-}): JSX.Element {
-  const outerRef = useRef<HTMLDivElement>(null);
-  const innerRef = useRef<HTMLDivElement>(null);
-
-  useLayoutEffect(() => {
-    const outer = outerRef.current;
-    const inner = innerRef.current;
-    const scoreboard = outer?.parentElement;
-    if (!outer || !inner || !scoreboard) return;
-
-    const fit = () => {
-      inner.style.setProperty('--marksmanship-label-size', '8px');
-      inner.style.setProperty('--marksmanship-value-size', '18px');
-      inner.style.setProperty('--marksmanship-part-padding', '10px');
-      inner.style.setProperty('--marksmanship-part-gap', '4px');
-      const availableWidth = scoreboard.clientWidth - parts.length - 2;
-      const naturalWidth = inner.scrollWidth;
-      if (availableWidth <= 0 || naturalWidth <= 0) return;
-      const scale = Math.min(1, availableWidth / naturalWidth);
-      inner.style.setProperty('--marksmanship-label-size', `${8 * scale}px`);
-      inner.style.setProperty('--marksmanship-value-size', `${18 * scale}px`);
-      inner.style.setProperty('--marksmanship-part-padding', `${10 * scale}px`);
-      inner.style.setProperty('--marksmanship-part-gap', `${4 * scale}px`);
-    };
-
-    fit();
-    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
-    resizeObserver?.observe(scoreboard);
-    window.addEventListener('resize', fit);
-    void document.fonts?.ready.then(fit);
-    return () => {
-      resizeObserver?.disconnect();
-      window.removeEventListener('resize', fit);
-    };
-  }, [parts]);
-
-  return (
-    <div
-      ref={outerRef}
-      className="game-scoreboard game-scoreboard--stable-surface bonus-game-marksmanship-score"
-      role="status"
-      aria-label="Очки за бросок"
-    >
-      <div ref={innerRef} className="bonus-game-marksmanship-score__inner">
-        {parts.map((part) => (
-          <div className="bonus-game-marksmanship-score__part" key={part.label}>
-            <span className="game-scoreboard__label">{part.label}</span>
-            <strong className="game-scoreboard__value">+{formatMarksmanshipPoints(part.points, scoring)}</strong>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function authoritativeRemainingMs(
   endsAt: string | null,
@@ -551,7 +352,7 @@ export function BonusResult({
       onClose={() => undefined}
       cardClassName="bonus-game-result-modal"
       backdropStyle={{
-        background: 'rgba(15, 23, 42, 0.35)',
+        background: 'var(--liquid-inset-bg)',
         backdropFilter: 'blur(8px)',
         WebkitBackdropFilter: 'blur(8px)',
       }}
@@ -567,6 +368,15 @@ export function BonusResult({
             value={formatCountdown(enduranceDurationMs)}
           />
           <BonusResultMetric label="В среднем на гол" value={averageEnduranceGoalText} />
+        </div>
+      ) : attempt.rules.qualification_rules.type==='rhythm_in_time' ? (
+        <div className="bonus-game-result-metrics" aria-label="Результат Ритма">
+          <BonusResultMetric label="Засчитано" value={String(attempt.total_points)}/>
+          <BonusResultMetric label="Цель" value={String(attempt.rules.qualification_rules.targetPoints)}/>
+          <BonusResultMetric label="Лучшая серия" value={String(attempt.best_goal_streak)}/>
+          <BonusResultMetric label="Попадания" value={`${accuracy}%`}/>
+          <BonusResultMetric label="Голы" value={String(attempt.goals)}/>
+          <BonusResultMetric label="Броски" value={String(attempt.shots_taken)}/>
         </div>
       ) : marksmanshipRules ? (
         <div
@@ -803,6 +613,11 @@ export function BonusGamePlayScreen(): JSX.Element {
   const abandon = useBonusGameStore((state) => state.abandon);
   const [confirmAbandon, setConfirmAbandon] = useState(false);
   const [inventoryOpen, setInventoryOpen] = useState(false);
+  const rhythmPendingRef=useRef<{index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
+  const [rhythmWindowTravel, setRhythmWindowTravel] = useState<{attemptId:string;index:number;travel:number;boardContacts?:number}|null>(null);
+  const [rhythmVisible,setRhythmVisible]=useState<{attemptId:string;index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
+  const [rhythmExpired,setRhythmExpired]=useState<string|null>(null);
+  const [rhythmAnimating,setRhythmAnimating]=useState(false);
   const [inventorySelection, setInventorySelection] = useState<BonusPeriodLoadoutSelection>({});
   const [isConfirmingAbandon, setIsConfirmingAbandon] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
@@ -849,6 +664,10 @@ export function BonusGamePlayScreen(): JSX.Element {
   }, [acknowledgePreview, attempt?.id, attempt?.preview_required, attempt?.status, inFlight]);
 
   useEffect(() => {
+    rhythmPendingRef.current = null;
+    setRhythmVisible(null);
+    setRhythmExpired(null);
+    setRhythmAnimating(false);
     predictedMarksmanshipRef.current = null;
     earliestMarksmanshipTapRef.current = 0;
     marksmanshipGoalInputsRef.current = [];
@@ -940,14 +759,15 @@ export function BonusGamePlayScreen(): JSX.Element {
     void reconcileAttempt();
   }, [needsReconcile, reconcileAttempt]);
 
-  const navigateToCatalog = useCallback(() => navigate('/bonus-games'), [navigate]);
+  const catalogPath = attempt ? `/bonus-games?skill=${encodeURIComponent(attempt.rules.skill_code)}` : '/bonus-games';
+  const navigateToCatalog = useCallback(() => navigate(catalogPath), [navigate,catalogPath]);
   const leavePlaySurface = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: ['bonus-games'], refetchType: 'none' });
     void queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] });
     void queryClient.invalidateQueries({ queryKey: ['achievements'] });
-    navigate('/bonus-games');
+    navigate(catalogPath);
     void refreshAfterGameExit();
-  }, [navigate, queryClient, refreshAfterGameExit]);
+  }, [navigate, catalogPath, queryClient, refreshAfterGameExit]);
   useEffect(() => {
     if (!isAuthoritativeBreak) return;
     setConfirmAbandon(false);
@@ -956,6 +776,11 @@ export function BonusGamePlayScreen(): JSX.Element {
   const refreshAttempt = useCallback(async (): Promise<void> => {
     if (attempt) await loadAttempt(attempt.id);
   }, [attempt, loadAttempt]);
+  useEffect(() => {
+    if (!attempt || rhythmExpired !== attempt.id || rhythmAnimating || attempt.status !== 'active') return;
+    const timer = window.setInterval(() => { void refreshAttempt(); }, 1000);
+    return () => window.clearInterval(timer);
+  }, [attempt?.id, attempt?.status, rhythmExpired, rhythmAnimating, refreshAttempt]);
   const activeEnduranceAttempt =
     attempt?.status === 'active' &&
     attempt.state === 'period_active' &&
@@ -1243,6 +1068,12 @@ export function BonusGamePlayScreen(): JSX.Element {
       ? attempt.rules.qualification_rules
       : null;
   const isMarksmanship = marksmanshipRules !== null;
+  const rhythmRules=attempt.rules.qualification_rules.type==='rhythm_in_time'?attempt.rules.qualification_rules:null;
+  const rhythmHistory=(attempt.rhythm_shots??[]).slice(0,rhythmVisible?.attemptId===attempt.id?rhythmVisible.index:undefined);
+  if(rhythmVisible?.attemptId===attempt.id && rhythmHistory.length<rhythmVisible.index) rhythmHistory.push({travel:rhythmVisible.travel,boardContacts:rhythmVisible.boardContacts??0,goal:rhythmVisible.goal});
+  const rhythmProjection=rhythmRules?projectRhythm({shots:rhythmHistory,travel:rhythmWindowTravel?.attemptId===attempt.id && rhythmWindowTravel.index===rhythmHistory.length ? rhythmWindowTravel.travel : rhythmHistory.at(-1)?.travel??0,minimumSeries:rhythmRules.minimumSeries,breakOnMiss:rhythmRules.breakOnMiss??false,...(rhythmRules.boardContactLimit ? {boardContactLimit:rhythmRules.boardContactLimit,currentBoardContacts:rhythmWindowTravel?.attemptId===attempt.id && rhythmWindowTravel.index===rhythmHistory.length ? rhythmWindowTravel.boardContacts??0 : rhythmHistory.at(-1)?.boardContacts??0} : {})}):null;
+  const rhythmNotice=rhythmHistory.at(-1)?.goal && rhythmProjection!.currentSeries>0 ? (rhythmProjection!.currentSeries>1?`Серия ${rhythmProjection!.currentSeries}`:'Серия началась'):null;
+
   const isEndurance = attempt.rules.qualification_rules.type === 'survive_goal_windows';
   const marksmanshipTarget = marksmanshipRules?.targetPoints ?? null;
   const enduranceRules =
@@ -1329,7 +1160,8 @@ export function BonusGamePlayScreen(): JSX.Element {
         maintenanceMode={isBreak ? 'scrape' : 'flood'}
         onBack={() => setConfirmAbandon(true)}
         backLabel="К бонусным играм"
-        active={isPeriodActive}
+        active={isPeriodActive && (!rhythmRules || rhythmExpired!==attempt.id || rhythmAnimating)}
+        holdSceneAfterResult={!!rhythmRules && (rhythmExpired===attempt.id || isTerminal)}
         seed={attempt.attempt_seed}
         goalieId={null}
         goalieConfig={goalieConfig}
@@ -1344,7 +1176,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         cyberpunkEnvironment={cyberRules?{rules:cyberRules,taps:attempt.current_period_panel_events??[]}:undefined}
         scoreboardDimmed={Boolean(cyberRules && cyberUiNow?.scene.outage)}
         rinkUnderlay={cyberRules&&cyberUiNow?<CyberpunkEffects scene={cyberUiNow.scene} layer="ice"/>:undefined}
-        shooterMotionTime={cyberRules ? (time,local)=>{const r=cyberRuntimeRef.current!;r.time=time;r.pauses=[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))];return cyberpunkShooterMotion(challengeEnvironment!,time,speedOverrides.shooterFreq,r.pauses);} : skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
+        shooterMotionTime={attempt.rules.skill_code==='rhythm' ? (time,local)=>rhythmMotionTime({},time,speedOverrides.shooterFreq,[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))]) : cyberRules ? (time,local)=>{const r=cyberRuntimeRef.current!;r.time=time;r.pauses=[...(attempt.current_period_shot_pauses??[]),...local.filter(p=>!(attempt.current_period_shot_pauses??[]).some(a=>Math.abs(a.tapTime-p.tapTime)<.001))];return cyberpunkShooterMotion(challengeEnvironment!,time,speedOverrides.shooterFreq,r.pauses);} : skiRuntime ? (time,local)=>{skiRuntime.time=time;skiRuntime.pauses=skiPauses(local);return skiRuntime.sampler.player(time,skiRuntime.pauses).clock;} : useMotionClock ? motionSamplerRef.current!.sample : undefined}
         canStartAction={cyberRules || challengeEnvironment?.beach?.interactive ? () => {
           const state = useBonusGameStore.getState();
           return !state.inFlight && !state.needsReconcile && !state.pendingShot;
@@ -1384,7 +1216,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotIndexBase={attempt.current_period_shots_taken}
         shotsTotal={terminalShotsTotal > 0 ? terminalShotsTotal : undefined}
         scoreboardNotice={
-          isEndurance || isMarksmanship
+          isEndurance || isMarksmanship || rhythmRules
             ? undefined
             : qualificationProgress(attempt.rules.qualification_rules, {
                   goals: attempt.goals,
@@ -1394,28 +1226,11 @@ export function BonusGamePlayScreen(): JSX.Element {
                   bestStreak: attempt.best_goal_streak,
               })
         }
-        scoreboardModel={enduranceScoreboardModel ?? marksmanshipScoreboardModel}
+        scoreboardModel={rhythmRules ? ({timer})=>({rows:[{id:'summary',metrics:[{id:'score',label:'СЧЁТ',value:String(rhythmProjection?.score??attempt.total_points)},{id:'target',label:'НУЖНО',value:String(rhythmRules.targetPoints)},{id:'series',label:'СЕРИЯ',value:`${rhythmProjection?.currentSeries??0}/${rhythmRules.minimumSeries}`},{id:'time',label:'ВРЕМЯ',value:timer,tone:'timer'}]}]}) : enduranceScoreboardModel ?? marksmanshipScoreboardModel}
         scoreboardAccessory={
-          showEnduranceTimer ? (
-            <div
-              className={`game-scoreboard game-scoreboard--stable-surface bonus-game-endurance-timer bonus-game-endurance-timer--${
-                (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <= 4_000
-                  ? 'danger'
-                  : (visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs) <=
-                      10_000
-                    ? 'warning'
-                    : 'success'
-              }`}
-              role="timer"
-              aria-label="До обязательного гола"
-            >
-              <span className="game-scoreboard__label">ТАЙМЕР</span>
-              <span className="bonus-game-endurance-timer__value">
-                {formatTenths(
-                  visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs,
-                )}
-              </span>
-            </div>
+          rhythmRules && rhythmNotice && !isTerminal && rhythmExpired!==attempt.id ? <FittedNotice fit role="status" className={`duel-stumble-notice initial-training-feedback-notice initial-training-feedback-notice--scoreboard${rhythmProjection!.currentSeries < rhythmRules.minimumSeries ? ' initial-training-feedback-notice--warning' : ''}`}>{rhythmNotice}</FittedNotice> : showEnduranceTimer ? (
+            <EnduranceTimer windowMs={enduranceRules!.goalWindowMs} remainingMs={visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs}
+              tone={enduranceTimerTone(visibleEnduranceClock?.goalRemainingMs ?? enduranceRules!.goalWindowMs)} />
           ) : marksmanshipScoreParts?.length ? (
             <MarksmanshipScoreNotice parts={marksmanshipScoreParts} scoring={marksmanshipRules!.scoring} />
           ) : undefined
@@ -1424,6 +1239,8 @@ export function BonusGamePlayScreen(): JSX.Element {
         shotButtonLabel={
           needsReconcile
             ? 'ПРОВЕРЯЕМ...'
+            : rhythmRules && rhythmExpired === attempt.id && !isTerminal
+              ? 'ПОДВОДИМ ИТОГИ'
             : isTerminal
               ? 'ИГРА ЗАВЕРШЕНА'
               : isBreak
@@ -1451,7 +1268,16 @@ export function BonusGamePlayScreen(): JSX.Element {
         clockRebaseKey={clockRebaseKey}
         periodEndsAt={localPeriodEndsAt}
         scoreboardEndsAt={scoreboardEndsAt}
-        onTimerExpired={isPeriodActive && !isEndurance ? refreshAttempt : undefined}
+        onSceneClock={rhythmRules ? (_scene, shooter) => {
+          const travel = shooter * rule.shooter_frequency * 2 / 1000;
+          const boardContacts=countRhythmBoardContacts(shooter,rule.shooter_frequency,getSessionPhaseOffsets(attempt.attempt_seed).shooter);
+          const lastGoalContacts=rhythmHistory.filter(shot=>shot.goal).at(-1)?.boardContacts??0;
+          const expired=rhythmRules.boardContactLimit ? boardContacts-lastGoalContacts>=rhythmRules.boardContactLimit : travel-rhythmProjection!.lastGoalTravel>2+1e-9;
+          if (rhythmProjection!.currentSeries > 0 && expired) {
+            setRhythmWindowTravel({attemptId:attempt.id,index:rhythmHistory.length,travel,boardContacts});
+          }
+        } : undefined}
+        onTimerExpired={isPeriodActive && !isEndurance ? rhythmRules ? ()=>{if(rhythmExpired===attempt.id)return;setRhythmExpired(attempt.id);if(!rhythmAnimating) void refreshAttempt();} : refreshAttempt : undefined}
         optimisticAddShot={optimisticAddShot}
         submitShot={async ({ shotIndex, input, claimedResult }) => {
           if (input.shooterTapTime === undefined) return null;
@@ -1488,6 +1314,16 @@ export function BonusGamePlayScreen(): JSX.Element {
                 : {}),
             },
           );
+          if (rhythmRules && rhythmPendingRef.current?.index === shotIndex && (!result || result.isCurrent?.() !== false)) {
+            if (!result || result.attempt.current_period_shots_taken < shotIndex) {
+              rhythmPendingRef.current = null;
+              setRhythmVisible(null);
+            } else if (result.serverResult !== claimedResult) {
+              const confirmed = result.attempt.rhythm_shots?.[shotIndex - 1];
+              rhythmPendingRef.current = confirmed ? {index:shotIndex,...confirmed} : null;
+              setRhythmVisible(confirmed ? {attemptId:attempt.id,index:shotIndex,...confirmed} : null);
+            }
+          }
           if (!mountedRef.current) applyPendingShot();
           const resultPresentation =
             result && isMarksmanship
@@ -1518,7 +1354,11 @@ export function BonusGamePlayScreen(): JSX.Element {
             : null;
         }}
         onShotResolved={
-          isMarksmanship
+          rhythmRules ? context=>{
+            setRhythmAnimating(true);
+            rhythmPendingRef.current={index:context.shotIndex,travel:(context.input.shooterMotionTime??context.input.shooterTapTime??0)*rule.shooter_frequency*2/1000,boardContacts:countRhythmBoardContacts(context.input.shooterMotionTime??context.input.shooterTapTime??0,rule.shooter_frequency,getSessionPhaseOffsets(attempt.attempt_seed).shooter),goal:context.result.type==='goal'};
+            return {details:[]};
+          } : isMarksmanship
             ? (context) => {
                 const classification = classifyMarksmanshipShot({
                   shotInput: context.input,
@@ -1555,6 +1395,10 @@ export function BonusGamePlayScreen(): JSX.Element {
         }
         resultCopy={isMarksmanship ? { goal: 'ГОЛ', save: 'СЭЙВ', miss: 'МИМО' } : undefined}
         onResultVisibilityChange={(visible) => {
+          if(rhythmRules) {
+            if(visible && rhythmPendingRef.current) setRhythmVisible({attemptId:attempt.id,...rhythmPendingRef.current});
+            if(!visible){setRhythmAnimating(false);if(rhythmExpired===attempt.id)void refreshAttempt();}
+          }
           if (isEndurance && isPeriodActive) handleEnduranceResultVisibility(visible);
           if (!isMarksmanship) return;
           marksmanshipResultVisibleRef.current = visible;

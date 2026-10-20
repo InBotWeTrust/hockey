@@ -3,6 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
+  define: { 'import.meta.env.VITE_TRAINING_EXERCISES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
   plugins: [
     react(),
     VitePWA({
@@ -11,6 +12,7 @@ export default defineConfig({
         'icons/icon-512.png',
         'icons/icon-192.png',
         'icons/apple-touch-icon.png',
+        'icons/notification-badge.png',
         'push-sw.js',
       ],
       manifest: {
@@ -69,6 +71,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Production maps would embed source text for the dev-only constructor.
+    sourcemap: process.env.VITE_MARKSMANSHIP_CONSTRUCTOR === 'dev-only-enabled',
   },
 });

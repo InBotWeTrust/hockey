@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { AdminScreen } from './AdminScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
+import { onboardingQueryKeys } from '../api/onboarding.js';
 
 function renderAdmin(): QueryClient {
   const client = new QueryClient({
@@ -111,7 +112,7 @@ it('saves onboarding flags independently and updates persisted display only from
   useAuthStore.getState().setSession({
     accessToken: 'a',
     refreshToken: 'r',
-    user: { id: 'admin', displayName: 'Egor', role: 'admin' },
+    user: { id: 'u1', displayName: 'Egor', role: 'admin' },
   });
   let patchBody: Record<string, unknown> | null = null;
   let authoritativeUser = makeAdminUser();
@@ -165,7 +166,8 @@ it('saves onboarding flags independently and updates persisted display only from
     return new Response('{}');
   });
 
-  renderAdmin();
+  const queryClient = renderAdmin();
+  queryClient.setQueryData(onboardingQueryKeys.required(), { required: null });
   await screen.findByText('Ультимейт Хоккей');
   selectAdminSection('Игроки');
   fireEvent.click(await screen.findByRole('button', { name: /Regular Player/ }));
@@ -191,6 +193,7 @@ it('saves onboarding flags independently and updates persisted display only from
       'Не пройден',
     ),
   );
+  expect(queryClient.getQueryState(onboardingQueryKeys.required())?.isInvalidated).toBe(true);
   expect(within(dialog).getByTestId('amateur-onboarding-status')).toHaveTextContent('Пройден');
   pendingDetail.resolve(
     new Response(
@@ -395,6 +398,12 @@ describe('AdminScreen', () => {
     localStorage.clear();
     useAuthStore.getState().clearSession();
     vi.restoreAllMocks();
+  });
+
+  it('offers a map exit without the retired dock', () => {
+    setupCoinPackages();
+    renderAdmin();
+    expect(screen.getByRole('link', { name: 'На карту' })).toHaveAttribute('href', '/sections?home=1');
   });
 
   function setupCoinPackages(includeSecondPackage = false) {
@@ -838,6 +847,28 @@ describe('AdminScreen', () => {
       'alert',
     );
     expect(screen.queryByText('0 получателей')).not.toBeInTheDocument();
+  });
+
+  it('invalidates the cached story profile after saving the amateur unlock threshold', async () => {
+    useAuthStore.getState().setSession({ accessToken: 'a', refreshToken: 'r',
+      user: { id: 'admin', displayName: 'Egor', role: 'admin' } });
+    const setting = { key: 'amateur.unlock_goals_required', label: 'Голов для любителей',
+      description: '', type: 'number', defaultValue: 300, min: 0, max: 10000, step: 1,
+      value: 300, updatedAt: null, updatedBy: null };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (String(input).includes('/admin/game-settings')) {
+        return new Response(JSON.stringify(init?.method === 'PATCH' ? { ...setting, value: 100 }
+          : { gameCoreVersion: 76, settings: [setting], balance: { goalies: [], sticks: [], dailyPeriodSpeedPresets: [] } }), { status: 200 });
+      }
+      return new Response('{}', { status: 404 });
+    });
+    const client = renderAdmin();
+    client.setQueryData(['profile'], { amateurUnlockGoalsRequired: 300 });
+    selectAdminSection('Параметры');
+    fireEvent.click(await screen.findByRole('button', { name: /Любительская лига/ }));
+    fireEvent.change(await screen.findByRole('spinbutton'), { target: { value: '100' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить Голов для любителей' }));
+    await waitFor(() => expect(client.getQueryState(['profile'])?.isInvalidated).toBe(true));
   });
 
   it('starts with dashboard and renders game settings for admins', async () => {
@@ -1507,7 +1538,9 @@ describe('AdminScreen', () => {
     const adminNavigation = within(adminMenu).getByRole('navigation', {
       name: 'Разделы администратора',
     });
-    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(16);
+    expect(within(adminNavigation).getAllByRole('button')).toHaveLength(18);
+    expect(within(adminNavigation).getByRole('button', { name: 'Бар' })).toBeInTheDocument();
+    expect(within(adminNavigation).getByRole('button', { name: 'Арсенич' })).toBeInTheDocument();
     expect(within(adminNavigation).getByRole('button', { name: 'Обзор' })).toHaveAttribute(
       'aria-current',
       'page',
@@ -1879,7 +1912,7 @@ describe('AdminScreen', () => {
       endsAt: '2100-01-01T00:00:00.000Z',
       totalPeriods: 3,
       shotsPerPeriod: 30,
-      periodDurationMs: 300_000,
+      periodDurationMs: 150_000,
       breakDurationMs: 120_000,
       goalieId: 'rookie',
       periodSpeedPresets: [],
@@ -1907,7 +1940,7 @@ describe('AdminScreen', () => {
       updatedAt: '2026-05-03T08:00:00.000Z',
     };
 
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
       const url = String(input);
       if (url.includes('/admin/summary')) {
         return new Response(JSON.stringify(makeAdminSummary()), {
@@ -1945,6 +1978,7 @@ describe('AdminScreen', () => {
         );
       }
       if (url.includes('/admin/duel-templates/duel-template-1')) {
+        expect(JSON.parse(String(init?.body)).periodDurationMs).toBe(150_000);
         patchCount += 1;
         return patchResponse;
       }
@@ -1964,6 +1998,7 @@ describe('AdminScreen', () => {
     selectAdminSection('Дуэли');
     fireEvent.click(await screen.findByRole('button', { name: 'Редактировать Классика' }));
     const dialog = await screen.findByRole('dialog', { name: 'Редактирование дуэли' });
+    expect(within(dialog).getByLabelText('Минут период')).toHaveValue(2.5);
     const saveButton = within(dialog).getByRole('button', { name: 'Сохранить' });
     saveButton.click();
     saveButton.click();

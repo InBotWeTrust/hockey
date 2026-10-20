@@ -1,12 +1,24 @@
+import { StartupSplash } from '../onboarding/StartupSplash.js';
+import { VenuePanorama } from '../components/VenuePanorama.js';
+import {GameEntryRoute} from './GameEntryRoute.js';
+import { useApplicationTheme } from './theme.js';
+import { BarAccessGate } from '../bar/BarAccessGate.js';
+import { useCardInvites } from '../bar/cards/cardInvites.js';
+import {GameInvites} from '../bar/games/GameInvites.js';
+import { CardInviteToast } from '../bar/cards/CardInviteToast.js';
 import { lazy, Suspense, useCallback, useEffect } from 'react';
 import { QueryClientProvider, useQuery } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
+import './liquid-glass.css';
+import './light-theme.css';
+import './classic-light-theme.css';
 import { LoginScreen } from '../screens/LoginScreen.js';
 import { PrivateRoute } from '../auth/PrivateRoute.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { BottomNav, isBottomNavVisible, isOpenRinkRoute } from '../components/BottomNav.js';
+import { useCardHistoryDelivery } from '../bar/cards/cardHistoryDelivery.js';
+import { isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
@@ -25,7 +37,9 @@ import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
 import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
 import { preloadCriticalArtwork } from './artworkCache.js';
 import { prepareInitialPlayerExperience } from './playerStartup.js';
+import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from './devOnlyFeatures.js';
 import { InviteScreen } from '../screens/InviteScreen.js';
+import { DestinationIntroductionGate } from '../arsenich/DestinationIntroductionGate.js';
 
 function loadDailyScreen() {
   return import('../screens/DailyScreen.js');
@@ -35,7 +49,31 @@ const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: mo
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const BeginnerOnboardingPreviewScreen = import.meta.env.DEV
+  ? lazy(() => import('../onboarding/BeginnerOnboardingPreviewScreen.js').then((module) => ({
+      default: module.BeginnerOnboardingPreviewScreen,
+    })))
+  : null;
+const AmateurOnboardingPreviewScreen = import.meta.env.DEV
+  ? lazy(() => import('../onboarding/AmateurOnboardingPreviewScreen.js').then(module => ({ default: module.AmateurOnboardingPreviewScreen })))
+  : null;
+const DestinationIntroductionPreviewScreen = import.meta.env.DEV
+  ? lazy(() =>
+      import('../arsenich/DestinationIntroductionPreviewScreen.js').then((module) => ({
+        default: module.DestinationIntroductionPreviewScreen,
+      })),
+    )
+  : null;
+
 const FansDemoScreen=import.meta.env.DEV?lazy(()=>import('../social/FansDemoScreen.js').then(module=>({default:module.FansDemoScreen}))):null;
+
+const DailyPeriodPreviewScreen = import.meta.env.DEV
+  ? lazy(() =>
+      import('../screens/DailyScreen.js').then((module) => ({
+        default: module.DailyPeriodPreviewScreen,
+      })),
+    )
+  : null;
 const TournamentResultPreviewScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({
     default: module.TournamentResultPreviewScreen,
@@ -78,12 +116,18 @@ const WeeklyChallengeScreen = lazy(() =>
     default: module.WeeklyChallengeScreen,
   })),
 );
+const ProfileRewardsScreen = lazy(() => import('../screens/ProfileRewardsScreen.js').then(module=>({default:module.ProfileRewardsScreen})));
 const ProfileScreen = lazy(() =>
   import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
 );
 const ReferralsScreen = lazy(() =>
   import('../screens/ReferralsScreen.js').then((module) => ({ default: module.ReferralsScreen })),
 );
+const MarksmanshipConstructorScreen = MARKSMANSHIP_CONSTRUCTOR_ENABLED
+  ? lazy(() => import('../screens/MarksmanshipConstructorScreen.js').then((module) => ({
+    default: module.MarksmanshipConstructorScreen,
+  })))
+  : null;
 const ProfileSettingsScreen = lazy(() =>
   import('../screens/ProfileSettingsScreen.js').then((module) => ({
     default: module.ProfileSettingsScreen,
@@ -94,11 +138,8 @@ const ProfileStatsScreen = lazy(() =>
     default: module.ProfileStatsScreen,
   })),
 );
-const ProfileEquipmentScreen = lazy(() =>
-  import('../screens/ProfileDestinationScreens.js').then((module) => ({
-    default: module.ProfileEquipmentScreen,
-  })),
-);
+const ProfileFriendsScreen = lazy(() => import('../screens/ProfileFriendsScreen.js').then(module=>({default:module.ProfileFriendsScreen})));
+const LockerRoomScreen = lazy(() => import('../screens/LockerRoomScreen.js').then(module => ({ default: module.LockerRoomScreen })));
 const ProfileArenaScreen = lazy(() =>
   import('../screens/ProfileDestinationScreens.js').then((module) => ({
     default: module.ProfileArenaScreen,
@@ -114,9 +155,15 @@ const ProfileStorySeriesScreen = lazy(() =>
     default: module.ProfileStorySeriesScreen,
   })),
 );
-const BarMaintenanceScreen = lazy(() =>
-  import('../bar/BarMaintenanceScreen.js').then((m) => ({ default: m.BarMaintenanceScreen })),
-);
+const BarGameScreen = lazy(()=>import('../bar/games/BarGameScreen.js').then(m=>({default:m.BarGameScreen})));
+const BarGamesPage = lazy(()=>import('../bar/games/CharacterLaunch.js').then(m=>({default:m.BarGamesPage})));
+const DurakRoomScreen = lazy(() => import('../bar/cards/DurakRoomScreen.js').then(m => ({default:m.DurakRoomScreen})));
+const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js').then(m => ({default:m.OnlineDurakScreen})));
+const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
+const BarBroadcastsScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarBroadcastsScreen })));
+const BarScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarScreen })));
+const BarStaffRoom = lazy(() => import('../bar/BarStaffRoom.js').then(module => ({default: module.BarStaffRoom})));
+const BarMatchScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarMatchScreen })));
 const SectionsScreen = lazy(() =>
   import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
 );
@@ -211,17 +258,7 @@ function ChatRealtime(): JSX.Element {
 }
 
 export function RouteLoading(): JSX.Element {
-  return (
-    <main className="screen" style={{ alignItems: 'center', justifyContent: 'center' }}>
-      <div
-        className="route-loading"
-        role="status"
-        style={{ color: '#0f172a', background: 'rgba(255, 255, 255, 0.9)' }}
-      >
-        Загрузка…
-      </div>
-    </main>
-  );
+  return <StartupSplash />;
 }
 
 export function appBackdropClassName(pathname: string, search = ''): string {
@@ -254,6 +291,7 @@ export function appBackdropClassName(pathname: string, search = ''): string {
       new URLSearchParams(search).get('play') === '1') ||
     pathname === '/test-court' ||
     pathname === '/demo' ||
+    (import.meta.env.DEV && pathname === '/dev/daily-period-preview') ||
     pathname.startsWith('/duel/') ||
     /^\/bonus-games\/[^/]+\/play$/.test(pathname)
   ) {
@@ -284,6 +322,8 @@ export function appThemeColor(pathname:string,search=''):string {
 }
 
 function AppExperience(): JSX.Element {
+  useCardHistoryDelivery();
+  const hasCardInvite = useCardInvites(s => s.incoming.length > 0);
   const location = useLocation();
   useEffect(()=>{
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',appThemeColor(location.pathname,location.search));
@@ -293,10 +333,6 @@ function AppExperience(): JSX.Element {
   useEffect(() => {
     if (user !== null) preloadCriticalArtwork();
   }, [user]);
-  const bottomNavVisible =
-    location.pathname !== '/dev/tournament-result-preview' &&
-    location.pathname !== '/dev/monthly-rating-reward-preview' &&
-    isBottomNavVisible(location, user);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const weeklyStartModalEnabled =
@@ -319,7 +355,10 @@ function AppExperience(): JSX.Element {
     enabled: user !== null && hasArenaBackdrop,
   });
   const levelBackdropClassName = hasArenaBackdrop
-    ? arenaBackgroundClass(profileQuery.data?.competitionLevel)
+    ? arenaBackgroundClass(
+        profileQuery.data?.competitionLevel,
+        location.pathname === '/' && new URLSearchParams(location.search).get('view') === 'training',
+      )
     : '';
 
   return (
@@ -327,12 +366,15 @@ function AppExperience(): JSX.Element {
       <ChatRealtime />
       <NativeNotificationBridge />
       <NativeUpdateBridge enabled={androidReleaseAccess} />
-      <DuelInviteToast suppressed={isOpenRinkRoute(location)} />
+      <DuelInviteToast suppressed={isOpenRinkRoute(location) || hasCardInvite} />
+      <GameInvites/>
+      <CardInviteToast suppressed={isOpenRinkRoute(location)} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
+      {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       <div
-        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${bottomNavVisible ? ' app-shell--bottom-nav-visible' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
+        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: 430,
           margin: '0 auto',
@@ -340,6 +382,7 @@ function AppExperience(): JSX.Element {
           height: 'var(--app-viewport-height, 100dvh)',
           minHeight: 'var(--app-viewport-height, 100dvh)',
           position: 'relative',
+          top: 'var(--app-viewport-top, 0px)',
           transform: 'translateZ(0)',
           overflow: 'hidden',
           boxShadow: '0 0 0 1px rgba(15,23,42,0.08), 0 8px 48px rgba(15,23,42,0.14)',
@@ -357,24 +400,23 @@ function AppExperience(): JSX.Element {
           </div>
         )}
         <div className="app-content">
+          <VenuePanorama level={user ? profileQuery.data?.competitionLevel ?? user.competitionLevel ?? null : null} owner={user?.id ?? null}>
           <Suspense fallback={<RouteLoading />}>
             <Routes>
-              <Route
-                path="/bar"
-                element={
-                  <PrivateRoute>
-                    <BarMaintenanceScreen />
-                  </PrivateRoute>
-                }
-              />
-              <Route
-                path="/bar/:kind/:id"
-                element={
-                  <PrivateRoute>
-                    <BarMaintenanceScreen />
-                  </PrivateRoute>
-                }
-              />
+              <Route path="/profile/friends" element={<PrivateRoute><ProfileFriendsScreen /></PrivateRoute>} />
+              <Route path="/locker-room" element={<PrivateRoute><LockerRoomScreen /></PrivateRoute>} />
+              <Route path="/profile/rewards" element={<PrivateRoute><ProfileRewardsScreen /></PrivateRoute>} />
+              <Route path="/bar/games" element={<PrivateRoute><BarAccessGate><BarGamesPage/></BarAccessGate></PrivateRoute>}/>
+              <Route path="/bar/games/match/:id" element={<PrivateRoute><BarAccessGate><BarGameScreen/></BarAccessGate></PrivateRoute>}/>
+              <Route path="/bar/cards/online" element={<PrivateRoute><BarAccessGate><Navigate to="/bar" replace /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/room/:id" element={<PrivateRoute><BarAccessGate><DurakRoomScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/match/:id" element={<PrivateRoute><BarAccessGate><OnlineDurakScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/computer/:opponentId" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/cards/maria" element={<PrivateRoute><BarAccessGate><DurakScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/broadcasts" element={<PrivateRoute><BarAccessGate><BarBroadcastsScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/staff-room" element={<PrivateRoute><BarAccessGate><BarStaffRoom /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar" element={<PrivateRoute><BarAccessGate><BarScreen /></BarAccessGate></PrivateRoute>} />
+              <Route path="/bar/:kind/:id" element={<PrivateRoute><BarAccessGate><BarMatchScreen /></BarAccessGate></PrivateRoute>} />
               <Route path="/login" element={<LoginScreen />} />
               <Route path="/invite/:code" element={<InviteScreen />} />
               <Route path="/prices" element={<PricesScreen />} />
@@ -383,6 +425,12 @@ function AppExperience(): JSX.Element {
               <Route path="/privacy" element={<PrivacyScreen />} />
               <Route path="/personal-data-consent" element={<PersonalDataConsentScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              {DailyPeriodPreviewScreen && (
+                <Route
+                  path="/dev/daily-period-preview"
+                  element={<DailyPeriodPreviewScreen />}
+                />
+              )}
               {MonthlyRatingRewardPreviewScreen && (
                 <Route
                   path="/dev/monthly-rating-reward-preview"
@@ -403,7 +451,7 @@ function AppExperience(): JSX.Element {
                 path="/"
                 element={
                   <PrivateRoute>
-                    <DailyScreen />
+                    <GameEntryRoute><DailyScreen /></GameEntryRoute>
                   </PrivateRoute>
                 }
               />
@@ -487,6 +535,12 @@ function AppExperience(): JSX.Element {
                 path="/referrals"
                 element={<PrivateRoute><ReferralsScreen /></PrivateRoute>}
               />
+              {MARKSMANSHIP_CONSTRUCTOR_ENABLED && MarksmanshipConstructorScreen !== null && (
+                <Route
+                  path="/profile/marksmanship-constructor"
+                  element={<PrivateRoute><MarksmanshipConstructorScreen /></PrivateRoute>}
+                />
+              )}
               <Route
                 path="/profile/settings"
                 element={
@@ -507,7 +561,7 @@ function AppExperience(): JSX.Element {
                 path="/profile/equipment"
                 element={
                   <PrivateRoute>
-                    <ProfileEquipmentScreen />
+                    <Navigate to="/locker-room" replace />
                   </PrivateRoute>
                 }
               />
@@ -535,6 +589,7 @@ function AppExperience(): JSX.Element {
                   </PrivateRoute>
                 }
               />
+              <Route path="/profile/story/series-2" element={<PrivateRoute><ProfileStorySeriesScreen series={2} /></PrivateRoute>} />
               <Route
                 path="/profile/achievements"
                 element={
@@ -603,8 +658,8 @@ function AppExperience(): JSX.Element {
               />
             </Routes>
           </Suspense>
+          </VenuePanorama>
         </div>
-        <BottomNav />
       </div>
     </>
   );
@@ -631,6 +686,16 @@ function AppFrame(): JSX.Element {
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
 
+  if (BeginnerOnboardingPreviewScreen && location.pathname === '/dev/beginner-onboarding') {
+    return <Suspense fallback={<RouteLoading />}><BeginnerOnboardingPreviewScreen /></Suspense>;
+  }
+  if (AmateurOnboardingPreviewScreen && location.pathname === '/dev/amateur-onboarding') {
+    return <Suspense fallback={<RouteLoading />}><AmateurOnboardingPreviewScreen /></Suspense>;
+  }
+  if (DestinationIntroductionPreviewScreen && location.pathname === '/dev/arsenich-introductions') {
+    return <Suspense fallback={<RouteLoading />}><DestinationIntroductionPreviewScreen /></Suspense>;
+  }
+
   if (FansDemoScreen && location.pathname === '/dev/fans') return <Suspense fallback={<RouteLoading/>}><FansDemoScreen/></Suspense>;
   if (!isAuthenticated || isPublicEntry) return <AppExperience />;
 
@@ -642,6 +707,7 @@ function AppFrame(): JSX.Element {
 }
 
 export function App(): JSX.Element {
+  useApplicationTheme();
   return (
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>

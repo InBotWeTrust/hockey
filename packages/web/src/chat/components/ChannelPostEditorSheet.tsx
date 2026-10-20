@@ -106,7 +106,7 @@ export function ChannelPostEditorSheet({
               minWidth: 34,
               minHeight: 34,
               borderRadius: 10,
-              background: 'rgba(255,255,255,0.72)',
+              background: 'var(--liquid-inset-bg)',
               color: 'var(--ink)',
             }}
           >
@@ -125,7 +125,7 @@ export function ChannelPostEditorSheet({
               minWidth: 34,
               minHeight: 34,
               borderRadius: 10,
-              background: 'rgba(255,255,255,0.72)',
+              background: 'var(--liquid-inset-bg)',
               color: 'var(--ink)',
             }}
           >
@@ -146,7 +146,7 @@ export function ChannelPostEditorSheet({
                 minWidth: 34,
                 minHeight: 34,
                 borderRadius: 10,
-                background: 'rgba(255,255,255,0.72)',
+                background: 'var(--liquid-inset-bg)',
                 color: 'var(--red-deep)',
               }}
             >
@@ -171,7 +171,7 @@ export function ChannelPostEditorSheet({
             outline: 'none',
             borderRadius: 16,
             padding: 12,
-            background: 'rgba(255,255,255,0.88)',
+            background: 'var(--liquid-inset-bg)',
             color: 'var(--ink)',
             fontSize: 15,
             lineHeight: 1.45,
@@ -190,7 +190,7 @@ export function ChannelPostEditorSheet({
               padding: 12,
               display: 'grid',
               gap: 10,
-              background: 'rgba(255,255,255,0.58)',
+              background: 'var(--liquid-inset-bg)',
             }}
           >
             <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>

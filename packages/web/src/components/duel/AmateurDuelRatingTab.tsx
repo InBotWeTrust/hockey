@@ -16,6 +16,7 @@ const RATING_SCOPES: Array<{ id: RatingScope; label: string }> = [
   { id: 'classic', label: 'Классика' },
   { id: 'sniper', label: 'Снайпер' },
   { id: 'marathon', label: 'Марафон' },
+  { id: 'rhythm', label: 'Ритм' },
 ];
 
 function monthLabel(key: string): string {
@@ -128,7 +129,7 @@ export function AmateurDuelRatingTab({
           onRequestClose={() => setRulesOpen(false)}
           cardClassName="duel-rating-info-modal"
           backdropStyle={{
-            background: 'rgba(15, 23, 42, 0.35)',
+            background: 'var(--liquid-inset-bg)',
             backdropFilter: 'blur(8px)',
             WebkitBackdropFilter: 'blur(8px)',
           }}

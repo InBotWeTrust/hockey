@@ -1,3 +1,4 @@
+vi.mock('./AmateurStoryFlow.js', () => ({ AmateurStoryFlow: ({ onCompleted }: { onCompleted: () => void }) => <div>Всё начинается здесь<button onClick={onCompleted}>Далее</button></div> }));
 import { StrictMode, useContext } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';

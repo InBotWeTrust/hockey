@@ -203,6 +203,81 @@ describe('PlayView', () => {
     vi.restoreAllMocks();
   });
 
+  it('resumes the duel shot from the same scene time after fight and medical aid', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    const props = {showIceCar:false,onBack:()=>undefined,active:true,seed:'fight-return',
+      goalieId:null,goalieConfig:beachGoalie,periodNumber:1,goals:0,shots:0,
+      preserveSceneOnModalReturn:true,playEntranceOnMount:false,
+      initialSceneElapsedMs:0,initialShooterElapsedMs:0,shotResolver,
+      optimisticAddShot:()=>undefined,submitShot:()=>new Promise<null>(()=>{}),applyState:()=>undefined} as const;
+    const view=render(<PlayView {...props} suppressedByModal={false}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    view.rerender(<PlayView {...props} suppressedByModal/>);
+    now=31500;
+    view.rerender(<PlayView {...props} suppressedByModal={false}/>);
+    act(()=>tickerCallbacks.at(-1)?.());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({input:expect.objectContaining({tapTime:500,shooterTapTime:500})}));
+  });
+
+  it('reenables shooting after a shot confirmation arrives underneath fight and medical aid', async () => {
+    let now = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    vi.useFakeTimers();
+    let confirm: (v:{serverResult:'miss';state:object})=>void=()=>{};const pending=new Promise<{serverResult:'miss';state:object}>(resolve=>{confirm=resolve;});
+    const props = {showIceCar:false,onBack:()=>undefined,active:true,seed:'fight-return',
+      goalieId:null,goalieConfig:beachGoalie,periodNumber:1,goals:0,shots:0,
+      preserveSceneOnModalReturn:true,playEntranceOnMount:false,
+      initialSceneElapsedMs:0,initialShooterElapsedMs:0,shotResolver,
+      optimisticAddShot:()=>undefined,submitShot:()=>pending,applyState:()=>undefined} as const;
+    const view=render(<PlayView {...props} suppressedByModal={false}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    view.rerender(<PlayView {...props} suppressedByModal/>);
+    await act(async()=>{confirm({serverResult:'miss',state:{}});await Promise.resolve();vi.advanceTimersByTime(10000);});
+    now=31500;
+    view.rerender(<PlayView {...props} suppressedByModal={false}/>);
+    act(()=>tickerCallbacks.at(-1)?.());
+    expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
+    await act(async()=>{fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));await Promise.resolve();});
+    expect(shotResolver).toHaveBeenCalledTimes(2);
+    expect(shotResolver).toHaveBeenLastCalledWith(expect.objectContaining({input:expect.objectContaining({tapTime:500})}));
+  });
+
+
+  it('does not coast past flight contact while its result callback is delayed', async () => {
+    vi.useFakeTimers();
+    let now=1000;
+    vi.spyOn(performance,'now').mockImplementation(()=>now);
+    const motion=gameCore.createRhythmMovementSampler({seed:'delayed-contact',userId:'local',periodNumber:1,elapsedMs:0,movementDistancePx:0,baseLaneWidthPx:600,baselineShooterSpeed:.75,currentShooterSpeed:.75,loadout:{stick:null,skates:null,nutrition:null}});
+    const clocks:number[]=[];
+    render(<PlayView active suppressedByModal={false} showIceCar={false} onBack={()=>{}}
+      seed="delayed-contact" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+      playEntranceOnMount={false} goals={0} shots={0}
+      initialSceneElapsedMs={0} initialShooterElapsedMs={0}
+      speedOverrides={{goalFreq:.5,goalieFreq:.6,shooterFreq:.75,puckSpeed:1.3}}
+      shooterMotionTime={(time,pauses)=>motion.motionAt(time,pauses)}
+      onSceneClock={(scene)=>clocks.push(scene)} shotResultPauseMs={1000}
+      shotResolver={()=>({type:'miss',reason:'wide'})}
+      optimisticAddShot={()=>{}} submitShot={()=>new Promise(()=>{})} applyState={()=>{}}/>);
+    await act(async()=>Promise.resolve());
+    now=1500;act(()=>tickerCallbacks.at(-1)?.());
+    const frozenPlayer=playerPositions.at(-1)!;
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    now=1900;act(()=>tickerCallbacks.at(-1)?.());
+    const contactGoal=goalOffsets.at(-1)!;
+    // A slow frame runs before the timer callback can display the outcome.
+    now=2100;act(()=>tickerCallbacks.at(-1)?.());
+    expect(playerPositions.at(-1)).toBeCloseTo(frozenPlayer,8);
+    expect(goalOffsets.at(-1)).toBeCloseTo(contactGoal,8);
+    expect(clocks.at(-1)).toBeCloseTo(900,8);
+  });
+
   it('preserves moving entities and an in-flight puck across rink resize', async () => {
     let now = 1000;
     vi.spyOn(performance, 'now').mockImplementation(() => now);
@@ -312,6 +387,71 @@ describe('PlayView', () => {
     );
     await waitFor(() => expect(screen.queryByText('Возьми чуть правее')).toBeNull());
   });
+
+  it('replaces the compact environment notice with a fatigue notice', async () => {
+    render(
+      <PlayView
+        suppressedByModal={false}
+        showIceCar={false}
+        onBack={() => undefined}
+        active
+        seed="challenge-notice"
+        goalieId={null}
+        goalieConfig={beachGoalie}
+        periodNumber={1}
+        goals={0}
+        shots={0}
+        statusNotice="Лёд тает · игрок −10% · шайба −10%"
+        statusNoticeClassName="bonus-challenge-environment-notice"
+        statusNoticeUnderScoreboard
+        duelCondition={() => ({
+          puckSpeedDelta: 0,
+          shooterSpeedMultiplier: 0.765,
+          canShoot: true,
+          status: 'tired',
+          fatigueLevel: 'medium',
+          stumbleActive: false,
+          shooterXOffsetPx: 0,
+          fatigueMs: 10_000,
+          nutritionConsumed: 0,
+          skatesConsumed: 0,
+        })}
+        optimisticAddShot={() => undefined}
+        submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}
+      />,
+    );
+
+    expect(await screen.findByText('Усталость · замедление 24%')).toBeInTheDocument();
+    expect(screen.queryByText('Лёд тает · игрок −10% · шайба −10%')).not.toBeInTheDocument();
+    expect(screen.getAllByRole('status')).toHaveLength(1);
+  });
+
+  it('uses the primary button to mark an observation without taking a shot', () => {
+    const mark = vi.fn();
+    const submitShot = vi.fn(() => new Promise<null>(() => undefined));
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="observation" goalieId="rookie"
+      goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+      shotButtonLabel="ВИЖУ ШАНС" observationAction={mark}
+      optimisticAddShot={() => undefined} submitShot={submitShot}
+      applyState={() => undefined} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'ВИЖУ ШАНС' }));
+    expect(mark).toHaveBeenCalledOnce();
+    expect(mark).toHaveBeenCalledWith(expect.any(Number));
+    expect(submitShot).not.toHaveBeenCalled();
+  });
+
+  it('hides the shot control during a paused observation lesson', () => {
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="observation-paused" goalieId="rookie"
+      goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+      hidePrimaryAction optimisticAddShot={() => undefined}
+      submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+    expect(screen.queryByRole('button', { name: 'БРОСОК' })).toBeNull();
+  });
+
   it('passes the exact supplied goalie configuration to local shot resolution', () => {
     const resolvedContexts: Parameters<PlayShotResolver>[0][] = [];
     const shotResolver: PlayShotResolver = (context) => {
@@ -349,6 +489,24 @@ describe('PlayView', () => {
 
     expect(resolvedContexts).toHaveLength(1);
     expect(resolvedContexts[0]?.goalieConfig).toEqual(beachGoalie);
+  });
+
+  it('activates authoritative movement after the ready lobby without recreating the scene', async () => {
+    const contexts: Parameters<PlayShotResolver>[0][] = [];
+    const common = {
+      suppressedByModal:false, showIceCar:false, onBack:()=>undefined,
+      preserveSceneOnModalReturn:true, seed:'rhythm-lobby', goalieId:'rookie', periodNumber:1, goals:0, shots:0,
+      shotResolver:(context:Parameters<PlayShotResolver>[0])=>{contexts.push(context);return {type:'miss' as const,reason:'wide' as const};},
+      optimisticAddShot:()=>undefined, submitShot:()=>new Promise<null>(()=>undefined), applyState:()=>undefined,
+    };
+    const view=render(<PlayView {...common} active={false}/>);
+    const sceneCount=playerContainers.length;
+    view.rerender(<PlayView {...common} active shooterMotionTime={()=>123.5}/>);
+    await waitFor(()=>expect(screen.getByRole('button',{name:'БРОСОК'})).toBeEnabled());
+    fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+    expect(contexts).toHaveLength(1);
+    expect(contexts[0]!.input.shooterMotionTime).toBe(123.5);
+    expect(playerContainers).toHaveLength(sceneCount);
   });
 
   it('starts the server shot index from one in a new period while preserving cumulative shots', () => {
@@ -424,6 +582,27 @@ describe('PlayView', () => {
         input: expect.objectContaining({ tapTime: 6_000, shooterTapTime: 4_700 }),
       }),
     );
+  });
+
+  it('holds an early practice tap until the visible scene reaches the valid shot', async () => {
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const shotResolver: PlayShotResolver = vi.fn(() => ({ type: 'miss', reason: 'wide' }));
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="practice-assist" goalieId="rookie"
+      periodNumber={1} goals={0} shots={0}
+      initialSceneElapsedMs={9_880} initialShooterElapsedMs={9_880}
+      practiceShotWindow={{ armStartMs: 9_880, targetMs: 10_002, endMs: 10_004 }}
+      shotResolver={shotResolver} optimisticAddShot={() => undefined}
+      submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    expect(shotResolver).not.toHaveBeenCalled();
+    now = 1_122;
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(shotResolver).toHaveBeenCalledWith(expect.objectContaining({
+      input: expect.objectContaining({ tapTime: 10_002, shooterTapTime: 10_002 }),
+    }));
   });
 
   it('rebases separate clocks when a reconciled authoritative snapshot arrives', () => {
@@ -1014,6 +1193,64 @@ describe('PlayView', () => {
         }),
       }),
     );
+  });
+
+  it('holds the demonstration at impact until the next scene is rebased', async () => {
+    vi.useFakeTimers();
+    let now = 1_000;
+    vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const clocks: number[] = [];
+    const onResultComplete = vi.fn();
+    const common = {
+      suppressedByModal: false, showIceCar: false, onBack: () => undefined,
+      active: true, seed: 'held-demonstration', goalieId: null,
+      goalieConfig: beachGoalie, periodNumber: 1, goals: 0, shots: 0,
+      speedOverrides: { goalFreq: 0.45, goalieFreq: 0.5, shooterFreq: 0.65, puckSpeed: 1.2 },
+      holdSceneAfterResult: true, initialShooterElapsedMs: 2_000,
+      receivedAtPerformanceMs: 1_000,
+      onSceneClock: (sceneMs: number) => clocks.push(sceneMs),
+      onResultComplete,
+      shotResolver: () => ({ type: 'goal' as const, hitPoint: { x: 286, y: 60 } }),
+      optimisticAddShot: () => undefined,
+      submitShot: async () => ({ serverResult: 'goal' as const, state: {} }),
+      applyState: () => undefined,
+    };
+    const view = render(<PlayView {...common} initialSceneElapsedMs={2_000}
+      clockRebaseKey="demo-1" />);
+    await act(async () => Promise.resolve());
+    fireEvent.click(screen.getByRole('button', { name: 'БРОСОК' }));
+    now = 1_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    await act(async () => vi.advanceTimersByTimeAsync(434));
+    now = 2_434;
+    await act(async () => vi.advanceTimersByTimeAsync(1_000));
+    expect(onResultComplete).toHaveBeenCalledTimes(1);
+    act(() => tickerCallbacks.at(-1)?.());
+    const heldClock = clocks.at(-1)!;
+    now = 3_434;
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(clocks.at(-1)).toBeCloseTo(heldClock, 3);
+    view.rerender(<PlayView {...common} initialSceneElapsedMs={4_000}
+      initialShooterElapsedMs={4_000} receivedAtPerformanceMs={3_434}
+      clockRebaseKey="demo-2" />);
+    act(() => tickerCallbacks.at(-1)?.());
+    expect(clocks.at(-1)).toBeCloseTo(4_000, 1);
+  });
+
+  it('does not teleport the scene to an auto-shot timestamp', async () => {
+    vi.useFakeTimers();
+    const shotResolver = vi.fn(() => ({ type: 'miss' as const, reason: 'wide' as const }));
+    render(<PlayView suppressedByModal={false} showIceCar={false}
+      onBack={() => undefined} active seed="exact-demonstration" goalieId={null}
+      goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+      initialSceneElapsedMs={1_660} initialShooterElapsedMs={1_660}
+      autoShotDelayMs={100}
+      shotResolver={shotResolver} optimisticAddShot={() => undefined}
+      submitShot={async () => ({ serverResult: 'miss', state: {} })}
+      applyState={() => undefined} />);
+    await act(async () => vi.advanceTimersByTimeAsync(100));
+    const shot = (shotResolver.mock.calls as unknown as Array<[{ input: { tapTime: number } }]>)[0]?.[0];
+    expect(shot?.input.tapTime).toBeLessThan(2_000);
   });
 
   it('keeps the result visible until a delayed shot response can start the next window', async () => {
@@ -1791,4 +2028,33 @@ it('stops a beach shot in deep water without a rebound or a second tap', async (
     } finally {resolver.mockRestore();}
   });
 
+  it.each(['tired', 'exhausted_stop', 'stumble'] as const)(
+    'keeps challenge content-width styling in %s state', async state => {
+      render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+        active seed="challenge-notice-width" goalieId={null} goalieConfig={beachGoalie}
+        periodNumber={1} goals={0} shots={0} statusNotice="Лёд тает"
+        statusNoticeClassName="bonus-challenge-environment-notice" statusNoticeUnderScoreboard
+        duelCondition={() => ({puckSpeedDelta:0,shooterSpeedMultiplier:.765,canShoot:state === 'tired',
+          status:state === 'exhausted_stop' ? 'exhausted_stop' : 'tired',fatigueLevel:'medium',
+          stumbleActive:state === 'stumble',shooterXOffsetPx:0,fatigueMs:31000,
+          nutritionConsumed:0,skatesConsumed:0})}
+        optimisticAddShot={() => undefined} submitShot={() => new Promise(() => undefined)}
+        applyState={() => undefined}/>);
+      const notice = screen.getByRole('status');
+      expect(notice).toHaveClass('bonus-challenge-environment-notice','fitted-scoreboard-notice');
+      expect(screen.getAllByRole('status')).toHaveLength(1);
+    });
+
+});
+
+it('keeps shots available with a separate right-side fight challenge', async () => {
+  render(<PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+    active seed="fight-offer" goalieId={null} goalieConfig={beachGoalie} periodNumber={1} goals={0} shots={0}
+    hudAddon={<span>Inventory</span>} rightHudAddon={<button>Fight</button>}
+    optimisticAddShot={() => undefined} submitShot={() => new Promise(() => undefined)} applyState={() => undefined} />);
+  await waitFor(() => expect(playerContainers.length).toBeGreaterThan(0));
+  expect(playerContainers.at(-1)?.visible).toBe(true);
+  expect(goalieContainers.at(-1)?.visible).toBe(true);
+  expect(screen.getByRole('button', { name: 'Fight' }).parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
+  expect(screen.getByRole('button', { name: /БРОСОК/ })).not.toBeDisabled();
 });

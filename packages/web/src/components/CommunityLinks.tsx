@@ -1,31 +1,56 @@
 import { ChevronRight, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-export function CommunityLinks(): JSX.Element {
+export function CommunityLinks({ destinations = true }: { destinations?: boolean }): JSX.Element {
   const navigate = useNavigate();
 
   return (
     <div className="profile-community-story-grid">
       <div className="profile-community-settings-column">
-        <section className="profile-settings-section" aria-label="Настройки">
-          <span className="section-label profile-section-label">Профиль</span>
-          <div className="profile-utility-grid">
-            <button
-              type="button"
-              className="profile-utility-card profile-utility-card--settings glass"
-              aria-label="Настройки"
-              onClick={() => navigate('/profile/settings')}
-            >
-              <span className="profile-utility-card__visual profile-utility-card__visual--icon">
-                <Settings aria-hidden="true" />
-              </span>
-              <span className="profile-utility-card__copy">
-                <strong className="profile-settings-card__title">Настройки</strong>
-              </span>
-              <ChevronRight aria-hidden="true" />
-            </button>
-          </div>
+        {destinations && (
+          <section className="profile-settings-section" aria-label="Настройки">
+            <span className="section-label profile-section-label">Профиль</span>
+            <div className="profile-utility-grid">
+              <button
+                type="button"
+                className="profile-utility-card profile-utility-card--settings glass"
+                aria-label="Настройки"
+                onClick={() => navigate('/profile/settings')}
+              >
+                <span className="profile-utility-card__visual profile-utility-card__visual--icon">
+                  <Settings aria-hidden="true" />
+                </span>
+                <span className="profile-utility-card__copy">
+                  <strong className="profile-settings-card__title">Настройки</strong>
+                </span>
+                <ChevronRight aria-hidden="true" />
+              </button>
+            </div>
+          </section>
+        )}
+
+      </div>
+      {destinations && (
+        <section className="profile-story-section" aria-label="Сюжет">
+          <span className="section-label profile-section-label">Сюжет</span>
+          <button
+            type="button"
+            className="profile-story-card"
+            aria-label="Открыть раздел «Сюжет»"
+            onClick={() => navigate('/profile/story')}
+          >
+            <img src="/profile/story-cinema.webp" alt="" />
+            <span className="profile-story-card__shade" aria-hidden="true" />
+            <ChevronRight aria-hidden="true" />
+          </button>
         </section>
+      )}
+    </div>
+  );
+}
+
+export function CommunitySection(): JSX.Element {
+  return (
         <section className="profile-community-section" aria-label="Сообщества">
           <span className="section-label profile-section-label">Сообщества</span>
           <div className="profile-community-icon-grid">
@@ -61,20 +86,5 @@ export function CommunityLinks(): JSX.Element {
             </a>
           </div>
         </section>
-      </div>
-      <section className="profile-story-section" aria-label="Сюжет">
-        <span className="section-label profile-section-label">Сюжет</span>
-        <button
-          type="button"
-          className="profile-story-card"
-          aria-label="Открыть раздел «Сюжет»"
-          onClick={() => navigate('/profile/story')}
-        >
-          <img src="/profile/story-cinema.webp" alt="" />
-          <span className="profile-story-card__shade" aria-hidden="true" />
-          <ChevronRight aria-hidden="true" />
-        </button>
-      </section>
-    </div>
   );
 }

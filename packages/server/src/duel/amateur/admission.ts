@@ -3,7 +3,7 @@ import { AppError } from '../../plugins/errors.js';
 import type { DuelLimitSettings } from './limitRules.js';
 import { limitWindows } from './limitRules.js';
 
-type DuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon';
+type DuelKind = 'express' | 'express_plus' | 'classic' | 'sniper' | 'marathon' | 'rhythm';
 type DuelPeriod = 'daily' | 'weekly' | 'monthly';
 
 export interface DuelLimitUsage {
@@ -31,7 +31,7 @@ export async function duelLimitUsage(
       group by duel_kind`,
     [userId, windows.dayStart, windows.weekStart, windows.monthStart],
   );
-  const kinds: DuelKind[] = ['express', 'express_plus', 'classic', 'sniper', 'marathon'];
+  const kinds: DuelKind[] = ['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'];
   const periods: DuelPeriod[] = ['daily', 'weekly', 'monthly'];
   const resets = { daily: windows.nextDay, weekly: windows.nextWeek, monthly: windows.nextMonth };
   const byPeriod = {} as Record<DuelPeriod, { used: number; limit: number; reset_at: string; by_format: Record<DuelKind, number> }>;
@@ -74,6 +74,7 @@ export async function duelCapacities(
     classic: number;
     sniper: number;
     marathon: number;
+    rhythm: number;
   }>(
     `select user_id,
        count(*) filter (where accepted_at >= $2)::int as daily,
@@ -83,7 +84,8 @@ export async function duelCapacities(
        count(*) filter (where accepted_at >= $4 and duel_kind = 'express_plus')::int as express_plus,
        count(*) filter (where accepted_at >= $4 and duel_kind = 'classic')::int as classic,
        count(*) filter (where accepted_at >= $4 and duel_kind = 'sniper')::int as sniper,
-       count(*) filter (where accepted_at >= $4 and duel_kind = 'marathon')::int as marathon
+       count(*) filter (where accepted_at >= $4 and duel_kind = 'marathon')::int as marathon,
+       count(*) filter (where accepted_at >= $4 and duel_kind = 'rhythm')::int as rhythm
        from amateur_duel_limit_reservation
       where user_id = any($1::uuid[]) and released_at is null
       group by user_id`,
@@ -96,7 +98,7 @@ export async function duelCapacities(
     const weekly = row?.weekly ?? 0;
     const monthly = row?.monthly ?? 0;
     const formats = {} as Record<DuelKind, Capacity>;
-    for (const kind of ['express', 'express_plus', 'classic', 'sniper', 'marathon'] as const) {
+    for (const kind of ['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'] as const) {
       const remaining = [
         { reason: 'daily' as const, count: limits.daily - daily, retryAt: windows.nextDay },
         { reason: 'weekly' as const, count: limits.weekly - weekly, retryAt: windows.nextWeek },

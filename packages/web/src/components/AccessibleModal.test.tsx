@@ -85,3 +85,26 @@ describe('AccessibleModal', () => {
     expect(onRequestClose.mock.calls).toEqual([['escape'], ['backdrop']]);
   });
 });
+
+it('restores the game and trigger when parent and result modals close together', async () => {
+  function NestedHarness(): JSX.Element {
+    const [fight, setFight] = useState(false);
+    const [result, setResult] = useState(false);
+    return <>
+      <button onClick={() => setFight(true)}>Start fight</button>
+      {fight && <AccessibleModal title="Fight">
+        <button onClick={() => setResult(true)}>Show result</button>
+        {result && <AccessibleModal title="Result"><button onClick={() => setFight(false)}>Resume game</button></AccessibleModal>}
+      </AccessibleModal>}
+    </>;
+  }
+  const view = render(<NestedHarness />);
+  const start = screen.getByRole('button', { name: 'Start fight' });
+  start.focus(); fireEvent.click(start);
+  fireEvent.click(screen.getByRole('button', { name: 'Show result' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Resume game' }));
+  await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  expect(view.container).not.toHaveAttribute('inert');
+  expect(view.container).not.toHaveAttribute('aria-hidden');
+  expect(start).toHaveFocus();
+});

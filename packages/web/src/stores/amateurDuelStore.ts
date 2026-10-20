@@ -49,21 +49,34 @@ interface AmateurDuelStoreState {
   } | null>;
 }
 
+function retainFightProgress(current:AmateurDuelMatchState|null,incoming:AmateurDuelMatchState):AmateurDuelMatchState {
+  return current?.id===incoming.id && current.fight && current.fight.id===incoming.fight?.id &&
+    Number(current.fight?.revision??0)>Number(incoming.fight?.revision??0)
+    ? {...incoming,fight:current.fight} : incoming;
+}
+
+function retainNewerMatch(current:AmateurDuelMatchState|null,incoming:AmateurDuelMatchState):AmateurDuelMatchState {
+  return current?.id===incoming.id && (current.state_revision??0)>(incoming.state_revision??0)?current:retainFightProgress(current,incoming);
+}
+
 function applyShotAcknowledgement(
   match: AmateurDuelMatchState,
   acknowledgement: SubmitAmateurDuelShotResponse,
 ): AmateurDuelMatchState {
+  if(acknowledgement.state_revision!==undefined && acknowledgement.state_revision<(match.state_revision??0))return match;
   const inventoryReport = match.me.inventory_report.filter(
     (report) => report.periodNumber !== acknowledgement.current_period_inventory.periodNumber,
   );
   inventoryReport.push(acknowledgement.current_period_inventory);
   return {
     ...match,
-    ...(acknowledgement.state_revision !== undefined ? {state_revision: acknowledgement.state_revision} : {}),
-    ...(acknowledgement.server_now ? {server_now: acknowledgement.server_now,
-      received_at_performance_ms: typeof performance === 'undefined' ? Date.now() : performance.now(),
+    state_revision:acknowledgement.state_revision??match.state_revision??0,
+    ...(acknowledgement.server_now ? {
+      server_now: acknowledgement.server_now,
+      received_at_performance_ms: performance.now(),
       period_started_at: acknowledgement.period_started_at ?? match.period_started_at,
-      period_ends_at: acknowledgement.period_ends_at ?? match.period_ends_at} : {}),
+      period_ends_at: acknowledgement.period_ends_at ?? match.period_ends_at,
+    } : {}),
     current_period_shots: acknowledgement.participant.current_period_shots,
     current_period_goals: acknowledgement.participant.current_period_goals,
     me: {
@@ -159,6 +172,9 @@ function reconcilePolledMatch(
   polled: AmateurDuelMatchState,
 ): AmateurDuelMatchState {
   if (current.id !== polled.id) return current;
+  polled=retainFightProgress(current,polled);
+  if ((current.state_revision ?? 0) > (polled.state_revision ?? 0)) return current;
+  if ((polled.state_revision ?? 0) > (current.state_revision ?? 0)) return polled;
   const statusDelta = MATCH_STATUS_ORDER[polled.status] - MATCH_STATUS_ORDER[current.status];
   if (statusDelta < 0) {
     return current.opponent && polled.opponent
@@ -225,7 +241,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ inFlight: true, error: null });
     try {
       const { match } = await readyAmateurDuel(current.id, loadout);
-      set({ match, inFlight: false, error: null });
+      set({ match:retainNewerMatch(get().match,match), inFlight: false, error: null });
       return match;
     } catch (err) {
       if (err instanceof ApiError && err.status === 409 && get().match === current) {
@@ -245,7 +261,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ inFlight: true, error: null });
     try {
       const { match } = await confirmTournamentDuelLoadout(current.id, loadout);
-      set({ match, inFlight: false, error: null });
+      set({ match:retainNewerMatch(get().match,match), inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
@@ -277,11 +293,11 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       if (outcome.kind === 'unreconciled') {
         const message =
           outcome.error instanceof Error ? outcome.error.message : 'failed to start duel period';
-        set({ match: outcome.value, inFlight: false, error: message });
+        set({ match: retainNewerMatch(get().match,outcome.value), inFlight: false, error: message });
         return null;
       }
       const match = outcome.kind === 'request' ? outcome.value.match : outcome.value;
-      set({ match, inFlight: false, error: null });
+      set({ match:retainNewerMatch(get().match,match), inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
@@ -299,7 +315,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     set({ inFlight: true, error: null });
     try {
       const { match } = await updateAmateurDuelLoadout(current.id, loadout);
-      set({ match, inFlight: false, error: null });
+      set({ match:retainNewerMatch(get().match,match), inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
@@ -312,12 +328,38 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
 
   applyState: (next) => {
     const current = get().match;
-    if (current?.id === next.id && (current.state_revision ?? 0) > (next.state_revision ?? 0)) return;
-    if (current?.id === next.id && (current.rules?.duelKind === 'sniper' || current.rules?.duelKind === 'marathon') &&
-        Date.parse(current.server_now) > Date.parse(next.server_now) &&
-        compareParticipantProgress(next.me, current.me) <= 0 &&
-        compareParticipantProgress(next.opponent, current.opponent) <= 0) return;
-    set({ match: next, loading: false, error: null });
+    if (current?.id === next.id && (current.state_revision ?? 0) > (next.state_revision ?? 0))
+      return;
+    if (
+      current?.id === next.id &&
+      (current.state_revision ?? 0) === (next.state_revision ?? 0) &&
+      (current.rules?.duelKind === 'sniper' || current.rules?.duelKind === 'marathon' || current.rules?.duelKind === 'rhythm') &&
+      Date.parse(current.server_now) > Date.parse(next.server_now) &&
+      compareParticipantProgress(next.me, current.me) <= 0 &&
+      compareParticipantProgress(next.opponent, current.opponent) <= 0
+    )
+      return;
+    let incoming = retainFightProgress(current, next);
+    if (
+      current?.id === next.id &&
+      (current.state_revision ?? 0) === (next.state_revision ?? 0) &&
+      current.opponent &&
+      next.opponent
+    ) {
+      if (compareParticipantProgress(next.me, current.me) < 0)
+        incoming = {
+          ...current,
+          ...newerServerTime(current, next),
+          ...(incoming.fight !== undefined ? { fight: incoming.fight } : {}),
+        };
+      else if (compareParticipantProgress(next.opponent, current.opponent) < 0)
+        incoming = {
+          ...incoming,
+          opponent: current.opponent,
+          opponent_recent_periods: current.opponent_recent_periods,
+        };
+    }
+    set({match:incoming,loading:false,error:null});
   },
 
   optimisticAddShot: (claimed) => {
@@ -395,9 +437,14 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       set({ error: null });
       return {
         serverResult: acknowledgement.server_result,
-        ...(acknowledgement.awarded_points === undefined ? {} : {awardedPoints: acknowledgement.awarded_points}),
+        ...(acknowledgement.awarded_points !== undefined ? { awardedPoints: acknowledgement.awarded_points } : {}),
         state: next,
-        isCurrent: () => get().match === resolvedAgainst,
+        isCurrent: () => {
+          const live=get().match;
+          return live?.id===current.id && live.me.current_period===resolvedAgainst.me.current_period &&
+            live.me.state===resolvedAgainst.me.state &&
+            live.current_period_shots<=Math.max(resolvedAgainst.current_period_shots,shotIndex);
+        },
       };
     } catch (err) {
       if (

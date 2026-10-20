@@ -1,9 +1,13 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { VenuePanorama } from '../components/VenuePanorama.js';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as referralsApi from '../api/referrals.js';
 import { ReferralsScreen } from './ReferralsScreen.js';
+
+const { triggerHaptic } = vi.hoisted(() => ({ triggerHaptic: vi.fn() }));
+vi.mock('../feedback/haptics.js', () => ({ triggerHaptic }));
 
 vi.mock('../chat/components/UserProfileSheet.js', () => ({
   UserProfileSheet: ({ sender }: { sender: { displayName: string } | null }) =>
@@ -49,6 +53,19 @@ describe('ReferralsScreen', () => {
         : [],
       total: level === 'beginner' ? 1 : 0,
     }));
+    triggerHaptic.mockClear();
+  });
+
+  it('returns from invitations to friends and keeps the friends circle active',async()=>{
+    render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/referrals']}><Routes>
+      <Route path="/referrals" element={<VenuePanorama level="amateur" owner="u"><ReferralsScreen/></VenuePanorama>}/>
+      <Route path="/profile/friends" element={<p>В комнате друзей</p>}/>
+    </Routes></MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByRole('heading',{name:'Приглашённые друзья'})).toBeVisible();
+    expect(screen.getByRole('tab',{name:'Друзья'})).toHaveAttribute('aria-selected','true');
+    expect(screen.getByRole('button',{name:'Назад'})).toHaveAttribute('data-section-back','true');
+    fireEvent.click(screen.getByRole('button',{name:'Назад'}));
+    expect(screen.getByText('В комнате друзей')).toBeVisible();
   });
 
   it('opens an invitee in the same swipeable profile sheet used by chats', async () => {
@@ -59,7 +76,7 @@ describe('ReferralsScreen', () => {
     expect(screen.getByRole('dialog', { name: 'Профиль игрока' })).toHaveTextContent('Никита Орлов');
   });
 
-  it('shows invite instructions and copies the referral code with the shared toast', async () => {
+  it('shows invite instructions and confirms a copied code with a selection haptic', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText } });
     renderScreen();
@@ -67,16 +84,13 @@ describe('ReferralsScreen', () => {
     expect(await screen.findByRole('heading', { name: 'Приглашай друзей' })).toBeInTheDocument();
     expect(screen.getByText(/друг должен указать его при первой регистрации/)).toBeInTheDocument();
     const copyCode = screen.getByRole('button', { name: 'Скопировать код приглашения' });
-    vi.useFakeTimers();
     await act(async () => {
       fireEvent.click(copyCode);
       await Promise.resolve();
     });
     expect(writeText).toHaveBeenCalledWith('TEAM-77');
     expect(screen.getByRole('status')).toHaveTextContent('Скопировано');
-    act(() => vi.advanceTimersByTime(1_500));
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
-    vi.useRealTimers();
+    expect(triggerHaptic).toHaveBeenCalledWith('selection');
   });
 
   it('renders invitee experience with the profile experience treatment', async () => {

@@ -1,10 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-
-vi.mock('../../src/releaseGates.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../src/releaseGates.js')>()),
-  ADVANCED_TRAINING_RELEASED: true,
-  REQUIRE_BEGINNER_TRAINING_FOR_ADVANCED: true,
-}));
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import path from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import type { Pool } from 'pg';

@@ -1,0 +1,8 @@
+.bar-interior-backdrop {position:absolute;inset:0;pointer-events:none;}
+.bar-interior-backdrop__floor {position:absolute;left:0;top:61%;width:100%;height:39%;max-width:none;object-fit:fill;}
+.bar-interior-backdrop__wall {position:absolute;top:0;height:100%;width:40%;overflow:hidden;mask-image:linear-gradient(#000 0%,#000 62%,transparent 65%);}
+.bar-interior-backdrop__wall img {position:absolute;top:0;width:100%;max-width:none;object-fit:fill;}
+.bar-interior-backdrop__wall--west {left:0;}
+.bar-interior-backdrop__wall--west img {height:93.4%;}
+.bar-interior-backdrop__wall--hall {left:40%;width:60%;}
+.bar-interior-backdrop__wall--hall img {top:-6%;height:auto;}

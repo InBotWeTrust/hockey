@@ -41,16 +41,6 @@ const player = {
   period_paused_at: null,
 };
 describe('public bar projections', () => {
-  it('reads pause fields without requiring the dev fight schema', async () => {
-    const query = vi
-      .fn()
-      .mockResolvedValueOnce({ rows: [{ ...row, online_total: 0, upcoming_total: 1 }] })
-      .mockResolvedValueOnce({ rows: [player, { ...player, user_id: 'b' }] });
-    await getBarBoard({ query } as unknown as Pool, 0, now);
-    expect(query.mock.calls[0]?.[0]).not.toMatch(/m\.fight_paused_at/);
-    expect(query.mock.calls[1]?.[0]).not.toMatch(/p\.period_paused_(ms|at)/);
-  });
-
   it('keeps cumulative shot count separate from the current period quota', () => {
     expect(projectPlayer({ ...player, current_shots: 2, shots_taken: 12 }, row, now)).toMatchObject(
       { shots: 2, shotsTaken: 12 },
@@ -184,4 +174,52 @@ describe('public bar projections', () => {
     expect(live.match?.players.map((p) => p.goals)).toEqual([2, 2]);
     expect(live.complete).toBe(true);
   });
+  it.each(['sniper', 'marathon'] as const)(
+    'keeps %s spectator score separate from raw goals and delayed',
+    async (kind) => {
+      const cutoff = new Date(now.getTime() - 3000);
+      const query = vi
+        .fn()
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              ...row,
+              duel_kind: kind,
+              status: 'active',
+              duel_status: 'active',
+              match_group: 'online',
+              rules_snapshot: { ...row.rules_snapshot, totalPeriods: 1, marathonWindowMs: 4000 },
+            },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            { ...player, period_started_at: new Date(now.getTime() - 10000) },
+            { ...player, user_id: 'b' },
+          ],
+        })
+        .mockResolvedValueOnce({
+          rows: [
+            {
+              amateur_duel_match_id: 'match',
+              user_id: 'a',
+              input_payload: { tapTime: 0, puckSpeedPerMs: 0.85 },
+              server_result: 'goal',
+              awarded_points: 40,
+            },
+          ],
+        })
+        .mockResolvedValueOnce({ rows: [] });
+      const live = await getBarLive({ query } as unknown as Pool, 'duel', 'match', now);
+      expect(live.match?.players[0]).toMatchObject({
+        goals: 1,
+        shotsTaken: 1,
+        score: kind === 'sniper' ? 4 : 0,
+      });
+      expect(query.mock.calls[2]?.[1][1]).toEqual(cutoff);
+      expect(query.mock.calls[2]?.[0]).toContain('created_at <= $2');
+      if (kind === 'marathon') expect(live.match?.marathonWindowMs).toBe(4000);
+      expect(JSON.stringify(live)).not.toMatch(/input_payload|rules_snapshot|match_seed/);
+    },
+  );
 });

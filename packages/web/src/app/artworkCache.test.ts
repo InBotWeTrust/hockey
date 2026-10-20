@@ -137,12 +137,8 @@ describe('preloadArtwork', () => {
 
   it('collects the shop overview and only the open category artwork', () => {
     expect(shopArtworkUrls(inventoryWithSelectedEquipment(), 'recovery')).toEqual([
-      '/shop/shop-background.webp',
-      '/shop/categories/sticks.webp',
-      '/shop/categories/skates.webp',
-      '/shop/categories/nutrition.webp',
-      '/shop/categories/recovery.webp',
-      '/shop/backgrounds/recovery.webp',
+      '/section-panoramas/shop-v1.webp',
+        ...Array.from({length:5},(_,i)=>`/section-panoramas/shop-${i}.webp`),
       '/inventory/recovery.webp?v=20260911-locker-equipment-v2',
     ]);
   });
@@ -194,10 +190,12 @@ describe('preloadArtwork', () => {
       '/backgrounds/arena-amateur-reference-v6.webp',
       '/sprites/app-arena-cube-amateur.webp',
       '/sprites/app-arena-ice.webp',
+      '/sprites/amateur-central-indoor-dc575ddb17a8.webp',
     ]);
     expect(startupArtworkUrls('professional')).toEqual([
       '/sprites/app-arena-ice.webp',
       '/sprites/app-arena-cube.webp',
+      '/sprites/amateur-central-indoor-dc575ddb17a8.webp',
     ]);
   });
 
@@ -215,8 +213,8 @@ describe('preloadArtwork', () => {
 
     const preloading = preloadStartupArtwork('amateur', new Map(), createImage);
 
-    expect(createImage).toHaveBeenCalledTimes(3);
-    expect(decode).toHaveBeenCalledTimes(3);
+    expect(createImage).toHaveBeenCalledTimes(4);
+    expect(decode).toHaveBeenCalledTimes(4);
     resolveDecodes.forEach((resolve) => resolve());
     await preloading;
   });

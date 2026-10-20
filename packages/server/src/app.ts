@@ -1,3 +1,5 @@
+import { visitorRoutes } from './bar/visitorRoutes.js';
+import {staffRoomRoutes} from './bar/staffRoomRoutes.js';
 import Fastify from 'fastify';
 import { socialRoutes } from './social/routes.js';
 import { healthRoutes } from './routes/health.js';
@@ -19,6 +21,7 @@ import { dailyRoutes } from './duel/daily/routes.js';
 import { trainingRoutes } from './duel/training/routes.js';
 import { initialTrainingCourseRoutes } from './duel/training/initialCourseRoutes.js';
 import { advancedTrainingCourseRoutes } from './duel/training/advancedCourseRoutes.js';
+import { advancedTrainingV2Routes } from './duel/training/advancedCourseV2Routes.js';
 import { amateurDuelRoutes } from './duel/amateur/routes.js';
 import { weeklyChallengeRoutes } from './weeklyChallenge/routes.js';
 import { chatRoutes } from './chat/routes.js';
@@ -33,8 +36,13 @@ import { arenaRoutes } from './arenas/routes.js';
 import { bonusGameRoutes } from './bonusGames/routes.js';
 import { onboardingRoutes } from './onboarding/routes.js';
 import { onboardingAdminRoutes } from './onboarding/adminRoutes.js';
-import { barRoutes } from './bar/routes.js';
 import { tournamentRoutes } from './tournament/routes.js';
+import { barGameRoutes } from './bar/games/routes.js';
+import { durakRoutes } from './bar/durakRoutes.js';
+import { barLayoutRoutes } from './bar/layoutRoutes.js';
+import { conversationRoutes } from './bar/conversationRoutes.js';
+import { olegFightRoutes } from './bar/olegFightRoutes.js';
+import { barRoutes } from './bar/routes.js';
 import { tournamentWs } from './tournament/ws.js';
 import { validateOfficialAccount } from './chat/officialAccount.js';
 import { coinPackageRoutes } from './payments/routes.js';
@@ -44,8 +52,12 @@ import { mobileReleaseRoutes } from './mobileRelease/routes.js';
 import { referralRoutes } from './referrals/routes.js';
 import { referralAdminRoutes } from './referrals/adminRoutes.js';
 import { referralRiskCleanupPlugin } from './referrals/riskCleanup.js';
+import { arsenichRoutes } from './arsenich/routes.js';
+import { arsenichAdminRoutes } from './arsenich/adminRoutes.js';
 
 export interface BuildAppOptions {
+  duelFightWorkerEnabled?: boolean;
+  duelFightRuntimeRecoveryEnabled?: boolean;
   config?: AppConfig;
   yookassaClient?: YooKassaClient;
   pushSchedulerEnabled?: boolean;
@@ -195,6 +207,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
     tutorialSeedSecret: config.DAILY_SEED_SECRET,
     mediaAccessSecret: config.JWT_SECRET,
   });
+  await app.register(arsenichRoutes);
+  await app.register(arsenichAdminRoutes);
   await app.register(achievementRoutes);
   await app.register(socialRoutes);
   await app.register(feedbackRoutes, {
@@ -208,7 +222,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(bonusGameRoutes, {
     bonusSeedSecret: config.DAILY_SEED_SECRET,
     dailyAttemptLimit: resolveBonusDailyAttemptLimit(config),
-    challengesEnabled: config.BONUS_CHALLENGES_ENABLED ?? config.NODE_ENV !== 'production',
+    challengesEnabled: config.NODE_ENV !== 'production' || config.DEPLOYMENT_ENV === 'dev',
   });
   await app.register(inventoryRoutes);
   await app.register(
@@ -232,7 +246,14 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(advancedTrainingCourseRoutes, {
     trainingSeedSecret: config.DAILY_SEED_SECRET,
   });
+  await app.register(advancedTrainingV2Routes, {
+    trainingSeedSecret: config.DAILY_SEED_SECRET,
+  });
+  await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(amateurDuelRoutes, {
+    accessSecret: config.JWT_SECRET,
+    fightWorkerEnabled: options.duelFightWorkerEnabled ?? config.NODE_ENV !== 'test',
+    fightRuntimeRecoveryEnabled: options.duelFightRuntimeRecoveryEnabled ?? config.NODE_ENV !== 'test',
     duelSeedSecret: config.DAILY_SEED_SECRET,
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });
@@ -245,7 +266,19 @@ export async function buildApp(options: BuildAppOptions = {}) {
   });
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
-  await app.register(chatWs, { accessSecret: config.JWT_SECRET });
+  await app.register(olegFightRoutes);
+  await app.register(barLayoutRoutes);
+  await app.register(visitorRoutes);
+  await app.register(staffRoomRoutes);
+  await app.register(conversationRoutes, {
+    model: config.BAR_CONVERSATION_MODEL,
+    closeRouterModel: config.BAR_CLOSEROUTER_MODEL,
+    closeRouterProvider: config.BAR_CLOSEROUTER_PROVIDER,
+    ...(config.CLOSEROUTER_API_KEY ? { closeRouterKey: config.CLOSEROUTER_API_KEY } : {}),
+    ...(config.OPENAI_API_KEY ? { apiKey: config.OPENAI_API_KEY } : {}),
+  });
+  await app.register(durakRoutes, { backgroundTicksEnabled: config.NODE_ENV !== 'test' });
+  await app.register(barGameRoutes, { backgroundTicksEnabled: config.NODE_ENV !== 'test' });
   await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);

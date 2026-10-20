@@ -1,0 +1,64 @@
+.chat-section-dock {
+  position: fixed;
+  z-index: 60;
+  bottom: var(--navigation-bottom);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: var(--navigation-gap);
+  padding: 12px var(--navigation-row-pad);
+  border: 1px solid var(--liquid-border, #ffffff45);
+  border-radius: 24px;
+  background: var(--liquid-chrome-bg, #17223466);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+.chat-section-dock__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--navigation-label-gap);
+  width: var(--navigation-item);
+  padding: 0;
+  background: none;
+  border: 0;
+  color: var(--ink, #fff);
+  text-decoration: none;
+  font: var(--navigation-label-font);
+  cursor: pointer;
+}
+.chat-section-dock__circle {
+  position: relative;
+  transform-origin: center bottom;
+  transition: transform .18s ease;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  width: var(--navigation-circle);
+  height: var(--navigation-circle);
+  border-radius: 50%;
+  border: 1px solid var(--liquid-border, #ffffff45);
+}
+.chat-section-dock__item[aria-pressed="true"] .chat-section-dock__circle {
+  transform: scale(1.12);
+  border: var(--navigation-selected-border);
+  box-shadow: var(--navigation-selected-shadow);
+}
+.chat-section-dock__badge {
+  position: absolute;
+  top: -5px;
+  right: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: #d93445;
+  color: #fff;
+  font: 700 11px/18px var(--font-sans, system-ui);
+  text-align: center;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-section-dock__circle { transition: none; }
+}

@@ -34,6 +34,30 @@ describe('apiFetch', () => {
     vi.restoreAllMocks();
   });
 
+  it.each([
+    ['bar_insufficient_funds', 'Not enough coins or stars'],
+    ['bar_price_changed', 'Purchase terms changed'],
+    ['bar_game_limit', 'No character games left'],
+    ['conversation_limit', 'No messages left'],
+  ])(
+    'localizes visitor refusal %s instead of exposing server details',
+    async (code, _description) => {
+      const messages: Record<string, string> = {
+        bar_insufficient_funds: 'Не хватает монет или звёзд для покупки.',
+        bar_price_changed: 'Условия покупки изменились. Обнови товары.',
+        bar_game_limit: 'На сегодня игр с персонажами больше нет.',
+        conversation_limit: 'Сообщения закончились. Можно докупить запас у Игоря.',
+      };
+      vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+        mockJson({ error: { code, message: 'private provider detail' } }, { status: 409 }),
+      );
+      await expect(apiFetch('/bar/visitor/purchases')).rejects.toMatchObject({
+        code,
+        message: messages[code!],
+      });
+    },
+  );
+
   it('uses the canonical production API origin inside the Android shell', async () => {
     Object.defineProperty(globalThis, '__HOCKEY_NATIVE__', {
       configurable: true,

@@ -18,9 +18,12 @@ const profile = {
   displayName: 'Alice',
   grip: 'right' as const,
   competitionLevel: 'beginner' as const,
+  beginnerOnboardingCompleted: false,
+  amateurUnlockGoalsRequired: 300,
   stats: { shots: 120, goals: 48, accuracy: 40, playStreakDays: 3, bestPlayStreakDays: 8 },
   achievements: [],
 };
+
 
 function renderDestination(path: string, element: JSX.Element): RenderResult {
   const client = new QueryClient({
@@ -43,6 +46,7 @@ let storyCompleted = false;
 let inventoryResponse: InventoryState;
 
 beforeEach(() => {
+  vi.unstubAllEnvs();
   storyCompleted = false;
   inventoryResponse = {
     balances: { tokens: 1, stars: 2, experience: 3 },
@@ -70,10 +74,16 @@ beforeEach(() => {
     },
   };
   vi.restoreAllMocks();
+  vi.unstubAllEnvs();
   triggerHaptic.mockClear();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
-    if (url.endsWith('/api/me')) return new Response(JSON.stringify({ ...profile, beginnerOnboardingCompleted: storyCompleted }), { status: 200 });
+    if (url.endsWith('/api/me')) {
+      return new Response(
+        JSON.stringify({ ...profile, beginnerOnboardingCompleted: storyCompleted }),
+        { status: 200 },
+      );
+    }
     if (url.endsWith('/api/inventory/me')) {
       return new Response(JSON.stringify(inventoryResponse), { status: 200 });
     }
@@ -133,13 +143,26 @@ describe('profile destination screens', () => {
     expect(screen.getByText('profile screen')).toBeInTheDocument();
   });
 
-  it('opens the completed first story series', async () => {
+  it('unlocks the completed first series with approved copy and navigation', async () => {
     storyCompleted = true;
     renderDestination('/profile/story', <ProfileStoryScreen />);
+
     const card = await screen.findByRole('button', { name: 'Открыть серию «Путь со двора»' });
+    expect(card).toHaveTextContent('Путь со двора');
+    expect(card).toHaveTextContent('Последняя шайба и случайная встреча.');
     expect(card).toHaveTextContent('Просмотрено');
-    expect(card.querySelector('img')).toHaveAttribute('src', '/onboarding/story/scene-01-court.webp');
+    expect(card.querySelector('img')).toHaveAttribute(
+      'src',
+      '/onboarding/story/scene-01-court.webp',
+    );
     expect(screen.getAllByTestId('profile-story-series-lock')).toHaveLength(9);
+  });
+
+  it('opens the second series on dev without marking onboarding completed', async () => {
+    vi.stubEnv('VITE_DEV_AMATEUR_STORY_UNLOCKED', 'true');
+    renderDestination('/profile/story', <ProfileStoryScreen />);
+    expect(await screen.findByRole('button', { name: 'Открыть серию «Обещанный разговор»' })).toBeInTheDocument();
+    expect(profile.beginnerOnboardingCompleted).toBe(false);
   });
 
   it('shows aggregate statistics without inventing mode totals', async () => {
