@@ -49,7 +49,7 @@ describe('destinationForLocation', () => {
 
   it.each([
     '?view=training&section=course&exercise=stance&play=1',
-    '?view=training&section=advanced&exercise=notice_frame&play=1',
+    '?view=training&section=advanced&exercise=board-side&play=1',
     '?view=training&section=open&play=1',
   ])('does not cover active training at %s', (search) => {
     expect(destinationForLocation('/', search)).toBeNull();

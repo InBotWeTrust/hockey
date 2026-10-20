@@ -126,9 +126,8 @@ import {
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
 import { AdvancedTrainingCatalog } from '../components/AdvancedTrainingCourse.js';
-import { OpenWindowTrainingPlay } from '../components/OpenWindowTrainingPlay.js';
-import { OpenWindowObservationPlay } from '../components/OpenWindowObservationPlay.js';
-import type { OpenWindowStepKey } from '@hockey/game-core';
+import { AdvancedTrainingPlay } from '../components/AdvancedTrainingPlay.js';
+import type { AdvancedTrainingExerciseKey } from '../components/AdvancedTrainingCourse.js';
 import { InitialTrainingPlay } from '../components/InitialTrainingPlay.js';
 import type { ProfileData } from './profileTypes.js';
 import {
@@ -3890,28 +3889,11 @@ function TrainingPlaceholder({
         params.get('play') === '1' &&
         !courseCatalog.gameplay_lock?.blocked
       ) {
-        const ObservationPlay =
-          advancedExercise.key === 'notice_frame' ||
-          advancedExercise.key === 'notice_motion' ||
-          advancedExercise.key === 'notice_independent';
-        return ObservationPlay ? (
-          <OpenWindowObservationPlay
-            key={advancedExercise.key}
-            stepKey={
-              advancedExercise.key as 'notice_frame' | 'notice_motion' | 'notice_independent'
-            }
-            onBack={() =>
-              navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
-            }
-            onCatalogRefresh={() => void refreshCourseCatalog()}
-          />
-        ) : (
-          <OpenWindowTrainingPlay
-            key={advancedExercise.key}
-            stepKey={advancedExercise.key as OpenWindowStepKey}
-            onBack={() =>
-              navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
-            }
+        return (
+          <AdvancedTrainingPlay
+            exerciseKey={advancedExercise.key as AdvancedTrainingExerciseKey}
+            onBack={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
+            onCourse={() => navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })}
             onCatalogRefresh={() => void refreshCourseCatalog()}
           />
         );
@@ -3938,29 +3920,6 @@ function TrainingPlaceholder({
             />
           </ModeShell>
           {trainingLockModal}
-          {exerciseParam && params.get('play') === '1' && !advancedExercise ? (
-            <AccessibleModal
-              title="Упражнение обновилось"
-              copy="Это упражнение заменено новым курсом. Старые результаты сохранены. Начни новый курс с первого шага."
-              onClose={() =>
-                navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, { replace: true })
-              }
-            >
-              <div className="modal-actions">
-                <button
-                  type="button"
-                  className="modal-primary btn btn--cta"
-                  onClick={() =>
-                    navigate(`/?view=training&section=advanced${fromSectionsSuffix}`, {
-                      replace: true,
-                    })
-                  }
-                >
-                  К новому курсу
-                </button>
-              </div>
-            </AccessibleModal>
-          ) : null}
         </>
       );
     }

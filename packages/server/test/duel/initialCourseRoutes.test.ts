@@ -14,6 +14,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
+  DEFAULT_INITIAL_TRAINING_CONFIG,
   INITIAL_TRAINING_EXERCISE_KEYS,
   isInitialTrainingCompleted,
 } from '../../src/duel/training/initialCourse.js';
@@ -84,17 +85,30 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     const jwt = createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET });
     accessToken = await jwt.issueAccessToken({ sub: userId });
     await pool.query(
-      `update game_settings
-          set value = jsonb_set(
-            jsonb_set(value, '{enabled}', 'true'::jsonb),
-            '{targetGoals,first-shot}',
-            '1'::jsonb
-          )
-        where key = 'training.initial_course.config'`,
+      `insert into game_settings (key, value, label, description)
+       values ('training.initial_course.config', $1::jsonb, 'Начальное обучение', 'Test config')
+       on conflict (key) do update set value = excluded.value`,
+      [JSON.stringify({
+        ...DEFAULT_INITIAL_TRAINING_CONFIG,
+        enabled: true,
+        targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'first-shot': 1 },
+      })],
     );
   });
 
   const headers = () => ({ authorization: `Bearer ${accessToken}` });
+
+  it('retains the original advanced catalog and excludes unfinished course endpoints', async () => {
+    const catalog = await app.inject({ method: 'GET', url: '/duel/training/course', headers: headers() });
+    expect(catalog.statusCode).toBe(200);
+    expect(catalog.json().advanced_training).toMatchObject({ total_count: 8 });
+    expect(catalog.json().advanced_training.exercises.map((entry: { key: string }) => entry.key))
+      .toEqual(['board-side', 'open-net', 'crossing', 'goalie-leaving', 'narrow-gap',
+        'counter-direction', 'second-tempo', 'rhythm-reset']);
+    const missing = await app.inject({ method: 'GET',
+      url: '/duel/training/advanced/open-windows/catalog', headers: headers() });
+    expect(missing.statusCode).toBe(404);
+  });
 
   it('returns seven sequential cards and locks open training', async () => {
     const catalog = await app.inject({

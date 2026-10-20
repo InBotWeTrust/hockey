@@ -220,9 +220,22 @@ describe('advanced training V2 demonstration', () => {
     await act(async () => screen.getByRole('button', { name: 'Продолжить' }).click());
     expect(screen.getByText(/Ты не бросил/)).toBeInTheDocument();
     expect((state.playProps?.sceneTimeScale as (ms: number) => number)(1000)).toBe(0);
-    await act(async () => screen.getByRole('button', { name: 'Понятно' }).click());
-    expect(state.playProps?.rinkCover).toBeDefined();
-    await waitFor(() => expect(state.episodeStart).toHaveBeenCalledTimes(2));
+    const frames: FrameRequestCallback[] = [];
+    const frameRequest = vi.spyOn(window, 'requestAnimationFrame').mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    try {
+      await act(async () => screen.getByRole('button', { name: 'Понятно' }).click());
+      expect(state.playProps?.rinkCover).toBeDefined();
+      await waitFor(() => expect(state.episodeStart).toHaveBeenCalledTimes(2));
+      await act(async () => { frames.shift()?.(0); });
+      expect(state.playProps?.rinkCover).toBeDefined();
+      await act(async () => { frames.shift()?.(16); });
+      expect(state.playProps?.rinkCover).toBeUndefined();
+    } finally {
+      frameRequest.mockRestore();
+    }
   });
 
   it('names the goalie position rather than implying a shooting side', async () => {
