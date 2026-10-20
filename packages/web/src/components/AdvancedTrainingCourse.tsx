@@ -76,6 +76,7 @@ export function AdvancedTrainingHubCard({
   access,
   onOpen,
   loading = false,
+  inDevelopment = false,
 }: {
   completedCount: number;
   totalCount: number;
@@ -86,15 +87,16 @@ export function AdvancedTrainingHubCard({
   };
   onOpen: () => void;
   loading?: boolean;
+  inDevelopment?: boolean;
 }): JSX.Element {
   return (
     <button
       type="button"
       className="section-card-surface amateur-hub-card advanced-training-mode-card"
-      disabled={!loading && !unlocked}
-      aria-disabled={loading || !unlocked}
+      disabled={!inDevelopment && !loading && !unlocked}
+      aria-disabled={inDevelopment || loading || !unlocked}
       onClick={() => {
-        if (!loading && unlocked) onOpen();
+        if (!loading && (inDevelopment || unlocked)) onOpen();
       }}
       aria-label={`Продвинутый уровень, пройдено ${completedCount} из ${totalCount} упражнений`}
     >

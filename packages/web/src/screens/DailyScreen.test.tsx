@@ -4404,6 +4404,17 @@ describe('DailyScreen', () => {
     expect(screen.queryByRole('button', { name: 'СОКРАТИТЬ ВОССТАНОВЛЕНИЕ' })).not.toBeInTheDocument();
   });
 
+  it('does not mount initial exercises from a production direct play URL', async () => {
+    vi.stubEnv('DEV',false); vi.stubEnv('VITE_TRAINING_EXERCISES_ENABLED','false');
+    try {
+      vi.spyOn(globalThis,'fetch').mockImplementation(async(input)=>new Response(JSON.stringify(String(input).includes('/duel/training/course')?initialTrainingCatalog:String(input).includes('/duel/training/state')?trainingIdleState:baseState),{headers:{'content-type':'application/json'}}));
+      renderWith(['/?view=training&section=course&exercise=first-shot&play=1']);
+      expect(await screen.findByText('В разработке')).toBeVisible();
+      expect(screen.queryByRole('heading',{name:'Начальное обучение'})).toBeNull();
+      expect(vi.mocked(globalThis.fetch).mock.calls.filter(([,init])=>init?.method === 'POST')).toHaveLength(0);
+    } finally {vi.unstubAllEnvs();}
+  });
+
   it('returns from a yard catalog directly to the map under panorama navigation',async()=>{
     vi.spyOn(globalThis,'fetch').mockImplementation(async(input)=>new Response(JSON.stringify(String(input).includes('/duel/training/course')?initialTrainingCatalog:String(input).includes('/duel/training/state')?trainingIdleState:baseState),{headers:{'content-type':'application/json'}}));
     renderWith(['/?view=training&section=course'],undefined,undefined,true);

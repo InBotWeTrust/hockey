@@ -1,3 +1,4 @@
+import { sniperBreakdown, type SniperCategory } from './sniperBreakdown.js';
 import { createRhythmMovementSampler, projectRhythm, compareRhythmSeries } from '@hockey/game-core';
 import { projectMarathon, restoreScoredSceneClocks, compareScoredDuel, type MarathonWindowMs } from './scoredFormats.js';
 import { FightRuntime } from './fight/runtime/manager.js';
@@ -796,6 +797,7 @@ interface DuelParticipantDTO {
   rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; boardContacts?:number; goal:boolean}>;
   format_score?: number;
   sniper_points?: number;
+  sniper_breakdown?: SniperCategory[];
   marathon_penalties?: number;
   result_pause_starts_at?: string | null;
   result_pause_ends_at?: string | null;
@@ -3909,11 +3911,13 @@ async function scoredParticipantFields(
 ): Promise<Partial<DuelParticipantDTO>> {
   if (rules.duelKind !== 'sniper' && rules.duelKind !== 'marathon' && rules.duelKind !== 'rhythm') return {};
   const shots = await client.query<{
-    input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number; rhythmTravel?: number; rhythmBoardContacts?:number };
+    input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number; rhythmTravel?: number; rhythmBoardContacts?:number; sniperTechnique?:string };
     server_result: DuelShotResult;
     awarded_points: number;
+    seed: string;
+    shot_index: number;
   }>(
-    `select input_payload,server_result,awarded_points from shot_session
+    `select input_payload,server_result,awarded_points,seed,shot_index from shot_session
        where mode='amateur_duel' and amateur_duel_match_id=$1 and user_id=$2
        order by period_number,shot_index`,
     [match.id, participant.user_id],
@@ -3949,7 +3953,18 @@ async function scoredParticipantFields(
   }
   if (rules.duelKind === 'sniper') {
     const points = shots.rows.reduce((sum, shot) => sum + Number(shot.awarded_points), 0);
-    return { ...clockFields, format_score: points / 10, sniper_points: points, last_shot_ends_ms:lastShotEndsMs };
+    const breakdown = participant.state !== 'completed' ? undefined : sniperBreakdown(shots.rows.filter(shot => shot.server_result === 'goal').map(shot => {
+      if (shot.input_payload.sniperTechnique) return {technique:shot.input_payload.sniperTechnique,points:Number(shot.awarded_points)};
+      const classification = classifyMarksmanshipShot({
+        stickEffects: stickEffectsFromInventory(effectsFromUnknown(participant.inventory_effects_snapshot)),
+        shotInput: shot.input_payload as Parameters<typeof classifyMarksmanshipShot>[0]['shotInput'],
+        goalie: getGoalie(rules.goalieId), seed: shot.seed, shotIndex: shot.shot_index,
+        phaseOffsets: getSessionPhaseOffsets(match.match_seed), earliestTapTime: 0,
+        scoring: rules.sniperScoring ?? DEFAULT_MARKSMANSHIP_V6_SCORING_RULES,
+      });
+      return {technique: classification.v6Score?.technique ?? classification.v5Score?.technique ?? classification.v4Score?.technique ?? (classification.category ? `category_${classification.category}` : classification.difficultyCode),points:Number(shot.awarded_points)};
+    }));
+    return { ...clockFields, format_score: points / 10, sniper_points: points, ...(breakdown ? {sniper_breakdown:breakdown} : {}), last_shot_ends_ms:lastShotEndsMs };
   }
   const durationMs = rules.periodRules[0]!.durationMs;
 
@@ -7130,7 +7145,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             participant.current_period,
             body.shot_index,
             shotSeed,
-            JSON.stringify(shotInput),
+            JSON.stringify({...shotInput,...(classification ? {sniperTechnique:classification.v6Score?.technique ?? classification.v5Score?.technique ?? classification.v4Score?.technique ?? (classification.category ? `category_${classification.category}` : classification.difficultyCode)} : {})}),
             serverResult,
             match.game_core_version,
             now,

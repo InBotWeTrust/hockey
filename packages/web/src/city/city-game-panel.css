@@ -49,3 +49,10 @@
 .city-game-carousel { justify-content:center; min-height:20px; padding:0 28px; }
 
 .city-game-panel, .city-game-panel * { -webkit-tap-highlight-color:transparent; }
+
+.city-game-position { min-width:0; display:flex; flex-direction:column; align-items:center; gap:4px; text-align:center; }
+.city-game-dots { display:flex; justify-content:center; gap:2px; }
+.city-game-dot { display:grid; place-items:center; width:24px; height:24px; padding:0; border:0; background:transparent; color:inherit; cursor:pointer; }
+.city-game-dot::before { content:''; width:7px; height:7px; border-radius:50%; background:currentColor; opacity:.3; }
+.city-game-dot[aria-pressed='true']::before { opacity:1; box-shadow:0 0 6px currentColor; }
+.city-game-dot:focus-visible { outline:2px solid currentColor; outline-offset:0; border-radius:50%; }

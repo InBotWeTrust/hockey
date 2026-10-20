@@ -490,12 +490,12 @@ svg.lucide { stroke-width: 1.5; }
   border: 1px solid var(--liquid-border);
 }
 
-/* Received rewards retain contrast on any scenery. */
+/* Received rewards use flat muted icons on their card surface. */
 .app-shell :is(.bonus-game-card__reward--muted, .bonus-game-level-reward--received, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) {
-  background: #20252d;
+  background: transparent;
   color: #d5d9e0;
   border-radius: 10px;
-  padding: 4px 7px;
+  padding: 0;
   width: fit-content;
   max-width: 100%;
   opacity: 1;
@@ -531,4 +531,9 @@ svg.lucide { stroke-width: 1.5; }
   background: transparent;
   border: 1px solid var(--liquid-border);
   box-shadow: none;
+}
+
+:root[data-theme="dark"] .app-shell .bonus-game-card {
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
 }

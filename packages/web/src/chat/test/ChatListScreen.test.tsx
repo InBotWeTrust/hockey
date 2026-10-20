@@ -6,6 +6,8 @@ import { ChatListScreen } from '../screens/ChatListScreen.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import * as api from '../api.js';
 import * as pushApi from '../../api/push.js';
+import { act } from '@testing-library/react';
+import { useChatStore } from '../chatStore.js';
 import { socialApi } from '../../social/api.js';
 
 function renderScreen(): void {
@@ -33,6 +35,7 @@ describe('ChatListScreen — global search dropdown', () => {
       grip: 'right',
     };
     useAuthStore.setState({ accessToken: 'tok', refreshToken: 'rtok', user });
+    useChatStore.setState({unreadByChat:{}});
     vi.spyOn(api, 'fetchChatList').mockResolvedValue([]);
     vi.spyOn(socialApi,'feedUnread').mockResolvedValue({hasUnread:true,unreadCount:2,asOf:'2026-10-14T00:00:00Z'});
     vi.spyOn(api, 'searchMessagesApi').mockResolvedValue([]);
@@ -59,12 +62,30 @@ describe('ChatListScreen — global search dropdown', () => {
     vi.useRealTimers();
   });
 
-  it('shows chat title and returns to the district map',()=>{renderScreen();expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();fireEvent.click(screen.getByRole('button',{name:'Назад'}));expect(screen.getByText('district map')).toBeInTheDocument();});
+  it('shows chat title and returns to the district map',()=>{renderScreen();expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();expect(screen.queryByRole('button',{name:'Назад'})).toBeNull();expect(screen.queryByRole('tablist')).toBeNull();fireEvent.click(screen.getByRole('link',{name:'На карту'}));expect(screen.getByText('district map')).toBeInTheDocument();});
+
+  it('uses the feed title after switching and restores the chat title', async () => {
+    vi.spyOn(socialApi, 'feed').mockResolvedValue({items:[],nextCursor:null});
+    renderScreen();
+    fireEvent.click(await screen.findByRole('button',{name:/Лента/}));
+    expect(screen.getByRole('heading',{name:'Лента'})).toBeVisible();
+    fireEvent.click(screen.getByRole('button',{name:'Чат'}));
+    expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();
+  });
+
+  it('updates the message badge from live unread state and hides it when read', async () => {
+    renderScreen();
+    expect(screen.getByRole('button', {name:'Чат'})).toHaveAttribute('aria-pressed','true');
+    act(() => useChatStore.setState({unreadByChat:{one:3,two:4}}));
+    expect(screen.getByRole('button', {name:'Чат, непрочитанных: 7'})).toHaveTextContent('7');
+    act(() => useChatStore.setState({unreadByChat:{}}));
+    expect(screen.getByRole('button', {name:'Чат'}).querySelector('.chat-section-dock__badge')).toBeNull();
+  });
 
   it('does not render the dropdown when filter has fewer than 2 chars', async () => {
     renderScreen();
     const input = await screen.findByLabelText(/Поиск чатов/);
-    await waitFor(()=>expect(screen.getByRole('tab',{name:/Лента/}).querySelector('.segmented-tabs__attention')).not.toBeNull());
+    await waitFor(()=>expect(screen.getByRole('button',{name:/Лента/}).querySelector('.chat-section-dock__badge')).not.toBeNull());
     expect(input.closest('.glass-edge-fade')).toBeNull();
     fireEvent.change(input, { target: { value: 'a' } });
     expect(screen.queryByText('Сообщения')).toBeNull();

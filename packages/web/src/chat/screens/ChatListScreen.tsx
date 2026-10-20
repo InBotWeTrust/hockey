@@ -29,7 +29,7 @@ import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import {DistrictPageHeader} from '../../components/DistrictPageHeader.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
-import { SegmentedTabs } from '../../components/SegmentedTabs.js';
+import { ChatSectionDock } from '../components/ChatSectionDock.js';
 import { SocialFeed } from '../../social/SocialFeed.js';
 import { useFeedReadState } from '../../social/useFeedReadState.js';
 
@@ -48,6 +48,7 @@ export function ChatListScreen(): JSX.Element {
   const queryClient = useQueryClient();
   const feedRead=useFeedReadState();
   const [searchParams, setSearchParams] = useSearchParams();
+  const unreadByChat = useChatStore((s) => s.unreadByChat);
   const setActive = useChatStore((s) => s.setActive);
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
 
@@ -61,6 +62,11 @@ export function ChatListScreen(): JSX.Element {
     queryFn: fetchChatList,
     staleTime: 30_000,
   });
+  const unreadMessages = useMemo(() => {
+    const counts = { ...unreadByChat };
+    for (const chat of data ?? []) counts[chat.id] = Math.max(counts[chat.id] ?? 0, chat.unreadCount ?? 0);
+    return Object.values(counts).reduce((sum, count) => sum + Math.max(0, count), 0);
+  }, [data, unreadByChat]);
   const { data: pushPreferences } = useQuery<PushPreferences>({
     queryKey: PUSH_PREFERENCES_QUERY_KEY,
     queryFn: fetchPushPreferences,
@@ -217,11 +223,11 @@ export function ChatListScreen(): JSX.Element {
     <main
       className="screen chat-list-screen"
       style={{
-        paddingBottom: 16,
+        paddingBottom: 'calc(112px + var(--app-safe-bottom, 0px))',
       }}
     >
-      <DistrictPageHeader title="Чат"/>
-      <div className="chat-list-switcher"><SegmentedTabs ariaLabel="Раздел чата" activeTab={searchParams.get('view')==='feed'?'feed':'messenger'} items={[{id:'messenger',label:'Мессенджер'},{id:'feed',label:'Лента',attention:feedRead.status.data?.hasUnread??false}]} onChange={tab=>{const next=new URLSearchParams(searchParams);if(tab==='feed')next.set('view','feed');else next.delete('view');setSearchParams(next);}}/></div>
+      <DistrictPageHeader title={searchParams.get('view') === 'feed' ? 'Лента' : 'Чат'} showBack={false}/>
+
       {searchParams.get('view')==='feed'?<div className="chat-feed-content"><SocialFeed/></div>:<><div
         className="chat-edge-top"
         style={{ paddingTop: 10 }}
@@ -345,7 +351,7 @@ export function ChatListScreen(): JSX.Element {
           style={{
             position: 'fixed',
             left: '50%',
-            bottom: `calc(24px + var(--app-safe-bottom))`,
+            bottom: `calc(112px + var(--app-safe-bottom, 0px))`,
             transform: 'translateX(-50%)',
             padding: '10px 16px',
             borderRadius: 999,
@@ -383,6 +389,11 @@ export function ChatListScreen(): JSX.Element {
         }}
       />
       </>}
+      <ChatSectionDock active={searchParams.get('view') === 'feed' ? 'feed' : 'chat'} chatUnread={unreadMessages} feedUnread={feedRead.status.data?.unreadCount ?? 0} onChange={(tab) => {
+        const next = new URLSearchParams(searchParams);
+        if (tab === 'feed') next.set('view', 'feed'); else next.delete('view');
+        setSearchParams(next);
+      }}/>
     </main>
   );
 }

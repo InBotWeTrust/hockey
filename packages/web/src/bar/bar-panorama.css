@@ -509,7 +509,7 @@
 .bar-avatar-dock__item { position:relative; flex:0 0 48px; height:48px; padding:0; border:0; background:none; color:white; cursor:pointer; }
 .bar-avatar-dock__portrait { display:grid; place-items:center; width:46px; height:46px; border-radius:50%; overflow:hidden; border:1px solid rgba(231,241,255,.4); background:rgba(220,234,255,.1); transform-origin:center bottom; transition:transform .18s ease,filter .18s ease; filter:grayscale(1) brightness(.8); }
 .bar-avatar-dock__portrait img { width:100%; height:100%; object-fit:cover; }
-.bar-avatar-dock__item[aria-current="page"] .bar-avatar-dock__portrait { filter:grayscale(.3) brightness(1.1); transform:scale(1.12); border-color:rgba(231,241,255,.95); }
+.bar-avatar-dock__item[aria-current="page"] .bar-avatar-dock__portrait { filter:grayscale(.3) brightness(1.1); transform:scale(1.12); border:var(--navigation-selected-border); box-shadow:var(--navigation-selected-shadow); }
 .bar-avatar-dock__item.is-focused .bar-avatar-dock__portrait { transform:scale(1.22); filter:grayscale(.15) brightness(1.15); }
 .bar-avatar-dock__label { display:none; }
 .bar-avatar-dock__item:focus-visible { outline:2px solid #cde8ff; outline-offset:3px; border-radius:50%; }

@@ -38,7 +38,7 @@ it('restores both scrollers instantly and animates a new selection without obser
 it('orders the phone circle between tasks and bank',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
  const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(Array.from(dock.querySelectorAll('button')).slice(1,7).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Телефонная будка','Выбрать Банк','Выбрать Стадион «Центральный»']);
+ expect(Array.from(dock.querySelectorAll('button')).filter(button=>button.getAttribute('aria-label')!=='Выбрать Раздевалка').slice(1,7).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Телефонная будка','Выбрать Банк','Выбрать Стадион «Центральный»']);
 });
 
 function mapGeometry(){
@@ -143,6 +143,8 @@ for(const [level,id,name] of [['beginner','yard','Дворовый каток'],
   sessionStorage.setItem(`city-place-v2:test:${level}`,'bank');
   const view=render(<CityMap {...base} level={level} startAtDaily gamePanel={<div>Game panel</div>}/>);
   expect(view.container.querySelector('.district-game-anchor')).toHaveAttribute('data-venue',id);
+  const venue = screen.getByRole('button',{name:`На карте: ${name}`});
+  expect((view.container.querySelector('.district-game-anchor') as HTMLElement).style.left).toBe(venue.style.left);
   expect(screen.getByRole('heading',{name})).toBeVisible();expect(view.container.querySelector('.district-world')).toContainElement(screen.getByText('Game panel'));
  });
 }
@@ -257,4 +259,13 @@ it('moves the same locker marker with level and keeps restored selection usable'
  view.rerender(<CityMap {...base} level="professional"/>);
  expect(marker.style.left).not.toBe(second);
  expect(screen.getAllByRole('button',{name:'На карте: Раздевалка'})).toHaveLength(1);
+});
+it.each([['beginner','Дворовый каток'],['amateur','Стадион «Центральный»'],['professional','Арена Ультимейт']] as const)('places the locker immediately after the home venue for %s', (level,name)=>{
+ const view=render(<CityMap {...base} level={level}/>);
+ const labels=Array.from(view.container.querySelectorAll('.district-dock button')).map(button=>button.getAttribute('aria-label'));
+ expect(labels[labels.indexOf(`Выбрать ${name}`)+1]).toBe('Выбрать Раздевалка');
+});
+it('places the amateur locker on the stadium facade instead of the street',()=>{
+ render(<CityMap {...base} level="amateur"/>);
+ expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'49%',top:'57%'});
 });

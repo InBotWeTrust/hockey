@@ -1,3 +1,4 @@
+import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
 import { createRhythmMovementSampler } from '@hockey/game-core';
@@ -2342,9 +2343,7 @@ export function DailyHubScoreboard({
           ? 'minmax(0, 1fr)'
           : align === 'left'
             ? 'max-content max-content'
-            : spacious
-              ? 'max-content max-content'
-              : 'minmax(0, 1fr) auto',
+            : 'repeat(2, minmax(0, 1fr))',
         alignItems: 'center',
         justifyContent: spacious ? 'center' : undefined,
         justifyItems: timerOnly ? 'center' : align === 'left' ? 'start' : 'center',
@@ -2751,13 +2750,13 @@ function DailyPeriodTab({
         fontFamily: 'var(--font-mono)',
         fontSize: 11,
         fontWeight: 900,
-        background: active ? 'var(--liquid-selected-bg)' : 'var(--liquid-inset-bg)',
+        background: active ? 'var(--cube-period-active-bg, var(--liquid-selected-bg))' : 'var(--liquid-inset-bg)',
         border: active
-          ? '1px solid rgba(182, 238, 255, 0.72)'
-          : '1px solid rgba(118, 215, 255, 0.24)',
-        color: active ? '#e9fbff' : 'rgba(174, 233, 255, 0.46)',
+          ? '1px solid var(--cube-period-border, rgba(182, 238, 255, 0.72))'
+          : '1px solid var(--cube-period-border, rgba(118, 215, 255, 0.24))',
+        color: active ? 'var(--cube-period-active-ink, #e9fbff)' : 'var(--cube-period-ink, rgba(174, 233, 255, 0.46))',
         boxShadow: active
-          ? '0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24)'
+          ? 'var(--cube-period-shadow, 0 0 9px rgba(122, 229, 255, 0.54), inset 0 0 8px rgba(82, 205, 255, 0.24))'
           : 'none',
       }}
     >
@@ -2790,7 +2789,7 @@ function DailyEventScoreboardColumn({
       <DailyEventScoreboardLabel align={align}>{label}</DailyEventScoreboardLabel>
       <span
         style={{
-          color: '#e9fbff',
+          color: 'var(--cube-timer-ink, #e9fbff)',
           fontFamily: 'var(--font-mono)',
           fontSize: 'clamp(13px, 2.05vh, 18px)',
           fontWeight: 950,
@@ -2798,7 +2797,7 @@ function DailyEventScoreboardColumn({
           letterSpacing: '0.06em',
           fontVariantNumeric: 'tabular-nums',
           whiteSpace: 'nowrap',
-          textShadow: '0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38)',
+          textShadow: 'var(--cube-timer-shadow, 0 0 7px rgba(143, 232, 255, 0.72), 0 0 14px rgba(44, 177, 255, 0.38))',
         }}
       >
         {value}
@@ -2817,7 +2816,7 @@ function DailyEventScoreboardLabel({
   return (
     <span
       style={{
-        color: 'rgba(187, 238, 255, 0.72)',
+        color: 'var(--cube-score-label, rgba(187, 238, 255, 0.72))',
         fontSize: 'clamp(6px, 0.95vh, 8px)',
         fontWeight: 900,
         letterSpacing: '0.16em',
@@ -2826,7 +2825,7 @@ function DailyEventScoreboardLabel({
         overflowWrap: 'anywhere',
         textAlign: align,
         whiteSpace: 'normal',
-        textShadow: '0 0 7px rgba(88, 207, 255, 0.36)',
+        textShadow: 'var(--cube-label-shadow, 0 0 7px rgba(88, 207, 255, 0.36))',
       }}
     >
       {children}
@@ -3718,6 +3717,7 @@ function TrainingPlaceholder({
 
   const trainingParams = new URLSearchParams(location.search);
   const trainingSection = trainingParams.get('section');
+  const trainingExercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
 
   const openTrainingExercise = (path: string): void => {
     if (courseCatalog?.gameplay_lock?.blocked) {
@@ -3771,6 +3771,10 @@ function TrainingPlaceholder({
       </AccessibleModal>
     ) : null;
 
+  if (!trainingExercisesEnabled && (trainingSection === 'course' || trainingSection === 'advanced')) {
+    return <ModeShell title="Тренировка" onBack={onBack} variant="section-hub"><p className="modal-copy">В разработке</p></ModeShell>;
+  }
+
   if (
     !courseCatalogLoaded &&
     !autoPlay &&
@@ -3815,7 +3819,7 @@ function TrainingPlaceholder({
     const fromSectionsSuffix = params.get('from') === 'sections' ? '&from=sections' : '';
     const exercise = courseCatalog.exercises.find((item) => item.key === exerciseParam);
     if (
-      section === 'course' &&
+      trainingExercisesEnabled && section === 'course' &&
       exercise &&
       exercise.state !== 'locked' &&
       !courseCatalog.gameplay_lock?.blocked
@@ -3855,7 +3859,7 @@ function TrainingPlaceholder({
         />
       );
     }
-    if (section === 'course') {
+    if (trainingExercisesEnabled && section === 'course') {
       return (
         <>
           <ModeShell
@@ -3877,7 +3881,7 @@ function TrainingPlaceholder({
         </>
       );
     }
-    if (section === 'advanced') {
+    if (trainingExercisesEnabled && section === 'advanced') {
       const advanced = courseCatalog.advanced_training;
       const advancedExercise = advanced.exercises.find((item) => item.key === exerciseParam);
       if (
@@ -6965,7 +6969,7 @@ export function DuelResultCard({
               <div className="section-label" style={{ margin: 0, padding: 0 }}>
                 Итоговый результат
               </div>
-              {match.rules.duelKind === 'rhythm' && (
+              {(match.rules.duelKind === 'rhythm' || match.rules.duelKind === 'sniper') && (
                 <DuelResultDetailRow label="Счёт" value={duelScorePairText(match.rules.duelKind,match.me,match.opponent)}/>
               )}
               <DuelResultCompactStatsTable
@@ -7136,6 +7140,7 @@ export function DuelResultCard({
             )}
           </>
         )}
+        {match.rules.duelKind === 'sniper' && <SniperBreakdown me={match.me} opponent={match.opponent}/>}
         {match.rules.duelKind === 'rhythm' && (
           <div style={{marginTop:10,display:'grid',gap:8}}>
             <DuelResultDetailRow label="Вы" value={<RhythmSeriesValues label="Вы" series={match.me.rhythm_series??[]}/>}/>

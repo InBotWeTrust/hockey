@@ -820,7 +820,7 @@
 }
 :root[data-theme="light"] .bonus-game-preview-modal__artwork {
   border: 1px solid rgba(255, 255, 255, 0.82);
-  background: rgba(219, 230, 240, 0.68);
+  background-color: rgba(219, 230, 240, 0.68);
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.14)
 }
 :root[data-theme="light"] .bonus-game-launch-modal .bonus-game-preview-modal__artwork {
@@ -4382,18 +4382,19 @@
   text-shadow: none;
 }
 /* Bar conversation keeps white chrome over the panorama in light mode. */
-:root[data-theme="light"] .app-shell .bar-conversation .bar-conversation__bubble {
-  background: var(--surface-card-bg);
+:root[data-theme="light"] .bar-conversation .bar-conversation__bubble {
+  background: var(--surface-card-bg, rgba(226, 233, 241, 0.64));
   color: #18212e;
-  border: 1px solid var(--surface-border);
-  box-shadow: var(--surface-card-shadow);
+  border: 1px solid var(--surface-border, rgba(255, 255, 255, 0.78));
+  box-shadow: var(--surface-card-shadow, 0 10px 26px rgba(15, 23, 42, 0.14));
 }
-:root[data-theme="light"] .app-shell .bar-conversation .modal-title,
-:root[data-theme="light"] .app-shell .bar-conversation__identity,
-:root[data-theme="light"] .app-shell .bar-conversation .modal-header .icon-btn,
-:root[data-theme="light"] .app-shell .bar-conversation .modal-header .icon-btn svg,
-:root[data-theme="light"] .app-shell .bar-conversation__thinking,
-:root[data-theme="light"] .app-shell .bar-conversation__log > [role="status"] {
+:root[data-theme="light"] .bar-conversation .modal-title,
+:root[data-theme="light"] .bar-conversation__identity,
+:root[data-theme="light"] .bar-conversation__identity small,
+:root[data-theme="light"] .bar-conversation .icon-btn,
+:root[data-theme="light"] .bar-conversation .icon-btn svg,
+:root[data-theme="light"] .bar-conversation__thinking,
+:root[data-theme="light"] .bar-conversation__log > [role="status"] {
   color: #fff;
 }
 
@@ -4405,4 +4406,26 @@
   background: #1f293b;
   border-color: rgba(15, 23, 42, 0.92);
   color: #ffffff;
+}
+
+/* Light-theme received rewards use ink instead of a dark backing plate. */
+:root[data-theme="light"] .app-shell :is(
+  .bonus-game-card__reward--muted,
+  .bonus-game-level-reward--received,
+  .initial-training-exercise-card__rewards--claimed,
+  .advanced-training-exercise-card__rewards--claimed
+) {
+  background: transparent;
+  padding: 0;
+  color: #000;
+}
+:root[data-theme="light"] .app-shell :is(
+  .bonus-game-card__reward--muted,
+  .bonus-game-level-reward--received,
+  .initial-training-exercise-card__rewards--claimed,
+  .advanced-training-exercise-card__rewards--claimed
+) :is(span, svg, strong, .bonus-game-card__reward-item, .bonus-game-card__reward-icon) {
+  color: #000 !important;
+  filter: none;
+  opacity: 1;
 }

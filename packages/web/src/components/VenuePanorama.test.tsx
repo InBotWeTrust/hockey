@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { VenuePanorama, venueSceneFor } from './VenuePanorama.js';
 it.each([
   ['beginner', 'yard', 4],
@@ -87,4 +87,20 @@ it.each(['beginner','amateur','professional'] as const)('puts open training firs
 it('keeps the standalone and legacy locker routes outside the apartment', () => {
   expect(venueSceneFor('/locker-room', '', 'beginner')).toBeNull();
   expect(venueSceneFor('/profile/equipment', '', 'beginner')).toBeNull();
+});
+
+
+afterEach(() => { vi.unstubAllEnvs(); });
+it.each(['Начальные','Продвинутые'])('keeps production %s circles closed with a development toast', async label => {
+ vi.stubEnv('DEV',false); vi.stubEnv('VITE_TRAINING_EXERCISES_ENABLED','false');
+ render(<MemoryRouter initialEntries={['/?view=training&section=open']}><VenuePanorama level="beginner" owner="test"><Location/></VenuePanorama></MemoryRouter>);
+ fireEvent.click(screen.getByRole('tab',{name:label}));
+ expect(await screen.findByText('В разработке')).toBeVisible();
+ expect(screen.getByText('/?view=training&section=open')).toBeInTheDocument();
+});
+it.each(['course','advanced'])('redirects production direct exercise URL %s to open training', async section => {
+ vi.stubEnv('DEV',false); vi.stubEnv('VITE_TRAINING_EXERCISES_ENABLED','false');
+ render(<MemoryRouter initialEntries={[`/?view=training&section=${section}&exercise=first-shot&play=1`]}><VenuePanorama level="beginner" owner="test"><Location/></VenuePanorama></MemoryRouter>);
+ await waitFor(()=>expect(screen.getByText('/?view=training&section=open&from=sections')).toBeInTheDocument());
+ expect(screen.getByText('В разработке')).toBeVisible();
 });

@@ -405,10 +405,10 @@ export function BonusGamesScreen(): JSX.Element {
             <button
               type="button"
               className="modal-primary btn btn--cta"
-              disabled={startMutation.isPending || previewGame.levels?.find((entry) => entry.level === selectedLevel)?.is_unlocked === false}
-              onClick={() => startMutation.mutate(previewGame.id)}
+              disabled={startMutation.isPending || !canStartNewAttempt || previewGame.levels?.find((entry) => entry.level === selectedLevel)?.is_unlocked === false}
+              onClick={() => { if (canStartNewAttempt) startMutation.mutate(previewGame.id); }}
             >
-              {startMutation.isPending ? 'Подготавливаем…' : 'К игре'}
+              {startMutation.isPending ? 'Подготавливаем…' : !canStartNewAttempt ? 'Попытки закончились' : 'К игре'}
             </button>
           </div>
         </AccessibleModal>
@@ -698,7 +698,7 @@ function BonusGameCard({
   const explainsLevelLock = game.state === 'level_locked';
   const isPurchasable = game.state === 'purchase_required';
   const canAct =
-    isUnreleasedChallenge(game) || isContinuable || explainsLevelLock || isPurchasable || (isPlayable(game) && canStartNewAttempt);
+    isUnreleasedChallenge(game) || isContinuable || explainsLevelLock || isPurchasable || isPlayable(game);
   const showsChevron = isContinuable || (isPlayable(game) && canStartNewAttempt);
   const visibleActionLabel =
     !isContinuable && isPlayable(game) && !canStartNewAttempt ? 'Попытки закончились' : label;

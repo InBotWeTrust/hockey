@@ -1,3 +1,4 @@
+import { AppToast } from './AppToast.js';
 import { ApartmentReferralAttention } from './ApartmentRoom.js';
 import { useYardLighting } from '../city/yardLighting.js';
 import type { CityTimeOfDay } from '../city/lighting.js';
@@ -173,14 +174,18 @@ export function VenuePanorama({
   owner,
   children,
   previewTime,
+  trainingExercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true,
 }: {
   level: Level;
   owner: string | null;
   children: ReactNode;
   previewTime?: CityTimeOfDay | undefined;
+  trainingExercisesEnabled?: boolean;
 }): JSX.Element {
   const location = useLocation(),
     navigate = useNavigate();
+  const [developmentToast, setDevelopmentToast] = useState(false);
+  const exercisesEnabled = trainingExercisesEnabled;
   const scene = venueSceneFor(location.pathname, location.search, level);
   const yard = useYardLighting(scene?.id === 'yard', import.meta.env.DEV ? previewTime : undefined);
   const [attention, setAttention] = useState<Record<string, number>>({});
@@ -193,11 +198,16 @@ export function VenuePanorama({
   const onBack = useCallback(() => navigate('/sections?home=1'), [navigate]);
   const context = useMemo(() => ({ onBack, setAttention: update }), [onBack, update]);
   useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (!exercisesEnabled && location.pathname === '/' && params.get('view') === 'training' && ['course','advanced'].includes(params.get('section') ?? 'course')) {
+      setDevelopmentToast(true); navigate(trainingHref('open'), {replace:true}); return;
+    }
     if (scene?.redirect) navigate(scene.redirect, { replace: true });
-  }, [scene?.redirect, navigate]);
+  }, [scene?.redirect, navigate, exercisesEnabled, location.pathname, location.search]);
   if (!scene) return <>{children}</>;
   return (
     <VenueContext.Provider value={context}>
+      {developmentToast && <AppToast message="В разработке" onDismiss={() => setDevelopmentToast(false)}/>}
       <SectionPanorama
         className={`venue-scene${scene.id === 'apartment' ? ` apartment-scene apartment-scene--${scene.selected}` : ''}`}
         label={scene.label}
@@ -210,6 +220,7 @@ export function VenuePanorama({
         selected={scene.selected}
         onSelect={(id) => {
           const page = scene.pages.find((item) => item.id === id);
+          if (scene.id === 'yard' && (id === 'course' || id === 'advanced') && !exercisesEnabled) { setDevelopmentToast(true); return; }
           if (page) navigate(page.href, { replace: true });
         }}
         panorama={scene.id === 'yard' ? yard.panorama : `/section-panoramas/${scene.id}-v1.webp`}

@@ -1804,7 +1804,8 @@ describe('BonusGamesScreen', () => {
 
     expect(await screen.findByText('0 из 2 попыток')).toBeInTheDocument();
     expect(screen.getByText('0/1 игр')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Попытки закончились' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Попытки закончились' }));
+    expect(within(await screen.findByRole('dialog')).getByRole('button',{name:'Попытки закончились'})).toBeDisabled();
     expect(
       vi.mocked(globalThis.fetch).mock.calls.filter(([, init]) => init?.method === 'POST'),
     ).toHaveLength(0);
@@ -1837,9 +1838,11 @@ describe('BonusGamesScreen', () => {
     expect(within(nextGame!).getByText('Не пройдена')).toHaveClass(
       'bonus-game-card__status--available',
     );
-    expect(within(nextGame!).getByRole('button', { name: 'Попытки закончились' })).toHaveClass(
-      'bonus-game-card__hit-area--unavailable',
-    );
+    expect(within(nextGame!).getByRole('button', { name: 'Попытки закончились' })).not.toBeDisabled();
+    fireEvent.click(within(nextGame!).getByRole('button', {name:'Попытки закончились'}));
+    const preview = await screen.findByRole('dialog');
+    expect(within(preview).getByRole('button', {name:'Попытки закончились'})).toBeDisabled();
+
   });
 
   it('does not expose a rejected catalog request error', async () => {

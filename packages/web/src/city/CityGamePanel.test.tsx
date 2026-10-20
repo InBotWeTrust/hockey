@@ -78,3 +78,18 @@ it.each([['ready','35/100 бросков сегодня','35/100 бросков 
  render(<CityGamePanel entries={[{...entries[0]!,kind:'training',title:'Тренировка',eyebrow:'Тренировка',dockState:state as 'ready'|'done',meta}]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
  expect(screen.getByRole('button',{name:'Развернуть игры'})).toHaveTextContent(expected);
 });
+it('switches games using dots and tracks the active entry',()=>{
+ const change=vi.fn();const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={change}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Развернуть игры'}));
+ expect(screen.getByRole('button',{name:'Выбрать Ежедневная игра'})).toHaveAttribute('aria-pressed','true');
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Дуэль'}));expect(change).toHaveBeenCalledWith(1);
+ view.rerender(<CityGamePanel entries={entries} activeIndex={1} onActiveIndexChange={change}/>);
+ expect(screen.getByRole('button',{name:'Выбрать Дуэль'})).toHaveAttribute('aria-pressed','true');
+ expect(screen.getByRole('button',{name:'Выбрать Ежедневная игра'})).toHaveAttribute('aria-pressed','false');
+});
+it('hides navigation dots for a single entry',()=>{
+ render(<CityGamePanel entries={[entries[0]!]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Развернуть игры'}));
+ expect(screen.queryByRole('group',{name:'Вкладки игр'})).toBeNull();
+ expect(screen.queryByText('1 / 1')).toBeNull();
+});

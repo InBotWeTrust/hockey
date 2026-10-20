@@ -129,8 +129,8 @@
   transform: scale(1.12);
   filter: none;
   opacity: 1;
-  border: 2px solid #fff;
-  box-shadow: 0 0 0 2px #ffffff18;
+  border: var(--navigation-selected-border);
+  box-shadow: var(--navigation-selected-shadow);
 }
 .section-scene__dock button > span {
   font-size: 10px;

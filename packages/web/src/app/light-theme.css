@@ -72,3 +72,15 @@
 
 [data-theme='light'] .city-game-panel { color:var(--arena-cube-ink); text-shadow:none; }
 [data-theme='light'] .city-game-toggle strong { color:var(--arena-cube-label); }
+
+[data-theme='light'] .city-game-panel {
+  --cube-score-label: #286394;
+  --cube-timer-ink: #18212e;
+  --cube-timer-shadow: none;
+  --cube-label-shadow: none;
+  --cube-period-active-bg: #18212e;
+  --cube-period-active-ink: #fff;
+  --cube-period-ink: #18212e;
+  --cube-period-border: #18212e;
+  --cube-period-shadow: none;
+}

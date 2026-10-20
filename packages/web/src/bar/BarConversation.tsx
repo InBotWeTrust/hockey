@@ -163,7 +163,7 @@ export function BarConversation({
     <AccessibleModal
       title={
         <button type="button" className="bar-conversation__identity" aria-label={expanded ? 'Свернуть карточку разговора' : 'Развернуть карточку разговора'} onClick={()=>setExpanded(value=>!value)}>
-          <span className="bar-conversation__avatar">
+          <span className={`bar-conversation__avatar${character === 'elina' ? ' bar-conversation__avatar--elina' : ''}`}>
             {avatar && !avatarFailed ? (
               <img src={avatar} alt="" onError={() => setAvatarFailed(true)} />
             ) : (

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { AppToast } from './AppToast.js';
 import { Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
 import { rewardColor } from '../app/rewardColors.js';
 import type {
@@ -84,14 +86,18 @@ export function InitialTrainingHub({
   loading?: boolean;
 }): JSX.Element {
   const advanced = catalog.advanced_training;
+  const exercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
+  const [developmentToast,setDevelopmentToast] = useState(false);
+  const openExercise = (action:()=>void) => { if (!exercisesEnabled) {setDevelopmentToast(true);return;} action(); };
   return (
     <div className="initial-training-hub">
+      {developmentToast && <AppToast message="В разработке" onDismiss={()=>setDevelopmentToast(false)}/>}
       <button
         type="button"
         className="section-card-surface amateur-hub-card initial-training-mode-card"
         aria-disabled={loading}
         onClick={() => {
-          if (!loading) onOpenCourse();
+          if (!loading) openExercise(onOpenCourse);
         }}
         aria-label={`Начальный уровень, пройдено ${catalog.completed_count} из ${catalog.total_count} упражнений`}
       >
@@ -114,7 +120,8 @@ export function InitialTrainingHub({
         totalCount={advanced.total_count}
         unlocked={!loading && advanced.enabled && advanced.access.unlocked}
         access={advanced.access}
-        onOpen={onOpenAdvanced}
+        onOpen={()=>openExercise(onOpenAdvanced)}
+        inDevelopment={!exercisesEnabled}
         loading={loading}
       />
 

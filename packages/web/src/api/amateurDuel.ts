@@ -165,6 +165,7 @@ export interface AmateurDuelParticipant {
   rhythm_shots?: Array<{tapTime:number; flightMs:number; travel:number; boardContacts?:number; goal:boolean}>;
   format_score?: number;
   sniper_points?: number;
+  sniper_breakdown?: Array<{category:string;count:number;points:number}>;
   marathon_penalties?: number;
   average_goal_ms?: number | null;
   result_pause_starts_at?: string | null;

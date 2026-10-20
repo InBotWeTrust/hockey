@@ -1829,3 +1829,65 @@
 .bar-naval-vessel--trail { border-style: dashed; border-color: #bbd5e099; }
 .bar-naval-cell[data-airstrike='true'] .bar-naval-impact { animation-duration: 850ms; }
 @keyframes naval-airstrike-contact-next { 0% { transform: translate(0, 5px) scale(.99); } 15% { transform: translate(-5px, -4px); } 30% { transform: translate(5px, 3px); } 50% { transform: translate(-4px, -2px); } 70% { transform: translate(3px, 1px); } 85% { transform: translate(-1px, 0); } 100% { transform: none; } }
+
+/* Keep the online terminal within its column; only the avatar row scrolls. */
+.bar-games-lobby .online-durak-lobby > .bar-content,
+.bar-games-lobby .online-durak-search {
+  min-width: 0;
+  grid-template-columns: minmax(0, 1fr);
+}
+.bar-games-lobby .bar-content > *,
+.bar-games-lobby .online-durak-search > * {
+  min-width: 0;
+}
+.bar-games-lobby .online-durak-lobby > .bar-content > .duel-section-title {
+  margin-top: 16px;
+}
+.bar-games-lobby .duel-quick-pick__opponent {
+  appearance: none;
+  width: 58px;
+  flex: 0 0 58px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1.05;
+  text-align: center;
+  cursor: pointer;
+}
+.bar-games-lobby .duel-quick-pick__name {
+  width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar-games-lobby .duel-quick-pick__opponent[aria-pressed="true"] > :first-child {
+  border-radius: 50%;
+  outline: 2px solid var(--liquid-ink);
+  outline-offset: 2px;
+}
+.bar-games-lobby .duel-opponent-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bar-games-lobby .duel-opponent-search__input {
+  appearance: none;
+  flex: 1 1 0;
+  width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  padding: 0;
+  font: inherit;
+}
+.bar-games-lobby .duel-opponent-search:focus-within {
+  outline: 2px solid var(--liquid-border);
+  outline-offset: 2px;
+}

@@ -105,3 +105,12 @@ it('keeps duel v4 notice yellow for goals one to three and green from goal four'
  view.rerender(<RhythmShotNotice shots={goals} version={4} boardContacts={7}/>);
  expect(screen.queryByRole('status')).toBeNull();
 });
+
+it.each([true,false])('shows separate marksmanship categories in result/history compact=%s', compact => {
+  render(<DuelResultCard compact={compact} match={{...match,rules:{...match.rules,duelKind:'sniper'},
+    me:{...match.me,sniper_breakdown:[{category:'complex',count:2,points:2.6}]},
+    opponent:{...match.opponent,sniper_breakdown:[{category:'counter_direction',count:1,points:1.3}]}}}/>);
+  expect(within(screen.getByRole('list',{name:'Броски: вы'})).getByText('Сложный 1,3')).toBeVisible();
+  expect(within(screen.getByRole('list',{name:'Броски: вы'})).getByText('×2')).toBeVisible();
+  expect(within(screen.getByRole('list',{name:'Броски: соперник'})).getByText(/Противоход/)).toBeVisible();
+});

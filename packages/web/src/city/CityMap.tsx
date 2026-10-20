@@ -25,11 +25,12 @@ const basePlaces=[
  {id:'bonus',name:'Бонусные игры',x:72.3,y:59,w:8,h:17,thumb:[75.8,62.9]},
  {id:'pro',name:'Арена Ультимейт',x:87,y:42,w:25,h:34,thumb:[92,37]},
 ];
+const homeVenues = {beginner:'yard',amateur:'stadium',professional:'pro'} as const;
 const lockerPositions = {
- beginner: {x:15.5,y:70}, amateur: {x:50.5,y:73}, professional: {x:89,y:70},
+ beginner: {x:15.5,y:70}, amateur: {x:49,y:57}, professional: {x:89,y:70},
 } as const;
 export function CityMap(props:Props){
- const places=useMemo(()=>[...basePlaces,{id:'locker',name:'Раздевалка',...lockerPositions[props.level],w:3,h:8}], [props.level]);
+ const places=useMemo<Array<(typeof basePlaces)[number]>>(()=>{const locker={id:'locker',name:'Раздевалка',...lockerPositions[props.level],w:3,h:8};return basePlaces.flatMap(place=>place.id===homeVenues[props.level]?[place,locker]:[place]);}, [props.level]);
  const {weather}=useWeatherCycle();
  const caretaker=useCaretakerVisit(props.owner,props.maintenanceBlocked??true);
  const district=useRef<HTMLElement>(null),panel=useRef<HTMLElement>(null);
@@ -44,7 +45,7 @@ export function CityMap(props:Props){
  const [navigationCollapsed,setNavigationCollapsed]=useState(()=>{try{return localStorage.getItem(navigationKey)==='1';}catch{return false;}});
  const toggleNavigation=()=>{setNavigationCollapsed(value=>{const next=!value;try{localStorage.setItem(navigationKey,next?'1':'0');}catch{/* Storage is optional. */}return next;});};
  const navigationCount=(props.chatCount??0)+(props.gameCount??0)+(props.taskCount??0)+(props.barCount??0)+(props.referralCount??0)+(props.isAdmin?(props.adminCount??0):0);
- const dailyId={beginner:'yard',amateur:'stadium',professional:'pro'}[level];
+ const dailyId=homeVenues[level];
  const dailyVenue=places.find(p=>p.id===dailyId)!;
  const storageKey=`city-place-v2:${owner??'anonymous'}:${level}`;
  const [selected,setSelected]=useState(()=>{if(props.startAtDaily)return dailyId;try{const stored=sessionStorage.getItem(storageKey);return places.some(p=>p.id===stored)?stored!:dailyId;}catch{return dailyId;}});
@@ -103,7 +104,7 @@ export function CityMap(props:Props){
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
    <div ref={world} className="district-world"><CityBackground image={image}/><CityTraffic owner={owner} night={image.includes("city-night-")||image.includes("city-sunset-")}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
     {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':p.id==='locker'?' district-locker':''}${flash===p.id?' is-flashing':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:p.id==='locker'?44:`${p.w}%`,height:p.id==='locker'?44:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='locker'&&<Shirt size={22} aria-hidden="true"/>}{p.id==='profile'&&<span className="district-apartment-avatar" aria-hidden="true"><User/></span>}</button>)}
-    {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} style={{left:`${dailyVenue.x-(dailyId==='stadium'?0.5:0)}%`} as CSSProperties} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
+    {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} style={{left:`${dailyVenue.x}%`} as CSSProperties} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
    </div>
   </div>
   <WeatherOverlay key={props.weatherOverride??weather} weather={props.weatherOverride??weather}/>

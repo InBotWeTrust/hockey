@@ -51,6 +51,8 @@
 .profile-bio-field small { color: var(--muted); }
 .chat-list-switcher { padding: 0 14px; }
 .chat-feed-content { padding: 0 14px; }
+.chat-feed-content > section { margin-top: 0 !important; }
+.chat-feed-content .social-feed-tools { align-items: center; }
 .social-feed-tools { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; margin-bottom: 10px; }
 .social-feed-tools .icon-btn.icon-btn--dark { background: rgba(15, 23, 42, 0.9); border-color: rgba(15, 23, 42, 0.9); color: #fff; }
 .social-feed-tools .section-label { margin: 0; padding-left: 8px; }
@@ -114,4 +116,11 @@
  font-size: 18px;
  font-weight: 850;
  color: var(--ink);
+}
+
+/* Feed status copy sits directly on the arena artwork in either theme. */
+:root .chat-list-screen .chat-feed-content .modal-copy,
+:root .chat-list-screen .chat-feed-content .social-error-state {
+  color: #fff;
+  text-shadow: 0 1px 3px #07111ee6, 0 2px 8px #07111eb3;
 }

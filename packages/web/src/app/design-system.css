@@ -8336,11 +8336,13 @@ button.profile-story-series-card {
 }
 
 .duel-result-card__compact-summary {
+  display: grid;
+  gap: 10px;
   margin-top: 12px;
 }
 
 .duel-result-card__compact-summary .duel-result-compact-period__table {
-  margin-top: 6px;
+  margin-top: 0;
 }
 
 .duel-result-card__compact-details {

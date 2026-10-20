@@ -199,3 +199,10 @@
 .bar-conversation__conflict-actions .modal-actions { display: flex; gap: 8px; }
 .bar-conversation__conflict-actions .btn { flex: 1; min-height: 44px; padding: 10px 8px; font-size: 13px; line-height: 1.25; letter-spacing: normal; text-transform: none; }
 @media (prefers-reduced-motion: reduce) { .modal-card.bar-conversation { transition: none; } }
+
+/* Frame Elina's existing full-length portrait as a face avatar. */
+.bar-conversation__avatar--elina img {
+  object-position: center top;
+  transform: scale(3);
+  transform-origin: center top;
+}

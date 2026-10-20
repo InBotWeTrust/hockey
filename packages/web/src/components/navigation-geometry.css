@@ -1,5 +1,7 @@
 :root {
   --navigation-circle: 46px;
+  --navigation-selected-border: 2px solid #fff;
+  --navigation-selected-shadow: 0 0 0 2px #ffffff18;
   --navigation-item: 56px;
   --navigation-gap: 9px;
   --navigation-label-gap: 6px;

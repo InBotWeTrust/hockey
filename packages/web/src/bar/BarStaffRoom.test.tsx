@@ -4,7 +4,7 @@ import {afterEach,expect,it,vi} from 'vitest';
 import {BarStaffRoom} from './BarStaffRoom.js';
 import {staffRoomEvent} from './staffRoomApi.js';
 vi.mock('./staffRoomApi.js',()=>({staffRoomEvent:vi.fn()}));
-vi.mock('./BarConversation.js',()=>({BarConversation:({name}:{name:string})=><div>Разговор с {name}</div>}));
+vi.mock('./BarConversation.js',()=>({BarConversation:({name,avatar}:{name:string;avatar?:string})=><div>Разговор с {name}{avatar&&<img src={avatar} alt={`Аватар ${name}`}/>}</div>}));
 vi.mock('./OlegFightPanel.js',()=>({OlegFightPanel:({id}:{id:string})=><div>fight:{id}</div>}));
 function Location(){const l=useLocation();return <output>{l.pathname}{l.state?.staffRoomWarning?' warning':''}</output>;}
 afterEach(()=>{cleanup();vi.useRealTimers();vi.clearAllMocks();});
@@ -55,6 +55,7 @@ it('offers an ordinary Elina conversation with no game and no idle warning',asyn
  expect(screen.queryByRole('button',{name:'Игры'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Поговорить с Элиной'}));
  expect(screen.getByText('Разговор с Элина')).toBeInTheDocument();
+ expect(screen.getByAltText('Аватар Элина')).toHaveAttribute('src','/bar/emotions/elina/neutral-v1.webp');
  await act(async()=>vi.advanceTimersByTimeAsync(30001));
  expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
 });
@@ -70,6 +71,7 @@ it('rechecks Elina on return and closes a conversation when she is no longer ava
  vi.mocked(staffRoomEvent).mockResolvedValueOnce({phase:'seated',day:'2026-10-20',warnAfterMs:0}).mockResolvedValue({phase:'empty',day:'2026-10-21',warnAfterMs:30000});
  mount();await screen.findByRole('button',{name:'Разговор'});fireEvent.click(screen.getByRole('button',{name:'Разговор'}));
  expect(screen.getByText('Разговор с Элина')).toBeInTheDocument();
+ expect(screen.getByAltText('Аватар Элина')).toHaveAttribute('src','/bar/emotions/elina/neutral-v1.webp');
  fireEvent.focus(window);await waitFor(()=>expect(screen.queryByText('Разговор с Элина')).toBeNull());
  expect(screen.getByAltText('Пустое кресло Элины')).toBeInTheDocument();
 });
