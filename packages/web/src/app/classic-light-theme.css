@@ -4396,3 +4396,13 @@
 :root[data-theme="light"] .app-shell .bar-conversation__log > [role="status"] {
   color: #fff;
 }
+
+/* Selected controls retain the original dark fill against light glass. */
+:root[data-theme="light"] {
+  --liquid-choice-selected-bg: #263246;
+}
+:root[data-theme="light"] .app-shell .segmented-tabs .segmented-tabs__item--active {
+  background: #1f293b;
+  border-color: rgba(15, 23, 42, 0.92);
+  color: #ffffff;
+}
