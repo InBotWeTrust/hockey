@@ -269,3 +269,13 @@ it('allows the character to repeat public coworker facts without treating them a
  const transport=vi.fn(async()=>Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text}]}]}));
  expect(await createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport)('veronika',[],'Кто здесь работает?')).toBe(text);
 });
+
+it('requires a structured Elina interest assessment and includes authoritative meeting context',async()=>{
+ const context={summary:'',facts:[],relationship:[],tool:async()=>[],elinaMeeting:{remaining:2,personalAllowed:false,regular:true,competitionLevel:'beginner',successful:false}};
+ const transport=vi.fn().mockResolvedValue(Response.json({status:'completed',output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Что предлагаешь?',usedStoryIds:[],interest:'business'})}]}]}));
+ const answer=createOpenAIAnswer('test-placeholder','gpt-5.6-terra',transport);
+ await expect(answer('elina',[],'Есть предложение',context)).resolves.toMatchObject({interest:'business'});
+ expect(JSON.parse(transport.mock.calls[0]![1].body).instructions).toContain('personalAllowed');
+ transport.mockResolvedValue(Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Ответ',usedStoryIds:[]})}]}]}));
+ await expect(answer('elina',[],'Привет',context)).rejects.toThrow();
+});
