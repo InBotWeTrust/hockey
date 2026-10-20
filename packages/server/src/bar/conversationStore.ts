@@ -1,3 +1,5 @@
+import {completeElinaMeeting} from './elinaMeetingStore.js';
+import type {Interest} from './elinaMeeting.js';
 import {requireElinaOffice,recordOfficeConversationIncident} from './elinaOffice.js';
 import { randomInt } from 'node:crypto';
 import { reserveVisitorMessage, completeVisitorMessage, refundVisitorReceipt, visitorState, visitorTransaction } from './visitorService.js';
@@ -95,6 +97,7 @@ export class SqlConversationStore implements ConversationStore {
     turn: ConversationTurn,
     usedStoryIds: string[] = [],
     conflict?: ConflictEffect,
+    officeInterest?: Interest,
   ): Promise<ConversationRecord> {
     const db = await this.pool.connect();
     try {
@@ -104,6 +107,7 @@ export class SqlConversationStore implements ConversationStore {
       if(character==='elina'){
         const office=await requireElinaOffice(db,user,false);
         if(turn.officeDay!==office.day)throw new AppError('conversation_stale','Начался новый день. Обнови разговор.',409);
+        if(!turn.intervention&&officeInterest!==undefined)await completeElinaMeeting(db,user,turn,officeInterest);
         if(turn.intervention==='office-warning'||turn.intervention==='office-eject')await recordOfficeConversationIncident(db,user,turn.intervention==='office-eject');
       }
       await completeVisitorMessage(db, user, turn.id);

@@ -2,7 +2,7 @@ import { barCharacters, type ConversationCharacter } from './conversationApi.js'
 // This standalone preview has no authenticated server or OpenAI credentials.
 // Greetings are fixed copy. No fabricated AI replies are returned.
 const greetings: Record<ConversationCharacter, string> = {
-  elina:'Добрый день. Слушаю тебя.',
+  elina:'Ты по какому вопросу? У меня сейчас работа.',
   maria: 'Привет! Присаживайся. Сыграем в карты или сначала поболтаем?',
   daria: 'Привет! Как прошла игра? Рассказывай, я слушаю.',
   grigory: 'О, знакомые лица! Садись. Что нового на льду?',

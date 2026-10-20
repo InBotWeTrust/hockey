@@ -1,3 +1,4 @@
+import {apiFetch} from '../api/apiFetch.js';
 import { VisitorShop } from './VisitorShop.js';
 import { useBarActivity } from './barActivity.js';
 import {useAuthStore} from '../auth/authStore.js';
@@ -20,6 +21,7 @@ export function BarPanorama() {
   const [visitorShop, setVisitorShop] = useState(false);
   const activityCounts = useBarActivity();
   const account=useAuthStore(state=>state.user?.id)??'preview';
+  useEffect(()=>{if(account!=='preview')void apiFetch('/bar/office-presence',{method:'POST'}).catch(()=>{});},[account]);
   const [day,setDay]=useState(localDay);
   const [visible,setVisible]=useState(()=>document.visibilityState!=='hidden');
   useEffect(()=>{

@@ -1,3 +1,5 @@
+import {readElinaMeeting} from './elinaMeetingStore.js';
+import type {Interest} from './elinaMeeting.js';
 import {requireElinaOffice,elinaIntervention,type ElinaOfficeAccess} from './elinaOffice.js';
 import {safeEmotion,type CharacterEmotion} from './characterEmotion.js';
 import { recordPhysicalIncident } from './physicalIncident.js';
@@ -39,6 +41,7 @@ export interface ConversationTurn {
   emotion?:CharacterEmotion;
   farewell?: string;
   officeDay?:string;
+  officeEmptyUntil?:string;
 }
 export interface ConversationRecord {
   revision: number;
@@ -52,12 +55,12 @@ export type Reservation =
 export interface ConversationStore {
   read(user: string, character: Character): Promise<ConversationRecord>;
   reserve(user: string, character: Character, id: string, revision: number, free?: boolean): Promise<Reservation>;
-  complete(user: string, character: Character, turn: ConversationTurn, usedStoryIds?: string[], conflict?: ConflictEffect): Promise<ConversationRecord>;
+  complete(user: string, character: Character, turn: ConversationTurn, usedStoryIds?: string[], conflict?: ConflictEffect, officeInterest?:Interest): Promise<ConversationRecord>;
   release(user: string, character: Character, id: string): Promise<void>;
 }
 export const characterVoices: Record<Character, { name: string; greeting: string; voice: string }> =
   {
-    elina: {name:'Элина',greeting:'Добрый день. Слушаю тебя.',voice:'Владелица бара. Сдержанная, уверенная, требовательная; уважает сотрудников. Обычный разговор без задания и игры.'},
+    elina: {name:'Элина',greeting:'Ты по какому вопросу? У меня сейчас работа.',voice:'Владелица бара. Сдержанная, уверенная, требовательная; уважает сотрудников. Принимает по деловым вопросам, ценит конкретность и своё время. Без задания и игры.'},
     maria: {
       name: 'Мария',
       greeting: 'Привет! Присаживайся. Сыграем в карты или сначала поболтаем?',
@@ -270,6 +273,10 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       let context: ConversationContext | undefined;
       try { context = await memory?.context(user,character,content,reserved.record.turns); }
       catch { app.log.warn({ code: 'bar_memory_context_failed' }, 'Conversation continues without memory'); }
+      if(office&&!options.elinaOffice){
+        const meeting=await readElinaMeeting(app.pg,user);
+        context={summary:'',facts:[],relationship:[],tool:async()=>({unavailable:true}),...context,elinaMeeting:meeting.context};
+      }
       const signal=AbortSignal.timeout(105000);
       const assessmentPromise=conflicts&&!immediateDanger(content)?conflictDeadline(checkSignal=>conflicts.state(user).then(async current=>({current,verdict:await classify(character,reserved.record.turns,content,character==='elina'?false:current.intervening,checkSignal)})),signal).catch(()=>{app.log.warn({code:'bar_conflict_check_failed'},'Conversation continues without conflict escalation');return null;}):Promise.resolve(null);
       const [incoming,assessment]=await Promise.all([immediateDanger(content)?Promise.resolve('crisis' as const):moderate(content,signal),assessmentPromise]);
@@ -312,7 +319,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
           ...(officeIntervention?{speaker:'oleg' as const,intervention:officeIntervention.intervention}:{}),
           emotion: officeIntervention?'displeasure':response===crisisReply ? 'empathy' : response===boundaryReply || conflict && ['warning','intervention','fight'].includes(conflict.kind) ? 'displeasure' : scripted ? 'neutral' : safeEmotion(typeof response==='string'?undefined:response.emotion),
           ...(scripted&&conflict ? {speaker:'oleg' as const,intervention:conflict.kind} : {}),
-        }, typeof response === 'string' ? [] : response.usedStoryIds, conflict),
+        }, typeof response === 'string' ? [] : response.usedStoryIds, conflict, office&&!officeIntervention&&typeof response!=='string'?response.interest:undefined),
       );
     } catch (error) {
       await store.release(user, character, id);

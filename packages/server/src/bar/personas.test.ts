@@ -19,5 +19,4 @@ it('gives every character the same authored roster and Timofey relationship',()=
 it('gives Elina ownership and conversation without a game objective',()=>{
  expect(characters).toContain('elina');
  expect(personaOf('elina').soul).toContain('владелица');
- expect(personaOf('elina').soul).toContain('обычный разговор');
 });
