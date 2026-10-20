@@ -1,11 +1,18 @@
+import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, describe, it, expect } from 'vitest';
 import { Pool } from 'pg';
-import { getTestUrls, hasIntegrationEnv } from '../helpers/testDb.js';
+import { getTestUrls, hasIntegrationEnv, createTestPool, resetDatabase } from '../helpers/testDb.js';
+import { applyMigrations } from '../../src/db/migrations.js';
 import { getBarBoard, getBarLive } from '../../src/bar/service.js';
-// Requires an already migrated isolated integration database. Never reset storage here.
+// Prepare isolated storage independently; exercise all query contracts read-only.
 describe.skipIf(!hasIntegrationEnv)('bar PostgreSQL read-only query contracts', () => {
   let pool: Pool;
-  beforeAll(() => {
+  beforeAll(async () => {
+    const setup = createTestPool();
+    try {
+      await resetDatabase(setup);
+      await applyMigrations(setup, fileURLToPath(new URL('../../db/migrations/', import.meta.url)));
+    } finally { await setup.end(); }
     pool = new Pool({
       connectionString: getTestUrls().databaseUrl,
       options: '-c default_transaction_read_only=on',
