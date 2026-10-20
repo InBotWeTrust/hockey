@@ -158,10 +158,10 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
 
   it('enforces follow start on feed and details, then revokes access and resets on refollow', async () => {
     const a=await user('Viewer'), b=await user('Athlete');
-    const event = async (key:string, when:string) => (await app.pg.query("select social_record_activity($1,'training',$2::timestamptz,$3::uuid[], $4::jsonb) as id",[key,when,[b.id],JSON.stringify({title:'Завершил тренировку',goals:20,shots:50})])).rows[0].id as string;
+    const event = async (key:string, when:string|null) => (await app.pg.query("select social_record_activity($1,'training',coalesce($2::timestamptz,clock_timestamp()),$3::uuid[], $4::jsonb) as id",[key,when,[b.id],JSON.stringify({title:'Завершил тренировку',goals:20,shots:50})])).rows[0].id as string;
     const old=await event('training:old',new Date(Date.now()-60000).toISOString());
     await request(a,'PUT',`/users/${b.id}/fan`);
-    const current=await event('training:new',new Date().toISOString());
+    const current=await event('training:new',null);
     expect((await request(a,'GET','/social/feed')).json().items.map((e:{id:string})=>e.id)).toEqual([current]);
     expect((await request(a,'GET',`/social/events/${old}`)).statusCode).toBe(404);
     expect((await request(a,'GET',`/social/events/${current}`)).statusCode).toBe(200);
@@ -191,7 +191,7 @@ describe.skipIf(!hasIntegrationEnv)('fans and subscription-scoped activity', () 
     const { INITIAL_TRAINING_EXERCISE_KEYS } = await import('../../src/duel/training/initialCourse.js');
     const exerciseKeys=INITIAL_TRAINING_EXERCISE_KEYS;
     expect(exerciseKeys.length).toBeGreaterThanOrEqual(keys.length);
-    for(const key of exerciseKeys) await app.pg.query('insert into initial_training_completion(user_id,exercise_key,reward_stars,reward_experience) values($1,$2,1,1)',[b.id,key]);
+    for(const key of exerciseKeys) await app.pg.query("insert into initial_training_completion(user_id,exercise_key,reward_stars,reward_experience,completed_at) values($1,$2,1,1,now()-interval '1 minute')",[b.id,key]);
     const supporter=await user('Source supporter');await request(supporter,'PUT',`/users/${b.id}/fan`);
     expect((await request(b,'GET',`/users/${b.id}/activity`)).json().items.map((e:{kind:string})=>e.kind)).toEqual(['initial_course']);
     const claim=await app.inject({method:'POST',url:'/achievements/fans-support/claim',headers:{authorization:`Bearer ${b.token}`}});

@@ -175,7 +175,7 @@ it('preserves the current round pause when starting a private character game', a
   });
   const pool = { connect: async () => ({ query, release: vi.fn() }) } as unknown as Pool;
   await startComputer(pool, 'a', 'grigory', 'new-private-match');
-  expect(stored?.runtime.engineVersion).toBe(19);
+  expect(stored?.runtime.engineVersion).toBe(20);
   expect(stored?.runtime.game.roundPauseMs).toBe(3000);
 });
 it('keeps enemy placement private in the API until completion, then reveals it to either player', async () => {

@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { applyMigrations } from '../../src/db/migrations.js';
+import { applyMigrationsThrough } from '../helpers/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const migrationsDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../db/migrations');
@@ -84,7 +85,7 @@ describe.skipIf(!hasIntegrationEnv)('marksmanship V6 catalog migration', () => {
         before.goalkeeper_save_url],
     );
 
-    const applied = await applyMigrations(pool, migrationsDir);
+    const applied = await applyMigrationsThrough(pool, migrationsDir, cutoff);
     expect(applied.applied).toContain(cutoff);
     const current = await pool.query<{
       target_goals: number; qualification_rules: { targetPoints: number; scoring: { version: number } };
@@ -97,6 +98,6 @@ describe.skipIf(!hasIntegrationEnv)('marksmanship V6 catalog migration', () => {
       'select rules_snapshot from bonus_game_attempt where id = $1', [attemptId],
     );
     expect(saved.rows[0]?.rules_snapshot).toEqual(snapshot);
-    expect((await applyMigrations(pool, migrationsDir)).applied).toEqual([]);
+    expect((await applyMigrationsThrough(pool, migrationsDir, cutoff)).applied).toEqual([]);
   });
 });
