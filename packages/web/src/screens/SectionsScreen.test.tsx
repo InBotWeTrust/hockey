@@ -1,3 +1,5 @@
+import {readFileSync} from 'node:fs';
+import {resolve} from 'node:path';
 import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { useGameInvites } from '../bar/games/gameInviteStore.js';
 import { GameInvites } from '../bar/games/GameInvites.js';
@@ -292,6 +294,8 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+const designSystemCss = readFileSync(resolve('src/app/design-system.css'), 'utf8');
+
 describe('SectionsScreen', () => {
   beforeEach(() => {
     localStorage.clear();
@@ -302,6 +306,18 @@ describe('SectionsScreen', () => {
       refreshToken: 'refresh',
       user: { id: 'u1', displayName: 'Игрок' },
     });
+  });
+
+  it('keeps the shop mosaic compact with a landscape artwork area', () => {
+    expect(designSystemCss).toMatch(
+      /\.sections-quick-card--tall\s*\{[^}]*height:\s*186px;[^}]*min-height:\s*0;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.sections-quick-card--tall \.sections-quick-card__art\s*\{[^}]*height:\s*120px;/s,
+    );
+    expect(designSystemCss).toMatch(
+      /\.sections-quick-card--tall \.sections-quick-card__content\s*\{[^}]*padding:\s*0 4px 4px;/s,
+    );
   });
   beforeEach(() => {
     vi.restoreAllMocks();

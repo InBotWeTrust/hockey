@@ -311,6 +311,7 @@ function ReferralPanel({ summary, onOpen }: { summary: ReferralSummary | undefin
   );
 }
 
+
 function formatRecoveryDuration(minutes: number): string {
   if (minutes === 60) return '1 час';
   return `${minutes} минут`;

@@ -256,6 +256,7 @@ export interface AmateurDuelPeriodLog {
 }
 
 export interface AmateurDuelMatch {
+  state_revision?: number;
   duel_lock?: GameplayLockDTO | null;
   gameplay_lock?: GameplayLockDTO | null;
   id: string;

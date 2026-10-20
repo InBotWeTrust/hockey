@@ -102,3 +102,28 @@ describe('migration transaction modes', () => {
     expect(queries.filter((query) => query.includes('create index concurrently'))).toHaveLength(2);
   });
 });
+
+
+
+const migrationPairs=[
+ ['154_amateur_duel_limit_reservations.sql','156_amateur_duel_limit_reservations.sql'],
+ ['155_ordinary_duel_reward_snapshot.sql','157_ordinary_duel_reward_snapshot.sql'],
+ ['156_inventory_star_purchase_requests.sql','158_inventory_star_purchase_requests.sql'],
+ ['157_monthly_duel_format_rewards.sql','159_monthly_duel_format_rewards.sql'],
+] as const;
+it.each(migrationPairs)('keeps SQL identical for alias %s and %s',async(oldName,newName)=>{
+ expect(await fs.readFile(path.resolve('db/migrations',oldName),'utf8')).toBe(await fs.readFile(path.resolve('db/migrations',newName),'utf8'));
+});
+it.each(migrationPairs.flatMap(([oldName,newName])=>[null,oldName,newName].map(prior=>({oldName,newName,prior}))))('runs equivalent migrations once for $oldName with ledger $prior', async ({oldName,newName,prior}) => {
+ const dir=await fs.mkdtemp(path.join(os.tmpdir(),'hockey-migration-alias-'));
+ tempDirs.push(dir);
+ for(const name of [oldName,newName]) await fs.writeFile(path.join(dir,name),'create table duplicate_guard(id int);');
+ const executed:string[]=[];
+ const pool={
+  query:async()=>({rows:prior?[{name:prior}]:[]}),
+  connect:async()=>({query:async(sql:string)=>{if(sql.startsWith('create table'))executed.push(sql);return {rows:[]};},release(){}})
+ } as unknown as Pool;
+ const result=await applyMigrations(pool,dir);
+ expect(executed).toHaveLength(prior?0:1);
+ expect(result.applied).toHaveLength(prior?0:1);
+});

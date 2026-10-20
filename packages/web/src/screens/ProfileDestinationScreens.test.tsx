@@ -23,7 +23,7 @@ const profile = {
   stats: { shots: 120, goals: 48, accuracy: 40, playStreakDays: 3, bestPlayStreakDays: 8 },
   achievements: [],
 };
-let storyCompleted = false;
+
 
 function renderDestination(path: string, element: JSX.Element): RenderResult {
   const client = new QueryClient({
@@ -42,6 +42,7 @@ function renderDestination(path: string, element: JSX.Element): RenderResult {
   );
 }
 
+let storyCompleted = false;
 let inventoryResponse: InventoryState;
 
 beforeEach(() => {

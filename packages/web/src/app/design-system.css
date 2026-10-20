@@ -1317,6 +1317,11 @@
   letter-spacing: 0.045em;
 }
 
+.game-scoreboard__label--small {
+  font-size: clamp(5px, 1.9cqw, 8px);
+  letter-spacing: 0.045em;
+}
+
 .game-scoreboard__value {
   display: block;
   max-width: 100%;
@@ -2521,6 +2526,11 @@
 .bonus-game-preview-modal__condition-icon {
   flex: 0 0 auto;
   color: var(--liquid-muted);
+}
+
+.bonus-game-preview-modal__condition-lines {
+  display: grid;
+  gap: 2px;
 }
 
 .bonus-game-preview-modal__condition-lines {
@@ -5520,7 +5530,10 @@
 }
 
 .profile-loadout {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 20px) / 3.18);
+  justify-content: start;
   gap: 10px;
   overflow-x: auto;
   overflow-y: hidden;
@@ -5536,7 +5549,6 @@
 
 .profile-loadout-slot {
   min-width: 0;
-  flex: 0 0 calc((100% - 20px) / 3.18);
   display: grid;
   gap: 3px;
   scroll-snap-align: start;
@@ -8529,6 +8541,19 @@ button.profile-story-series-card {
   border-radius: 14px;
   background: var(--liquid-inset-bg);
   color: var(--liquid-muted);
+  box-shadow:
+    0 8px 18px rgba(4, 15, 28, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  text-shadow: none;
+}
+
+.duel-format-warning {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  border-radius: 14px;
+  background: rgba(220, 230, 239, 0.94);
+  color: #334155;
   box-shadow:
     0 8px 18px rgba(4, 15, 28, 0.14),
     inset 0 1px 0 rgba(255, 255, 255, 0.9);

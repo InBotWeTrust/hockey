@@ -1,4 +1,6 @@
 import path from 'node:path';
+import { copyFile, mkdtemp, readdir, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -30,7 +32,18 @@ describe.skipIf(!hasIntegrationEnv)('migration 122 bonus-game reward progression
   beforeAll(async () => {
     pool = createTestPool();
     await resetDatabase(pool);
-    await applyMigrations(pool, MIGRATIONS_DIR);
+    // Assert the reward contract at migration 122, not later catalog replacements.
+    const historicalDir = await mkdtemp(path.join(tmpdir(), 'hockey-reward-migration-122-'));
+    try {
+      for (const name of await readdir(MIGRATIONS_DIR)) {
+        if (name.endsWith('.sql') && name.localeCompare('123_') < 0) {
+          await copyFile(path.join(MIGRATIONS_DIR, name), path.join(historicalDir, name));
+        }
+      }
+      await applyMigrations(pool, historicalDir);
+    } finally {
+      await rm(historicalDir, { recursive: true, force: true });
+    }
   });
 
   afterAll(async () => {

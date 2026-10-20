@@ -34,6 +34,7 @@ import type {
   BonusGameAttempt,
   BonusPeriodLoadoutSelection,
   BonusPeriodRule,
+  MarksmanshipScoreDetails,
 } from '../api/bonusGames.js';
 import { startBonusAttempt } from '../api/bonusGames.js';
 import { fetchMyInventory, type InventoryEquipmentKind } from '../api/inventory.js';

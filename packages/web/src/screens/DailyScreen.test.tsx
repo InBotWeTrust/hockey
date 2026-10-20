@@ -1,5 +1,6 @@
 import {VenuePanorama} from '../components/VenuePanorama.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { socialApi } from '../social/api.js';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -5482,6 +5483,7 @@ describe('DailyScreen', () => {
   });
 
   it('opens player profile from amateur duel rating row', async () => {
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.includes('/duel/training/state')) {
@@ -5572,7 +5574,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
   });
 
   it('shows only played duels in history stats and list', async () => {

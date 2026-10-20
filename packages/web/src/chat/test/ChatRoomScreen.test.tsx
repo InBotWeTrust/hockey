@@ -493,6 +493,7 @@ describe('ChatRoomScreen', () => {
   });
 
   it('opens the direct counterpart profile from the header avatar or name', async () => {
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.mocked(api.fetchChatList).mockResolvedValue([
       {
         id: 'c1',
