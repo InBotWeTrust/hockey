@@ -279,8 +279,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
     ...(config.CLOSEROUTER_API_KEY ? { closeRouterKey: config.CLOSEROUTER_API_KEY } : {}),
     ...(config.OPENAI_API_KEY ? { apiKey: config.OPENAI_API_KEY } : {}),
   });
-  await app.register(durakRoutes);
-  await app.register(barGameRoutes);
+  await app.register(durakRoutes, { backgroundTicksEnabled: config.NODE_ENV !== 'test' });
+  await app.register(barGameRoutes, { backgroundTicksEnabled: config.NODE_ENV !== 'test' });
   await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);

@@ -28,6 +28,7 @@ import { observeCareerActivityStreak } from '../../src/achievements/service.js';
 
 interface QueryPlanNode {
   'Index Name'?: string;
+  'Index Cond'?: string;
   'Relation Name'?: string;
   'Actual Rows'?: number;
   'Actual Loops'?: number;
@@ -1557,7 +1558,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
         `explain (format json) ${countQuery}`, countParams,
       );
       expect(queryPlanNodes(result.rows[0]!['QUERY PLAN'][0]!.Plan)
-        .some((node) => node['Index Name'] === 'shot_session_amateur_duel_idx')).toBe(true);
+        .some((node) => node['Index Name'] !== undefined &&
+          node['Index Cond']?.includes('amateur_duel_match_id'))).toBe(true);
     } finally {
       await client.query('rollback');
       client.release();
@@ -1704,6 +1706,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(shot.statusCode).toBe(200);
     const payload = shot.json();
     expect(Object.keys(payload).sort()).toEqual([
+      'awarded_points',
       'confirmed_shot_index',
       'current_period_inventory',
       'match_id',
@@ -1715,6 +1718,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(payload).toMatchObject({
       match_id: matchId,
       confirmed_shot_index: 1,
+      awarded_points: 0,
       participant: {
         state: 'period_active',
         current_period: 1,
@@ -2734,7 +2738,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(before.json().duel_limits).toMatchObject({
       daily: { used: 0, limit: 8, by_format: { express: 0, express_plus: 0, classic: 0 } },
       weekly: { used: 0, limit: 40 },
-      monthly: { used: 0, limit: 129, format_limit: 43 },
+      monthly: { used: 0, limit: 130, format_limit: 26 },
     });
     const accepted = await app.inject({
       method: 'POST',

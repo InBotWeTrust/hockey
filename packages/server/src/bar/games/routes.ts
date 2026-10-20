@@ -113,7 +113,7 @@ export const gameAction = z.discriminatedUnion('type', [
   z.object({ type: z.literal('ready') }).strict(),
   z.object({ type: z.literal('rules-pause'), paused: z.boolean() }).strict(),
 ]);
-export const barGameRoutes: FastifyPluginAsync = async (app) => {
+export const barGameRoutes: FastifyPluginAsync<{ backgroundTicksEnabled?: boolean }> = async (app, options) => {
   const auth = { preHandler: [app.authenticate] };
   app.post('/bar/games/ochko/offer', auth, (req) => service.proposeOchkoStake(app.pg, req.user.id));
   app.post('/bar/games/ochko/start', auth, (req) =>
@@ -191,6 +191,7 @@ export const barGameRoutes: FastifyPluginAsync = async (app) => {
       .parse(req.body);
     return service.localCards(app.pg, req.user.id, b.id, b.leave, b.finish);
   });
+  if (options.backgroundTicksEnabled === false) return;
   let running = false;
   const timer = setInterval(() => {
     if (running) return;
