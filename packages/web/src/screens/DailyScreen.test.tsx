@@ -1577,9 +1577,9 @@ describe('DailyScreen', () => {
     expect(
       screen.getByLabelText(/Турнир с новой ежедневной игрой\. 1-й тур\. До конца дня/),
     ).toHaveStyle({
-      gridTemplateColumns: 'max-content max-content',
+      'grid-template-columns': 'repeat(2, minmax(0, 1fr))',
       gap: 'clamp(28px, 5vw, 40px)',
-      maxWidth: '360px',
+      'max-width': '360px',
     });
     expect(screen.getByText('До конца дня')).toBeInTheDocument();
     expect(screen.queryByText('До закрытия')).not.toBeInTheDocument();
@@ -3183,7 +3183,7 @@ describe('DailyScreen', () => {
 
     await screen.findByRole('article', { name: 'Активная дуэль: Duel Opponent' });
     expect(screen.getByLabelText(/Ждём завершения игры соперника .*Счёт/)).toHaveStyle({
-      gridTemplateColumns: 'minmax(0, 1fr) auto',
+      'grid-template-columns': 'repeat(2, minmax(0, 1fr))',
     });
     fireEvent.click(screen.getByRole('button', { name: 'Вы сыграли' }));
 
@@ -4226,7 +4226,7 @@ describe('DailyScreen', () => {
 
     const scoreboard = await screen.findByLabelText('Игровое табло');
     expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+      'grid-template-columns': 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
     });
     expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
     expect(within(scoreboard).getByText('1/1')).toBeInTheDocument();
@@ -4321,7 +4321,7 @@ describe('DailyScreen', () => {
 
     const scoreboard = await screen.findByLabelText('Игровое табло');
     expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(4, minmax(0, 1fr))',
+      'grid-template-columns': 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
     });
     expect(within(scoreboard).getByText('ПЕРИОД')).toBeInTheDocument();
     expect(within(scoreboard).getByText('1/1')).toBeInTheDocument();
@@ -6666,11 +6666,11 @@ describe('DailyScreen', () => {
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
     expect(classic).toHaveAttribute('aria-pressed', 'true');
     expect(express.childElementCount).toBe(0);
-    expect(express.style.background).toBe('var(--liquid-selected-bg)');
+    expect(express.style.background).toBe('var(--liquid-choice-selected-bg, var(--liquid-selected-bg))');
 
     fireEvent.click(expressPlus);
     expect(expressPlus).toHaveAttribute('aria-pressed', 'false');
-    expect(expressPlus.style.background).toBe('var(--liquid-inset-bg)');
+    expect(expressPlus.style.background).toBe('transparent');
 
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
 
