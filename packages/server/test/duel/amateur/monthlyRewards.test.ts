@@ -315,6 +315,8 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual(['monthly-top-3']);
   });
 
+  // Bulk payout fixtures need room for slower CI SQL; an early timeout leaves
+  // live transactions racing the next test's cascading truncate.
   it.each([
     [9, 3],
     [10, 3],
@@ -339,6 +341,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
         (await pool.query('select * from monthly_duel_rating_economy_event')).rows,
       ).toHaveLength(rewarded);
     },
+    60_000,
   );
 
   it('pays all five bands into the existing balances and completes unclaimed career achievements', async () => {
@@ -391,7 +394,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       available_delta: 15000,
       metadata: { season_key: '2026-08', stars: 300, tokens: 10 },
     });
-  });
+  }, 60_000);
 
   it('breaks equal monthly points by head-to-head results before total duels', async () => {
     const [headToHeadWinner, tiedOpponent, firstOpponent, secondOpponent] = Array.from(
