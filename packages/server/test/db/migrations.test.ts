@@ -157,7 +157,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     const seededBonusGames = await pool.query<{
       slug: string;
       title: string;
-      skill_code: 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge';
+      skill_code: 'speed' | 'accuracy' | 'marksmanship' | 'endurance' | 'challenge' | 'rhythm';
       sort_order: number;
       unlock_price_stars: number;
       reward_stars: number;
@@ -194,7 +194,7 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
         where game.status = 'active'
         order by game.skill_code, game.sort_order`,
     );
-    expect(seededBonusGames.rows).toHaveLength(50);
+    expect(seededBonusGames.rows).toHaveLength(60);
     const speedTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'speed');
     const accuracyTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'accuracy');
     const marksmanshipTrack = seededBonusGames.rows.filter(
@@ -202,11 +202,14 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     );
     const enduranceTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'endurance');
     const challengeTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'challenge');
+    const rhythmTrack = seededBonusGames.rows.filter((game) => game.skill_code === 'rhythm');
     expect(speedTrack).toHaveLength(10);
     expect(accuracyTrack).toHaveLength(10);
     expect(marksmanshipTrack).toHaveLength(10);
     expect(enduranceTrack).toHaveLength(10);
     expect(challengeTrack).toHaveLength(10);
+    expect(rhythmTrack).toHaveLength(10);
+    expect(rhythmTrack.every((game) => game.qualification_rules.type === 'rhythm_in_time')).toBe(true);
     expect(speedTrack.map((game) => game.sort_order)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     expect(accuracyTrack.map((game) => game.sort_order)).toEqual([
       1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
@@ -285,13 +288,15 @@ describe.skipIf(!hasIntegrationEnv)('applyMigrations', () => {
     ]);
     for (const game of challengeTrack) {
       const locationSlug = game.slug.replace('challenge-', '');
-      expect(game.preview_artwork_url).toBe(`/bonus-games/location-cards/${locationSlug}.webp`);
+      expect(game.preview_artwork_url).toBe(locationSlug === 'beach'
+        ? '/bonus-games/location-cards/beach-match.png'
+        : `/bonus-games/location-cards/${locationSlug}.webp`);
     }
     expect(challengeTrack[0]?.challenge_environment).toMatchObject({
       baseModifiers: {
         shooterMultiplier: 0.9,
         puckSpeedMultiplier: 0.9,
-        label: 'Лёд тает · игрок −10% · шайба −10%',
+        label: 'Лёд тает',
       },
       fatigue: { slowdownStartMs: 8_000 },
     });
