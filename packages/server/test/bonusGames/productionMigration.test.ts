@@ -28,10 +28,14 @@ describe.skipIf(!hasIntegrationEnv)('bonus-only production migration', () => {
   it('preserves existing game IDs, progress and attempt snapshots over the main schema', async () => {
     const pool = createTestPool();
     const baseline = await mkdtemp(path.join(tmpdir(), 'hockey-bonus-main-schema-'));
+    const release = await mkdtemp(path.join(tmpdir(), 'hockey-bonus-through-210-'));
     try {
       await resetDatabase(pool);
       for (const name of await readdir(migrations)) {
-        if (name.endsWith('.sql') && !selected.has(name)) {
+        // This historical partial release ends at migration 210.
+        if (!name.endsWith('.sql') || name >= '211_') continue;
+        await copyFile(path.join(migrations, name), path.join(release, name));
+        if (!selected.has(name)) {
           await copyFile(path.join(migrations, name), path.join(baseline, name));
         }
       }
@@ -75,7 +79,7 @@ describe.skipIf(!hasIntegrationEnv)('bonus-only production migration', () => {
         values ($1,$2,$3,'{"coins":100,"stars":5,"experience":5}')`,
       [user.id, first.rows[0]!.id, historicId]);
       const progress = await pool.query('select * from user_bonus_game_completion where user_id=$1', [user.id]);
-      const applied = await applyMigrations(pool, migrations);
+      const applied = await applyMigrations(pool, release);
       expect(new Set(applied.applied)).toEqual(selected);
       expect((await pool.query('select * from bonus_game_attempt where user_id=$1 order by id', [user.id])).rows).toEqual(oldAttempt.rows.map(row => ({ ...row, challenge_level: null })));
       expect((await pool.query('select * from user_bonus_game_completion where user_id=$1', [user.id])).rows).toEqual(progress.rows);
@@ -104,10 +108,11 @@ describe.skipIf(!hasIntegrationEnv)('bonus-only production migration', () => {
       expect(resumed.created).toBe(false);
       expect(resumed.attempt.gameCoreVersion).toBe(63);
       expect(resumed.attempt.rules).toEqual(oldAttempt.rows.find(row => row.id === activeId)!.rules_snapshot);
-      expect((await applyMigrations(pool, migrations)).applied).toEqual([]);
+      expect((await applyMigrations(pool, release)).applied).toEqual([]);
     } finally {
       await pool.end();
       await rm(baseline, { recursive: true, force: true });
+      await rm(release, { recursive: true, force: true });
     }
   }, 30_000);
 });

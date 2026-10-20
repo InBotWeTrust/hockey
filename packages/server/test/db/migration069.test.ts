@@ -203,7 +203,11 @@ describe.skipIf(!hasIntegrationEnv)('069 bonus skill catalogue reset', () => {
       [archivedExtraGameId, archivedExtraArenaId],
     );
 
-    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    // Keep this historical refund fixture at the schema contract it exercises.
+    const through124 = await createMigrationsDirBefore('125_');
+    let applied;
+    try { applied = await applyMigrations(pool, through124); }
+    finally { await fs.rm(through124, { recursive: true, force: true }); }
     expect(applied.applied).toEqual(expect.arrayContaining([
       '069_bonus_game_qualifications.sql',
       '069_official_dialogs.sql',

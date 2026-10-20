@@ -1,4 +1,4 @@
-import {classifyMarksmanshipShot,getGoalie,getSessionPhaseOffsets,DEFAULT_MARKSMANSHIP_V6_SCORING_RULES} from '@hockey/game-core';
+import {STICK_NEUTRAL,classifyMarksmanshipShot,getGoalie,getSessionPhaseOffsets,DEFAULT_MARKSMANSHIP_V6_SCORING_RULES} from '@hockey/game-core';
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -153,7 +153,7 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     let input=shot.input_payload;
     for(let tapTime=0;tapTime<20000;tapTime+=50){
       input={...shot.input_payload,tapTime,shooterTapTime:tapTime};
-      const classification=classifyMarksmanshipShot({shotInput:input,goalie:getGoalie(rules.goalieId),seed:shot.seed,shotIndex:1,phaseOffsets:getSessionPhaseOffsets(matchRow.match_seed),earliestTapTime:0,scoring:rules.sniperScoring??DEFAULT_MARKSMANSHIP_V6_SCORING_RULES});
+      const classification=classifyMarksmanshipShot({stickEffects:STICK_NEUTRAL,shotInput:input,goalie:getGoalie(rules.goalieId),seed:shot.seed,shotIndex:1,phaseOffsets:getSessionPhaseOffsets(matchRow.match_seed),earliestTapTime:0,scoring:rules.sniperScoring??DEFAULT_MARKSMANSHIP_V6_SCORING_RULES});
       if(classification.result.type==='goal'&&classification.v6Score){accepted=classification;break;}
     }
     expect(accepted?.v6Score).toBeTruthy();
@@ -263,7 +263,8 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     const id=(await challenge(kind)).json().match.id;
     const post=(path:string,player:number,payload?:object)=>app.inject({method:'POST',url:`/duel/amateur/matches/${id}/${path}`,headers:players[player]!.headers,...(payload?{payload}:{})});
     await post('accept',1);
-    for(const player of [0,1]) { await post('ready',player,{loadout:{}}); await post('period/start',player); }
+    for(const player of [0,1]) expect((await post('ready',player,{loadout:{}})).statusCode).toBe(200);
+    for(const player of [0,1]) expect((await post('period/start',player)).statusCode).toBe(200);
     expect((await post('period/finish',0)).statusCode).toBe(409);
     const duration=kind==='sniper'?150000:240000;
     await app.pg.query("update amateur_duel_participant set period_started_at=now()-($2::int*interval '1 millisecond'),period_paused_ms=10000 where match_id=$1 and user_id=$3",[id,duration+100,players[0]!.id]);

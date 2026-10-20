@@ -505,8 +505,8 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
   it('preserves and locks naval preparation, hides enemy fleets, and starts after five seconds',async()=>{
     let v=await startComputer(pool,a,'timofey',randomUUID());
     expect(v.ready?.players).toEqual([1]);
-    expect(v.ready!.expiresAt-v.serverNow).toBeGreaterThan(89000);
-    expect(v.ready!.expiresAt-v.serverNow).toBeLessThanOrEqual(90000);
+    expect(v.ready!.expiresAt-v.serverNow).toBeGreaterThan(239000);
+    expect(v.ready!.expiresAt-v.serverNow).toBeLessThanOrEqual(240000);
     expect(v.runtime.game.kind==='battleship' && v.runtime.game.ownShips).toEqual([]);
     await expect(actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'ready'}})).rejects.toMatchObject({statusCode:409});
     v=await actGame(pool,a,v.id,{requestId:randomUUID(),revision:v.runtime.revision,action:{type:'naval-deploy',shipId:'carrier',seed:1}});

@@ -32,13 +32,13 @@ function classify(scoring: typeof DEFAULT_MARKSMANSHIP_SCORING_RULES |
 }
 
 describe('marksmanship score details', () => {
-  it('accepts the previous core version for saved bonus attempts only', () => {
+  it('accepts saved bonus attempts from compatible shot engines and legacy bonus versions', () => {
     expect(typeof bonusService.supportsBonusGameCoreVersion).toBe('function');
     expect(bonusService.supportsBonusGameCoreVersion(64)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(65)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(61)).toBe(false);
-    for (const version of [88, 89, 90, 91, 92, 93, 94]) expect(bonusService.supportsBonusGameCoreVersion(version)).toBe(true);
-    expect(bonusService.supportsBonusGameCoreVersion(95)).toBe(false);
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117]) expect(bonusService.supportsBonusGameCoreVersion(version)).toBe(true);
+    expect(bonusService.supportsBonusGameCoreVersion(118)).toBe(false);
     expect(bonusService.supportsBonusGameCoreVersion(66)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(67)).toBe(true);
   });

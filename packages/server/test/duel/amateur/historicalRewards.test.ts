@@ -52,6 +52,17 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
     for (const name of ['183_ordinary_duel_fight_clocks.sql', '184_ordinary_duel_fights.sql']) {
       await pool.query(await fs.readFile(path.join(migrations, name), 'utf8'));
     }
+    // Current readers select these additive format fields; leave historical
+    // rules, rewards and balances untouched for the migration-121 assertions.
+    await pool.query(`alter table amateur_duel_template
+      add column marathon_window_ms integer not null default 7000,
+      add column sniper_scoring_rules jsonb,
+      add column marathon_speed_stages jsonb`);
+    await pool.query(`alter table amateur_duel_participant
+      add column fight_aid_until timestamptz,
+      add column result_paused_ms integer not null default 0,
+      add column result_pause_starts_at timestamptz,
+      add column result_pause_ends_at timestamptz`);
     await pool.end();
     const { databaseUrl, redisUrl } = getTestUrls();
     app = await buildApp({
