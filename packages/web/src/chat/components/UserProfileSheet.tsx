@@ -30,7 +30,7 @@ import { useAuthStore } from '../../auth/authStore.js';
 import { DuelChallengeModal, hasOpenDuelWithUser } from './DuelChallengeModal.js';
 import { Sheet } from '../../components/Sheet.js';
 import { TrophyHistoryModal, type TrophySectionKey } from '../../screens/ProfileScreen.js';
-import { CommunityLinks } from '../../components/CommunityLinks.js';
+import { CommunitySection } from '../../components/CommunityLinks.js';
 import { AppToast } from '../../components/AppToast.js';
 import { allFormatsBlockedCopy } from './duelAvailabilityCopy.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
@@ -291,7 +291,7 @@ function OfficialAccountSheet({
             <div>Новости игры, обновления и поддержка</div>
           </div>
         </div>
-        <CommunityLinks />
+        <CommunitySection />
         {!hideMessageAction && (
           <button
             type="button"

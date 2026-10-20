@@ -25,7 +25,7 @@ beforeEach(() => {
   vi.mocked(fetchOlegFight).mockImplementation(async (id) => snapshot(id));
 });
 it('freezes street lighting through the result across a day phase boundary', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 16, 20, 59, 59));
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 16, 19, 29, 59));
   const view = render(<OlegFightPanel id="one" onDone={() => {}}/>);
   try {
     await act(async () => {});

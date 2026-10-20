@@ -27,7 +27,7 @@ it('keeps loaded artwork until the floor and all new wall sections decode and ig
   hook.unmount();
 });
 it('keeps the last good phase on failure and retries only requested artwork', async () => {
-  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 16, 20, 59, 59));
+  vi.useFakeTimers(); vi.setSystemTime(new Date(2026, 9, 16, 19, 29, 59));
   const decode = vi.fn().mockRejectedValueOnce(new Error('network')).mockResolvedValue(undefined);
   vi.stubGlobal('Image', class {src = ''; decode = decode;});
   const hook = renderHook(() => useBarLighting('blocked'));

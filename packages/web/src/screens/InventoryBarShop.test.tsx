@@ -71,13 +71,11 @@ function mount(entry = '/inventory') {
     </QueryClientProvider>,
   );
 }
-it('places Bar last in the existing category grid and opens the same product row layout', async () => {
+it('places Bar last in circular navigation and opens the same product row layout', async () => {
   const view = mount();
-  const bar = await screen.findByRole('button', { name: 'Открыть раздел Бар' });
-  expect(bar).toHaveClass('inventory-category-card');
-  expect(view.container.querySelector('.inventory-category-grid')?.lastElementChild).toBe(bar);
-  expect(within(bar).getByText('4 товара')).toBeInTheDocument();
-  expect(screen.queryByRole('button', { name: 'Бар' })).not.toBeInTheDocument();
+  const bar = await screen.findByRole('tab', { name: 'Бар' });
+  expect(screen.getAllByRole('tab').at(-1)).toBe(bar);
+  expect(bar).toHaveAttribute('aria-selected', 'false');
   fireEvent.click(bar);
   expect(await screen.findByRole('heading', { name: 'Бар' })).toBeInTheDocument();
   expect(view.container.querySelectorAll('.inventory-product-card')).toHaveLength(4);
@@ -90,8 +88,8 @@ it('places Bar last in the existing category grid and opens the same product row
   expect(within(dialog).getByRole('button', { name: 'Купить за 300 звёзд' })).toBeInTheDocument();
   expect(screen.queryByRole('button', { name: 'Подтвердить покупку' })).not.toBeInTheDocument();
   fireEvent.click(within(dialog).getByRole('button', { name: 'Закрыть' }));
-  fireEvent.click(screen.getByRole('button', { name: 'К разделам магазина' }));
-  expect(await screen.findByRole('button', { name: 'Открыть раздел Бар' })).toBeInTheDocument();
+  fireEvent.click(screen.getAllByRole('tab')[0]!);
+  expect(screen.getByRole('tab', { name: 'Бар' })).toHaveAttribute('aria-selected', 'false');
 });
 it('supports opening the Bar category directly without an extra toggle', async () => {
   const view = mount('/inventory?category=bar');

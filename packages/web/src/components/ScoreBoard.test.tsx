@@ -70,7 +70,7 @@ describe('ScoreBoard', () => {
       'game-scoreboard--stable-surface',
     );
     expect(screen.getByTestId('scoreboard-row-summary')).toHaveStyle({
-      gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+      gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr)',
     });
     expect(screen.getByTestId('scoreboard-row-opponent')).toHaveClass(
       'game-scoreboard__row--secondary',

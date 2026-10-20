@@ -111,6 +111,10 @@ describe('App routing + auth', () => {
     localStorage.clear();
     window.history.replaceState({}, '', '/');
     vi.restoreAllMocks();
+    Object.defineProperty(HTMLImageElement.prototype, 'decode', {
+      configurable: true,
+      value: vi.fn().mockResolvedValue(undefined),
+    });
     useAuthStore.getState().clearSession();
     vi.mocked(fetchRequiredOnboarding).mockReset().mockResolvedValue({ required: null });
     vi.mocked(startOnboarding).mockReset();
@@ -211,7 +215,7 @@ describe('App routing + auth', () => {
 
     render(<App />);
 
-    expect(await screen.findByText('Ты в любительской лиге')).toBeInTheDocument();
+    expect(await screen.findByRole('main', { name: 'Обязательный онбординг' })).toBeInTheDocument();
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
     expect(screen.queryByTestId('chat-realtime')).not.toBeInTheDocument();
     expect(screen.queryByTestId('duel-invite-toast')).not.toBeInTheDocument();
@@ -245,14 +249,14 @@ describe('App routing + auth', () => {
     window.history.replaceState({}, '', '/profile');
     window.history.pushState({}, '', '/inventory');
     render(<App />);
-    await screen.findByText('Обязательный шаг');
+    await screen.findByRole('main', { name: 'Обязательный онбординг' });
 
     await act(async () => {
       window.history.replaceState({}, '', '/profile');
       window.dispatchEvent(new PopStateEvent('popstate'));
     });
 
-    expect(screen.getByText('Обязательный шаг')).toBeInTheDocument();
+    expect(screen.getByRole('main', { name: 'Обязательный онбординг' })).toBeInTheDocument();
     expect(screen.queryByText('Инвентарь')).not.toBeInTheDocument();
   });
 
@@ -263,7 +267,7 @@ describe('App routing + auth', () => {
 
   it('shows /prices to a logged-out visitor without private app controls', async () => {
     window.history.replaceState({}, '', '/prices');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           packages: [
@@ -317,7 +321,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/prices');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           packages: [
@@ -377,7 +381,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/bonus-games');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ games: [], active_attempt: null }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -401,7 +405,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/profile/achievements');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
@@ -425,7 +429,7 @@ describe('App routing + auth', () => {
       user: { id: 'u', displayName: 'A' },
     });
     window.history.replaceState({}, '', '/profile/achievements');
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({}), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
