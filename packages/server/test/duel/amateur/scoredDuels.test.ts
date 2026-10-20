@@ -1,3 +1,4 @@
+import {classifyMarksmanshipShot,getGoalie,getSessionPhaseOffsets,DEFAULT_MARKSMANSHIP_V6_SCORING_RULES} from '@hockey/game-core';
 import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
 import { resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
@@ -134,6 +135,44 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
       expect(row.period_rules[0]).toMatchObject({ mode: 'time_attack', shotsLimit: null, durationMs: kind === 'sniper' ? 150000 : 240000 });
     }
   });
+
+  it('returns accepted and legacy shot categories for both players in result and history details', async () => {
+    const invited = await challenge('sniper');
+    const id = invited.json().match.id;
+    const post = (path:string,player:number,payload?:object) => app.inject({method:'POST',url:`/duel/amateur/matches/${id}/${path}`,headers:players[player]!.headers,...(payload?{payload}:{})});
+    expect((await post('accept',1)).statusCode).toBe(200);
+    for(const player of [0,1]) {
+      expect((await post('ready',player,{loadout:{}})).statusCode).toBe(200);
+    }
+    for(const player of [0,1]) expect((await post('period/start',player)).statusCode).toBe(200);
+    expect((await post('shot',0,{shot_index:1,input:{tapTime:0},claimed_result:'goal'})).statusCode).toBe(200);
+    const shot=(await app.pg.query('select * from shot_session where amateur_duel_match_id=$1',[id])).rows[0];
+    const matchRow=(await app.pg.query('select * from amateur_duel_match where id=$1',[id])).rows[0];
+    const rules=matchRow.rules_snapshot;
+    let accepted:ReturnType<typeof classifyMarksmanshipShot>|null=null;
+    let input=shot.input_payload;
+    for(let tapTime=0;tapTime<20000;tapTime+=50){
+      input={...shot.input_payload,tapTime,shooterTapTime:tapTime};
+      const classification=classifyMarksmanshipShot({shotInput:input,goalie:getGoalie(rules.goalieId),seed:shot.seed,shotIndex:1,phaseOffsets:getSessionPhaseOffsets(matchRow.match_seed),earliestTapTime:0,scoring:rules.sniperScoring??DEFAULT_MARKSMANSHIP_V6_SCORING_RULES});
+      if(classification.result.type==='goal'&&classification.v6Score){accepted=classification;break;}
+    }
+    expect(accepted?.v6Score).toBeTruthy();
+    const technique=accepted!.v6Score!.technique,points=accepted!.awardedPoints;
+    // Synthetic accepted rows in this dedicated test DB cover saved and legacy formats.
+    await app.pg.query("update shot_session set input_payload=$2,server_result='goal',awarded_points=$3 where id=$1",[shot.id,JSON.stringify({...input,sniperTechnique:technique}),points]);
+    await app.pg.query("insert into shot_session(user_id,mode,amateur_duel_match_id,period_number,shot_index,seed,input_payload,server_result,game_core_version,created_at,awarded_points) values($1,'amateur_duel',$2,1,1,$3,$4,'goal',$5,now(),$6)",[players[1]!.id,id,shot.seed,JSON.stringify(input),shot.game_core_version,points]);
+    await app.pg.query("update amateur_duel_participant set shots_taken=1,goals=1,period_started_at=now()-interval '194 seconds' where match_id=$1",[id]);
+    const result=await post('settle',0);
+    expect(result.statusCode).toBe(200);
+    const expected=[{category:technique,count:1,points:points/10}];
+    expect(result.json().match.me.sniper_breakdown).toEqual(expected);
+    expect(result.json().match.opponent.sniper_breakdown).toEqual(expected);
+    const details=await app.inject({url:`/duel/amateur/matches/${id}`,headers:players[0]!.headers});
+    expect(details.statusCode).toBe(200);
+    expect(details.json().match.me.sniper_breakdown).toEqual(expected);
+    expect(details.json().match.opponent.sniper_breakdown).toEqual(expected);
+  });
+
   it('returns the same confirmed shot on retry without duplicating statistics', async () => {
     const invited = await challenge('sniper');
     const id = invited.json().match.id;

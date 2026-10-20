@@ -51,7 +51,9 @@ it('starts the returned fight immediately and leaves won rooms empty',async()=>{
 it('offers an ordinary Elina conversation with no game and no idle warning',async()=>{
  vi.useFakeTimers();vi.mocked(staffRoomEvent).mockResolvedValue({phase:'seated',warnAfterMs:0,day:'2026-10-20'});
  const view=mount();await act(async()=>{});fireEvent.load(view.container.querySelector('img')!);
- expect(screen.getByRole('button',{name:'Разговор'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Разговор'})).toHaveClass('icon-btn');
+ expect(screen.getByRole('button',{name:'Подробнее'})).toHaveClass('icon-btn');
+ expect(screen.getByRole('button',{name:'Разговор'})).toHaveTextContent('');
  expect(screen.queryByRole('button',{name:'Игры'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Поговорить с Элиной'}));
  expect(screen.getByText('Разговор с Элина')).toBeInTheDocument();
