@@ -20,7 +20,7 @@ const action = z.discriminatedUnion('type', [
   z.object({ type: z.literal('take') }),
   z.object({ type: z.literal('finish') }),
 ]);
-export const durakRoutes: FastifyPluginAsync = async (app) => {
+export const durakRoutes: FastifyPluginAsync<{ backgroundTicksEnabled?: boolean }> = async (app, options) => {
   const auth = { preHandler: [app.authenticate] };
   app.post('/bar/cards/rooms', auth, (req) => {
     const body = z
@@ -127,6 +127,7 @@ export const durakRoutes: FastifyPluginAsync = async (app) => {
         .parse(req.body),
     ),
   );
+  if (options.backgroundTicksEnabled === false) return;
   let running = false;
   const timer = setInterval(() => {
     if (running) return;

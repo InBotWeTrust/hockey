@@ -9,16 +9,16 @@ describe('amateur duel limits', () => {
     );
     expect(definitions.get('amateur.limits.daily')).toBe(8);
     expect(definitions.get('amateur.limits.weekly')).toBe(40);
-    expect(definitions.get('amateur.limits.monthly')).toBe(129);
-    expect(definitions.get('amateur.limits.per_format_monthly')).toBe(43);
+    expect(definitions.get('amateur.limits.monthly')).toBe(130);
+    expect(definitions.get('amateur.limits.per_format_monthly')).toBe(26);
     expect(definitions.get('amateur.limits.outgoing_invites')).toBe(2);
 
     const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
     expect(settings.amateur.limits).toEqual({
       daily: 8,
       weekly: 40,
-      monthly: 129,
-      perFormatMonthly: 43,
+      monthly: 130,
+      perFormatMonthly: 26,
       outgoingInvites: 2,
     });
   });
