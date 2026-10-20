@@ -80,17 +80,17 @@ describe.skipIf(!hasIntegrationEnv)('advanced training V2 lifecycle', () => {
     return started.json().state;
   };
 
-  it('shows eight V2 categories with 0/8 progress despite a V1 completion', async () => {
+  it('preserves the original eight-category catalog and V1 completion', async () => {
     await pool.query(`insert into advanced_training_completion
       (user_id, exercise_key, assessment_successes, reward_stars, reward_experience)
       values ($1, 'counter-direction', 7, 1, 1)`, [userId]);
     const response = await app.inject({ method: 'GET', url: '/duel/training/course', headers: headers() });
     expect(response.statusCode).toBe(200);
-    expect(response.json().legacy_advanced_training).toMatchObject({
-      completed_count: 0, total_count: 8,
+    expect(response.json().advanced_training).toMatchObject({
+      completed_count: 1, total_count: 8,
     });
-    expect(response.json().legacy_advanced_training.exercises[0]).toMatchObject({
-      key: 'near_goalie', title: 'Вратарь рядом', state: 'available',
+    expect(response.json().advanced_training.exercises[0]).toMatchObject({
+      key: 'board-side', state: 'available',
     });
   });
 
