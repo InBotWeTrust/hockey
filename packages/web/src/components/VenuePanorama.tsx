@@ -1,3 +1,7 @@
+const ApartmentPage = lazy(() =>
+  import('../venue/ApartmentPages.js').then((m) => ({ default: m.ApartmentPage })),
+);
+const TaskPage = lazy(() => import('../venue/TaskPages.js').then((m) => ({ default: m.TaskPage })));
 import { Suspense, lazy } from 'react';
 const StadiumPage = lazy(() =>
   import('../venue/StadiumPages.js').then((m) => ({ default: m.StadiumPage })),
@@ -88,32 +92,41 @@ export function VenuePanorama({
     const history = readColumnHistory(keyFor(id), toLocation(page.href));
     return history[history.length - 1]!;
   };
-  const renderPage =
-    scene.id === 'stadium' || scene.id === 'yard'
-      ? (id: string) => {
-          if (scene.id === 'yard' && ['course', 'advanced'].includes(id) && !exercisesEnabled)
-            return <p className="modal-copy">В разработке</p>;
-          return (
-            <ColumnNavigationProvider
-              key={`${owner}:${scene.id}:${id}`}
-              pageKey={keyFor(id)}
-              initialLocation={scene.selected === id ? location : pageLocation(id)}
-              active={scene.selected === id}
-              onActivate={(next, options) => navigate(next, options)}
-              onGame={(next) => navigate(next)}
-              isGame={isGameLocation}
-            >
-              <Suspense fallback={<p role="status">Загрузка…</p>}>
-                {scene.id === 'stadium' ? (
-                  <StadiumPage id={id as 'daily' | 'duels' | 'tournaments'} />
-                ) : (
-                  <YardPage id={id as 'daily' | 'open' | 'course' | 'advanced'} />
-                )}
-              </Suspense>
-            </ColumnNavigationProvider>
-          );
-        }
-      : undefined;
+  const renderPage = ['stadium', 'yard', 'apartment', 'tasks'].includes(scene.id)
+    ? (id: string) => {
+        if (scene.id === 'yard' && ['course', 'advanced'].includes(id) && !exercisesEnabled)
+          return <p className="modal-copy">В разработке</p>;
+        return (
+          <ColumnNavigationProvider
+            key={`${owner}:${scene.id}:${id}`}
+            pageKey={keyFor(id)}
+            baseLocation={toLocation(scene.pages.find((page) => page.id === id)!.href)}
+            initialLocation={scene.selected === id ? location : pageLocation(id)}
+            active={scene.selected === id}
+            onActivate={(next, options) => navigate(next, options)}
+            onGame={(next) => navigate(next)}
+            isGame={isGameLocation}
+          >
+            <Suspense fallback={<p role="status">Загрузка…</p>}>
+              {scene.id === 'stadium' ? (
+                <StadiumPage id={id as 'daily' | 'duels' | 'tournaments'} />
+              ) : scene.id === 'yard' ? (
+                <YardPage id={id as 'daily' | 'open' | 'course' | 'advanced'} />
+              ) : scene.id === 'apartment' ? (
+                <ApartmentPage
+                  id={id as 'profile' | 'rewards' | 'friends' | 'settings' | 'story'}
+                />
+              ) : (
+                <TaskPage
+                  id={id as 'tasks' | 'challenges'}
+                  profileContext={location.pathname.startsWith('/profile/')}
+                />
+              )}
+            </Suspense>
+          </ColumnNavigationProvider>
+        );
+      }
+    : undefined;
   return (
     <VenueContext.Provider value={context}>
       {developmentToast && (

@@ -77,3 +77,21 @@ it('restores an active location from browser navigation', () => {
   );
   expect(screen.getByText('left')).toBeInTheDocument();
 });
+it('returns a direct detail link to the column base', () => {
+  render(
+    <MemoryRouter>
+      <ColumnNavigationProvider
+        pageKey={{ owner: 'a', venueId: 'home', pageId: 'left' }}
+        initialLocation={loc('?detail=1')}
+        baseLocation={loc('?list=1')}
+        active={true}
+        onActivate={vi.fn()}
+        onGame={vi.fn()}
+      >
+        <Page name="left" />
+      </ColumnNavigationProvider>
+    </MemoryRouter>,
+  );
+  fireEvent.click(screen.getByText('left back'));
+  expect(screen.getByText('left?list=1')).toBeVisible();
+});

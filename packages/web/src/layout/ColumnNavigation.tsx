@@ -30,6 +30,8 @@ const same = (a: ColumnLocation, b: ColumnLocation) => createPath(a) === createP
 export function ColumnNavigationProvider({
   pageKey,
   initialLocation,
+  baseLocation = initialLocation,
+  showBack = true,
   active,
   onActivate,
   onGame,
@@ -38,6 +40,8 @@ export function ColumnNavigationProvider({
 }: {
   pageKey: ColumnKey;
   initialLocation: ColumnLocation;
+  baseLocation?: ColumnLocation;
+  showBack?: boolean;
   active: boolean;
   onActivate: Navigate;
   onGame: (location: ColumnLocation) => void;
@@ -45,7 +49,12 @@ export function ColumnNavigationProvider({
   children: ReactNode;
 }) {
   const outer = useContext(UNSAFE_NavigationContext);
-  const [history, setHistory] = useState(() => readColumnHistory(pageKey, initialLocation));
+  const [history, setHistory] = useState(() => {
+    const saved = readColumnHistory(pageKey, baseLocation);
+    return active && !same(saved[saved.length - 1]!, initialLocation)
+      ? [...saved, initialLocation]
+      : saved;
+  });
   const location = history[history.length - 1]!;
   const initialPath = createPath(initialLocation);
   useEffect(() => {
@@ -139,6 +148,13 @@ export function ColumnNavigationProvider({
           }}
         >
           <UNSAFE_RouteContext.Provider value={{ outlet: null, matches, isDataRoute: false }}>
+            {showBack && history.length > 1 && (
+              <div className="column-local-back">
+                <button type="button" className="btn btn--ghost" data-section-back onClick={back}>
+                  Назад
+                </button>
+              </div>
+            )}
             {children}
           </UNSAFE_RouteContext.Provider>
         </UNSAFE_LocationContext.Provider>
