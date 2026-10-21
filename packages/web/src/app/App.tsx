@@ -1,3 +1,4 @@
+import {GameNavigationBoundary} from '../layout/GameNavigationBoundary.js';
 import {appSurface} from '../layout/appSurface.js';
 import '../layout/wide-shell.css';
 import {clearColumnHistory} from '../layout/columnNavigationStore.js';
@@ -382,6 +383,7 @@ function AppExperience(): JSX.Element {
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
+      <GameNavigationBoundary owner={user?.id??null}>
       <div
         data-surface={surface}
         className={`app-shell${wideSurface?' app-shell--wide':''} ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
@@ -672,6 +674,7 @@ function AppExperience(): JSX.Element {
         </div>
         {user&&<FloatingChatShortcut owner={user.id} unreadCount={unreadMessageCount}/>}
       </div>
+      </GameNavigationBoundary>
     </>
   );
 }

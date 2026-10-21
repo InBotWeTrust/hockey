@@ -1,3 +1,4 @@
+import {trainingPeriodFromSearch} from '../layout/trainingPeriod.js';
 import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
@@ -3599,7 +3600,7 @@ const INITIAL_TRAINING_COURSE_QUERY_KEY = ['training', 'course'] as const;
 
 export function TrainingOverview(): JSX.Element {
   const navigate = useNavigate();
-  return <TrainingPlaceholder onBack={()=>navigate('/sections')} onPlayStart={()=>navigate('/?view=training&section=open&play=1&from=sections')}/>;
+  return <TrainingPlaceholder onBack={()=>navigate('/sections')} onPlayStart={period=>navigate(`/?view=training&section=open&play=1&from=sections&period=${period??1}`)}/>;
 }
 
 function TrainingPlaceholder({
@@ -3615,7 +3616,7 @@ function TrainingPlaceholder({
   autoPlay?: boolean;
   onBack: () => void;
   onPlayHome?: () => void;
-  onPlayStart?: () => void;
+  onPlayStart?: (period?:1|2|3) => void;
   playEntranceOnStart?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnStart?: boolean;
@@ -3630,7 +3631,7 @@ function TrainingPlaceholder({
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
   const start = useTrainingSessionStore((s) => s.start);
-  const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
+  const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(()=>trainingPeriodFromSearch(location.search)??1);
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -3674,9 +3675,9 @@ function TrainingPlaceholder({
 
   useEffect(() => {
     if (data?.selected_period === 1 || data?.selected_period === 2 || data?.selected_period === 3) {
-      setSelectedPeriod(data.selected_period);
+      setSelectedPeriod(trainingPeriodFromSearch(location.search)??data.selected_period);
     }
-  }, [data?.selected_period]);
+  }, [data?.selected_period,location.search]);
 
   useEffect(() => {
     if (!autoPlay && data?.state !== 'active') setPlayTraining(false);
@@ -3716,7 +3717,7 @@ function TrainingPlaceholder({
       if (switched === null) return;
     }
     setPlayTraining(true);
-    onPlayStart?.();
+    onPlayStart?.(selectedPeriod);
   };
 
   const trainingParams = new URLSearchParams(location.search);
