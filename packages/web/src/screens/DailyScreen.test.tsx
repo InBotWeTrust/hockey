@@ -5562,7 +5562,8 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Публичный спортивный паспорт' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Предложить сыграть в баре' })).toBeInTheDocument();
   });
 
   it('shows only played duels in history stats and list', async () => {
@@ -6883,13 +6884,19 @@ describe('DailyScreen', () => {
       return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
     });
     renderWith(['/?view=amateur&section=duels']);
-    for (const label of ['Экспресс', 'Микс', 'Классика']) fireEvent.click(await screen.findByRole('button', { name: label }));
-    for (const window of windows) fireEvent.click(await screen.findByRole('button', { name: `Марафон · ${window / 1000} сек` }));
+    for (const label of ['Экспресс', 'Микс', 'Классика', 'Снайпер', 'Ритм']) {
+      const chip = await screen.findByRole('button', { name: label, exact: true });
+      if (chip.getAttribute('aria-pressed') === 'true') fireEvent.click(chip);
+    }
+    for (const window of [7000, 4000]) {
+      const chip = await screen.findByRole('button', { name: `Марафон · ${window / 1000} сек` });
+      if ((chip.getAttribute('aria-pressed') === 'true') !== windows.includes(window)) fireEvent.click(chip);
+    }
     expect(screen.getByText('Форматы поиска').style.transform).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
-      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['marathon'], marathon_windows_ms: windows });
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['marathon'], marathon_windows_ms: [...windows].sort((a, b) => a - b) });
     });
   });
 
