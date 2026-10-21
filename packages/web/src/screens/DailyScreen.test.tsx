@@ -4417,7 +4417,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&section=course'],undefined,undefined,true);
     await screen.findByRole('heading',{name:'Начальное обучение'});
     fireEvent.click(screen.getByRole('button',{name:'Назад'}));
-    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/sections$/);
   });
   it('shows the initial-course hub and opens its seven-card catalog when enabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

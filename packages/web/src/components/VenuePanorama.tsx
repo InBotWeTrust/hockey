@@ -195,7 +195,7 @@ export function VenuePanorama({
     [],
   );
   const updateReferrals = useCallback((count:number)=>update('friends',count),[update]);
-  const onBack = useCallback(() => navigate('/sections?home=1'), [navigate]);
+  const onBack = useCallback(() => navigate('/sections'), [navigate]);
   const context = useMemo(() => ({ onBack, setAttention: update }), [onBack, update]);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
