@@ -1,6 +1,6 @@
 import { X } from 'lucide-react';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-const numberText = (value: number) => new Intl.NumberFormat('ru-RU').format(value);
+import { PurchaseAction } from './PurchaseAction.js';
 export function ShopPurchaseModal({
   title,
   copy,
@@ -51,22 +51,9 @@ export function ShopPurchaseModal({
           </div>
         )}
         <div style={{ display: 'grid', gap: 8 }}>
-          <button
-            type="button"
-            className="modal-primary btn--cta"
-            onClick={() => onConfirm('coins')}
-            disabled={isSaving || !canBuyCoins}
-          >
-            {isSaving ? 'Покупка...' : `Купить за ${numberText(coinPrice)} монет`}
-          </button>
-          <button
-            type="button"
-            className="modal-primary btn--cta"
-            onClick={() => onConfirm('stars')}
-            disabled={isSaving || !canBuyStars}
-          >
-            {isSaving ? 'Покупка...' : `Купить за ${numberText(starPrice)} звёзд`}
-          </button>
+          <PurchaseAction amount={coinPrice} currency="coins" pending={isSaving} disabled={!canBuyCoins} onClick={() => onConfirm('coins')}/>
+          <PurchaseAction amount={starPrice} currency="stars" pending={isSaving} disabled={!canBuyStars} onClick={() => onConfirm('stars')}/>
+
         </div>
       </div>
     </AccessibleModal>
