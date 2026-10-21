@@ -106,9 +106,15 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative ski attempts', () => {
     const before = (
       await pool.query('select rules_snapshot from bonus_game_attempt where id=$1', [attemptId])
     ).rows[0];
+    const sampler = createSkiAttemptSampler(env, {
+      goal: rule.goalFrequency, goalie: rule.goalieFrequency, player: rule.shooterFrequency,
+    });
+    const tapTime = Array.from({ length: 61 }, (_, i) => 1000 + i * 50)
+      .find(time => sampler.player(time, []).canShoot);
+    if (tapTime === undefined) throw new Error('No legal shot time in the test window');
     const input = {
-      tapTime: 2500,
-      shooterTapTime: 2500,
+      tapTime,
+      shooterTapTime: tapTime,
       shooterFrequency: rule.shooterFrequency,
       goalFrequency: rule.goalFrequency,
       goalieFrequency: rule.goalieFrequency,
@@ -128,7 +134,7 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative ski attempts', () => {
       claimedShotIndex: 1,
       input,
       claimedResult: result.type,
-      now: new Date(NOW.getTime() + 2500),
+      now: new Date(NOW.getTime() + tapTime),
     };
     const response = await submitBonusShot(pool, body);
     expect(response.serverResult).toBe(result.type);
