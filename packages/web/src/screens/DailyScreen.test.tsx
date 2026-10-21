@@ -3040,7 +3040,7 @@ describe('DailyScreen', () => {
     );
   });
 
-  it('guards an arena duel invitation for a beginner without calling the API', async () => {
+  it('accepts an arena duel invitation after qualifying with a stale beginner session', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
     const incomingInvite: AmateurDuelMatchState = {
       ...settledDuelMatch,
@@ -3057,6 +3057,12 @@ describe('DailyScreen', () => {
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/accept')) {
+        return new Response(JSON.stringify({ match: incomingInvite }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (url.includes('/duel/amateur/events')) {
         return new Response(JSON.stringify({ events: [incomingInvite] }), {
           status: 200,
@@ -3082,16 +3088,13 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
     fireEvent.click(await screen.findByRole('button', { name: 'Принять' }));
 
-    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
-      goalsRemaining: 0,
-      unlockGoalsRequired: 300,
-    });
-    expect(
+    expect(useAmateurAccessToastStore.getState().toast).toBeNull();
+    await waitFor(() => expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = input instanceof Request ? input.url : String(input);
         return url.includes('/accept') && init?.method === 'POST';
       }),
-    ).toBe(false);
+    ).toBe(true));
   });
 
   it('restores the last selected arena card after returning home', async () => {
