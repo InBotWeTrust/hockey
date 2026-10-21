@@ -1,3 +1,4 @@
+import {useChatPresentation} from '../presentation/ChatPresentationContext.js';
 import {StartupSplash} from '../../onboarding/StartupSplash.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -45,6 +46,7 @@ function chatHaystack(chat: ChatDTO): string {
 }
 
 export function ChatListScreen(): JSX.Element {
+  const {visible:chatVisible}=useChatPresentation();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const feedRead=useFeedReadState();
@@ -55,8 +57,8 @@ export function ChatListScreen(): JSX.Element {
 
   // Leaving any active chat as we land on the list.
   useEffect(() => {
-    setActive(null);
-  }, [setActive]);
+    if(chatVisible)setActive(null);
+  }, [setActive,chatVisible]);
 
   const { data, isLoading, isError, refetch } = useQuery<ChatDTO[]>({
     queryKey: chatKeys.list(),

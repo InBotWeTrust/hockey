@@ -1,9 +1,9 @@
 import {fireEvent,render,screen} from '@testing-library/react';
 import {MemoryRouter,useLocation,Routes,Route} from 'react-router-dom';
-import {afterEach,expect,it} from 'vitest';
+import {afterEach,expect,it,vi} from 'vitest';
 import {FloatingChatShortcut,isChatShortcutVisible} from './FloatingChatShortcut.js';
 import {ChatExitLink} from '../chat/components/ChatExitLink.js';
-afterEach(()=>{localStorage.clear();sessionStorage.clear();});
+afterEach(()=>{vi.unstubAllGlobals();localStorage.clear();sessionStorage.clear();});
 function Location(){const location=useLocation();return <output>{location.pathname+location.search}</output>;}
 it('shows chat on section pages and hides it only in chat and gameplay',()=>{
  for(const route of ['/sections','/profile/settings','/inventory?tab=history','/daily','/?view=amateur&section=duels','/bar','/bar/games','/bonus-games','/admin']){
@@ -13,7 +13,8 @@ it('shows chat on section pages and hides it only in chat and gameplay',()=>{
  expect(isChatShortcutVisible(new URL(route,'http://local'))).toBe(false);
  }
 });
-it('returns from chat to the exact source page, even after reload-style remount',()=>{
+it('returns from chat to the exact source page on mobile, even after reload-style remount',()=>{
+ vi.stubGlobal('innerWidth',390);
  const app=<MemoryRouter initialEntries={['/inventory?tab=history']}><FloatingChatShortcut owner="one" unreadCount={7}/><Routes><Route path="*" element={null}/><Route path="/chat" element={<ChatExitLink owner="one"/>}/></Routes><Location/></MemoryRouter>;
  const view=render(app);
  fireEvent.click(screen.getByRole('button',{name:'Открыть чат'}));

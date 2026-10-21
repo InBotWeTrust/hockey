@@ -1,3 +1,7 @@
+import type {ComponentProps} from 'react';
+import {BonusSkillPage} from '../venue/BonusSkillPage.js';
+import {ColumnNavigationProvider,toLocation} from '../layout/ColumnNavigation.js';
+import {isGameLocation} from '../layout/gameRoutes.js';
 import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
@@ -107,7 +111,8 @@ export function bonusGameVisualStatus(game: BonusGameCard): 'completed' | 'avail
   return 'locked';
 }
 
-export function BonusGamesScreen(): JSX.Element {
+export function BonusGamesScreen({embeddedSkill}:{embeddedSkill?:BonusSkillCode}={}): JSX.Element {
+  const Panorama = embeddedSkill ? BonusContentShell : SectionPanorama;
   const navigate = useNavigate();
   const [searchParams,setSearchParams] = useSearchParams();
   const currentUserId = useAuthStore((state) => state.user?.id ?? '');
@@ -147,15 +152,21 @@ export function BonusGamesScreen(): JSX.Element {
     return () => window.clearTimeout(timer);
   }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
-    const stored = searchParams.get('skill') ?? localStorage.getItem(LAST_SKILL_STORAGE_KEY);
+    const stored = embeddedSkill ?? searchParams.get('skill') ?? localStorage.getItem(LAST_SKILL_STORAGE_KEY);
     if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'rhythm' || stored === 'challenge'
       ? stored
       : 'speed';
   });
+  const skillParam=searchParams.get('skill');
+  useEffect(()=>{
+    if(embeddedSkill || !skillParam || !(skillParam in skillLabels))return;
+    if(competitionLevel==='beginner'&&!['speed','accuracy'].includes(skillParam))return;
+    setSelectedSkill(skillParam as BonusSkillCode);
+  },[skillParam,embeddedSkill,competitionLevel]);
   const [allowanceNowMs, setAllowanceNowMs] = useState(() => Date.now());
   const refreshedAllowanceResetRef = useRef<string | null>(null);
-  const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames });
+  const catalogQuery = useQuery({ queryKey: ['bonus-games'], queryFn: fetchBonusGames, staleTime:1000 });
   const startMutation = useMutation({
     mutationFn: async (gameId: string) => {
       const response = await startBonusAttempt(gameId, previewGame?.id === gameId && previewGame.levels?.length ? selectedLevel : undefined);
@@ -276,9 +287,12 @@ export function BonusGamesScreen(): JSX.Element {
     ) {
       return;
     }
+    const resetKey=['bonus-games-allowance-reset',selectedAllowance.resets_at];
+    if(queryClient.getQueryData(resetKey))return;
+    queryClient.setQueryData(resetKey,true);
     refreshedAllowanceResetRef.current = selectedAllowance.resets_at;
     void catalogQuery.refetch();
-  }, [allowanceCountdown, catalogQuery, selectedAllowance]);
+  }, [allowanceCountdown, catalogQuery, selectedAllowance,embeddedSkill]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
     if (skill !== 'speed' && skill !== 'accuracy' && competitionLevel === 'beginner') { guardAmateurMutation(amateurAccess, () => undefined); return; }
@@ -307,7 +321,14 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allGames, focusGame?.id, selectedSkill]);
 
   return (
-    <SectionPanorama label="Бонусные игры" pages={(Object.keys(skillLabels) as BonusSkillCode[]).map((skill,index)=>({id:skill,label:skillLabels[skill],image:`/section-panoramas/bonus-${index}.webp`}))}
+    <Panorama {...(!embeddedSkill?{renderPage:(id:string)=>{
+      const skill=id as BonusSkillCode;
+      if(competitionLevel==='beginner'&&!['speed','accuracy'].includes(skill))return <section className="bonus-games-catalog"><h1 className="screen-title-on-arena">{skillLabels[skill]}</h1><p className="modal-copy">Доступно на уровне «Любители»</p></section>;
+      const initial=toLocation(`/bonus-games?skill=${skill}`);
+      return <ColumnNavigationProvider key={skill} pageKey={{owner:currentUserId||'guest',venueId:'bonus',pageId:skill}} initialLocation={initial} active={skill===selectedSkill} onActivate={next=>navigate(next,{replace:true})} onGame={next=>navigate(next)} isGame={isGameLocation}>
+        <BonusSkillPage skill={skill} active={skill===selectedSkill}/>
+      </ColumnNavigationProvider>;
+    }}:{})} label="Бонусные игры" pages={(Object.keys(skillLabels) as BonusSkillCode[]).map((skill,index)=>({id:skill,label:skillLabels[skill],image:`/section-panoramas/bonus-${index}.webp`}))}
       selected={selectedSkill} onSelect={id=>selectSkill(id as BonusSkillCode)} panorama="/section-panoramas/bonus-v1.webp"
       storageKey={`section-scroll:${currentUserId||'guest'}:bonus`} disabled={rulesOpen||previewGame!==null||purchaseGame!==null||recordsGame!==null||switchGame!==null}
       overlays={<>
@@ -505,7 +526,7 @@ export function BonusGamesScreen(): JSX.Element {
         </AccessibleModal>
       ) : null}
       </>}>
-      <section className="bonus-games-catalog" aria-labelledby="bonus-games-title">
+      <section className="bonus-games-catalog" aria-labelledby={`bonus-games-title-${embeddedSkill??'root'}`}>
         <header className="bonus-games-catalog__header">
           <button
             type="button"
@@ -517,8 +538,8 @@ export function BonusGamesScreen(): JSX.Element {
             <ArrowLeft size={16} aria-hidden="true" />
           </button>
           <div className="bonus-games-catalog__heading">
-            <h1 id="bonus-games-title" className="bonus-games-catalog__title screen-title-on-arena">
-              Бонусные игры
+            <h1 id={`bonus-games-title-${embeddedSkill??'root'}`} className="bonus-games-catalog__title screen-title-on-arena">
+              {embeddedSkill ? skillLabels[embeddedSkill] : 'Бонусные игры'}
             </h1>
             <button
               type="button"
@@ -578,8 +599,8 @@ export function BonusGamesScreen(): JSX.Element {
         ) : games.length > 0 ? (
           <div className="bonus-games-catalog__groups">
             {focusGame !== null ? (
-              <section className="bonus-games-focus" aria-labelledby="bonus-games-current-title">
-                <h2 id="bonus-games-current-title" className="section-label sections-group__title">
+              <section className="bonus-games-focus" aria-labelledby={`bonus-games-current-title-${embeddedSkill??'root'}`}>
+                <h2 id={`bonus-games-current-title-${embeddedSkill??'root'}`} className="section-label sections-group__title">
                   Текущая игра
                 </h2>
                 <BonusGameCard
@@ -593,9 +614,9 @@ export function BonusGamesScreen(): JSX.Element {
               </section>
             ) : null}
             {completedGames.length > 0 ? (
-              <section className="bonus-games-group" aria-labelledby="bonus-games-completed-title">
+              <section className="bonus-games-group" aria-labelledby={`bonus-games-completed-title-${embeddedSkill??'root'}`}>
                 <h2
-                  id="bonus-games-completed-title"
+                  id={`bonus-games-completed-title-${embeddedSkill??'root'}`}
                   className="section-label sections-group__title"
                 >
                   Пройденные · {completedGames.length}
@@ -616,8 +637,8 @@ export function BonusGamesScreen(): JSX.Element {
               </section>
             ) : null}
             {futureGames.length > 0 ? (
-              <section className="bonus-games-group" aria-labelledby="bonus-games-next-title">
-                <h2 id="bonus-games-next-title" className="section-label sections-group__title">
+              <section className="bonus-games-group" aria-labelledby={`bonus-games-next-title-${embeddedSkill??'root'}`}>
+                <h2 id={`bonus-games-next-title-${embeddedSkill??'root'}`} className="section-label sections-group__title">
                   Дальше
                 </h2>
                 <div className="bonus-games-catalog__grid bonus-games-catalog__grid--compact">
@@ -644,8 +665,12 @@ export function BonusGamesScreen(): JSX.Element {
           </div>
         )}
       </section>
-    </SectionPanorama>
+    </Panorama>
   );
+}
+
+function BonusContentShell({children,overlays}:ComponentProps<typeof SectionPanorama>): JSX.Element {
+ return <>{children}{overlays}</>;
 }
 
 function BonusGamesRulesModal({ onClose }: { onClose: () => void }): JSX.Element {

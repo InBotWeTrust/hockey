@@ -1,0 +1,85 @@
+.venue-columns {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+.venue-columns__track {
+  position: absolute;
+  inset: 0 auto 0 var(--columns-left, 0px);
+  display: flex;
+  gap: var(--column-gap, 24px);
+  height: 100%;
+  width: max-content;
+}
+.venue-column {
+  width: var(--column-width, 430px);
+  flex: 0 0 var(--column-width, 430px);
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.venue-column__scroll {
+  height: 100%;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: calc(22px + var(--app-safe-top, 0px)) 14px 0;
+  scroll-padding-bottom: calc(var(--section-panel-height, 140px) + 32px);
+}
+.venue-column__scroll > div {
+  padding-bottom: calc(var(--section-panel-height, 140px) + var(--navigation-bottom, 12px) + 32px);
+}
+.section-scene--columns.screen {
+  max-width: none;
+}
+.section-scene--columns .section-scene__panorama {
+  width: 100% !important;
+  transform: none !important;
+}
+.section-scene--columns .section-scene__panorama img {
+  object-fit: cover;
+  object-position: center;
+}
+.section-scene--columns .section-scene__panel {
+  left: 50%;
+  right: auto;
+  width: min(500px, calc(100% - 24px));
+  margin-left: 0;
+  margin-right: 0;
+  transform: translateX(-50%);
+}
+.venue-columns__arrows {
+  position: absolute;
+  inset: 50% 8px auto;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.venue-columns__arrows button {
+  pointer-events: auto;
+  color: white;
+  background: #08182b80;
+}
+.venue-columns__arrows button:disabled {
+  visibility: hidden;
+}
+@media (max-width: 430px) {
+  .section-scene--columns .section-scene__panel {
+    width: calc(100% - 24px);
+  }
+  .venue-columns__arrows {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: no-preference) {
+  .venue-columns__track {
+    transition: transform 180ms ease;
+  }
+}
+.venue-scene .venue-column__scroll {padding:0;}
+.venue-column__scroll>div>.screen {height:auto !important;min-height:0 !important;overflow:visible !important;padding-bottom:32px !important;background:transparent !important;max-width:100%;}
+.venue-column__scroll .modal-backdrop {position:fixed;}
+.column-local-back {padding:14px 14px 0;}
+.section-scene.section-scene--adaptive.screen {max-width:none;}

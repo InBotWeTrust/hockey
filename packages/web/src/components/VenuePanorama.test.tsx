@@ -74,9 +74,9 @@ it.each([
   expect(scene?.pages.some(p=>p.href==='/profile/equipment')).toBe(false);
   expect(scene?.columns).toBe(6);
 });
-it('keeps story replay full screen and profile achievements in the task building', () => {
-  expect(venueSceneFor('/profile/story/series-1', '', 'amateur')).toBeNull();
-  expect(venueSceneFor('/profile/story/series-2', '', 'amateur')).toBeNull();
+it('keeps story replay in its apartment column and profile achievements in the task building', () => {
+  expect(venueSceneFor('/profile/story/series-1', '', 'amateur')?.selected).toBe('story');
+  expect(venueSceneFor('/profile/story/series-2', '', 'amateur')?.selected).toBe('story');
   expect(venueSceneFor('/profile/achievements', '', 'amateur')?.id).toBe('tasks');
 });
 

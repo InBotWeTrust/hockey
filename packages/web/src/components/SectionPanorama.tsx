@@ -1,5 +1,7 @@
-import {useHorizontalPan} from '../bar/useHorizontalPan.js';
-import {saveSectionTab} from '../city/sectionEntry.js';
+import {useColumnLayout} from '../layout/useColumnLayout.js';
+import { VenueColumns } from '../layout/VenueColumns.js';
+import { useHorizontalPan } from '../bar/useHorizontalPan.js';
+import { saveSectionTab } from '../city/sectionEntry.js';
 import { MapExitLink } from './MapExitLink.js';
 import '../components/navigation-geometry.css';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
@@ -48,6 +50,8 @@ export function SectionPanorama({
   disabled = false,
   className = '',
   columns = pages.length,
+  renderPage,
+  dockedChat = false,
 }: {
   label: string;
   pages: readonly PanoramaPage[];
@@ -61,14 +65,17 @@ export function SectionPanorama({
   disabled?: boolean;
   className?: string;
   columns?: number;
+  renderPage?: (id: string) => ReactNode;
+  dockedChat?: boolean;
 }): JSX.Element {
   useLayoutEffect(() => {
-    if (pages.some(page => page.id === selected)) saveSectionTab(storageKey, selected);
+    if (pages.some((page) => page.id === selected)) saveSectionTab(storageKey, selected);
   }, [storageKey, selected, pages]);
+  const root = useRef<HTMLElement>(null);
   const panel = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null),
     dock = useRef<HTMLDivElement>(null);
-  const dockPan=useHorizontalPan(dock);
+  const dockPan = useHorizontalPan(dock);
   const positions = useRef<Record<string, number>>({});
   const pendingRestore = useRef<number | null>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -79,8 +86,10 @@ export function SectionPanorama({
     0,
     pages.findIndex((page) => page.id === selected),
   );
+  const layout=useColumnLayout(root,pages.length,index,dockedChat);
+  const useColumns=Boolean(renderPage&&layout.contentWidth>430);
   const blockClickUntil = useRef(0);
-  const gesture = useRef<{id:number;x:number;y:number} | null>(null);
+  const gesture = useRef<{ id: number; x: number; y: number } | null>(null);
   const scenePosition = pages[index]?.position ?? index;
   const target = useMotionValue(scenePosition),
     position = useSpring(target, { stiffness: 220, damping: 32 });
@@ -91,7 +100,10 @@ export function SectionPanorama({
   useLayoutEffect(() => {
     const measure = () => {
       const height = panel.current?.getBoundingClientRect().height;
-      if (height) scroll.current?.style.setProperty('--section-panel-height', `${height}px`);
+      if (height) {
+        scroll.current?.style.setProperty('--section-panel-height', `${height}px`);
+        root.current?.style.setProperty('--section-panel-height', `${height}px`);
+      }
     };
     measure();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
@@ -112,7 +124,7 @@ export function SectionPanorama({
     } catch {
       positions.current = {};
     }
-  }, [storageKey]);
+  }, [storageKey,useColumns]);
   useLayoutEffect(() => {
     pendingRestore.current = positions.current[selected] ?? 0;
     if (scroll.current) scroll.current.scrollTop = pendingRestore.current;
@@ -126,7 +138,7 @@ export function SectionPanorama({
     // Keep the new page anchored; only the panorama animates on selection.
     dragX.stop();
     dragX.set(0);
-  }, [storageKey, selected, index, scenePosition, reduced, position, target, dragX]);
+  }, [storageKey, selected, index, scenePosition, reduced, position, target, dragX,useColumns]);
   useLayoutEffect(() => {
     const restore = () => {
       const node = scroll.current,
@@ -139,7 +151,7 @@ export function SectionPanorama({
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(restore);
     if (content.current) observer?.observe(content.current);
     return () => observer?.disconnect();
-  }, [children, selected, storageKey]);
+  }, [children, selected, storageKey,useColumns]);
   const saveScroll = () => {
     if (!scroll.current || pendingRestore.current !== null) return;
     positions.current[selected] = scroll.current.scrollTop;
@@ -150,7 +162,11 @@ export function SectionPanorama({
     }
   };
   return (
-    <main className={`screen section-scene ${className}`} aria-label={label}>
+    <main
+      ref={root}
+      className={`screen section-scene ${renderPage ? 'section-scene--adaptive' : ''} ${useColumns ? 'section-scene--columns' : ''} ${className}`}
+      aria-label={label}
+    >
       <motion.div
         className="section-scene__panorama"
         aria-hidden="true"
@@ -177,19 +193,23 @@ export function SectionPanorama({
             )
           )
             return;
-          gesture.current = {id:event.pointerId,x:event.clientX,y:event.clientY};
+          gesture.current = { id: event.pointerId, x: event.clientX, y: event.clientY };
         }}
         onPointerMove={(event) => {
-          const initial=gesture.current;
-          if (!initial || initial.id!==event.pointerId) return;
-          const dx=Math.abs(event.clientX-initial.x), dy=Math.abs(event.clientY-initial.y);
-          if (dy>=12 && dy>=dx) { gesture.current=null; return; }
-          if (dx<12 || dx<dy*1.5) return;
-          gesture.current=null;
+          const initial = gesture.current;
+          if (!initial || initial.id !== event.pointerId) return;
+          const dx = Math.abs(event.clientX - initial.x),
+            dy = Math.abs(event.clientY - initial.y);
+          if (dy >= 12 && dy >= dx) {
+            gesture.current = null;
+            return;
+          }
+          if (dx < 12 || dx < dy * 1.5) return;
+          gesture.current = null;
           controls.start(event);
         }}
         onPointerUp={() => {
-          gesture.current=null;
+          gesture.current = null;
         }}
         onClickCapture={(event) => {
           if (event.detail !== 0 && performance.now() < blockClickUntil.current) {
@@ -201,7 +221,7 @@ export function SectionPanorama({
           blockClickUntil.current = performance.now() + 500;
         }}
         onPointerCancel={() => {
-          gesture.current=null;
+          gesture.current = null;
           blockClickUntil.current = performance.now() + 250;
           void animate(dragX, 0, { duration: 0 });
         }}
@@ -221,23 +241,33 @@ export function SectionPanorama({
           );
         }}
       >
-        <div
-          ref={scroll}
-          className="section-scene__scroll"
-          data-testid="section-page-scroll"
-          onScroll={saveScroll}
-          onWheel={() => {
-            pendingRestore.current = null;
-          }}
-          onTouchStart={() => {
-            pendingRestore.current = null;
-          }}
-          onKeyDown={() => {
-            pendingRestore.current = null;
-          }}
-        >
-          <div ref={content}>{children}</div>
-        </div>
+        {useColumns && renderPage ? (
+          <VenueColumns
+            pages={pages.map((page) => ({ ...page, render: () => renderPage(page.id) }))}
+            selected={selected}
+            onSelect={onSelect}
+            storageKey={storageKey}
+            dockedChat={dockedChat}
+          />
+        ) : (
+          <div
+            ref={scroll}
+            className="section-scene__scroll"
+            data-testid="section-page-scroll"
+            onScroll={saveScroll}
+            onWheel={() => {
+              pendingRestore.current = null;
+            }}
+            onTouchStart={() => {
+              pendingRestore.current = null;
+            }}
+            onKeyDown={() => {
+              pendingRestore.current = null;
+            }}
+          >
+            <div ref={content}>{children}</div>
+          </div>
+        )}
       </motion.div>
       <section ref={panel} className="section-scene__panel" aria-label={`Навигация: ${label}`}>
         <div className="section-scene__identity">

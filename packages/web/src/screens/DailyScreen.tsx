@@ -1,3 +1,4 @@
+import {trainingPeriodFromSearch} from '../layout/trainingPeriod.js';
 import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
@@ -3597,6 +3598,11 @@ export function initialTrainingCatalogAfterCompletion(
 
 const INITIAL_TRAINING_COURSE_QUERY_KEY = ['training', 'course'] as const;
 
+export function TrainingOverview(): JSX.Element {
+  const navigate = useNavigate();
+  return <TrainingPlaceholder onBack={()=>navigate('/sections')} onPlayStart={period=>navigate(`/?view=training&section=open&play=1&from=sections&period=${period??1}`)}/>;
+}
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -3610,7 +3616,7 @@ function TrainingPlaceholder({
   autoPlay?: boolean;
   onBack: () => void;
   onPlayHome?: () => void;
-  onPlayStart?: () => void;
+  onPlayStart?: (period?:1|2|3) => void;
   playEntranceOnStart?: boolean;
   onEntranceConsumed?: () => void;
   playRouteTransitionOnStart?: boolean;
@@ -3625,7 +3631,7 @@ function TrainingPlaceholder({
   const inFlight = useTrainingSessionStore((s) => s.inFlight);
   const refresh = useTrainingSessionStore((s) => s.refresh);
   const start = useTrainingSessionStore((s) => s.start);
-  const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(1);
+  const [selectedPeriod, setSelectedPeriod] = useState<1 | 2 | 3>(()=>trainingPeriodFromSearch(location.search)??1);
   const [playTraining, setPlayTraining] = useState(() => autoPlay);
   const [localPlayEntrance, setLocalPlayEntrance] = useState(false);
   const [now, setNow] = useState(Date.now());
@@ -3669,9 +3675,9 @@ function TrainingPlaceholder({
 
   useEffect(() => {
     if (data?.selected_period === 1 || data?.selected_period === 2 || data?.selected_period === 3) {
-      setSelectedPeriod(data.selected_period);
+      setSelectedPeriod(trainingPeriodFromSearch(location.search)??data.selected_period);
     }
-  }, [data?.selected_period]);
+  }, [data?.selected_period,location.search]);
 
   useEffect(() => {
     if (!autoPlay && data?.state !== 'active') setPlayTraining(false);
@@ -3711,7 +3717,7 @@ function TrainingPlaceholder({
       if (switched === null) return;
     }
     setPlayTraining(true);
-    onPlayStart?.();
+    onPlayStart?.(selectedPeriod);
   };
 
   const trainingParams = new URLSearchParams(location.search);
@@ -4405,7 +4411,7 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
   );
 }
 
-function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+export function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
   const location = useLocation();
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(() =>
     new URLSearchParams(location.search).get('tournament'),
@@ -4663,7 +4669,7 @@ export function duelAdmissionErrorCopy(error: unknown): string {
     : reason;
 }
 
-function AmateurDuelsPage({
+export function AmateurDuelsPage({
   onBack,
   onOpenMatch,
 }: {
@@ -7971,7 +7977,7 @@ function DuelResultDetailRow({
   );
 }
 
-function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
+export function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const artwork = DUEL_KIND_ARTWORK_IMAGES[match.rules.duelKind];
   const chips = [
     formatRuCount(match.rules.totalPeriods, 'период', 'периода', 'периодов'),
@@ -8042,7 +8048,7 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
   );
 }
 
-function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
+export function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const opponentStatus = duelOpponentStatus(match);
   const opponentName = splitOpponentName(match.opponent.display_name);
   return (

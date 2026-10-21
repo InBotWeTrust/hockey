@@ -264,6 +264,14 @@ function renderCatalog(): QueryClient {
 }
 
 describe('BonusGamesScreen', () => {
+  it('labels embedded skill columns independently', () => {
+    mockCatalog([]);
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    render(<QueryClientProvider client={client}><MemoryRouter><BonusGamesScreen embeddedSkill="speed"/><BonusGamesScreen embeddedSkill="accuracy"/></MemoryRouter></QueryClientProvider>);
+    expect(screen.getByRole('heading',{name:'Скорость',level:1})).toBeVisible();
+    expect(screen.getByRole('heading',{name:'Точность',level:1})).toBeVisible();
+  });
+
   it('does not reserve an empty progress block when the catalog has no allowance data', async () => {
     mockCatalog([card({ title: 'No allowance preview' })]);
     const fetchWithAllowances = vi.mocked(globalThis.fetch).getMockImplementation()!;

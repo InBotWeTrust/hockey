@@ -1,10 +1,10 @@
 import type {PanoramaPage} from './SectionPanorama.js';
 
 export type Level = 'beginner' | 'amateur' | 'professional' | null;
-interface VenuePage extends PanoramaPage {
+export interface VenuePage extends PanoramaPage {
   href: string;
 }
-interface VenueScene {
+export interface VenueScene {
   id: 'yard' | 'stadium' | 'tasks' | 'apartment';
   label: string;
   selected: string;
@@ -26,7 +26,7 @@ export function venueSceneFor(pathname: string, search: string, level: Level): V
     {id:'settings',label:'Настройки',href:'/profile/settings',position:3},
     {id:'story',label:'Сюжет',href:'/profile/story',position:5},
   ].map(page=>({...page,image:`/section-panoramas/apartment-${page.position}.webp`}));
-  const apartmentPage = apartmentPages.find(page=>page.href===pathname);
+  const apartmentPage = apartmentPages.find(page=>page.href===pathname || (page.id==='story' && pathname.startsWith('/profile/story/')));
   if (apartmentPage || ['/referrals','/profile/stats','/profile/arena'].includes(pathname))
     return {id:'apartment',label:'Квартира',columns:6,pages:apartmentPages,
       selected:pathname==='/referrals'?'friends':apartmentPage?.id??'profile'};

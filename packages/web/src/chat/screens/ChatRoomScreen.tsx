@@ -1,3 +1,4 @@
+import {useChatPresentation,ChatDraftScope} from '../presentation/ChatPresentationContext.js';
 import {
   Fragment,
   useEffect,
@@ -396,6 +397,8 @@ function DuelInviteActions({
 }
 
 export function ChatRoomScreen(): JSX.Element {
+  const {visible:chatVisible,embedded:chatEmbedded}=useChatPresentation();
+  const chatVisibleRef=useRef(chatVisible);chatVisibleRef.current=chatVisible;
   const params = useParams<{ chatId: string }>();
   const chatId = params.chatId ?? '';
   const navigate = useNavigate();
@@ -516,9 +519,11 @@ export function ChatRoomScreen(): JSX.Element {
     emptyUnreadRefetchChatIdRef.current = null;
     isNearBottomRef.current = true;
     setShowScrollToBottom(false);
-    setActive(chatId);
-    return () => setActive(null);
-  }, [chatId, setActive]);
+  }, [chatId]);
+  useEffect(()=>{
+    setActive(chatVisible&&chatId?chatId:null);
+    return()=>{if(useChatStore.getState().activeChatId===chatId)setActive(null);};
+  },[chatId,chatVisible,setActive]);
 
   const query = useInfiniteQuery<
     ChatMessageDTO[],
@@ -579,6 +584,7 @@ export function ChatRoomScreen(): JSX.Element {
   const { mutate: markRead } = useMutation({
     mutationFn: () => markChatAsRead(chatId),
     onSuccess: () => {
+      if(!chatVisibleRef.current)return;
       resetUnread(chatId);
       queryClient.setQueryData<ChatDTO[]>(chatKeys.list(), (chats) =>
         chats?.map((chat) => chat.id === chatId ? { ...chat, unreadCount: 0 } : chat),
@@ -589,7 +595,7 @@ export function ChatRoomScreen(): JSX.Element {
   });
 
   useEffect(() => {
-    if (chatId.length === 0) return;
+    if (chatId.length === 0 || !chatVisible) return;
     if (!query.data) return;
     if (!query.isSuccess || query.isFetching) return;
     const loadedMessageCount = query.data.pages.reduce((count, page) => count + page.length, 0);
@@ -604,6 +610,7 @@ export function ChatRoomScreen(): JSX.Element {
   }, [
     chatId,
     chatMeta?.unreadCount,
+    chatVisible,
     query.data,
     query.isSuccess,
     query.isFetching,
@@ -807,6 +814,24 @@ export function ChatRoomScreen(): JSX.Element {
     if (!recorder || recorder.state === 'inactive') return;
     recorder.stop();
   }, []);
+
+  useEffect(()=>{
+    const cancel=(event:Event)=>{
+      const detail=(event as CustomEvent<{owner:string;chatId:string}>).detail;
+      if(detail?.owner!==meId||detail?.chatId!==chatId)return;
+      if(voiceRecorderRef.current?.state==='recording'){
+        voiceCancelRef.current=true;voiceRecorderRef.current.stop();stopVoiceTracks();
+      }
+    };
+    window.addEventListener('hockey:chat-window-cancel-voice',cancel);
+    return()=>window.removeEventListener('hockey:chat-window-cancel-voice',cancel);
+  },[meId,chatId,stopVoiceTracks]);
+
+  useEffect(()=>{
+    if(!chatEmbedded||chatVisible||voiceRecorderRef.current?.state!=='recording')return;
+    voiceCancelRef.current=true;voiceRecorderRef.current.stop();stopVoiceTracks();
+    setAttachmentError('Запись отменена при сворачивании чата.');
+  },[chatEmbedded,chatVisible,stopVoiceTracks]);
 
   const startVoiceRecording = useCallback(async (): Promise<void> => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
@@ -1591,6 +1616,7 @@ export function ChatRoomScreen(): JSX.Element {
               attachFile(file);
             }}
           />
+          <ChatDraftScope owner={meId} chatId={chatId}>
           <ChatInput
             replyTo={isChannel ? null : replyTo}
             editing={
@@ -1703,6 +1729,7 @@ export function ChatRoomScreen(): JSX.Element {
             onSend={handleSend}
             onEdit={handleEditMessage}
           />
+          </ChatDraftScope>
           {attachmentError !== null && (
             <div
               role="alert"

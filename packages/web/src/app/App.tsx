@@ -1,3 +1,10 @@
+import {ChatWindow} from '../chat/presentation/ChatWindow.js';
+import {useChatWindowStore} from '../chat/presentation/chatWindowStore.js';
+import {useChatDraftStore} from '../chat/presentation/chatDraftStore.js';
+import {GameNavigationBoundary} from '../layout/GameNavigationBoundary.js';
+import {appSurface} from '../layout/appSurface.js';
+import '../layout/wide-shell.css';
+import {clearColumnHistory} from '../layout/columnNavigationStore.js';
 import {FloatingChatShortcut} from '../components/FloatingChatShortcut.js';
 import {useChatUnreadActivity} from '../components/useChatUnreadActivity.js';
 import { StartupSplash } from '../onboarding/StartupSplash.js';
@@ -331,6 +338,12 @@ function AppExperience(): JSX.Element {
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',appThemeColor(location.pathname,location.search));
   },[location.pathname,location.search]);
   const user = useAuthStore((s) => s.user);
+  const surface = appSurface(location);
+  const wideSurface = surface==='venue'||surface==='panorama'||surface==='game'||(user!==null&&!['/login','/admin','/terms','/offer','/privacy','/prices','/personal-data-consent'].includes(location.pathname)&&!location.pathname.startsWith('/auth/'));
+  const chatWindowMode=useChatWindowStore(s=>s.mode);
+  const chatWindowOwner=useChatWindowStore(s=>s.owner);
+  const chatDocked=chatWindowMode==='docked'&&chatWindowOwner===user?.id&&surface!=='game'&&surface!=='chat';
+  useEffect(()=>{clearColumnHistory();useChatDraftStore.getState().switchOwner(user?.id??null);useChatWindowStore.getState().setOwner(user?.id??null);},[user?.id]);
   const {unreadMessageCount}=useChatUnreadActivity(Boolean(user));
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   useEffect(() => {
@@ -376,10 +389,12 @@ function AppExperience(): JSX.Element {
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
+      <GameNavigationBoundary owner={user?.id??null}>
       <div
-        className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
+        data-surface={surface}
+        className={`app-shell${chatDocked?' app-shell--chat-docked':''}${wideSurface?' app-shell--wide':''} ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
-          maxWidth: 430,
+          maxWidth: wideSurface ? 'none' : 430,
           margin: '0 auto',
           width: '100%',
           height: 'var(--app-viewport-height, 100dvh)',
@@ -663,8 +678,10 @@ function AppExperience(): JSX.Element {
           </Suspense>
           </VenuePanorama>
         </div>
+        {user&&<ChatWindow owner={user.id} gameplay={surface==='game'}/>}
         {user&&<FloatingChatShortcut owner={user.id} unreadCount={unreadMessageCount}/>}
       </div>
+      </GameNavigationBoundary>
     </>
   );
 }
