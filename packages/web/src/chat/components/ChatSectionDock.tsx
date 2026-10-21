@@ -1,5 +1,5 @@
-import { LogOut, MessageCircle, Newspaper } from 'lucide-react';
-import { MapExitLink } from '../../components/MapExitLink.js';
+import { MessageCircle, Newspaper } from 'lucide-react';
+import { ChatExitLink } from './ChatExitLink.js';
 import '../../components/navigation-geometry.css';
 import './chat-section-dock.css';
 
@@ -12,10 +12,7 @@ interface Props {
 
 export function ChatSectionDock({ active, chatUnread, feedUnread, onChange }: Props): JSX.Element {
   return <nav className="chat-section-dock" aria-label="Разделы чата">
-    <MapExitLink className="chat-section-dock__item">
-      <span className="chat-section-dock__circle"><LogOut size={22}/></span>
-      <span>Выход</span>
-    </MapExitLink>
+    <ChatExitLink/>
     {([
       { id: 'chat', label: 'Чат', Icon: MessageCircle, count: chatUnread },
       { id: 'feed', label: 'Лента', Icon: Newspaper, count: feedUnread },

@@ -1,3 +1,4 @@
+import {readSectionTab,saveSectionTab} from '../city/sectionEntry.js';
 import { VisitorShop } from './VisitorShop.js';
 import { useBarActivity } from './barActivity.js';
 import {useAuthStore} from '../auth/authStore.js';
@@ -37,7 +38,16 @@ export function BarPanorama() {
   },[]);
   const [layout, setLayout] = useState(createDefaultBarLayout);
   const [layoutReady,setLayoutReady]=useState(false);
-  const [slot, setSlot] = useState(() => sessionStorage.getItem('bar-active-slot') || 'bar-8');
+  const tabKey=`section-scroll:${account==='preview'?'guest':account}:bar`;
+  const [slot, setSlot] = useState(() => {
+    try { return ((account==='preview'||sessionStorage.getItem('bar-active-slot-owner')===account)?sessionStorage.getItem('bar-active-slot'):null) || readSectionTab(tabKey) || 'bar-8'; }
+    catch { return readSectionTab(tabKey) || 'bar-8'; }
+  });
+  useEffect(()=>{
+    if(!layoutReady||!layout.slots.some(page=>page.id===slot))return;
+    saveSectionTab(tabKey,slot);
+    try {sessionStorage.setItem('bar-active-slot',slot);sessionStorage.setItem('bar-active-slot-owner',account);}catch{/* Storage is optional. */}
+  },[slot,layoutReady,layout,tabKey,account]);
   useEffect(() => {
     if (layoutReady && new URLSearchParams(location.search).get('visitorShop') === '1') {
       const igor = layout.slots.find(s => s.occupantId === 'igor');
@@ -48,7 +58,7 @@ export function BarPanorama() {
   const [opponent, setOpponent] = useState<ComputerOpponentId | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const touched = useRef(!!sessionStorage.getItem('bar-active-slot'));
+  const touched = useRef(Boolean(readSectionTab(tabKey) || (account==='preview'&&sessionStorage.getItem('bar-active-slot'))));
   const [conversation, setConversation] = useState<BarCharacter | null>(null);
   const [incidentError,setIncidentError]=useState(false);
   const pendingIncident=useRef<{character:BarCharacter;id:string}|null>(null);

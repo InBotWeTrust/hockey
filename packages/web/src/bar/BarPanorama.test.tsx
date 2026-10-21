@@ -265,3 +265,18 @@ it('waits for a hidden tab to return before consuming its new-day greeting',asyn
   view.unmount();
  }finally{visibility.mockRestore();vi.useRealTimers();vi.stubGlobal('Image',image);}
 });
+
+it('remembers the selected bar page after restarting the session',async()=>{
+ const image=globalThis.Image;
+ vi.stubGlobal('Image',class{onload:(()=>void)|null=null;onerror:null=null;set src(_value:string){queueMicrotask(()=>this.onload?.());}});
+ try {
+  const data=fixture();vi.mocked(fetchBarLayout).mockResolvedValue(data);
+  const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);
+  await screen.findByRole('button',{name:/^Олег$/});
+  fireEvent.click(screen.getByRole('button',{name:/^Олег$/}));
+  await screen.findByRole('heading',{name:'Олег'});
+  view.unmount();sessionStorage.clear();
+  render(<MemoryRouter><BarPanorama/></MemoryRouter>);
+  await screen.findByRole('heading',{name:'Олег'});
+ }finally{vi.stubGlobal('Image',image);}
+});

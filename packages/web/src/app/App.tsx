@@ -1,3 +1,5 @@
+import {FloatingChatShortcut} from '../components/FloatingChatShortcut.js';
+import {useChatUnreadActivity} from '../components/useChatUnreadActivity.js';
 import { StartupSplash } from '../onboarding/StartupSplash.js';
 import { VenuePanorama } from '../components/VenuePanorama.js';
 import {GameEntryRoute} from './GameEntryRoute.js';
@@ -329,6 +331,7 @@ function AppExperience(): JSX.Element {
     document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')?.setAttribute('content',appThemeColor(location.pathname,location.search));
   },[location.pathname,location.search]);
   const user = useAuthStore((s) => s.user);
+  const {unreadMessageCount}=useChatUnreadActivity(Boolean(user));
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   useEffect(() => {
     if (user !== null) preloadCriticalArtwork();
@@ -660,6 +663,7 @@ function AppExperience(): JSX.Element {
           </Suspense>
           </VenuePanorama>
         </div>
+        {user&&<FloatingChatShortcut owner={user.id} unreadCount={unreadMessageCount}/>}
       </div>
     </>
   );
