@@ -76,6 +76,16 @@ describe('DestinationIntroductionGate', () => {
     vi.useFakeTimers();
   });
 
+  it('does not show destination introductions in a production build', () => {
+    vi.stubEnv('DEV', false);
+    vi.stubEnv('VITE_PAGE_INTRODUCTIONS_ENABLED', '');
+    try {
+      renderGate();
+      act(() => vi.advanceTimersByTime(1_200));
+      expect(screen.queryByTestId('destination-introduction')).not.toBeInTheDocument();
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('shows the main introduction after the same short pause as other destinations', () => {
     renderGate();
 

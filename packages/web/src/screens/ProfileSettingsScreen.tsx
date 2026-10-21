@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { ThemeSettings } from '../components/ThemeSettings.js';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -195,7 +196,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       </div>
 
       {isLoading ? (
-        <div className="profile-settings-loading">Загрузка...</div>
+        <StartupSplash />
       ) : (
         <>
           <div className="section-label">Аккаунт</div>

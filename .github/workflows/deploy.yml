@@ -153,18 +153,24 @@ jobs:
           OBJECT_STORAGE_SECRET_ACCESS_KEY: ${{ secrets.OBJECT_STORAGE_SECRET_ACCESS_KEY }}
           OBJECT_STORAGE_PUBLIC_BASE_URL: ${{ secrets.OBJECT_STORAGE_PUBLIC_BASE_URL }}
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
+          # Shared provider quota with dev, explicitly approved for production.
+          PRODUCTION_CLOSEROUTER_API_KEY: ${{ secrets.STAGING_CLOSEROUTER_API_KEY }}
           PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}
           PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
           GRANT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.grant_existing_inventory || 'false' }}
           CORRECT_EXISTING_INVENTORY: ${{ github.event_name == 'workflow_dispatch' && inputs.correct_existing_inventory || 'false' }}
         run: |
+          PRODUCTION_CLOSEROUTER_API_KEY_B64="$(printf '%s' "$PRODUCTION_CLOSEROUTER_API_KEY" | base64 | tr -d '\r\n')"
+          [ -z "$PRODUCTION_CLOSEROUTER_API_KEY_B64" ] || echo "::add-mask::$PRODUCTION_CLOSEROUTER_API_KEY_B64"
+          unset PRODUCTION_CLOSEROUTER_API_KEY
           FCM_PRIVATE_KEY_BASE64="$(printf '%s' "$FCM_PRIVATE_KEY" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SHOP_ID_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SHOP_ID" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SECRET_KEY_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SECRET_KEY" | base64 | tr -d '\r\n')"
           unset PRODUCTION_YOOKASSA_SHOP_ID PRODUCTION_YOOKASSA_SECRET_KEY
           ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$(printf '%s' "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" | base64 | tr -d '\r\n')"
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
+            PRODUCTION_CLOSEROUTER_API_KEY_B64="$PRODUCTION_CLOSEROUTER_API_KEY_B64" \
             IMAGE_TAG="$IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
             GHCR_TOKEN="$GHCR_TOKEN" \
@@ -197,6 +203,9 @@ jobs:
             bash -s <<'ENDSSH'
           set -euo pipefail
           cd "$REMOTE_PATH"
+          PRODUCTION_CLOSEROUTER_API_KEY="$(printf '%s' "${PRODUCTION_CLOSEROUTER_API_KEY_B64:-}" | base64 --decode)"
+          unset PRODUCTION_CLOSEROUTER_API_KEY_B64
+          export PRODUCTION_CLOSEROUTER_API_KEY
           FCM_PRIVATE_KEY="$(printf '%s' "${FCM_PRIVATE_KEY_BASE64:-}" | base64 --decode)"
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON="$(printf '%s' "${ANDROID_MANIFEST_PUBLIC_KEYS_BASE64:-}" | base64 --decode)"
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ] && [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then

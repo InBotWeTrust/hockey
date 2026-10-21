@@ -147,7 +147,7 @@ function ChatListItemImpl({
         <UserAvatar avatarUrl={avatarUrl} name={displayTitle(chat)} size={40} />
       ) : isChannel || isSystem ? (
         <span
-          className="glass-dark"
+          className="glass-dark chat-list-item__symbol"
           aria-hidden
           style={{
             width: 40,

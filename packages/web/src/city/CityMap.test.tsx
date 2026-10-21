@@ -38,7 +38,7 @@ it('restores both scrollers instantly and animates a new selection without obser
 it('orders the phone circle between tasks and bank',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
  const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(Array.from(dock.querySelectorAll('button')).filter(button=>button.getAttribute('aria-label')!=='Выбрать Раздевалка').slice(1,7).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Телефонная будка','Выбрать Банк','Выбрать Стадион «Центральный»']);
+ expect(Array.from(dock.querySelectorAll('button')).filter(button=>button.getAttribute('aria-label')!=='Выбрать Раздевалка').slice(1,7).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Чат','Выбрать Банк','Выбрать Стадион «Центральный»']);
 });
 
 function mapGeometry(){
@@ -98,9 +98,9 @@ it('puts profile first, centers it before opening, and recenters after a swipe',
 it('opens chat directly from the phone booth while its circle only selects',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
  mapGeometry();
- fireEvent.click(screen.getByRole('button',{name:'Выбрать Телефонная будка'}));
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Чат'}));
  expect(base.onNavigate).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'На карте: Телефонная будка'}));
+ fireEvent.click(screen.getByRole('button',{name:'На карте: Чат'}));
  expect(base.onNavigate).toHaveBeenCalledWith('/chat');
 });
 

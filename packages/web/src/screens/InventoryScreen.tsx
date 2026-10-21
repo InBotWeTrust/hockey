@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
 import { ShopProductCard } from '../shop/ShopProductCard.js';
 import { ShopPurchaseModal } from '../shop/ShopPurchaseModal.js';
@@ -466,9 +467,7 @@ export function InventoryScreen(): JSX.Element {
         )}
 
         {inventoryQuery.isLoading ? (
-          <div className="glass" style={{ borderRadius: 22, padding: 16, color: 'var(--muted)' }}>
-            Загрузка...
-          </div>
+          <StartupSplash />
         ) : activeTab === 'goods' && selectedCategory === 'bar' ? (
           <VisitorShop />
         ) : activeTab === 'goods' && selectedCategory !== null && !hasSelectedCategoryItems ? (
@@ -574,7 +573,7 @@ function BankTab({
         Банк
       </div>
       {packagesQuery.isLoading ? (
-        <div className="inventory-history-empty">Загружаем пакеты…</div>
+        <StartupSplash />
       ) : null}
       {packagesQuery.isError ? (
         <div className="inventory-history-empty" role="alert">

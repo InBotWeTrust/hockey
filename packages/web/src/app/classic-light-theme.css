@@ -4429,3 +4429,37 @@
   filter: none;
   opacity: 1;
 }
+
+/* Sporting figures retain their historical dark reading surface and white ink. */
+:root[data-theme="light"] .app-shell .profile-sporting-metrics {
+  background: linear-gradient(135deg, rgba(11, 35, 58, .9), rgba(22, 67, 96, .82));
+}
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item strong,
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-fitted-number,
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-registration-date {
+  color: #fff;
+  text-shadow: none;
+}
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item > span { color: rgba(230,242,250,.74); }
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-streak-record { color: rgba(230,242,250,.56); }
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-registration-date__prefix { color: rgba(230,242,250,.58); }
+
+:root[data-theme="light"] .app-shell .chat-list-item__symbol {
+  background: linear-gradient(135deg, #0f172a, #334155);
+  color: #fff;
+}
+
+/* Artwork stays dark in light mode; its game controls keep white glyphs. */
+:root[data-theme="light"] .app-shell .durak-screen .durak-tool.icon-btn,
+:root[data-theme="light"] .app-shell .bar-game-screen--playing .bar-game-notice-row > .icon-btn {
+  color: #fff;
+  background: rgba(18,20,23,.32);
+  border-color: rgba(255,255,255,.72);
+}
+
+:root[data-theme="light"] .app-shell .bar-identity__icon-actions .icon-btn,
+:root[data-theme="light"] .app-shell .bar-space__arrow.icon-btn {
+  color: var(--liquid-ink);
+  border-color: var(--liquid-border);
+  background: var(--liquid-inset-bg);
+}

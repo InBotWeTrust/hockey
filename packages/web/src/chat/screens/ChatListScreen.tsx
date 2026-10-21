@@ -1,3 +1,4 @@
+import {StartupSplash} from '../../onboarding/StartupSplash.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -289,9 +290,7 @@ export function ChatListScreen(): JSX.Element {
       {dropdownOpen && <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />}
 
       {!dropdownOpen && isLoading && (
-        <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
-          Загрузка...
-        </div>
+        <StartupSplash />
       )}
 
       {!dropdownOpen && isError && (

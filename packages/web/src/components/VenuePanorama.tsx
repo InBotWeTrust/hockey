@@ -199,7 +199,8 @@ export function VenuePanorama({
   const context = useMemo(() => ({ onBack, setAttention: update }), [onBack, update]);
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    if (!exercisesEnabled && location.pathname === '/' && params.get('view') === 'training' && ['course','advanced'].includes(params.get('section') ?? 'course')) {
+    const section = params.get('section') ?? (params.get('play') === '1' ? 'open' : 'course');
+    if (!exercisesEnabled && location.pathname === '/' && params.get('view') === 'training' && ['course','advanced'].includes(section)) {
       setDevelopmentToast(true); navigate(trainingHref('open'), {replace:true}); return;
     }
     if (scene?.redirect) navigate(scene.redirect, { replace: true });
