@@ -2,7 +2,7 @@ import { MapExitLink } from '../components/MapExitLink.js';
 import '../components/navigation-geometry.css';
 import {useHorizontalPan} from './useHorizontalPan.js';
 import {useEffect,useRef,useState} from 'react';
-import {Gamepad2,Newspaper,Tv,LogOut} from 'lucide-react';
+import {Gamepad2,Newspaper,Tv,ArrowLeft} from 'lucide-react';
 import {isBarAssetPath,type BarLayout,type BarOccupantId} from '@hockey/game-core';
 import './bar-panorama.css';
 export function BarAvatarDock({layout,activeSlotId,activityCounts={},onSelectSlot}:{layout:BarLayout;activeSlotId?:string;activityCounts?:Partial<Record<BarOccupantId,number>>;onSelectSlot:(id:string)=>void}) {
@@ -15,7 +15,7 @@ export function BarAvatarDock({layout,activeSlotId,activityCounts={},onSelectSlo
   };
   useEffect(()=>centerActive(),[activeSlotId]);
   return <nav className="bar-avatar-dock" aria-label="Места в баре">
-        <MapExitLink className="bar-avatar-dock__exit"><span><LogOut size={22} aria-hidden="true"/></span><small>Выход</small></MapExitLink>
+        <MapExitLink className="bar-avatar-dock__exit"><span><ArrowLeft size={22} aria-hidden="true"/></span><small>Назад</small></MapExitLink>
         <div ref={dock} className="bar-avatar-dock__slots"
         {...pan}
         onPointerLeave={()=>setDockFocus(null)}>

@@ -1,0 +1,117 @@
+.modal-card.sheet-card.chat-overlay {
+  height: 55%;
+  max-height: calc(100% - var(--app-safe-top, 0px) - 12px);
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.modal-card.sheet-card.chat-overlay--expanded {
+  height: calc(100% - var(--app-safe-top, 0px) - 12px);
+}
+.chat-overlay > .modal-header {
+  flex: none;
+  padding: 0 14px 8px;
+  margin: 0;
+}
+.chat-overlay__controls {
+  display: flex;
+  gap: 8px;
+}
+.chat-overlay__grabber {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 22px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  touch-action: none;
+  cursor: ns-resize;
+}
+.chat-overlay__grabber span {
+  width: 32px;
+  height: 4px;
+  border-radius: 4px;
+  background: currentColor;
+  opacity: 0.45;
+}
+.chat-overlay__body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  --app-viewport-height: 100%;
+}
+.chat-overlay__body > .screen {
+  height: 100% !important;
+  min-height: 0 !important;
+  box-sizing: border-box;
+  padding-bottom: 0 !important;
+}
+.chat-overlay__body .chat-edge-top {
+  padding-top: 0 !important;
+}
+.chat-overlay__body .chat-section-dock {
+  display: none;
+}
+.chat-overlay__body .chat-list-screen {
+  overflow: auto;
+}
+.chat-overlay__body .chat-composer {
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+}
+
+.chat-overlay > .modal-header + div {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  margin-top: 0 !important;
+  overflow: hidden;
+}
+.modal-card.sheet-card.chat-overlay {
+  width: min(100%, 430px);
+  border-radius: 24px 24px 0 0;
+}
+.chat-overlay .modal-title {
+  font-size: 16px;
+}
+
+/* Fullscreen chat edge blurs sample outside the sheet and create visible bands. */
+.chat-overlay .glass-edge-fade::before {
+  content: none;
+}
+
+.chat-overlay .chat-edge-top--overlay,
+.chat-overlay .chat-edge-bottom--overlay {
+  position: relative;
+  inset: auto;
+  margin: 0;
+}
+.chat-overlay .chat-edge-top--overlay {
+  padding: 0 0 8px;
+}
+.chat-overlay .chat-edge-bottom--overlay {
+  padding: 8px 0 max(10px, var(--app-safe-bottom, 0px));
+}
+.chat-overlay [data-testid='messages-list'] {
+  padding: 8px 14px !important;
+}
+.chat-overlay .chat-room__empty-state {
+  margin-top: 24px;
+}
+
+:root:not([data-theme='light']) .chat-overlay :is(.glass-dock-surface, .glass-dock-field) {
+  background: var(--liquid-card-bg);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+  color: var(--liquid-ink);
+}
+:root:not([data-theme='light']) .chat-overlay :is(textarea, .chat-list-search-input)::placeholder {
+  color: var(--liquid-muted-soft);
+  opacity: 1;
+}
