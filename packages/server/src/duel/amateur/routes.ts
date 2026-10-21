@@ -2610,6 +2610,7 @@ async function resolveActiveTournamentAttemptOutcome(
 }
 
 async function lockMatchRewardRecipients(client: PoolClient, matchIds: string[]): Promise<void> {
+  if (matchIds.length === 0) return;
   const identities = await client.query<{
     source: string;
     challenger_user_id: string;
@@ -2635,7 +2636,8 @@ async function lockMatchRewardRecipients(client: PoolClient, matchIds: string[])
   );
   // A final can pay players outside this duel. Batch readers must acquire their
   // entire recipient set before the first match, not extend locks in recent order.
-  await client.query('select id from users where id = any($1::uuid[]) order by id for update', [
+  // Balance/experience writes must serialize, while unrelated shot FK checks may proceed.
+  await client.query('select id from users where id = any($1::uuid[]) order by id for no key update', [
     [
       ...identities.rows.flatMap((row) => [row.challenger_user_id, row.opponent_user_id]),
       ...tournamentUsers.rows.map((row) => row.user_id),
@@ -5349,7 +5351,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const matches: DuelMatchDTO[] = [];
       await lockMatchRewardRecipients(
         client,
-        rows.map((row) => row.id),
+        rows.filter((row) => !isTerminalMatchStatus(row.status)).map((row) => row.id),
       );
       const changedMatchIds = new Set<string>();
       const newlySettledRegularFixtures = new Map<string, NewlySettledRegularFixture>();
@@ -5357,7 +5359,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         await client.query('savepoint duel_read_item');
         let match: DuelMatchRow;
         try {
-          const visibleMatch = await fetchVisibleMatchForUpdate(client, row.id);
+          // Settled history cannot award again and does not need recipient write locks.
+          const terminal = isTerminalMatchStatus(row.status);
+          const visibleMatch = terminal ? row : await fetchVisibleMatchForUpdate(client, row.id);
+          if (terminal) await assertTournamentDuelVisible(client, visibleMatch);
           let reconciled: ReconciledMatch;
           if (isTerminalMatchStatus(visibleMatch.status)) {
             reconciled = { match: visibleMatch, changed: false };
