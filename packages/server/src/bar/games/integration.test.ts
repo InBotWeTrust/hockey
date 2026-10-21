@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
+  searchGamePlayers,
   tickGames,
   startComputer,
   actGame,
@@ -78,6 +79,15 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     await pool.query(
       'truncate message_reactions,messages,chat_members,chats,bar_visitor_receipts,bar_visitor_accounts,currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
     );
+  });
+  it('returns presence timestamps from PostgreSQL for game invitations',async()=>{
+    const seen=new Date('2026-10-21T12:00:00.000Z');
+    await pool.query('update users set last_seen_at=case when id=$1 then $2::timestamptz else null end',[b,seen]);
+    const players=await searchGamePlayers(pool,a,'');
+    expect(players).toEqual([
+      {userId:b,displayName:'B',avatarUrl:null,lastSeenAt:seen.toISOString()},
+      {userId:c,displayName:'C',avatarUrl:null,lastSeenAt:null},
+    ]);
   });
   it('schedules character arm matches and replays three seconds ahead', async () => {
     const before=Date.now();

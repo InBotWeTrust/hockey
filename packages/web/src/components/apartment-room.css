@@ -312,3 +312,14 @@
   margin: 0 0 10px;
   padding: 2px 0;
 }
+
+/* Profile labels and the competition status share one typographic level. */
+.app-shell .apartment-scene :is(.profile-balance__label, .profile-identity__level.public-profile-status, .profile-sporting-metrics__item > span) {
+  color: var(--liquid-muted);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 850;
+  line-height: 1.12;
+  letter-spacing: normal;
+  text-transform: none;
+}

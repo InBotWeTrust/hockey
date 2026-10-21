@@ -8,6 +8,7 @@ import type {
   GameParticipant,
 } from '@hockey/game-core';
 import { apiFetch } from '../../api/apiFetch.js';
+export type GamePickerPlayer = GameParticipant & {lastSeenAt?:string|null};
 const post = (body: unknown) => ({ method: 'POST', body: JSON.stringify(body) });
 export const gameApi = {
   ochkoOffer: () =>
@@ -19,7 +20,7 @@ export const gameApi = {
     apiFetch<BarGameSnapshot>('/bar/games/ochko/start', post(input)),
   lobby: () => apiFetch<BarGameLobby>('/bar/games/lobby'),
   players: (q: string) =>
-    apiFetch<GameParticipant[]>(`/bar/games/players?q=${encodeURIComponent(q)}`),
+    apiFetch<GamePickerPlayer[]>(`/bar/games/players?q=${encodeURIComponent(q)}`),
   start: (character: GameCharacter, requestId: string, previousId?: string) =>
     apiFetch<BarGameSnapshot>(
       '/bar/games/computer',

@@ -171,7 +171,7 @@ function ChatBubbleImpl({
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          color: deliveryStatus === 'read' ? 'rgba(186, 225, 255, 0.95)' : 'currentColor',
+          color: deliveryStatus === 'read' ? 'var(--chat-reading-receipt, rgba(186, 225, 255, 0.95))' : 'currentColor',
         }}
       >
         {deliveryStatus === 'read' ? <CheckCheck size={14} /> : <Check size={13} />}
