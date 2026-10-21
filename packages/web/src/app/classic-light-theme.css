@@ -4493,3 +4493,11 @@
   --chat-reading-meta: #475569;
   --liquid-inset-bg: rgba(15, 23, 42, 0.08);
 }
+
+/* Apartment statistics use the same light reading surface as the passport. */
+:root[data-theme='light'] .app-shell .apartment-scene .profile-sporting-metrics__item :is(strong, .apartment-streak-value, .profile-registration-date) { color:var(--liquid-ink); text-shadow:none; }
+:root[data-theme='light'] .app-shell .apartment-scene .profile-sporting-metrics__item > span,
+:root[data-theme='light'] .app-shell .apartment-scene .profile-sporting-metrics__item :is(.apartment-streak-value small, .profile-registration-date__prefix) { color:var(--liquid-muted); }
+
+/* Balance figures inherit their semantic currency or experience color. */
+:root[data-theme='light'] .app-shell .profile-balance__amount :is(.profile-balance__value, .profile-fitted-number) { color:inherit; }
