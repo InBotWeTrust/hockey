@@ -10,6 +10,7 @@ export function isGameLocation({ pathname, search }: ColumnLocation): boolean {
     /^\/bar\/(?:darts|battleship|checkers|billiards|armwrestling|blackjack|fight)\//.test(pathname)
   )
     return true;
+  if (pathname === '/bar/cards/maria') return true;
   if (pathname !== '/') return false;
   const params = new URLSearchParams(search);
   return (

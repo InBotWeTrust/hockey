@@ -1,0 +1,41 @@
+.app-shell--wide {
+  width: 100%;
+  max-width: none;
+}
+.app-shell--wide .app-content {
+  container-type: inline-size;
+}
+.app-shell[data-surface='game'] .app-content {
+  left: 50%;
+  right: auto;
+  width: min(100%, 430px);
+  transform: translateX(-50%);
+}
+.app-shell--wide .app-content > .screen:not(.section-scene):not(.sections-city-screen) {
+  max-width: 430px;
+  margin-inline: auto;
+}
+.app-shell--wide .district-world {
+  margin-inline: auto;
+}
+@media (min-width: 431px) {
+  .app-shell--wide .district-panel:not(.district-panel--collapsed) {
+    left: 50%;
+    right: auto;
+    width: min(560px, calc(100% - 24px));
+    transform: translateX(-50%);
+  }
+  .app-shell--wide .bar-space {
+    position: absolute;
+    --bar-scene-page-width: min(100cqw, 47dvh);
+  }
+  .app-shell--wide .bar-space__track {
+    left: calc((100cqw - var(--bar-scene-page-width)) / 2);
+  }
+  .app-shell--wide .bar-bottom-chrome {
+    left: 50%;
+    right: auto;
+    width: min(560px, calc(100% - 24px));
+    transform: translateX(-50%);
+  }
+}
