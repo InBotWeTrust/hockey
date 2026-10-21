@@ -371,14 +371,15 @@ export const queueGame = (pool: Pool, user: string, kind: BarGameId, cancel = fa
   });
 export const searchGamePlayers = (pool: Pool, user: string, q: string) =>
   tx(pool, async (c, now) => {
-    const { rows } = await c.query<{ id: string; display_name: string; avatar_url: string | null }>(
-      `select id,display_name,avatar_url from users where id<>$1 and account_kind='player' and blocked_at is null and ($2='' or display_name ilike '%'||$2||'%') and not exists(select 1 from bar_game_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_card_room_players p where p.user_id=users.id) and not exists(select 1 from bar_card_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_local_card_sessions l where l.user_id=users.id and l.expires_at>$3) order by last_seen_at desc nulls last,display_name,id limit 20`,
+    const { rows } = await c.query<{ id: string; display_name: string; avatar_url: string | null; last_seen_at: Date | null }>(
+      `select id,display_name,avatar_url,last_seen_at from users where id<>$1 and account_kind='player' and blocked_at is null and ($2='' or display_name ilike '%'||$2||'%') and not exists(select 1 from bar_game_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_card_room_players p where p.user_id=users.id) and not exists(select 1 from bar_card_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_local_card_sessions l where l.user_id=users.id and l.expires_at>$3) order by last_seen_at desc nulls last,display_name,id limit 20`,
       [user, q, new Date(now)],
     );
     return rows.map((r) => ({
       userId: r.id,
       displayName: r.display_name,
       avatarUrl: r.avatar_url,
+      lastSeenAt: r.last_seen_at?.toISOString() ?? null,
     }));
   });
 export const inviteGame = (pool: Pool, user: string, target: string, kind: BarGameId) =>
