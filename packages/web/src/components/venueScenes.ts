@@ -1,10 +1,10 @@
 import type {PanoramaPage} from './SectionPanorama.js';
 
 export type Level = 'beginner' | 'amateur' | 'professional' | null;
-interface VenuePage extends PanoramaPage {
+export interface VenuePage extends PanoramaPage {
   href: string;
 }
-interface VenueScene {
+export interface VenueScene {
   id: 'yard' | 'stadium' | 'tasks' | 'apartment';
   label: string;
   selected: string;
