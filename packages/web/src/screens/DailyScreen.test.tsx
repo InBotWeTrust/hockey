@@ -6858,7 +6858,7 @@ describe('DailyScreen', () => {
     });
     renderWith(['/?view=amateur&section=duels']);
     for (const label of ['Экспресс', 'Микс', 'Классика', 'Снайпер', 'Ритм']) {
-      const chip = await screen.findByRole('button', { name: label, exact: true });
+      const chip = await screen.findByRole('button', { name: label });
       if (chip.getAttribute('aria-pressed') === 'true') fireEvent.click(chip);
     }
     for (const window of [7000, 4000]) {
