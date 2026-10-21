@@ -94,8 +94,8 @@ it('puts profile first and opens it immediately regardless of map position',()=>
 it('keeps the map booth without a dock circle',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
  expect(screen.queryByRole('button',{name:'Выбрать Чат'})).toBeNull();
- fireEvent.click(screen.getByRole('button',{name:'На карте: Чат'}));
- expect(base.onNavigate).toHaveBeenCalledWith('/chat');
+ fireEvent.click(screen.getByRole('button',{name:'На карте: Лента'}));
+ expect(base.onNavigate).toHaveBeenCalledWith('/chat?view=feed');
  expect(sessionStorage.getItem('city-place-v2:test:beginner')).toBe('chat');
  expect(sessionStorage.getItem('chat-return-v1:test')).toBe('/sections');
 });

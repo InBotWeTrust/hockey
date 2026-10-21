@@ -1,3 +1,4 @@
+import {ChatOverlay} from '../chat/ChatOverlay.js';
 import {FloatingChatShortcut} from '../components/FloatingChatShortcut.js';
 import {useChatUnreadActivity} from '../components/useChatUnreadActivity.js';
 import { StartupSplash } from '../onboarding/StartupSplash.js';
@@ -324,6 +325,12 @@ export function appThemeColor(pathname:string,search=''):string {
 }
 
 function AppExperience(): JSX.Element {
+  const authenticated=useAuthStore(s=>Boolean(s.user&&s.accessToken));
+  const owner=useAuthStore(s=>s.user?.id);
+  return <ChatOverlay enabled={authenticated} owner={owner}><AppScene/></ChatOverlay>;
+}
+
+function AppScene(): JSX.Element {
   useCardHistoryDelivery();
   const hasCardInvite = useCardInvites(s => s.incoming.length > 0);
   const location = useLocation();

@@ -19,7 +19,7 @@ const basePlaces=[
  {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
  {id:'shop',name:'Магазин',x:25.6,y:39,w:7.5,h:12,thumb:[22.5,31]},
  {id:'tasks',name:'Задания',x:27,y:58.5,w:8,h:13,thumb:[24.8,59]},
- {id:'chat',name:'Чат',x:30.1,y:62,w:2.6,h:8.5,thumb:[27.9,70]},
+ {id:'chat',name:'Лента',x:30.1,y:62,w:2.6,h:8.5,thumb:[27.9,70]},
  {id:'bank',name:'Банк',x:36.2,y:36.5,w:8,h:16,thumb:[34.7,28]},
  {id:'stadium',name:'Стадион «Центральный»',x:43.9,y:51,w:14,h:20,thumb:[43.9,52.6]},
  {id:'gym',name:'Спортзал',x:52.5,y:37,w:9.5,h:14,thumb:[54,28.9]},
@@ -76,7 +76,7 @@ export function CityMap(props:Props){
   // Persist before navigation: the map may unmount before a selection effect runs.
   select(p.id);
   if(p.id==='chat')rememberChatReturn(owner,'/sections');
-  const routes:Record<string,string>={profile:'/profile',locker:'/locker-room',yard:'/?view=training&from=sections',stadium:'/?view=amateur&from=sections',shop:'/inventory',bank:'/inventory?tab=bank',tasks:'/achievements',bar:'/bar',bonus:'/bonus-games',chat:'/chat'};
+  const routes:Record<string,string>={profile:'/profile',locker:'/locker-room',yard:'/?view=training&from=sections',stadium:'/?view=amateur&from=sections',shop:'/inventory',bank:'/inventory?tab=bank',tasks:'/achievements',bar:'/bar',bonus:'/bonus-games',chat:'/chat?view=feed'};
   const path=p.id===dailyId?'/daily':routes[p.id];
   if(path)onNavigate(entryRoute(p.id,path));
  };
@@ -89,7 +89,7 @@ export function CityMap(props:Props){
  if(selected==='shop'){description='Инвентарь и валюта';actions.push({label:'Войти в магазин',path:'/inventory'});}
  if(selected==='bank'){description='Валюта и пополнение';actions.push({label:'Открыть банк',path:'/inventory?tab=bank'});}
  if(selected==='bar'){description='Трансляции, игры и общение';actions.push({label:'Войти в бар',path:'/bar'});}
- if(selected==='chat'){description='Сообщения и общение';actions.push({label:'Открыть чат',path:'/chat'});}
+ if(selected==='chat'){description='Новости и события игроков';}
  if(selected==='bonus'){description=bonus;actions.push({label:'Выбрать игру',path:'/bonus-games'});}
  if(selected==='gym')description='Физическая подготовка · в разработке';
  if(selected==='fame')description='Лучшие игроки и результаты · в разработке';
