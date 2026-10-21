@@ -815,6 +815,18 @@ export function ChatRoomScreen(): JSX.Element {
     recorder.stop();
   }, []);
 
+  useEffect(()=>{
+    const cancel=(event:Event)=>{
+      const detail=(event as CustomEvent<{owner:string;chatId:string}>).detail;
+      if(detail?.owner!==meId||detail?.chatId!==chatId)return;
+      if(voiceRecorderRef.current?.state==='recording'){
+        voiceCancelRef.current=true;voiceRecorderRef.current.stop();stopVoiceTracks();
+      }
+    };
+    window.addEventListener('hockey:chat-window-cancel-voice',cancel);
+    return()=>window.removeEventListener('hockey:chat-window-cancel-voice',cancel);
+  },[meId,chatId,stopVoiceTracks]);
+
   const startVoiceRecording = useCallback(async (): Promise<void> => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
       setAttachmentError('Запись голоса недоступна в этом браузере');

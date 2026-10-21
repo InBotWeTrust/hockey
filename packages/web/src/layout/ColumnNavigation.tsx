@@ -67,7 +67,6 @@ export function ColumnNavigationProvider({
       return next;
     });
     // Only a changed external location should synchronize this column.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active, initialPath]);
   const navigate: Navigate = (next, options = {}) => {
     if (isGame(next)) {

@@ -1,3 +1,5 @@
+import {ChatWindow} from '../chat/presentation/ChatWindow.js';
+import {useChatWindowStore} from '../chat/presentation/chatWindowStore.js';
 import {useChatDraftStore} from '../chat/presentation/chatDraftStore.js';
 import {GameNavigationBoundary} from '../layout/GameNavigationBoundary.js';
 import {appSurface} from '../layout/appSurface.js';
@@ -337,8 +339,11 @@ function AppExperience(): JSX.Element {
   },[location.pathname,location.search]);
   const user = useAuthStore((s) => s.user);
   const surface = appSurface(location);
-  const wideSurface = surface==='venue'||surface==='panorama'||surface==='game';
-  useEffect(()=>{clearColumnHistory();useChatDraftStore.getState().switchOwner(user?.id??null);},[user?.id]);
+  const wideSurface = surface==='venue'||surface==='panorama'||surface==='game'||(user!==null&&!['/login','/admin','/terms','/offer','/privacy','/prices','/personal-data-consent'].includes(location.pathname)&&!location.pathname.startsWith('/auth/'));
+  const chatWindowMode=useChatWindowStore(s=>s.mode);
+  const chatWindowOwner=useChatWindowStore(s=>s.owner);
+  const chatDocked=chatWindowMode==='docked'&&chatWindowOwner===user?.id&&surface!=='game'&&surface!=='chat';
+  useEffect(()=>{clearColumnHistory();useChatDraftStore.getState().switchOwner(user?.id??null);useChatWindowStore.getState().setOwner(user?.id??null);},[user?.id]);
   const {unreadMessageCount}=useChatUnreadActivity(Boolean(user));
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   useEffect(() => {
@@ -387,7 +392,7 @@ function AppExperience(): JSX.Element {
       <GameNavigationBoundary owner={user?.id??null}>
       <div
         data-surface={surface}
-        className={`app-shell${wideSurface?' app-shell--wide':''} ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
+        className={`app-shell${chatDocked?' app-shell--chat-docked':''}${wideSurface?' app-shell--wide':''} ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
           maxWidth: wideSurface ? 'none' : 430,
           margin: '0 auto',
@@ -673,6 +678,7 @@ function AppExperience(): JSX.Element {
           </Suspense>
           </VenuePanorama>
         </div>
+        {user&&<ChatWindow owner={user.id} gameplay={surface==='game'}/>}
         {user&&<FloatingChatShortcut owner={user.id} unreadCount={unreadMessageCount}/>}
       </div>
       </GameNavigationBoundary>

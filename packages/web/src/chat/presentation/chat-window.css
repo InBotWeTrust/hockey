@@ -1,0 +1,87 @@
+.chat-window {
+  position: absolute;
+  z-index: 80;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--liquid-border);
+  border-radius: 24px;
+  background: var(--liquid-card-bg, #cbd1dce6);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+  box-shadow: 0 16px 60px #0006;
+  color: var(--liquid-ink);
+}
+.chat-window[hidden] {
+  display: none;
+}
+.chat-window__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--liquid-border);
+  cursor: grab;
+  touch-action: none;
+}
+.chat-window__controls {
+  display: flex;
+  gap: 4px;
+}
+.chat-window__controls .icon-btn {
+  width: 32px;
+  height: 32px;
+  min-width: 32px;
+  min-height: 32px;
+  color: inherit;
+}
+.chat-window__body {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  --app-viewport-height: 100%;
+  --app-safe-top: 0px;
+  --app-safe-bottom: 8px;
+  --app-dock-safe-bottom: 8px;
+}
+.chat-window__body .screen {
+  height: 100% !important;
+  min-height: 0 !important;
+  max-width: none;
+  width: 100%;
+}
+.chat-window__body .chat-edge-top,
+.chat-window__body .chat-edge-bottom {
+  width: 100%;
+  max-width: none;
+}
+.chat-window__body .chat-section-dock {
+  max-width: calc(100% - 24px);
+}
+.chat-window__resize.icon-btn {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  z-index: 30;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  min-height: 24px;
+  padding: 2px;
+  cursor: nwse-resize;
+  touch-action: none;
+  color: inherit;
+}
+.app-shell--chat-docked > .app-content {
+  right: 384px;
+}
+.app-shell--chat-docked > .floating-chat.icon-btn {
+  right: 396px;
+}
+.chat-window--docked .chat-window__header {
+  cursor: default;
+}
