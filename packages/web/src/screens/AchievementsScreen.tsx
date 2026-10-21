@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { useVenueNavigation, useVenueAttention } from '../components/VenuePanorama.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -332,7 +333,7 @@ export function AchievementsScreen({
         />
 
         {achievementsQuery.isLoading ? (
-          <div style={{ color: 'var(--muted)', fontSize: 14, padding: '32px 0' }}>Загрузка…</div>
+          <StartupSplash />
         ) : (
           <div className="achievement-list">
             {filtered.map((achievement) => (

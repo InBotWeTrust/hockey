@@ -1,3 +1,5 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
+import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
@@ -121,7 +123,6 @@ import {
   type InitialTrainingExerciseKey,
 } from '../api/initialTraining.js';
 import {
-  INITIAL_TRAINING_HUB_LOADING_CATALOG,
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
@@ -732,9 +733,7 @@ export function DailyScreen(): JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="route-loading" role="status">
-            Загрузка…
-          </div>
+          <StartupSplash />
         )}
       </main>
     );
@@ -3358,14 +3357,14 @@ function DailyStatsMetric({ label, value }: { label: string; value: string }): J
         borderRadius: 16,
         padding: '12px 8px',
         textAlign: 'center',
-        background: 'var(--liquid-inset-bg)',
+        background: 'var(--daily-stats-metric-bg, var(--liquid-inset-bg))',
         border: '1px solid rgba(255, 255, 255, 0.7)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
       }}
     >
       <div
         style={{
-          color: 'var(--liquid-muted)',
+          color: 'var(--daily-stats-label, var(--liquid-muted))',
           fontSize: 9,
           fontWeight: 900,
           letterSpacing: '0.12em',
@@ -3414,7 +3413,7 @@ function DailyStatsPeriodRow({
         gap: 10,
         borderRadius: 16,
         padding: '10px 12px',
-        background: 'var(--liquid-inset-bg)',
+        background: 'var(--daily-stats-period-bg, var(--liquid-inset-bg))',
         border: '1px solid rgba(255, 255, 255, 0.58)',
       }}
     >
@@ -3431,7 +3430,7 @@ function DailyStatsPeriodRow({
         <div
           style={{
             marginTop: 3,
-            color: 'var(--liquid-muted)',
+            color: 'var(--daily-stats-detail, var(--liquid-muted))',
             fontSize: 10,
             fontWeight: 800,
             lineHeight: 1.15,
@@ -3442,7 +3441,7 @@ function DailyStatsPeriodRow({
       </div>
       <div
         style={{
-          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
+          color: period ? 'var(--daily-stats-score, var(--liquid-muted))' : 'var(--daily-stats-empty, var(--liquid-muted))',
           fontFamily: 'var(--font-mono)',
           fontSize: 14,
           fontWeight: 800,
@@ -3455,7 +3454,7 @@ function DailyStatsPeriodRow({
       <div
         style={{
           minWidth: 42,
-          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
+          color: period ? 'var(--daily-stats-rate, var(--liquid-muted))' : 'var(--daily-stats-empty, var(--liquid-muted))',
           fontFamily: 'var(--font-mono)',
           fontSize: 13,
           fontWeight: 800,
@@ -3781,17 +3780,7 @@ function TrainingPlaceholder({
     trainingSection !== 'course' &&
     trainingSection !== 'advanced'
   ) {
-    return (
-      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
-        <InitialTrainingHub
-          catalog={INITIAL_TRAINING_HUB_LOADING_CATALOG}
-          loading
-          onOpenCourse={() => undefined}
-          onOpenTraining={() => undefined}
-          onOpenAdvanced={() => undefined}
-        />
-      </ModeShell>
-    );
+    return <StartupSplash />;
   }
 
   if (courseCatalogError && !courseCatalog && !autoPlay && trainingSection !== 'open') {
@@ -3973,7 +3962,7 @@ function TrainingPlaceholder({
           </div>
           <div className="training-info-overview__copy">
             {loading && !data ? (
-              <div className="training-info-copy">Загрузка...</div>
+              <StartupSplash />
             ) : (
               <>
                 {error && <div className="training-info-error">{error}</div>}
@@ -4654,12 +4643,8 @@ function AmateurDuelsPage({
   const [duelCreationMode, setDuelCreationMode] = useState<'matchmaking' | 'challenge'>(
     'matchmaking',
   );
-  const [matchmakingKinds, setMatchmakingKinds] = useState<AmateurDuelKind[]>([
-    'express',
-    'express_plus',
-    'classic',
-  ]);
-  const [marathonWindows, setMarathonWindows] = useState<Array<4000 | 7000>>([7000]);
+  const [matchmakingKinds, setMatchmakingKinds] = useState<AmateurDuelKind[]>(DUEL_KIND_OPTIONS);
+  const [marathonWindows, setMarathonWindows] = useState<Array<4000 | 7000>>([4000, 7000]);
   const [challengeWindow, setChallengeWindow] = useState<4000 | 7000>(7000);
   const [matchmakingRulesOpen, setMatchmakingRulesOpen] = useState(false);
   const [formatLimitToast, setFormatLimitToast] = useState<string | null>(null);
@@ -9369,6 +9354,12 @@ function RecoveryKitModal({
     },
   });
 
+  const applySelected = () => {
+    if (selected === null) return;
+    if (action === 'start_classic') guardAmateurMutation(amateurAccess, () => mutation.mutate(selected));
+    else mutation.mutate(selected);
+  };
+
   return (
     <AccessibleModal
       title="Сократить восстановление"
@@ -9396,7 +9387,7 @@ function RecoveryKitModal({
               <img src={item.imageUrl ?? '/inventory/recovery-30.webp'} alt="" />
               <span>
                 <strong>{minutes === 60 ? '1 час' : `${minutes} минут`}</strong>
-                <small>{stock > 0 ? `В запасе: ${stock}` : `${item.currencyPrice} монет`}</small>
+                <small>{stock > 0 ? `В запасе: ${stock}` : <CurrencyAmount amount={item.currencyPrice} currency="coins"/>}</small>
               </span>
               <DuelEquipmentSelectionRadio selected={selectedItemId === itemId} />
             </button>
@@ -9414,27 +9405,24 @@ function RecoveryKitModal({
             В банк
           </button>
         ) : null}
+        {selected !== null && selectedStock <= 0 ? (
+          <PurchaseAction amount={selected.currencyPrice} currency="coins" suffix="и применить" pending={mutation.isPending} pendingLabel="Применяем..."
+          onClick={applySelected}/>
+        ) : (
         <button
           type="button"
           className="modal-primary btn--cta"
           disabled={selected === null || mutation.isPending}
-          onClick={() => {
-            if (selected === null) return;
-            if (action === 'start_classic') {
-              guardAmateurMutation(amateurAccess, () => mutation.mutate(selected));
-              return;
-            }
-            mutation.mutate(selected);
-          }}
+          onClick={applySelected}
         >
           {mutation.isPending
             ? 'Применяем...'
             : selected === null
               ? 'Выберите набор'
-              : selectedStock > 0
-                ? 'Использовать набор'
-                : `Купить за ${selected.currencyPrice} и применить`}
+              : 'Использовать набор'}
         </button>
+        )}
+
       </div>
     </AccessibleModal>
   );

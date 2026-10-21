@@ -532,7 +532,7 @@
 .bar-bottom-chrome .bar-space__actions--terminal { position:absolute; top:auto; bottom:80px; left:0; right:0; max-height:calc(100dvh - 190px - var(--bar-nav-reserve)); }
 
 .bar-identity__icon-actions { display:flex; align-items:center; gap:8px; flex-shrink:0; }
-.bar-space .bar-identity__icon-actions .icon-btn { width:38px; height:38px; min-width:38px; color:rgba(245,248,255,.92); border:1px solid rgba(225,235,255,.28); background:rgba(225,235,255,.06); }
+.bar-identity__icon-actions .icon-btn { width:38px; height:38px; min-width:38px; color:var(--liquid-ink); border:1px solid var(--liquid-border); background:var(--liquid-inset-bg); }
 .bar-space .bar-identity__icon-actions svg { width:19px; height:19px; stroke-width:1.5; }
 .bar-avatar-dock__portrait svg { width:20px; height:20px; stroke-width:1.5; }
 .bar-bottom-chrome .bar-space__actions:not(.bar-space__actions--terminal) { padding-bottom:0; }
@@ -662,3 +662,14 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 }
 
 .bar-space__header h1 {grid-column:1 / -1;}
+
+/* Navigation glyphs inherit the same foreground as the exit and labels. */
+.bar-avatar-dock__portrait { border-color:var(--liquid-border); background:transparent; color:var(--liquid-ink); }
+.bar-avatar-dock__portrait:has(svg) { filter:none; }
+
+.bar-avatar-dock { background:var(--surface-card-bg,var(--liquid-chrome-bg)); border-color:var(--liquid-border); box-shadow:var(--liquid-shadow); }
+
+.bar-avatar-dock__portrait,.bar-avatar-dock__exit>span { border:var(--navigation-border); }
+
+/* The integrated dock shares its parent's edge instead of drawing a divider. */
+.bar-bottom-chrome:not(.bar-bottom-chrome--terminal-open) .bar-avatar-dock { box-shadow:none; }

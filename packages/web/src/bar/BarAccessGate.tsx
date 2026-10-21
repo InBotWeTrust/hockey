@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchBarAccess, type BarAccess } from './olegFightApi.js';
@@ -80,10 +81,6 @@ export function BarAccessGate({ children }: { children: ReactNode }) {
       </main>
     );
   if (!access)
-    return (
-      <main className="screen bar-oleg-status">
-        <p role="status">Открываем бар…</p>
-      </main>
-    );
+    return <StartupSplash />;
   return <>{children}</>;
 }

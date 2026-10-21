@@ -1,15 +1,26 @@
+import {BarPlayerAvatar} from '../BarPlayerAvatar.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import type { BarGameId, BarGameLobby, BarGameSnapshot, GameParticipant } from '@hockey/game-core';
+import type { BarGameId, BarGameLobby, BarGameSnapshot } from '@hockey/game-core';
 import { OnlineDurakLobby } from '../cards/OnlineDurakLobby.js';
 import { SegmentedTabs } from '../../components/SegmentedTabs.js';
 import { ChevronRight, Search } from 'lucide-react';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { useAuthStore } from '../../auth/authStore.js';
-import { gameApi } from './api.js';
+import { gameApi, type GamePickerPlayer } from './api.js';
 import { gameNames } from './content.js';
 import './games.css';
 import {useBarInvitation} from '../useBarInvitation.js';
+const GAME_CHOICES = [
+  { id: 'cards', label: 'Карты' },
+  { id: 'darts', label: 'Дартс' },
+  { id: 'billiards', label: 'Бильярд' },
+  { id: 'checkers', label: 'Шашки' },
+  { id: 'ochko', label: 'Очко' },
+  { id: 'armwrestling', label: 'Армрестлинг' },
+  { id: 'battleship', label: 'Морской бой' },
+] satisfies Array<{id:BarGameId|'cards';label:string}>;
+
 export function BarGamesLobby({
   initial = 'cards',
   embedded = false,
@@ -18,6 +29,7 @@ export function BarGamesLobby({
   embedded?: boolean;
 }) {
   const [kind, setKind] = useState<BarGameId | 'cards'>(initial);
+  const [meetingTab,setMeetingTab]=useState<'find'|'challenge'>('find');
   const invitation=useBarInvitation(!embedded);
   const openedInvitation=useRef<string|null>(null);
   useEffect(()=>{
@@ -25,39 +37,36 @@ export function BarGamesLobby({
   },[invitation]);
   return (
     <section className="bar-games-lobby">
+      <div className="bar-game-selection">
+      <div className="section-label">Выбор игры · {GAME_CHOICES.length}</div>
       <SegmentedTabs
         scrollable
-        items={[
-          { id: 'cards', label: 'Карты' },
-          { id: 'darts', label: 'Дартс' },
-          { id: 'billiards', label: 'Бильярд' },
-          { id: 'checkers', label: 'Шашки' },
-          { id: 'ochko', label: 'Очко' },
-          { id: 'armwrestling', label: 'Армрестлинг' },
-          { id: 'battleship', label: 'Морской бой' },
-        ]}
+        items={GAME_CHOICES}
         activeTab={kind}
         onChange={(id) => setKind(id as typeof kind)}
         ariaLabel="Игра"
       />
+      </div>
       {kind === 'cards' ? (
-        <OnlineDurakLobby embedded={embedded} />
+        <OnlineDurakLobby embedded={embedded} meetingTab={meetingTab} onMeetingTabChange={setMeetingTab} />
       ) : (
-        <NewGameLobby key={kind} kind={kind} />
+        <NewGameLobby key={kind} kind={kind} meetingTab={meetingTab} onMeetingTabChange={setMeetingTab} />
       )}
     </section>
   );
 }
-export function NewGameLobby({ kind }: { kind: BarGameId }) {
+export function NewGameLobby({ kind, meetingTab, onMeetingTabChange }: { kind: BarGameId; meetingTab?:'find'|'challenge'; onMeetingTabChange?:(tab:'find'|'challenge')=>void }) {
   const navigate = useNavigate();
   const userId = useAuthStore((s) => s.user?.id);
   const [state, setState] = useState<BarGameLobby | null>(null);
   const [activeMatch, setActiveMatch] = useState<BarGameSnapshot | null>(null);
   const previousLobby = useRef<BarGameLobby | null>(null);
-  const [tab, setTab] = useState<'find' | 'challenge'>('find');
+  const [localTab,setLocalTab]=useState<'find'|'challenge'>('find');
+  const tab=meetingTab??localTab;
+  const setTab=(value:'find'|'challenge')=>{setLocalTab(value);onMeetingTabChange?.(value);};
   const [q, setQ] = useState('');
-  const [players, setPlayers] = useState<GameParticipant[]>([]);
-  const [selected, setSelected] = useState<GameParticipant | null>(null);
+  const [players, setPlayers] = useState<GamePickerPlayer[]>([]);
+  const [selected, setSelected] = useState<GamePickerPlayer | null>(null);
   const [loadingPlayers, setLoadingPlayers] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -133,9 +142,11 @@ export function NewGameLobby({ kind }: { kind: BarGameId }) {
           }),
       200,
     );
+    const presenceTimer=setInterval(()=>{if(!q.trim())void gameApi.players('').then(rows=>{if(alive)setPlayers(rows);}).catch(()=>{/* Keep the last known picker state. */});},30_000);
     return () => {
       alive = false;
       clearTimeout(timer);
+      clearInterval(presenceTimer);
     };
   }, [tab, q]);
   const run = async (task: () => Promise<unknown>) => {
@@ -283,16 +294,13 @@ export function NewGameLobby({ kind }: { kind: BarGameId }) {
                       <button
                         type="button"
                         key={player.userId}
+                        style={{width:58,flex:'0 0 58px'}}
                         className={`duel-quick-pick__opponent${selected?.userId === player.userId ? ' duel-quick-pick__opponent--active' : ''}`}
                         onClick={() => setSelected(player)}
                         aria-label={`Выбрать соперника ${player.displayName}`}
                         aria-pressed={selected?.userId === player.userId}
                       >
-                        <UserAvatar
-                          avatarUrl={player.avatarUrl}
-                          name={player.displayName}
-                          size={48}
-                        />
+                        <BarPlayerAvatar player={player}/>
                         <span className="duel-quick-pick__name">{player.displayName}</span>
                       </button>
                     ))}

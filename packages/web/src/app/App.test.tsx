@@ -346,7 +346,7 @@ describe('App routing + auth', () => {
 
     expect(await screen.findByText('500 монет')).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'Навигация' })).not.toBeInTheDocument();
-    expect(screen.queryByRole('button')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', {name:'Открыть чат'})).toBeInTheDocument();
   });
 
   it('shows home content when authenticated', () => {

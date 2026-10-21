@@ -1,3 +1,4 @@
+import { BarChallengeButton } from '../../bar/BarChallengeButton.js';
 import { useEffect, useState } from 'react';
 import { SocialProfile } from '../../social/SocialProfile.js';
 import { useMutation, useQuery } from '@tanstack/react-query';
@@ -224,6 +225,7 @@ export function UserProfileScreen(): JSX.Element {
             <div
               style={{ padding: '4px 14px 0', display: 'flex', flexDirection: 'column', gap: 8 }}
             >
+              <BarChallengeButton userId={data.id} name={data.displayName} avatarUrl={data.avatarUrl}/>
               {canDuel && (
                 <button
                   type="button"

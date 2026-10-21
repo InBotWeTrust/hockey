@@ -139,3 +139,12 @@ it('keeps the architectural office entry in its physical bay when broadcasts mov
  fireEvent.click(screen.getByRole('button',{name:'Открыть служебную дверь'}));
  expect(open).toHaveBeenCalledWith('bar-10');
 });
+
+it('keeps table-game signals above character silhouettes and the TV signal below its screen', () => {
+ const view=render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={vi.fn()}/>);
+ for (const id of ['grigory-cards','battleship']) {
+  expect(view.container.querySelector(`[data-bar-object="${id}"]`)).toHaveClass('bar-space__object-glow--foreground');
+ }
+ const television=view.container.querySelector('[data-bar-object="television"]') as HTMLElement;
+ expect(parseFloat(television.style.top)).toBeGreaterThan(48);
+});

@@ -1,5 +1,6 @@
 :root {
   --navigation-circle: 46px;
+  --navigation-border: 1px solid var(--liquid-border, #ffffff61);
   --navigation-selected-border: 2px solid #fff;
   --navigation-selected-shadow: 0 0 0 2px #ffffff18;
   --navigation-item: 56px;
@@ -13,3 +14,11 @@
 .app-shell {
   --navigation-bottom: calc(12px + var(--navigation-safe-area, env(safe-area-inset-bottom, 0px)));
 }
+
+/* A single material for map, chat and game shortcuts in collapsed navigation. */
+.app-shell :is(.district-panel, .floating-chat.icon-btn, .city-game-minimized).navigation-collapsed-surface {
+ background:var(--liquid-card-bg); border:1px solid var(--liquid-border); box-shadow:none; color:var(--liquid-ink);
+ backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%)); -webkit-backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%));
+}
+.app-shell .navigation-collapsed-surface .city-game-restore.icon-btn { color:inherit; }
+.app-shell .navigation-collapsed-surface .city-game-restore.icon-btn svg { width:25px; height:25px; stroke-width:1.5; color:inherit; filter:none; }

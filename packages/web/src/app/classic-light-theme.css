@@ -328,11 +328,11 @@
   border: 1px solid var(--glass-border-dark)
 }
 :root[data-theme="light"] .chat-bubble--own {
-  background: linear-gradient(145deg, rgba(25, 42, 67, 0.97), rgba(12, 27, 49, 0.94));
-  border-color: rgba(195, 219, 242, 0.2);
-  box-shadow:
-    0 10px 24px rgba(2, 8, 23, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08)
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--shadow-glass);
+  backdrop-filter: var(--blur-md);
+  -webkit-backdrop-filter: var(--blur-md);
 }
 :root[data-theme="light"] .glass-edge-fade::before {
   background: var(--glass-edge-bg);
@@ -4367,7 +4367,7 @@
 }/* Keep current navigation glyphs and readable standalone headings. */
 :root[data-theme='light'] .app-shell .section-label { color:#fff; text-shadow:0 1px 3px #0009; }
 :root[data-theme='light'] .app-shell .glass .section-label { color:var(--ink); text-shadow:none; }
-:root[data-theme='light'] .profile-theme-settings .segmented-tabs__item:first-child { flex:1.8; }
+:root[data-theme='light'] .profile-theme-settings:not(.profile-chat-position-settings) .segmented-tabs__item:first-child { flex:1.8; }
 :root[data-theme='light'] .profile-theme-settings .segmented-tabs__item { padding-inline:6px; }
 /* Trophy labels need a stable reading surface over profile scenery. */
 :root[data-theme="light"] .profile-trophy-showcase {
@@ -4429,3 +4429,75 @@
   filter: none;
   opacity: 1;
 }
+
+/* Sporting figures retain their historical dark reading surface and white ink. */
+:root[data-theme="light"] .app-shell .profile-sporting-metrics {
+  background: linear-gradient(135deg, rgba(11, 35, 58, .9), rgba(22, 67, 96, .82));
+}
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item strong,
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-fitted-number,
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-registration-date {
+  color: #fff;
+  text-shadow: none;
+}
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item > span { color: rgba(230,242,250,.74); }
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-streak-record { color: rgba(230,242,250,.56); }
+:root[data-theme="light"] .app-shell .profile-sporting-metrics__item .profile-registration-date__prefix { color: rgba(230,242,250,.58); }
+
+:root[data-theme="light"] .app-shell .chat-list-item__symbol {
+  background: linear-gradient(135deg, #0f172a, #334155);
+  color: #fff;
+}
+
+/* Artwork stays dark in light mode; its game controls keep white glyphs. */
+:root[data-theme="light"] .app-shell .durak-screen .durak-tool.icon-btn,
+:root[data-theme="light"] .app-shell .bar-game-screen--playing .bar-game-notice-row > .icon-btn {
+  color: #fff;
+  background: rgba(18,20,23,.32);
+  border-color: rgba(255,255,255,.72);
+}
+
+:root[data-theme="light"] .app-shell .bar-identity__icon-actions .icon-btn,
+:root[data-theme="light"] .app-shell .bar-space__arrow.icon-btn {
+  color: var(--liquid-ink);
+  border-color: var(--liquid-border);
+  background: var(--liquid-inset-bg);
+}
+
+/* Shared aliases let newer components use the same historical light materials. */
+:root[data-theme="light"] {
+  --liquid-ink: #0f172a;
+  --liquid-muted: #475569;
+  --liquid-muted-soft: #64748b;
+  --liquid-card-bg: rgba(226, 233, 241, 0.64);
+  --liquid-chrome-bg: rgba(226, 236, 246, 0.76);
+  --liquid-modal-bg: rgba(226, 233, 241, 0.68);
+  --liquid-inset-bg: rgba(255, 255, 255, 0.42);
+  --liquid-border: rgba(255, 255, 255, 0.78);
+  --liquid-shadow: 0 12px 28px rgba(15, 23, 42, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --liquid-modal-shadow: 0 24px 70px rgba(15, 23, 42, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.5);
+  --liquid-scrim: rgba(84, 101, 120, 0.36);
+  --daily-stats-metric-bg: rgba(255, 255, 255, 0.52);
+  --daily-stats-period-bg: rgba(255, 255, 255, 0.42);
+  --daily-stats-label: rgba(15, 23, 42, 0.52);
+  --daily-stats-detail: rgba(15, 23, 42, 0.44);
+  --daily-stats-score: rgba(15, 23, 42, 0.78);
+  --daily-stats-rate: rgba(15, 23, 42, 0.58);
+  --daily-stats-empty: rgba(15, 23, 42, 0.32);
+}
+/* Both message directions share the light card material. */
+:root[data-theme="light"] .chat-reading-surface {
+  --liquid-ink: #0f172a;
+  --liquid-muted: #475569;
+  --muted: #475569;
+  --chat-reading-meta: #475569;
+  --liquid-inset-bg: rgba(15, 23, 42, 0.08);
+}
+
+/* Apartment statistics use the same light reading surface as the passport. */
+:root[data-theme='light'] .app-shell .apartment-scene .profile-sporting-metrics__item :is(strong, .apartment-streak-value, .profile-registration-date) { color:var(--liquid-ink); text-shadow:none; }
+:root[data-theme='light'] .app-shell .apartment-scene .profile-sporting-metrics__item > span,
+:root[data-theme='light'] .app-shell .apartment-scene .profile-sporting-metrics__item :is(.apartment-streak-value small, .profile-registration-date__prefix) { color:var(--liquid-muted); }
+
+/* Balance figures inherit their semantic currency or experience color. */
+:root[data-theme='light'] .app-shell .profile-balance__amount :is(.profile-balance__value, .profile-fitted-number) { color:inherit; }

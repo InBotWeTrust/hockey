@@ -1,3 +1,4 @@
+import { createBarInviteMessage } from './inviteChat.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { type durak, durakTable } from '@hockey/game-core';
@@ -8,6 +9,7 @@ type Room = {
   seats: string[];
   capacity: number;
   formats?: number[];
+  flexibleInvites?: boolean;
   owner: string;
   status: 'waiting' | 'confirming' | 'countdown' | 'playing' | 'ended';
   readyUntil?: number | null;
@@ -281,20 +283,17 @@ export function startCountdown(data: Room, now: number) {
   data.countdownAt = now + 5000;
   data.searchUntil = null;
 }
-export async function joinCardRoom(
-  pool: Pool,
-  user: string,
-  selected: number | number[],
-  searching = true,
-) {
-  return cardTransaction(pool, async (client, now) => {
+export async function joinCardRoom(pool: Pool, user: string, selected: number | number[], searching = true) {
+  return cardTransaction(pool, (client, now) => joinCardRoomInTransaction(client, user, selected, searching, now));
+}
+async function joinCardRoomInTransaction(client: PoolClient, user: string, selected: number | number[], searching: boolean, now: number, allowPrivateFormats = false) {
     const formats = [...new Set(Array.isArray(selected) ? selected : [selected])].sort(
       (a, b) => a - b,
     );
     if (
       !formats.length ||
       formats.some((n) => !Number.isInteger(n) || n < 2 || n > 6) ||
-      (!searching && formats.length !== 1)
+      (!searching && formats.length !== 1 && !allowPrivateFormats)
     )
       throw new AppError('card_format', 'Выбери от 2 до 6 игроков.', 400);
     const capacity = Math.max(...formats);
@@ -349,6 +348,7 @@ export async function joinCardRoom(
       seats: [user],
       capacity,
       formats,
+      ...(allowPrivateFormats ? { flexibleInvites: true } : {}),
       owner: user,
       status: 'waiting',
       searchUntil: searching ? now + 120000 : null,
@@ -369,8 +369,8 @@ export async function joinCardRoom(
       id,
     ]);
     return { roomId: id };
-  });
 }
+
 export async function readCardRoom(pool: Pool, user: string, id: string) {
   return cardTransaction(pool, async (client, now) => {
     id = await resolveRoomId(client, user, id);
@@ -493,7 +493,9 @@ export async function commandCardRoom(
   });
 }
 export async function inviteToRoom(pool: Pool, user: string, id: string, target: string) {
-  return cardTransaction(pool, async (client, now) => {
+  return cardTransaction(pool, (client, now) => inviteToRoomInTransaction(pool, client, user, id, target, now));
+}
+async function inviteToRoomInTransaction(pool: Pool, client: PoolClient, user: string, id: string, target: string, now: number) {
     const data = await load(client, id, now);
     if (data.owner !== user || !data.seats.includes(user))
       throw new AppError('forbidden', 'Приглашать может создатель стола.', 403);
@@ -527,16 +529,25 @@ export async function inviteToRoom(pool: Pool, user: string, id: string, target:
     if (data.seats.length + reserved.rowCount! >= data.capacity)
       throw new AppError('card_full', 'Свободных мест нет.', 409);
     const inviteId = randomUUID();
-    data.formats = [data.capacity];
+    if (!data.flexibleInvites) data.formats = [data.capacity];
     data.revision++;
     await save(client, id, data, now);
     await client.query(
       'insert into bar_card_invites(id,sender_id,receiver_id,room_id,expires_at) values($1,$2,$3,$4,$5)',
       [inviteId, user, target, id, new Date(now + 120000)],
     );
+    await createBarInviteMessage(pool, client, { id: inviteId, senderId: user, receiverId: target, kind: 'cards', capacity: data.capacity, capacities: roomFormats(data), roomId: id, expiresAt: new Date(now + 120000) });
     return { id: inviteId };
+}
+export async function inviteCardsFromProfile(pool: Pool, user: string, target: string, capacity: number | number[]) {
+  return cardTransaction(pool, async (client, now) => {
+    if (user === target) throw new AppError('card_self', 'Нельзя вызвать себя.', 400);
+    const { roomId } = await joinCardRoomInTransaction(client, user, capacity, false, now, true);
+    const invite = await inviteToRoomInTransaction(pool, client, user, roomId, target, now);
+    return { ...invite, roomId };
   });
 }
+
 export async function acceptRoomInvite(client: PoolClient, user: string, id: string, now: number) {
   const data = await load(client, id, now);
   if (data.seats.includes(user)) return id;

@@ -2550,7 +2550,8 @@ describe('DailyScreen', () => {
 
   it('shows loader while fetching state', () => {
     renderWith();
-    expect(screen.getByRole('status')).toHaveClass('route-loading');
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.getByRole('main', { name: 'Загрузка приложения' })).toHaveClass('onboarding-flow--startup');
   });
 
   it('renders a high-contrast arena error state when the daily request fails', async () => {
@@ -3039,7 +3040,7 @@ describe('DailyScreen', () => {
     );
   });
 
-  it('guards an arena duel invitation for a beginner without calling the API', async () => {
+  it('accepts an arena duel invitation after qualifying with a stale beginner session', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
     const incomingInvite: AmateurDuelMatchState = {
       ...settledDuelMatch,
@@ -3056,6 +3057,12 @@ describe('DailyScreen', () => {
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
+      if (url.includes('/accept')) {
+        return new Response(JSON.stringify({ match: incomingInvite }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
       if (url.includes('/duel/amateur/events')) {
         return new Response(JSON.stringify({ events: [incomingInvite] }), {
           status: 200,
@@ -3081,16 +3088,13 @@ describe('DailyScreen', () => {
     renderWith(['/?view=arena']);
     fireEvent.click(await screen.findByRole('button', { name: 'Принять' }));
 
-    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
-      goalsRemaining: 0,
-      unlockGoalsRequired: 300,
-    });
-    expect(
+    expect(useAmateurAccessToastStore.getState().toast).toBeNull();
+    await waitFor(() => expect(
       fetchMock.mock.calls.some(([input, init]) => {
         const url = input instanceof Request ? input.url : String(input);
         return url.includes('/accept') && init?.method === 'POST';
       }),
-    ).toBe(false);
+    ).toBe(true));
   });
 
   it('restores the last selected arena card after returning home', async () => {
@@ -4417,7 +4421,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&section=course'],undefined,undefined,true);
     await screen.findByRole('heading',{name:'Начальное обучение'});
     fireEvent.click(screen.getByRole('button',{name:'Назад'}));
-    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/sections$/);
   });
   it('shows the initial-course hub and opens its seven-card catalog when enabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -4568,7 +4572,7 @@ describe('DailyScreen', () => {
       'Упражнение: board-side');
   });
 
-  it('keeps the training page shell visible while the catalog is loading', async () => {
+  it('keeps the full loading screen visible until the training catalog is ready', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4584,23 +4588,9 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Загрузка приложения')).toBeVisible());
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
     resolveCourse(
@@ -5545,6 +5535,8 @@ describe('DailyScreen', () => {
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Публичный спортивный паспорт' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Предложить сыграть в баре' })).toBeInTheDocument();
   });
 
   it('shows only played duels in history stats and list', async () => {
@@ -6603,7 +6595,8 @@ describe('DailyScreen', () => {
           JSON.stringify({
             ticket: {
               user_id: 'u1',
-              duel_kinds: ['express', 'classic'],
+              duel_kinds: ['express', 'classic', 'sniper', 'marathon', 'rhythm'],
+        marathon_windows_ms: [4000,7000],
               created_at: '2026-05-16T10:00:00.000Z',
               expires_at: '2026-05-16T10:02:00.000Z',
             },
@@ -6637,6 +6630,7 @@ describe('DailyScreen', () => {
     expect(express).toHaveAttribute('aria-pressed', 'true');
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
     expect(classic).toHaveAttribute('aria-pressed', 'true');
+    for(const label of ['Снайпер','Марафон · 4 сек','Марафон · 7 сек','Ритм']) expect(screen.getByRole('button',{name:label})).toHaveAttribute('aria-pressed','true');
     expect(express.childElementCount).toBe(0);
     expect(express.style.background).toBe('var(--liquid-choice-selected-bg, var(--liquid-selected-bg))');
 
@@ -6652,7 +6646,8 @@ describe('DailyScreen', () => {
       );
       expect(joinCall).toBeTruthy();
       expect(JSON.parse(String(joinCall?.[1]?.body))).toEqual({
-        duel_kinds: ['express', 'classic'],
+        duel_kinds: ['express', 'classic', 'sniper', 'marathon', 'rhythm'],
+        marathon_windows_ms: [4000,7000],
       });
     });
   });
@@ -6713,7 +6708,7 @@ describe('DailyScreen', () => {
         ? {
             matches: [],
             duel_lock: null,
-            format_locks: { classic: lock, express_plus: lock, express: null },
+            format_locks: { classic: lock, express_plus: lock, express: null, sniper:lock, marathon:lock, rhythm:lock },
           }
         : url.includes('/duel/amateur/templates')
           ? { templates: challengeTemplates }
@@ -6775,7 +6770,7 @@ describe('DailyScreen', () => {
         ? {
             matches: [],
             duel_lock: null,
-            format_locks: unsafe ? { classic: lock, express_plus: lock, express: lock } : {},
+            format_locks: unsafe ? { classic: lock, express_plus: lock, express: lock, sniper:lock, marathon:lock, rhythm:lock } : {},
           }
         : url.includes('/duel/amateur/templates')
           ? { templates: challengeTemplates }
@@ -6832,7 +6827,7 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
-      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic'] });
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic','sniper','marathon','rhythm'], marathon_windows_ms:[4000,7000] });
     });
   });
 
@@ -6862,13 +6857,19 @@ describe('DailyScreen', () => {
       return new Response(JSON.stringify(data), { status: 200, headers: { 'content-type': 'application/json' } });
     });
     renderWith(['/?view=amateur&section=duels']);
-    for (const label of ['Экспресс', 'Микс', 'Классика']) fireEvent.click(await screen.findByRole('button', { name: label }));
-    for (const window of windows) fireEvent.click(await screen.findByRole('button', { name: `Марафон · ${window / 1000} сек` }));
+    for (const label of ['Экспресс', 'Микс', 'Классика', 'Снайпер', 'Ритм']) {
+      const chip = await screen.findByRole('button', { name: label });
+      if (chip.getAttribute('aria-pressed') === 'true') fireEvent.click(chip);
+    }
+    for (const window of [7000, 4000]) {
+      const chip = await screen.findByRole('button', { name: `Марафон · ${window / 1000} сек` });
+      if ((chip.getAttribute('aria-pressed') === 'true') !== windows.includes(window)) fireEvent.click(chip);
+    }
     expect(screen.getByText('Форматы поиска').style.transform).toBe('');
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
-      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['marathon'], marathon_windows_ms: windows });
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['marathon'], marathon_windows_ms: [...windows].sort((a, b) => a - b) });
     });
   });
 

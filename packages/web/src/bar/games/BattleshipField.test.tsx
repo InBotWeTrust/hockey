@@ -308,6 +308,25 @@ it('labels structurally disabled airstrikes and damaged-submarine maneuvers unav
  expect(screen.getByRole('button',{name:'Манёвр Недоступен'})).toBeDisabled();
 });
 
+it('keeps unavailable airstrikes unfilled as charge changes',()=>{
+ const state=sea.start(sea.create(0,4,true));
+ const carrier=state.fleets[0].find(s=>s.kind==='carrier')!;
+ carrier.hits=sea.cells(carrier);
+ const props={player:0 as const,disabled:false,locked:false,send:vi.fn()};
+ const {rerender}=render(<BattleshipField {...props} game={sea.view(state,0)}/>);
+ for(const charge of [1,3,5]) {
+  state.airstrikeCharges=[charge,0];
+  rerender(<BattleshipField {...props} game={sea.view(state,0)}/>);
+  const action=screen.getByRole('button',{name:'Авианалёт Недоступен'});
+  expect(action).toBeDisabled();
+  expect(action.style.getPropertyValue('--charge')).toBe('0%');
+ }
+ carrier.hits=[];
+ state.airstrikeCharges=[3,0];
+ rerender(<BattleshipField {...props} game={sea.view(state,0)}/>);
+ expect(screen.getByRole('button',{name:'Авианалёт Заряд 60%'}).style.getPropertyValue('--charge')).toBe('60%');
+});
+
 it.each([0,1] as const)('uses stronger airstrike shake and burning damage for actor %i', actor => {
  const g=sea.start(sea.create(actor,4,true));g.airstrikeCharges![actor]=5;
  const victim=g.fleets[1-actor]!.find(s=>s.kind==='carrier')!;

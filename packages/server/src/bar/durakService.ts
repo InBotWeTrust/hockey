@@ -1,3 +1,4 @@
+import { createBarInviteMessage, syncBarInviteMessages, publishBarInviteMessages, discardBarInviteMessages } from './inviteChat.js';
 import { assertNewGamesFree } from './games/admission.js';
 import { randomUUID, randomInt } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
@@ -31,9 +32,12 @@ export async function cardTransaction<T>(
       [new Date(now)],
     );
     const result = await run(client, now);
+    await syncBarInviteMessages(pool, client);
     await client.query('commit');
+    await publishBarInviteMessages(pool, client);
     return result;
   } catch (error) {
+    discardBarInviteMessages(client);
     await client.query('rollback');
     throw error;
   } finally {
@@ -148,6 +152,7 @@ export async function cardLobby(pool: Pool, user: string) {
     const invites = await client.query(
       `select i.id,i.sender_id,i.receiver_id,i.expires_at,i.status,i.match_id,i.room_id,
       (select (data->>'capacity')::int from bar_card_rooms where id=i.room_id) as capacity,
+      (select data->'formats' from bar_card_rooms where id=i.room_id) as capacities,
       s.display_name as sender_name,s.avatar_url as sender_avatar_url,r.display_name as receiver_name
       from bar_card_invites i join users s on s.id=i.sender_id join users r on r.id=i.receiver_id
       where (i.sender_id=$1 or i.receiver_id=$1) and (i.status='pending' or (i.status='accepted' and i.created_at > $2))
@@ -232,6 +237,7 @@ export async function inviteCards(pool: Pool, user: string, receiver: string) {
       'insert into bar_card_invites(id,sender_id,receiver_id,expires_at) values($1,$2,$3,$4)',
       [id, user, receiver, new Date(now + 600_000)],
     );
+    await createBarInviteMessage(pool, client, { id, senderId: user, receiverId: receiver, kind: 'cards', capacity: 2, expiresAt: new Date(now + 600_000), roomId: null });
     return { id };
   });
 }
@@ -248,13 +254,13 @@ export async function respondCards(
       status: string;
       match_id: string | null;
       room_id: string | null;
-    }>('select * from bar_card_invites where id=$1', [id]);
+    }>('select * from bar_card_invites where id=$1 for update', [id]);
     const invite = result.rows[0];
     if (!invite || ![invite.sender_id, invite.receiver_id].includes(user))
       throw new AppError('not_found', 'Вызов не найден.', 404);
     if (action === 'cancel' ? user !== invite.sender_id : user !== invite.receiver_id)
       throw new AppError('forbidden', 'Это действие недоступно.', 403);
-    if (invite.status === 'accepted' && action === 'accept')
+    if ((invite.status === 'accepted' && action === 'accept') || (invite.status === 'declined' && action === 'decline') || (invite.status === 'cancelled' && action === 'cancel'))
       return { matchId: invite.match_id, roomId: invite.room_id };
     if (invite.status !== 'pending')
       throw new AppError('card_invite_expired', 'Вызов уже закрыт.', 409);

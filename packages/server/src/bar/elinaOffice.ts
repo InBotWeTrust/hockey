@@ -3,12 +3,13 @@ import {AppError} from '../plugins/errors.js';
 import {officeDayMode} from './officeSchedule.js';
 export interface ElinaOfficeAccess {day:string;warnings:number}
 export async function requireElinaOffice(db:Pick<Pool,'query'>|PoolClient,user:string,activeVisit=true):Promise<ElinaOfficeAccess>{
- const row=(await db.query<{day:string;state_day:string|null;office_warnings:number|null;departed_at:unknown;warned_at:unknown;visiting:boolean;fight_id:string|null}>(
+ const row=(await db.query<{day:string;state_day:string|null;office_warnings:number|null;departed_at:unknown;warned_at:unknown;visiting:boolean;fight_id:string|null;presence_mode:string|null;presence_valid:boolean;absent:boolean}>(
   `select (now() at time zone coalesce(u.timezone,'UTC'))::date::text as day,s.day::text as state_day,
-   s.office_warnings,s.departed_at,s.warned_at,s.fight_id,
-   exists(select 1 from bar_staff_room_entries e where e.user_id=u.id and e.day=s.day and e.last_seen_at>clock_timestamp()-interval '2 minutes') as visiting
+   s.office_warnings,s.departed_at,s.warned_at,s.fight_id,s.presence_mode,
+   s.presence_until is not null as presence_valid, coalesce(s.absent_until>clock_timestamp(),false) as absent,
+   exists(select 1 from bar_staff_room_entries e where e.user_id=u.id and e.day=s.day and e.escorted_at is null and e.last_seen_at>clock_timestamp()-interval '2 minutes') as visiting
    from users u left join bar_staff_room_state s on s.user_id=u.id where u.id=$1`,[user])).rows[0];
- if(!row||row.state_day!==row.day||officeDayMode(user,row.day)!=='seated'||row.departed_at||row.warned_at||row.fight_id||(activeVisit&&!row.visiting))
+ if(!row||row.state_day!==row.day||officeDayMode(user,row.day)==='scene'||row.presence_mode!=='seated'||!row.presence_valid||row.absent||row.departed_at||row.warned_at||row.fight_id||(activeVisit&&!row.visiting))
   throw new AppError('elina_unavailable','Элины сейчас нет в кабинете.',409);
  return {day:row.day,warnings:row.office_warnings??0};
 }

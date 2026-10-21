@@ -1614,6 +1614,14 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
   it('preserves old inventory balances and equipped items when replacing catalogue', async () => {
     await applyMigrations(pool, migrationsBefore050Dir!);
 
+    // The legacy common equipment was provisioned outside the migration catalogue.
+    await pool.query(
+      `insert into admin_inventory_items (title, item_kind, rarity)
+       values ('Бронзовая клюшка', 'stick', 'common'),
+              ('Бронзовые коньки', 'skates', 'common')
+       on conflict do nothing`,
+    );
+
     const userId = '00000000-0000-4000-8000-000000000501';
     const opponentId = '00000000-0000-4000-8000-000000000502';
     const matchId = '00000000-0000-4000-8000-000000000503';

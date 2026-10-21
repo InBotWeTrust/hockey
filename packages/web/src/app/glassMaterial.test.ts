@@ -110,7 +110,7 @@ describe('unified glass material', () => {
 });
 
 it('preserves background blur on the shared modal backdrop', () => {
-  const rule = liquidGlassCss.match(/^\.modal-backdrop \{[^}]*\}/m)?.[0];
+  const rule = liquidGlassCss.match(/^[^{]*\.modal-backdrop \{[^}]*\}/m)?.[0];
   expect(rule).toContain('backdrop-filter: var(--liquid-scrim-blur)');
   expect(rule).toContain('-webkit-backdrop-filter: var(--liquid-scrim-blur)');
   expect(liquidGlassCss).toContain('--liquid-scrim-blur: blur(14px) saturate(115%)');

@@ -1,3 +1,4 @@
+import { createBarInviteMessage } from '../inviteChat.js';
 import { admitVisitorGame } from '../visitorService.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
@@ -370,14 +371,15 @@ export const queueGame = (pool: Pool, user: string, kind: BarGameId, cancel = fa
   });
 export const searchGamePlayers = (pool: Pool, user: string, q: string) =>
   tx(pool, async (c, now) => {
-    const { rows } = await c.query<{ id: string; display_name: string; avatar_url: string | null }>(
-      `select id,display_name,avatar_url from users where id<>$1 and account_kind='player' and blocked_at is null and ($2='' or display_name ilike '%'||$2||'%') and not exists(select 1 from bar_game_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_card_room_players p where p.user_id=users.id) and not exists(select 1 from bar_card_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_local_card_sessions l where l.user_id=users.id and l.expires_at>$3) order by last_seen_at desc nulls last,display_name,id limit 20`,
+    const { rows } = await c.query<{ id: string; display_name: string; avatar_url: string | null; last_seen_at: Date | null }>(
+      `select id,display_name,avatar_url,last_seen_at from users where id<>$1 and account_kind='player' and blocked_at is null and ($2='' or display_name ilike '%'||$2||'%') and not exists(select 1 from bar_game_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_card_room_players p where p.user_id=users.id) and not exists(select 1 from bar_card_matches m where m.ended_at is null and (m.player_a=users.id or m.player_b=users.id)) and not exists(select 1 from bar_local_card_sessions l where l.user_id=users.id and l.expires_at>$3) order by last_seen_at desc nulls last,display_name,id limit 20`,
       [user, q, new Date(now)],
     );
     return rows.map((r) => ({
       userId: r.id,
       displayName: r.display_name,
       avatarUrl: r.avatar_url,
+      lastSeenAt: r.last_seen_at?.toISOString() ?? null,
     }));
   });
 export const inviteGame = (pool: Pool, user: string, target: string, kind: BarGameId) =>
@@ -401,6 +403,7 @@ export const inviteGame = (pool: Pool, user: string, target: string, kind: BarGa
       'insert into bar_game_invites(id,kind,sender_id,receiver_id,expires_at) values($1,$2,$3,$4,$5)',
       [id, kind, user, target, new Date(now + 60000)],
     );
+    await createBarInviteMessage(pool, c, { id, senderId: user, receiverId: target, kind, capacity: 2, expiresAt: new Date(now + 60000), roomId: null });
     return { id };
   });
 export const respondGame = (
@@ -422,7 +425,7 @@ export const respondGame = (
     const invite = result.rows[0];
     if (!invite || (action === 'cancel' ? invite.sender_id !== user : invite.receiver_id !== user))
       throw new AppError('not_found', 'Приглашение не найдено.', 404);
-    if (action === 'accept' && invite.status === 'accepted') return { matchId: invite.match_id };
+    if ((action === 'accept' && invite.status === 'accepted') || (action === 'decline' && invite.status === 'declined') || (action === 'cancel' && invite.status === 'cancelled')) return { matchId: invite.match_id };
     if (invite.status !== 'pending')
       throw new AppError('bar_invite_expired', 'Приглашение уже недоступно.', 409);
     let matchId: string | null = null;

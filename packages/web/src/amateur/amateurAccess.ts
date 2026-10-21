@@ -50,7 +50,9 @@ export function deriveAmateurAccess(input: AmateurAccessInput): AmateurAccessSna
     goalsRemaining,
     hasFullAccess:
       hasCompleteProgress &&
-      (competitionLevel === 'amateur' || competitionLevel === 'professional'),
+      (competitionLevel === 'amateur' ||
+        competitionLevel === 'professional' ||
+        (competitionLevel === 'beginner' && qualifyingGoals >= unlockGoalsRequired)),
   };
 }
 

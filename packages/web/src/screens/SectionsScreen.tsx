@@ -1,9 +1,10 @@
+import {useCardInvites} from '../bar/cards/cardInvites.js';
+import {useGameInvites} from '../bar/games/gameInviteStore.js';
 import { StartupSplash } from '../onboarding/StartupSplash.js';
-import { useGameInvites } from '../bar/games/gameInviteStore.js';
+import {useBarActivity} from '../bar/barActivity.js';
 import {caretakerBlocked} from '../city/caretakerSchedule.js';
 import type {GameDockStatus} from '../city/gameDockStatus.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
-import { useCardInvites } from '../bar/cards/cardInvites.js';
 import { fetchAdminAttention } from '../admin/api.js';
 import { CityMap } from '../city/CityMap.js';
 import { lazy, Suspense, useEffect, useState } from 'react';
@@ -94,9 +95,11 @@ export function SectionsScreen(): JSX.Element {
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
   const user = useAuthStore((state) => state.user);
   const userId = user?.id;
-  const { totalUnread, gameActionCount } = useNavigationActivity(Boolean(user));
-  const cardInviteCount = useCardInvites(state => state.incoming.length);
-  const gameInviteCount = useGameInvites(state => state.owner === userId ? state.incoming.length : 0);
+  const { unreadMessageCount, gameActionCount } = useNavigationActivity(Boolean(user));
+  const cardInviteCount=useCardInvites(state=>state.incoming.length);
+  const gameInviteCount=useGameInvites(state=>state.owner===userId?state.incoming.length:0);
+  const barActivity = useBarActivity(false);
+  const barCount = Object.values(barActivity).reduce((sum,count)=>sum+(count??0),cardInviteCount+gameInviteCount);
   const [storedBonusProgress] = useState(() => readStoredBonusProgress(userId));
   const weeklyChallenge = useQuery({
     queryKey: weeklyChallengeKeys.current,
@@ -298,7 +301,7 @@ export function SectionsScreen(): JSX.Element {
         onOpenTraining={()=>navigate('/?view=training')}
         onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
         onOpenAmateurMatch={id=>navigate(`/?view=amateur&match=${encodeURIComponent(id)}&play=1`)}
-      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={totalUnread} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={cardInviteCount+gameInviteCount} onNavigate={navigate}/>
+      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (

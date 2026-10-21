@@ -1,3 +1,5 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
+import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
 import { BonusRecordsModal, formatBonusPreviewRecord } from '../profile/BonusRecordsModal.js';
 import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
@@ -416,7 +418,7 @@ export function BonusGamesScreen(): JSX.Element {
       {purchaseGame !== null ? (
         <AccessibleModal
           title="Открыть бонусную игру?"
-          copy={`Открыть «${purchaseGame.title}» за ${numberText(purchaseGame.unlock_price_stars)} звезды?`}
+          copy={<>Открыть «{purchaseGame.title}» за <CurrencyAmount amount={purchaseGame.unlock_price_stars} currency="stars"/>?</>}
           closeBlocked={purchaseMutation.isPending}
           onRequestClose={() => {
             if (purchaseMutation.isPending) return;
@@ -456,21 +458,11 @@ export function BonusGamesScreen(): JSX.Element {
             >
               Отмена
             </button>
-            <button
-              type="button"
-              className="modal-primary btn btn--cta"
-              disabled={purchaseMutation.isPending}
-              onClick={() =>
-                purchaseMutation.mutate({
-                  gameId: purchaseGame.id,
-                  expectedPriceStars: purchaseGame.unlock_price_stars,
-                })
-              }
-            >
-              {purchaseMutation.isPending
-                ? 'Открываем…'
-                : `Открыть за ${numberText(purchaseGame.unlock_price_stars)} звезды`}
-            </button>
+            <PurchaseAction amount={purchaseGame.unlock_price_stars} currency="stars" verb="Открыть за"
+              ariaLabel={`Открыть за ${numberText(purchaseGame.unlock_price_stars)} звезды`}
+              pending={purchaseMutation.isPending} pendingLabel="Открываем…"
+              onClick={() => purchaseMutation.mutate({gameId:purchaseGame.id,expectedPriceStars:purchaseGame.unlock_price_stars})}/>
+
           </div>
         </AccessibleModal>
       ) : null}
@@ -573,9 +565,7 @@ export function BonusGamesScreen(): JSX.Element {
         ) : null}
 
         {catalogQuery.isLoading ? (
-          <div className="bonus-games-catalog__notice" role="status">
-            Загружаем бонусные игры…
-          </div>
+          <StartupSplash />
         ) : catalogQuery.isError ? (
           <div
             className="bonus-games-catalog__notice bonus-games-catalog__notice--error"

@@ -1,10 +1,7 @@
-import { useEffect } from 'react';
+import {useChatUnreadActivity} from './useChatUnreadActivity.js';
 import { useQuery } from '@tanstack/react-query';
 import { fetchAmateurEvents, type AmateurDuelMatch } from '../api/amateurDuel.js';
 import { fetchActiveClassicTournamentGames } from '../api/tournamentClassic.js';
-import { fetchChatList, fetchUnreadCounts, type ChatDTO } from '../chat/api.js';
-import { useChatStore } from '../chat/chatStore.js';
-import { chatKeys } from '../lib/queryKeys.js';
 
 export function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
   if (match.status === 'invited') {
@@ -21,27 +18,7 @@ export function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
 
 // Navigation and the district map observe the same keys and polling policy.
 export function useNavigationActivity(enabled: boolean) {
-  const liveUnread = useChatStore((s) => s.unreadByChat);
-  // Observe the list cache without adding another list request. The list can
-  // refresh independently of the unread endpoint (e.g. after reconnect).
-  const { data: chatList } = useQuery<ChatDTO[]>({
-    queryKey: chatKeys.list(),
-    queryFn: fetchChatList,
-    enabled: false,
-  });
-  const effectiveUnread = { ...liveUnread };
-  for (const chat of chatList ?? []) {
-    effectiveUnread[chat.id] = Math.max(chat.unreadCount, liveUnread[chat.id] ?? 0);
-  }
-  const totalUnread = Object.values(effectiveUnread).filter((count) => count > 0).length;
-  const setUnread = useChatStore((s) => s.setUnread);
-
-  const { data: unreadMap } = useQuery<Record<string, number>>({
-    queryKey: chatKeys.unread(),
-    queryFn: fetchUnreadCounts,
-    enabled,
-    refetchInterval: 30_000,
-  });
+  const {totalUnread,unreadMessageCount}=useChatUnreadActivity(enabled);
   const { data: amateurEvents } = useQuery({
     queryKey: ['amateur-duel', 'events'],
     queryFn: fetchAmateurEvents,
@@ -54,11 +31,11 @@ export function useNavigationActivity(enabled: boolean) {
     enabled,
     refetchInterval: 30_000,
   });
-  useEffect(() => { if (unreadMap) setUnread(unreadMap); }, [unreadMap, setUnread]);
+  const duelActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
   const gameActionCount =
-    (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
+    duelActionCount +
     (classicTournamentGames?.games ?? []).filter(
       (game) => game.state !== 'closed' && String(game.state) !== 'completed',
     ).length;
-  return { totalUnread, gameActionCount };
+  return { totalUnread, unreadMessageCount, gameActionCount, duelActionCount };
 }

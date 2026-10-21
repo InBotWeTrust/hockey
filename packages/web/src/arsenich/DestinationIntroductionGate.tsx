@@ -36,7 +36,8 @@ export function destinationForLocation(
 
 export function DestinationIntroductionGate(): JSX.Element | null {
   const location = useLocation();
-  const destination = destinationForLocation(location.pathname, location.search);
+  const enabled = import.meta.env.DEV || import.meta.env.VITE_PAGE_INTRODUCTIONS_ENABLED === true;
+  const destination = enabled ? destinationForLocation(location.pathname, location.search) : null;
   return destination ? (
     <DelayedDestinationIntroduction key={destination} destination={destination} />
   ) : null;

@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
@@ -854,12 +855,7 @@ export function ProfileScreen(): JSX.Element {
   }, [apartment, inventoryQuery.data, profileQuery.data]);
 
   if (profileQuery.isLoading) {
-    return (
-      <main className="screen profile-screen profile-screen--status" aria-busy="true">
-        <DistrictPageHeader title="Профиль"/>
-        <p>Загружаем профиль…</p>
-      </main>
-    );
+    return <StartupSplash />;
   }
 
   if (profileQuery.isError || profileQuery.data === undefined) {

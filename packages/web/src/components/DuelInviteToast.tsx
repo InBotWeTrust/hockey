@@ -1,3 +1,4 @@
+import { InvitationToast } from './InvitationToast.js';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
@@ -92,39 +93,7 @@ export function DuelInviteToast({ suppressed = false }: { suppressed?: boolean }
   const name = toast.invite.challengerName || toast.message.senderDisplayName || 'Соперник';
 
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 10px)',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'min(402px, calc(100vw - 24px))',
-        zIndex: 700,
-        pointerEvents: 'auto',
-      }}
-    >
-      <div
-        className="glass"
-        style={{
-          borderRadius: 22,
-          padding: 12,
-          display: 'grid',
-          gridTemplateColumns: 'minmax(0, 1fr)',
-          gap: 10,
-          boxShadow: '0 18px 44px rgba(15, 23, 42, 0.22)',
-          border: '1px solid rgba(255,255,255,0.82)',
-        }}
-      >
-        <div style={{ minWidth: 0 }}>
-          <div style={{ color: 'var(--ink)', fontSize: 14, fontWeight: 950 }}>
-            {name} вызывает на дуэль
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 760, marginTop: 2 }}>
-            {toast.invite.templateTitle}
-          </div>
-        </div>
+    <InvitationToast name={`${name} вызывает на дуэль`} avatarUrl={toast.message.senderAvatarUrl} description={toast.invite.templateTitle}>
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
             type="button"
@@ -165,7 +134,6 @@ export function DuelInviteToast({ suppressed = false }: { suppressed?: boolean }
             Принять
           </button>
         </div>
-      </div>
-    </div>
+    </InvitationToast>
   );
 }

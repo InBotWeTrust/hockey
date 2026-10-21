@@ -464,7 +464,8 @@ export function BattleshipField({
             </button>
             <button
               className="btn btn--ghost bar-naval-airstrike"
-              style={{'--charge': `${(game.airstrikeCharge ?? 5) * 20}%`} as CSSProperties}
+              data-unavailable={!carrierOperational || undefined}
+              style={{'--charge': `${carrierOperational ? (game.airstrikeCharge ?? 5) * 20 : 0}%`} as CSSProperties}
               disabled={disabled || showOwn || !game.canSalvo}
               aria-pressed={!showOwn && mode === 'salvo'}
               onClick={() => {

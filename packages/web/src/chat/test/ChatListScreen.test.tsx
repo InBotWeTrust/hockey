@@ -62,7 +62,7 @@ describe('ChatListScreen — global search dropdown', () => {
     vi.useRealTimers();
   });
 
-  it('shows chat title and returns to the district map',()=>{renderScreen();expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();expect(screen.queryByRole('button',{name:'Назад'})).toBeNull();expect(screen.queryByRole('tablist')).toBeNull();fireEvent.click(screen.getByRole('link',{name:'На карту'}));expect(screen.getByText('district map')).toBeInTheDocument();});
+  it('shows chat title and returns to the district map',()=>{renderScreen();expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();expect(screen.queryByRole('button',{name:'Назад'})).toBeNull();expect(screen.queryByRole('tablist')).toBeNull();fireEvent.click(screen.getByRole('link',{name:'Выйти из чата'}));expect(screen.getByText('district map')).toBeInTheDocument();});
 
   it('uses the feed title after switching and restores the chat title', async () => {
     vi.spyOn(socialApi, 'feed').mockResolvedValue({items:[],nextCursor:null});

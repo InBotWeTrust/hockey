@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
 import type { barBattleship as sea } from '@hockey/game-core';
 import { createMatch, type BarGameId } from '@hockey/game-core';
-import { readGame, actGame, startComputer } from './service.js';
+import { readGame, actGame, startComputer, searchGamePlayers } from './service.js';
 import { defaultVisitorSettings } from '../visitorRules.js';
 afterEach(() => {
   vi.useRealTimers();
@@ -269,4 +269,11 @@ it('gives new battleship games four minutes to place ships', async () => {
   expect(stored?.ready.expiresAt).toBe(241000);
   expect(stored?.ready.startsAt).toBeNull();
   expect(stored?.ready.players).toEqual([1]);
+});
+
+it('returns last seen timestamps for the shared online player picker',async()=>{
+ const seen=new Date('2026-10-21T12:00:00.000Z');
+ const query=vi.fn(async(sql:string)=>({rows:sql.startsWith('select id,display_name')?[{id:'p',display_name:'Player',avatar_url:null,last_seen_at:seen}]:[]}));
+ const pool={connect:async()=>({query,release:vi.fn()})} as unknown as Pool;
+ expect(await searchGamePlayers(pool,'me','')).toEqual([{userId:'p',displayName:'Player',avatarUrl:null,lastSeenAt:seen.toISOString()}]);
 });

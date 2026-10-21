@@ -5692,6 +5692,37 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ).toEqual([{ season_key: '2026-08' }]);
   });
 
+  it.each(['invited', 'settled'] as const)('does not let %s duel-list reads block unrelated daily shot writes', async (status) => {
+    const matchId = (await challenge(await createTemplate())).json().match.id;
+    if (status === 'settled') {
+      await pool.query("update amateur_duel_match set status='settled',settled_at=now() where id=$1", [matchId]);
+      await pool.query("update amateur_duel_participant set state='completed',completed_at=now() where match_id=$1", [matchId]);
+    }
+    const blocker = await pool.connect();
+    const probe = await pool.connect();
+    let pending: ReturnType<typeof app.inject> | undefined;
+    try {
+      await blocker.query('begin');
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+      await blocker.query('lock table amateur_duel_participant in access exclusive mode');
+      pending = app.inject({method:'GET',url:'/duel/amateur/matches',headers:auth(tokenA)});
+      await waitForBlockedWriter(pool, pid, /amateur_duel_participant/i);
+      await probe.query('begin');
+      // PostgreSQL takes KEY SHARE on users when inserting a shot's foreign key.
+      // Settled history must not take a user write lock at all.
+      await probe.query(`select id from users where id=$1 for ${status === 'settled' ? 'update' : 'key share'} nowait`, [userA]);
+      await probe.query('rollback');
+      await blocker.query('commit');
+      expect((await pending).statusCode).toBe(200);
+    } finally {
+      await probe.query('rollback');
+      probe.release();
+      await blocker.query('rollback');
+      blocker.release();
+      await pending;
+    }
+  });
+
   it('locks the complete match-list recipient set before processing recent matches', async () => {
     const lower = '00000000-0000-4000-8000-000000000001';
     const higher = 'ffffffff-ffff-4fff-8fff-ffffffffffff';

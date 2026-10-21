@@ -1,3 +1,4 @@
+import type {Interest} from './elinaMeeting.js';
 import {publicEventQuerySchema} from './publicEvents.js';
 import type { CharacterEmotion } from './characterEmotion.js';
 import { z } from 'zod';
@@ -11,6 +12,7 @@ export interface MemoryFact {
   quote: string;
 }
 export interface ConversationContext {
+  elinaMeeting?: {remaining:number;personalAllowed:boolean;successful:boolean;regular:boolean;competitionLevel:string;achievements?:unknown};
   boundaryWarning?: 'insult'|'sexual';
   fightMemories?: unknown;
   barBehaviour?: unknown;
@@ -21,7 +23,7 @@ export interface ConversationContext {
   relationship: string[];
   tool: (name: ToolName, args: ToolArguments, signal?: AbortSignal) => Promise<unknown>;
 }
-export interface GeneratedAnswer { text: string; usedStoryIds: string[]; emotion?:CharacterEmotion }
+export interface GeneratedAnswer { text: string; usedStoryIds: string[]; emotion?:CharacterEmotion; interest?:Interest }
 export const newStorySchema = z.object({
   title: z.string().trim().min(1).max(100),
   content: z.string().trim().min(20).max(1200),

@@ -1,3 +1,4 @@
+import { BarInviteActions, parseBarInvite } from './BarInviteActions.js';
 import { memo, useState, type ReactNode } from 'react';
 import { Check, CheckCheck, FileText } from 'lucide-react';
 import type { ChatAttachmentDTO, ChatMessageDTO } from '../api.js';
@@ -123,6 +124,7 @@ function ChatBubbleImpl({
   const className = isOwn ? 'glass-dark chat-reading-surface chat-bubble--own' : 'glass chat-reading-surface';
   const align = isOwn ? 'flex-end' : 'flex-start';
   const radius = isOwn ? '20px 20px 4px 20px' : '20px 20px 20px 4px';
+  const barInvite = message.isDeleted ? null : parseBarInvite(message.metadata);
   const attachments = message.isDeleted ? [] : messageAttachments(message.metadata);
   const text = message.isDeleted
     ? 'Сообщение удалено'
@@ -169,7 +171,7 @@ function ChatBubbleImpl({
         style={{
           display: 'inline-flex',
           alignItems: 'center',
-          color: deliveryStatus === 'read' ? 'rgba(186, 225, 255, 0.95)' : 'currentColor',
+          color: deliveryStatus === 'read' ? 'var(--chat-reading-receipt, rgba(186, 225, 255, 0.95))' : 'currentColor',
         }}
       >
         {deliveryStatus === 'read' ? <CheckCheck size={14} /> : <Check size={13} />}
@@ -361,6 +363,7 @@ function ChatBubbleImpl({
           onToggle={(emoji) => onReact(message.id, emoji)}
         />
         {!message.isDeleted && <TournamentAnnouncementAction metadata={message.metadata} />}
+        {barInvite && <div style={{ marginTop: 12 }}><BarInviteActions key={barInvite.inviteId} invite={barInvite} isOwn={isOwn}/></div>}
         {actionSlot && <div style={{ marginTop: 8 }}>{actionSlot}</div>}
       </div>
     </div>

@@ -1,3 +1,4 @@
+/* Light mode uses the historical materials in classic-light-theme.css. */
 /* Neutral material shared by application chrome, content and portal overlays.
  * Artwork and semantic status colors stay independent of the material. */
 :root {
@@ -49,7 +50,7 @@
 
 /* Repeat aliases at the shell boundary: legacy route-specific declarations
  * must not reintroduce a cold or milky material on a warm location. */
-.app-shell {
+:where(:root:not([data-theme='light'])) .app-shell {
   --surface-card-bg: var(--liquid-card-bg);
   --surface-filter-bg: var(--liquid-card-bg);
   --surface-calendar-day-bg: var(--liquid-inset-bg);
@@ -71,11 +72,12 @@
   text-shadow: var(--liquid-text-shadow);
 }
 
-.glass, .glass-dark {
+:where(:root:not([data-theme='light'])) .glass,
+:where(:root:not([data-theme='light'])) .glass-dark {
   color: var(--liquid-ink);
 }
 
-.app-shell :is(.bottom-nav__dock, .segmented-tabs, .glass-dock-surface, .glass-dock-field, .chat-create-search, .header-bar.glass, .chat-dock-header:not(.chat-dock-header--bare), .icon-btn, .catalog-header-back, .bar-game-filter, .onboarding-story-action, .onboarding-story-close) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.bottom-nav__dock, .segmented-tabs, .glass-dock-surface, .glass-dock-field, .chat-create-search, .header-bar.glass, .chat-dock-header:not(.chat-dock-header--bare), .icon-btn, .catalog-header-back, .bar-game-filter, .onboarding-story-action, .onboarding-story-close) {
   background: var(--liquid-chrome-bg);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
@@ -84,7 +86,7 @@
   -webkit-backdrop-filter: var(--liquid-blur);
 }
 
-.app-shell :is(.bottom-nav__icon-wrap--active, .segmented-tabs__item--active, .chip--active, .pill--dark, .bar-game-filter--active, .tournament-bracket__round-tabs button.is-active) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.bottom-nav__icon-wrap--active, .segmented-tabs__item--active, .chip--active, .pill--dark, .bar-game-filter--active, .tournament-bracket__round-tabs button.is-active) {
   background: var(--liquid-selected-bg);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-selected-shadow);
@@ -93,12 +95,12 @@
   -webkit-backdrop-filter: none;
 }
 
-.app-shell :is(.bottom-nav__tab, .segmented-tabs__item, .bar-game-filter) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.bottom-nav__tab, .segmented-tabs__item, .bar-game-filter) {
   color: var(--liquid-ink);
   text-shadow: var(--liquid-text-shadow);
 }
 
-.app-shell :is(.btn--cta, .btn--primary, .btn--ghost, .modal-primary, .duel-rating-info-modal__confirm, .bonus-game-card__action--repeat) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.btn--cta, .btn--primary, .btn--ghost, .modal-primary, .duel-rating-info-modal__confirm, .bonus-game-card__action--repeat) {
   background: var(--liquid-selected-bg);
   border: 1px solid var(--liquid-border);
   box-shadow: var(--liquid-selected-shadow);
@@ -108,44 +110,44 @@
   -webkit-backdrop-filter: none;
 }
 
-.app-shell :is(.btn--ghost, .segmented-tabs__item:not(.segmented-tabs__item--active)) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.btn--ghost, .segmented-tabs__item:not(.segmented-tabs__item--active)) {
   background: var(--liquid-inset-bg);
   box-shadow: none;
 }
 
-.app-shell :is(.btn, .icon-btn):disabled {
+:where(:root:not([data-theme='light'])) .app-shell :is(.btn, .icon-btn):disabled {
   background: var(--liquid-inset-bg);
   border-color: var(--liquid-border-soft);
   box-shadow: none;
 }
 
-.app-shell :is(.glass, .section-card-surface, .sections-quick-card, .bonus-game-card, .achievement-card, .profile-equipment-section, .profile-settings-card) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.glass, .section-card-surface, .sections-quick-card, .bonus-game-card, .achievement-card, .profile-equipment-section, .profile-settings-card) {
   color: var(--liquid-ink);
 }
 
-.app-shell :is(.section-card-surface--active, .sections-quick-card--active, .bonus-game-card--featured, .achievement-card--claimable) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.section-card-surface--active, .sections-quick-card--active, .bonus-game-card--featured, .achievement-card--claimable) {
   background: var(--liquid-card-bg);
   border-color: rgba(255, 255, 255, 0.58);
   box-shadow: var(--liquid-shadow);
 }
 
 /* Nested content gets a light inset, not another backdrop-blur layer. */
-.app-shell :is(.modal-card, .glass) :is(.glass, .daily-result-modal__period, .duel-history-summary__tiles > div, .tournament-operation-rewards__row > span) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.modal-card, .glass) :is(.glass, .daily-result-modal__period, .duel-history-summary__tiles > div, .tournament-operation-rewards__row > span) {
   background: var(--liquid-inset-bg);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
 }
 
-.modal-backdrop {
+:where(:root:not([data-theme='light'])) .modal-backdrop {
   background: var(--liquid-scrim);
   backdrop-filter: var(--liquid-scrim-blur);
   -webkit-backdrop-filter: var(--liquid-scrim-blur);
 }
 
-.app-shell :is(.modal-card, .admin-drawer, .tournament-player-search__results),
-.modal-card,
-[data-glass-select-menu='true'] {
+:where(:root:not([data-theme='light'])) .app-shell :is(.modal-card, .admin-drawer, .tournament-player-search__results),
+:where(:root:not([data-theme='light'])) .modal-card,
+:where(:root:not([data-theme='light'])) [data-glass-select-menu='true'] {
   background: var(--liquid-modal-bg);
   color: var(--liquid-ink);
   border-color: var(--liquid-border);
@@ -155,56 +157,56 @@
   -webkit-backdrop-filter: var(--liquid-modal-blur);
 }
 
-.app-shell .modal-card.bar-conversation {
+:where(:root:not([data-theme='light'])) .app-shell .modal-card.bar-conversation {
   background: var(--liquid-modal-bg);
 }
 
-.app-shell :is(.section-label, .modal-title, .modal-copy, .bar-intro, .chat-room-header__title) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.section-label, .modal-title, .modal-copy, .bar-intro, .chat-room-header__title) {
   color: var(--liquid-ink);
 }
 
-.app-shell :is(input, textarea, select) {
+:where(:root:not([data-theme='light'])) .app-shell :is(input, textarea, select) {
   color: var(--liquid-ink);
   caret-color: var(--liquid-ink);
 }
 
-.app-shell :is(input, textarea)::placeholder {
+:where(:root:not([data-theme='light'])) .app-shell :is(input, textarea)::placeholder {
   color: var(--liquid-muted);
   opacity: 1;
 }
 
-.app-shell select option {
+:where(:root:not([data-theme='light'])) .app-shell select option {
   background: #25272b;
   color: var(--liquid-ink);
 }
 
-.app-shell :is(.bottom-nav__icon-wrap svg, .icon-btn svg) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.bottom-nav__icon-wrap svg, .icon-btn svg) {
   filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.65));
 }
 
-.app-shell .bottom-nav__active-glow::after {
+:where(:root:not([data-theme='light'])) .app-shell .bottom-nav__active-glow::after {
   background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.8), transparent);
   box-shadow: 0 -2px 6px rgba(255, 255, 255, 0.16);
 }
 
-.app-shell .bottom-nav__badge {
+:where(:root:not([data-theme='light'])) .app-shell .bottom-nav__badge {
   box-shadow: 0 0 0 2px rgba(25, 27, 30, 0.9);
 }
 
-.app-shell .game-scoreboard {
+:where(:root:not([data-theme='light'])) .app-shell .game-scoreboard {
   background: var(--liquid-chrome-bg);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
 }
 
-.app-shell :is(.home-arena-option, .home-arena-modal-status, .duel-history-summary, .onboarding-flow__speech) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.home-arena-option, .home-arena-modal-status, .duel-history-summary, .onboarding-flow__speech) {
   background: var(--liquid-card-bg);
   border-color: var(--liquid-border);
   color: var(--liquid-ink);
   box-shadow: var(--liquid-shadow);
 }
 
-.app-shell :is(.home-arena-option:has(input:checked), .onboarding-flow__actions .btn--cta, .fight-held.btn.btn--cta[aria-pressed='true']) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.home-arena-option:has(input:checked), .onboarding-flow__actions .btn--cta, .fight-held.btn.btn--cta[aria-pressed='true']) {
   background: var(--liquid-selected-bg);
   border-color: var(--liquid-border);
   color: var(--liquid-ink);
@@ -223,8 +225,8 @@
 
 /* Lazy bar styles have their own selectors. Keep shared controls neutral even
  * when those styles load after the application stylesheet. */
-.app-shell .bar-space .online-durak-lobby--embedded :is(.segmented-tabs, .glass),
-.app-shell .bar-space :is(.bar-space__actions:not(.bar-space__actions--terminal), .bar-place-preview, .icon-btn) {
+:where(:root:not([data-theme='light'])) .app-shell .bar-space .online-durak-lobby--embedded :is(.segmented-tabs, .glass),
+:where(:root:not([data-theme='light'])) .app-shell .bar-space :is(.bar-space__actions:not(.bar-space__actions--terminal), .bar-place-preview, .icon-btn) {
   background: var(--liquid-chrome-bg);
   border-color: var(--liquid-border);
   color: var(--liquid-ink);
@@ -233,12 +235,12 @@
   -webkit-backdrop-filter: var(--liquid-blur);
 }
 
-.app-shell .bar-space .online-durak-lobby--embedded .glass {
+:where(:root:not([data-theme='light'])) .app-shell .bar-space .online-durak-lobby--embedded .glass {
   background: var(--liquid-card-bg);
 }
 
-.app-shell .bar-space .online-durak-lobby--embedded :is(.segmented-tabs__item--active, .btn--cta),
-.app-shell .bar-space .bar-game-filter--active {
+:where(:root:not([data-theme='light'])) .app-shell .bar-space .online-durak-lobby--embedded :is(.segmented-tabs__item--active, .btn--cta),
+:where(:root:not([data-theme='light'])) .app-shell .bar-space .bar-game-filter--active {
   background: var(--liquid-selected-bg);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-selected-shadow);
@@ -266,23 +268,23 @@
   }
 }
 
-.app-shell :is(.login-screen__mini-app-card a, .tournament-rules a) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.login-screen__mini-app-card a, .tournament-rules a) {
   color: #a4d3ff;
 }
-.app-shell .chat-bubble--own {
+:where(:root:not([data-theme='light'])) .app-shell .chat-bubble--own {
   background: rgba(255, 255, 255, 0.18);
   color: var(--liquid-ink);
 }
-.app-shell :is(.onboarding-flow__speech, .login-screen__auth-button) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.onboarding-flow__speech, .login-screen__auth-button) {
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
 }
 
 /* Keep navigation geometry and icon weight aligned with the approved capsule. */
-.app-shell .bottom-nav__tab { color: var(--liquid-muted); }
-.app-shell .bottom-nav__tab--active { color: var(--liquid-ink); }
-.app-shell .bottom-nav__icon-wrap svg { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35)); }
-.app-shell .bottom-nav__active-glow { display: none; }
+:where(:root:not([data-theme='light'])) .app-shell .bottom-nav__tab { color: var(--liquid-muted); }
+:where(:root:not([data-theme='light'])) .app-shell .bottom-nav__tab--active { color: var(--liquid-ink); }
+:where(:root:not([data-theme='light'])) .app-shell .bottom-nav__icon-wrap svg { filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.35)); }
+:where(:root:not([data-theme='light'])) .app-shell .bottom-nav__active-glow { display: none; }
 
 /* Reading surfaces keep detailed scenery from competing with long text. */
 :root {
@@ -290,7 +292,7 @@
   --chat-reading-own-bg: rgba(48, 54, 64, 0.92);
   --chat-reading-meta: #cbd1d9;
 }
-.app-shell.app-shell--unified-glass .chat-reading-surface {
+:where(:root:not([data-theme='light'])) .app-shell.app-shell--unified-glass .chat-reading-surface {
   background: var(--chat-reading-bg);
   border-color: rgba(255, 255, 255, 0.18);
   color: #f8f9fb;
@@ -299,15 +301,15 @@
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
 }
-.app-shell.app-shell--unified-glass .chat-reading-surface.chat-bubble--own {
+:where(:root:not([data-theme='light'])) .app-shell.app-shell--unified-glass .chat-reading-surface.chat-bubble--own {
   background: var(--chat-reading-own-bg);
 }
-.chat-reading-surface {
+:where(:root:not([data-theme='light'])) .chat-reading-surface {
   --liquid-inset-bg: rgba(0, 0, 0, 0.22);
   --liquid-muted: var(--chat-reading-meta);
   --muted: var(--chat-reading-meta);
 }
-.app-shell.app-shell--unified-glass .chat-reading-surface .pill {
+:where(:root:not([data-theme='light'])) .app-shell.app-shell--unified-glass .chat-reading-surface .pill {
   border-color: rgba(255, 255, 255, 0.2);
   background: rgba(255, 255, 255, 0.06);
   box-shadow: none;
@@ -315,17 +317,17 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   :root { --chat-reading-bg: #181c22; --chat-reading-own-bg: #303640; }
-  .app-shell.app-shell--unified-glass .chat-reading-surface { backdrop-filter: none; -webkit-backdrop-filter: none; }
+  :where(:root:not([data-theme='light'])) .app-shell.app-shell--unified-glass .chat-reading-surface { backdrop-filter: none; -webkit-backdrop-filter: none; }
 }
 
-.app-shell .bar-identity__avatar { border-color: var(--liquid-border); }
+:where(:root:not([data-theme='light'])) .app-shell .bar-identity__avatar { border-color: var(--liquid-border); }
 
-.app-shell .segmented-tabs__item:disabled { opacity: 0.55; cursor: default; }
+:where(:root:not([data-theme='light'])) .app-shell .segmented-tabs__item:disabled { opacity: 0.55; cursor: default; }
 
 /* Toasts are body portals and need their own readable material. */
 :root { --liquid-toast-bg: rgba(24, 28, 34, 0.94); }
-.duel-challenge-toast,
-.achievement-reward-toast {
+:where(:root:not([data-theme='light'])) .duel-challenge-toast,
+:where(:root:not([data-theme='light'])) .achievement-reward-toast {
   background: var(--liquid-toast-bg);
   backdrop-filter: blur(18px);
   -webkit-backdrop-filter: blur(18px);
@@ -336,25 +338,26 @@
 }
 @media (prefers-reduced-transparency: reduce) {
   :root { --liquid-toast-bg: #181c22; }
-  .duel-challenge-toast, .achievement-reward-toast {
+  :where(:root:not([data-theme='light'])) .duel-challenge-toast,
+:where(:root:not([data-theme='light'])) .achievement-reward-toast {
     backdrop-filter: none; -webkit-backdrop-filter: none;
   }
 }
 
 /* Labels placed over artwork require an opaque reading surface. */
-.public-profile-experience,
-.profile-career-award__level {
+:where(:root:not([data-theme='light'])) .public-profile-experience,
+:where(:root:not([data-theme='light'])) .profile-career-award__level {
   background: #20252d;
   color: #f8f9fb;
   border-color: var(--liquid-border);
   text-shadow: none;
 }
-.public-profile-experience svg { color: #a4d3ff; }
+:where(:root:not([data-theme='light'])) .public-profile-experience svg { color: #a4d3ff; }
 
 /* Standalone settings headings align with card edges, not the viewport. */
-.profile-settings-screen .section-label { padding-inline: 14px; }
-.app-shell .profile-logout-btn--danger,
-.bar-memory__delete {
+:where(:root:not([data-theme='light'])) .profile-settings-screen .section-label { padding-inline: 14px; }
+:where(:root:not([data-theme='light'])) .app-shell .profile-logout-btn--danger,
+:where(:root:not([data-theme='light'])) .bar-memory__delete {
   background: rgba(48, 24, 28, 0.32);
   border: 1px solid rgba(255, 160, 160, 0.5);
   color: #ffe0e0;
@@ -362,7 +365,7 @@
   box-shadow: none;
 }
 /* Moving panorama previews use a stable material rather than clipped blur. */
-.app-shell .bar-space .bar-space__places button.bar-place-preview {
+:where(:root:not([data-theme='light'])) .app-shell .bar-space .bar-space__places button.bar-place-preview {
   background: #29282b;
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
@@ -371,76 +374,76 @@
 }
 
 /* Keep gameplay controls readable against the bright ice and arena backdrop. */
-.app-shell .play-controls :is(.btn--cta, .icon-btn) {
+:where(:root:not([data-theme='light'])) .app-shell .play-controls :is(.btn--cta, .icon-btn) {
   background: rgba(30, 35, 40, 0.86);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
   color: var(--liquid-ink);
 }
 
-.app-shell .play-controls .btn--cta:disabled {
+:where(:root:not([data-theme='light'])) .app-shell .play-controls .btn--cta:disabled {
   background: rgba(30, 35, 40, 0.64);
 }
 
 /* Reading contrast for progress and image labels. */
-.app-shell .segmented-tabs__item:not(.segmented-tabs__item--active) { background: transparent; }
-.app-shell .achievement-counts.section-label--page { margin-left: 0; }
-.app-shell .achievement-card__stage-progress strong {
+:where(:root:not([data-theme='light'])) .app-shell .segmented-tabs__item:not(.segmented-tabs__item--active) { background: transparent; }
+:where(:root:not([data-theme='light'])) .app-shell .achievement-counts.section-label--page { margin-left: 0; }
+:where(:root:not([data-theme='light'])) .app-shell .achievement-card__stage-progress strong {
   color: #fff;
   text-shadow: 0 1px 2px #000, 0 0 3px rgba(0,0,0,.8);
 }
-.app-shell .profile-loadout-slot__image > strong {
+:where(:root:not([data-theme='light'])) .app-shell .profile-loadout-slot__image > strong {
   background: #20252d; color: #fff; text-shadow: none;
 }
-.app-shell .bonus-games-attempt-progress {
+:where(:root:not([data-theme='light'])) .app-shell .bonus-games-attempt-progress {
   background: var(--liquid-card-bg);
   backdrop-filter: var(--liquid-blur); -webkit-backdrop-filter: var(--liquid-blur);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
 }
-.profile-sporting-metrics__item strong,
-.profile-balance__amount--experience .profile-balance__value,
-.public-profile-experience__value {
+:where(:root:not([data-theme='light'])) .profile-sporting-metrics__item strong,
+:where(:root:not([data-theme='light'])) .profile-balance__amount--experience .profile-balance__value,
+:where(:root:not([data-theme='light'])) .public-profile-experience__value {
   text-shadow: 0 2px 4px rgba(0,0,0,.65);
 }
-.profile-sporting-metrics__item:last-child > span,
-.profile-sporting-metrics__item .profile-registration-date__prefix,
-.profile-sporting-metrics__item .profile-streak-record { text-shadow: none; }
-.profile-trophy-showcase svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+:where(:root:not([data-theme='light'])) .profile-sporting-metrics__item:last-child > span,
+:where(:root:not([data-theme='light'])) .profile-sporting-metrics__item .profile-registration-date__prefix,
+:where(:root:not([data-theme='light'])) .profile-sporting-metrics__item .profile-streak-record { text-shadow: none; }
+:where(:root:not([data-theme='light'])) .profile-trophy-showcase svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
 
-.app-shell .chip:not(.chip--active),
-.app-shell .bar-game-filter:not(.bar-game-filter--active) { background: transparent; }
+:where(:root:not([data-theme='light'])) .app-shell .chip:not(.chip--active),
+:where(:root:not([data-theme='light'])) .app-shell .bar-game-filter:not(.bar-game-filter--active) { background: transparent; }
 
 /* Interface icons share the navigation's light outline weight. */
-svg.lucide { stroke-width: 1.5; }
-.profile-balance__amount svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
-.achievement-card__status--claimed,
-.bonus-game-card__completion-badge,
-.initial-training-exercise-card__completion,
-.advanced-training-exercise-card__completion {
+:where(:root:not([data-theme='light'])) svg.lucide { stroke-width: 1.5; }
+:where(:root:not([data-theme='light'])) .profile-balance__amount svg { filter: drop-shadow(0 2px 3px rgba(0,0,0,.65)); }
+:where(:root:not([data-theme='light'])) .achievement-card__status--claimed,
+:where(:root:not([data-theme='light'])) .bonus-game-card__completion-badge,
+:where(:root:not([data-theme='light'])) .initial-training-exercise-card__completion,
+:where(:root:not([data-theme='light'])) .advanced-training-exercise-card__completion {
   background: #20252d;
   color: #fff;
   border-color: var(--liquid-border);
 }
 
 /* Profile framing uses the same edge as shared glass containers. */
-.app-shell .profile-identity__avatar,
-.app-shell .public-profile-avatar .user-avatar,
-.app-shell .profile-sporting-metrics,
-.app-shell .profile-balances {
+:where(:root:not([data-theme='light'])) .app-shell .profile-identity__avatar,
+:where(:root:not([data-theme='light'])) .app-shell .public-profile-avatar .user-avatar,
+:where(:root:not([data-theme='light'])) .app-shell .profile-sporting-metrics,
+:where(:root:not([data-theme='light'])) .app-shell .profile-balances {
   border: 1px solid var(--liquid-border);
 }
-.app-shell .profile-balance + .profile-balance,
-.app-shell .profile-sporting-metrics__item + .profile-sporting-metrics__item {
+:where(:root:not([data-theme='light'])) .app-shell .profile-balance + .profile-balance,
+:where(:root:not([data-theme='light'])) .app-shell .profile-sporting-metrics__item + .profile-sporting-metrics__item {
   border-left: 1px solid var(--liquid-border);
 }
-.app-shell .profile-trophy-showcase,
-.app-shell .profile-community-icon-grid {
+:where(:root:not([data-theme='light'])) .app-shell .profile-trophy-showcase,
+:where(:root:not([data-theme='light'])) .app-shell .profile-community-icon-grid {
   border-top: 1px solid var(--liquid-border);
 }
 
 /* Filter containers share the content card material. */
-.app-shell.app-shell--unified-glass .segmented-tabs {
+:where(:root:not([data-theme='light'])) .app-shell.app-shell--unified-glass .segmented-tabs {
   background: var(--liquid-card-bg);
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
@@ -449,7 +452,7 @@ svg.lucide { stroke-width: 1.5; }
 }
 
 /* Shared card edge across screens and card states. */
-.app-shell.app-shell--unified-glass :is(
+:where(:root:not([data-theme='light'])) .app-shell.app-shell--unified-glass :is(
   .achievement-card,
   .achievement-card--claimable,
   .amateur-hub-card,
@@ -491,7 +494,7 @@ svg.lucide { stroke-width: 1.5; }
 }
 
 /* Received rewards use flat muted icons on their card surface. */
-.app-shell :is(.bonus-game-card__reward--muted, .bonus-game-level-reward--received, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.bonus-game-card__reward--muted, .bonus-game-level-reward--received, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) {
   background: transparent;
   color: #d5d9e0;
   border-radius: 10px;
@@ -502,7 +505,7 @@ svg.lucide { stroke-width: 1.5; }
   filter: none;
   text-shadow: none;
 }
-.app-shell :is(.bonus-game-card__reward--muted, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) :is(span, svg, strong, .bonus-game-card__reward-item, .bonus-game-card__reward-icon) {
+:where(:root:not([data-theme='light'])) .app-shell :is(.bonus-game-card__reward--muted, .initial-training-exercise-card__rewards--claimed, .advanced-training-exercise-card__rewards--claimed) :is(span, svg, strong, .bonus-game-card__reward-item, .bonus-game-card__reward-icon) {
   color: #d5d9e0;
   opacity: 1;
   filter: none;
@@ -510,30 +513,42 @@ svg.lucide { stroke-width: 1.5; }
 
 /* UI text stays flat across menus, portalled modals and game scoreboards.
    Override legacy per-screen and inline text effects consistently. */
-.app-shell,
-.app-shell *,
-.modal-card,
-.modal-card *,
-[data-glass-select-menu='true'],
-[data-glass-select-menu='true'] * {
+:where(:root:not([data-theme='light'])) .app-shell,
+:where(:root:not([data-theme='light'])) .app-shell *,
+:where(:root:not([data-theme='light'])) .modal-card,
+:where(:root:not([data-theme='light'])) .modal-card *,
+:where(:root:not([data-theme='light'])) [data-glass-select-menu='true'],
+:where(:root:not([data-theme='light'])) [data-glass-select-menu='true'] * {
   text-shadow: none !important;
 }
 
-.app-shell .profile-registration-account img,
-.app-shell .profile-registration-account__avatar,
-.app-shell .profile-customization-card__avatar {
+:where(:root:not([data-theme='light'])) .app-shell .profile-registration-account img,
+:where(:root:not([data-theme='light'])) .app-shell .profile-registration-account__avatar,
+:where(:root:not([data-theme='light'])) .app-shell .profile-customization-card__avatar {
   border: 1px solid var(--liquid-border);
   box-sizing: border-box;
 }
 
 /* Keep empty selection indicators distinct from the filled, checked state. */
-:root[data-theme="dark"] .duel-equipment-option__check:not(.duel-equipment-option__check--selected) {
+:where(:root:not([data-theme='light'])) :root[data-theme="dark"] .duel-equipment-option__check:not(.duel-equipment-option__check--selected) {
   background: transparent;
   border: 1px solid var(--liquid-border);
   box-shadow: none;
 }
 
-:root[data-theme="dark"] .app-shell .bonus-game-card {
+:where(:root:not([data-theme='light'])) :root[data-theme="dark"] .app-shell .bonus-game-card {
   backdrop-filter: var(--liquid-blur);
   -webkit-backdrop-filter: var(--liquid-blur);
+}
+
+/* Filled calendar days need dark ink; result dots stay clean at small sizes. */
+:where(:root:not([data-theme='light'])) .daily-calendar__day:is(.daily-calendar__day--completed, .daily-calendar__day--incomplete) {
+  color: #14212e;
+  text-shadow: none;
+}
+:where(:root:not([data-theme='light'])) .daily-calendar__day:is(.daily-calendar__day--completed, .daily-calendar__day--incomplete) .daily-calendar__goal-count {
+  opacity: 1;
+}
+:where(:root:not([data-theme='light'])) .daily-calendar__duel-result {
+  box-shadow: none;
 }
