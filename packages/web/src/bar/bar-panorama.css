@@ -4,7 +4,9 @@
   overflow: hidden;
   background: #21160e;
   isolation: isolate;
-  --bar-scene-page-width: min(100vw, 47dvh);
+  /* The desktop app is narrower than the browser viewport. */
+  container-type: size;
+  --bar-scene-page-width: min(100cqw, 47cqh);
   touch-action: auto;
 }
 .bar-space__viewport {position:absolute;inset:0;z-index:-2;overflow-x:auto;overflow-y:hidden;touch-action:pan-x;overscroll-behavior-x:contain;scrollbar-width:none;}
@@ -14,7 +16,7 @@
   position: absolute;
   inset: 0 auto 0 0;
   width: calc(var(--bar-scene-page-width) * 10);
-  left: calc((100vw - var(--bar-scene-page-width)) / 2);
+  left: calc((100cqw - var(--bar-scene-page-width)) / 2);
 
   pointer-events: none;
 }
@@ -571,7 +573,7 @@
 .bar-bottom-chrome--terminal-open { background:none; border-color:transparent; backdrop-filter:none; -webkit-backdrop-filter:none; box-shadow:none; }
 .bar-bottom-chrome--terminal-open .bar-avatar-dock { background:var(--surface-card-bg,var(--liquid-card-bg)); border:1px solid var(--liquid-border); border-radius:26px; backdrop-filter:var(--surface-blur,var(--liquid-blur)); -webkit-backdrop-filter:var(--surface-blur,var(--liquid-blur)); box-shadow:var(--surface-card-shadow,var(--liquid-shadow)); }
 .bar-bottom-chrome .bar-space__actions--terminal { background:var(--surface-card-bg,var(--liquid-card-bg)); backdrop-filter:var(--surface-blur,var(--liquid-blur)); -webkit-backdrop-filter:var(--surface-blur,var(--liquid-blur)); box-shadow:var(--surface-card-shadow,var(--liquid-shadow)); }
-@media(min-width:784px) { .bar-bottom-chrome { left:50%; right:auto; width:760px; transform:translateX(-50%); } }
+@media(min-width:784px) { .bar-bottom-chrome { left:50%; right:auto; width:min(760px,calc(100% - 24px)); transform:translateX(-50%); } }
 /* Opaque detail cards need no extra blurred surface or offset outer shadow. */
 .modal-card.bar-detail-card { box-shadow:inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter:none; -webkit-backdrop-filter:none; }
 /* Keep panorama viewport sizing when rendered inside the shared app shell. */
@@ -612,7 +614,7 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .app-shell main.bar-space .bar-bottom-chrome--terminal-open .bar-avatar-dock {border-radius:26px;}
 @media(min-width:784px) {
  .bar-space > section.bar-space__actions--terminal,
- .app-shell main.bar-space > section.bar-space__actions--terminal {left:50%;right:auto;width:760px;transform:translateX(-50%);}
+ .app-shell main.bar-space > section.bar-space__actions--terminal {left:50%;right:auto;width:min(760px,calc(100% - 24px));transform:translateX(-50%);}
 }
 
 .bar-space .bar-space__header .catalog-header-back {width:38px;height:38px;min-width:38px;min-height:38px;padding:0;}
