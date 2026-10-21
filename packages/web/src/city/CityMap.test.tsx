@@ -35,10 +35,10 @@ it('restores both scrollers instantly and animates a new selection without obser
  }finally{HTMLElement.prototype.scrollTo=original;globalThis.ResizeObserver=previous;}
 });
 
-it('orders the phone circle between tasks and bank',()=>{
+it('removes the phone circle from the dock',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
  const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(Array.from(dock.querySelectorAll('button')).filter(button=>button.getAttribute('aria-label')!=='Выбрать Раздевалка').slice(1,7).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Чат','Выбрать Банк','Выбрать Стадион «Центральный»']);
+ expect(Array.from(dock.querySelectorAll('button')).filter(button=>button.getAttribute('aria-label')!=='Выбрать Раздевалка').slice(1,6).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Банк','Выбрать Стадион «Центральный»']);
 });
 
 function mapGeometry(){
@@ -91,21 +91,17 @@ it('puts profile first and opens it immediately regardless of map position',()=>
  expect(base.onNavigate).toHaveBeenCalledWith('/profile');
  expect(sessionStorage.getItem('city-place-v2:test:beginner')).toBe('profile');
 });
-it('opens chat immediately from both its circle and map object',()=>{
+it('keeps the map booth without a dock circle',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
- fireEvent.click(screen.getByRole('button',{name:'Выбрать Чат'}));
- expect(base.onNavigate).toHaveBeenCalledTimes(1);
- expect(base.onNavigate).toHaveBeenCalledWith('/chat');
- base.onNavigate.mockClear();
+ expect(screen.queryByRole('button',{name:'Выбрать Чат'})).toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'На карте: Чат'}));
- expect(base.onNavigate).toHaveBeenCalledTimes(1);
  expect(base.onNavigate).toHaveBeenCalledWith('/chat');
  expect(sessionStorage.getItem('city-place-v2:test:beginner')).toBe('chat');
+ expect(sessionStorage.getItem('chat-return-v1:test')).toBe('/sections');
 });
 
 it('shows live counters on their circles and removes zero badges',()=>{
  sessionStorage.clear();const view=render(<CityMap {...base} level="beginner" avatarUrl="/avatar.webp" chatCount={120} gameCount={3} taskCount={2} barCount={1}/>);
- expect(screen.getByLabelText('Непрочитанные: 120')).toHaveTextContent('99+');
  expect(screen.getByLabelText('Дуэли и турниры: 3')).toHaveTextContent('3');
  expect(screen.getByLabelText('Задания и челленджи: 2')).toHaveTextContent('2');
  expect(screen.getByLabelText('Приглашения в бар: 1')).toHaveTextContent('1');
