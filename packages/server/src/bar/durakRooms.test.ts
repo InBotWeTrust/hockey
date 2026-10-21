@@ -109,8 +109,8 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     expect(room.countdownAt! - room.serverNow).toBeLessThanOrEqual(5000);
     await commandCardRoom(pool, users[4]!, roomId, room.revision, { type: 'leave' });
     room = await readCardRoom(pool, users[3]!, roomId);
-    expect(room.status).toBe('waiting');
-    expect(room.ready).toEqual([]);
+    expect(room.status).toBe('ended');
+    expect(room.countdownAt).toBeNull();
     await commandCardRoom(pool, users[3]!, roomId, room.revision, { type: 'leave' });
   });
   it('starts once under concurrent joins, hides hands and rejects strangers', async () => {
@@ -197,7 +197,9 @@ const url = process.env.TEST_CARD_DATABASE_URL;
   it('fills six seats exactly once under simultaneous admission', async () => {
     const results = await Promise.all(users.slice(0, 6).map((user) => joinCardRoom(pool, user, 6)));
     expect(new Set(results.map((r) => r.roomId)).size).toBe(1);
-    const room = await readCardRoom(pool, users[0]!, results[0]!.roomId);
+    let room = await readCardRoom(pool, users[0]!, results[0]!.roomId);
+    expect(room.status).toBe('confirming');
+    for(const user of users.slice(0,6)) room=await commandCardRoom(pool,user,room.id,room.revision,{type:'ready'});
     expect(room.status).toBe('countdown');
     expect(room.seats).toHaveLength(6);
     expect(new Set(room.seats.map((s) => s.userId)).size).toBe(6);

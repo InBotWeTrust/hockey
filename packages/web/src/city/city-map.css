@@ -80,6 +80,7 @@
   .district-dock { cursor: grab; }
   .district-dock button { cursor: inherit; }
   .district-dock:active { cursor: grabbing; }
+}
 .district-hit.district-locker,
 .district .district-apartment-avatar {
   background:rgba(24,33,46,.16);

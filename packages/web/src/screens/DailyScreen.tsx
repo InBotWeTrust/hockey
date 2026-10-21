@@ -4643,12 +4643,8 @@ function AmateurDuelsPage({
   const [duelCreationMode, setDuelCreationMode] = useState<'matchmaking' | 'challenge'>(
     'matchmaking',
   );
-  const [matchmakingKinds, setMatchmakingKinds] = useState<AmateurDuelKind[]>([
-    'express',
-    'express_plus',
-    'classic',
-  ]);
-  const [marathonWindows, setMarathonWindows] = useState<Array<4000 | 7000>>([7000]);
+  const [matchmakingKinds, setMatchmakingKinds] = useState<AmateurDuelKind[]>(DUEL_KIND_OPTIONS);
+  const [marathonWindows, setMarathonWindows] = useState<Array<4000 | 7000>>([4000, 7000]);
   const [challengeWindow, setChallengeWindow] = useState<4000 | 7000>(7000);
   const [matchmakingRulesOpen, setMatchmakingRulesOpen] = useState(false);
   const [formatLimitToast, setFormatLimitToast] = useState<string | null>(null);
