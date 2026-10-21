@@ -78,3 +78,6 @@
     transition: transform 180ms ease;
   }
 }
+.venue-scene .venue-column__scroll {padding:0;}
+.venue-column__scroll>div>.screen {height:auto !important;min-height:0 !important;overflow:visible !important;padding-bottom:32px !important;background:transparent !important;max-width:100%;}
+.venue-column__scroll .modal-backdrop {position:fixed;}

@@ -3597,6 +3597,11 @@ export function initialTrainingCatalogAfterCompletion(
 
 const INITIAL_TRAINING_COURSE_QUERY_KEY = ['training', 'course'] as const;
 
+export function TrainingOverview(): JSX.Element {
+  const navigate = useNavigate();
+  return <TrainingPlaceholder onBack={()=>navigate('/sections')} onPlayStart={()=>navigate('/?view=training&section=open&play=1&from=sections')}/>;
+}
+
 function TrainingPlaceholder({
   autoPlay = false,
   onBack,
@@ -4405,7 +4410,7 @@ function DuelStatusBadge({ match }: { match: AmateurDuelMatch }): JSX.Element {
   );
 }
 
-function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
+export function AmateurTournamentsPage({ onBack }: { onBack: () => void }): JSX.Element {
   const location = useLocation();
   const [selectedTournamentId, setSelectedTournamentId] = useState<string | null>(() =>
     new URLSearchParams(location.search).get('tournament'),
@@ -4663,7 +4668,7 @@ export function duelAdmissionErrorCopy(error: unknown): string {
     : reason;
 }
 
-function AmateurDuelsPage({
+export function AmateurDuelsPage({
   onBack,
   onOpenMatch,
 }: {
