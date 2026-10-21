@@ -1,3 +1,4 @@
+import {BarPlayerAvatar} from '../BarPlayerAvatar.js';
 import { AppToast } from '../../components/AppToast.js';
 import { DuelKindPreferenceButton } from '../../components/DuelKindPreferenceButton.js';
 import { joinRoom, roomInvite } from './roomApi.js';
@@ -21,7 +22,7 @@ import {
 } from './onlineApi.js';
 import '../bar.css';
 import './durak.css';
-export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
+export function OnlineDurakLobby({ embedded = false, meetingTab, onMeetingTabChange }: { embedded?: boolean; meetingTab?:'find'|'challenge'; onMeetingTabChange?:(tab:'find'|'challenge')=>void }) {
   const navigate = useNavigate();
   const location = useLocation();
   const userId = useAuthStore((state) => state.user?.id);
@@ -40,7 +41,9 @@ export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
   const [developmentToast, setDevelopmentToast] = useState(false);
   const [capacity, setCapacity] = useState(2);
   const [formats, setFormats] = useState([2]);
-  const [tab, setTab] = useState<'find' | 'challenge'>('find');
+  const [localTab,setLocalTab]=useState<'find'|'challenge'>('find');
+  const tab=meetingTab??localTab;
+  const setTab=(value:'find'|'challenge')=>{setLocalTab(value);onMeetingTabChange?.(value);};
   const [state, setState] = useState<Lobby | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -94,15 +97,18 @@ export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
   useEffect(() => {
     if (tab !== 'challenge') return;
     let alive = true;
-    void searchPlayers('')
+    const refresh=()=>void searchPlayers('')
       .then((rows) => {
         if (alive) setQuick(rows.slice(0, 12));
       })
       .catch(() => {
         if (alive) setSearchError('Не удалось загрузить быстрый выбор.');
       });
+    refresh();
+    const presenceTimer=setInterval(refresh,30_000);
     return () => {
       alive = false;
+      clearInterval(presenceTimer);
     };
   }, [tab]);
   useEffect(() => {
@@ -442,31 +448,7 @@ export function OnlineDurakLobby({ embedded = false }: { embedded?: boolean }) {
                           padding: 0,
                         }}
                       >
-                        <span style={{ position: 'relative', display: 'inline-flex' }}>
-                          <UserAvatar
-                            name={player.displayName}
-                            avatarUrl={player.avatarUrl}
-                            size={44}
-                            fontSize={16}
-                          />
-                          <span
-                            aria-hidden="true"
-                            style={{
-                              position: 'absolute',
-                              right: 1,
-                              bottom: 1,
-                              width: 11,
-                              height: 11,
-                              borderRadius: 999,
-                              background:
-                                player.lastSeenAt &&
-                                Date.now() - new Date(player.lastSeenAt).getTime() < 90000
-                                  ? '#22c55e'
-                                  : '#94a3b8',
-                              border: '2px solid rgba(226,240,252,0.98)',
-                            }}
-                          />
-                        </span>
+                        <BarPlayerAvatar player={player}/>
                         <span
                           className="duel-quick-pick__name"
                           style={{

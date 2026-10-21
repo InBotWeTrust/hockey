@@ -1160,9 +1160,10 @@
     animation: none;
   }
 }
-.bar-games-lobby .segmented-tabs {
-  flex-wrap: wrap;
+.bar-games-lobby .segmented-tabs--scrollable {
+  flex-wrap: nowrap;
 }
+.bar-game-selection {display:grid;gap:8px;margin-bottom:16px;min-width:0;}
 
 .bar-game-screen--playing[data-game='armwrestling'] {
   height: var(--app-viewport-height, 100dvh);

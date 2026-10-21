@@ -1,7 +1,8 @@
+import * as cardApi from '../cards/onlineApi.js';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
-import { NewGameLobby } from './BarGamesLobby.js';
+import { BarGamesLobby, NewGameLobby } from './BarGamesLobby.js';
 import { createMatch } from '@hockey/game-core';
 import { gameApi } from './api.js';
 vi.mock('./api.js', () => ({
@@ -127,4 +128,40 @@ it('shows the opponent in a clickable active-match card and stays in the lobby u
   expect(screen.queryByRole('button', { name: 'Продолжить партию' })).not.toBeInTheDocument();
   fireEvent.click(card);
   expect(screen.getByTestId('location')).toHaveTextContent('/bar/games/match/active');
+});
+
+it('retains challenge mode while switching games',async()=>{
+ vi.mocked(gameApi.lobby).mockResolvedValue(empty);
+ vi.mocked(gameApi.players).mockResolvedValue([]);
+ render(<MemoryRouter><BarGamesLobby initial="darts" embedded/></MemoryRouter>);
+ fireEvent.click(screen.getByRole('tab',{name:'Вызвать'}));
+ fireEvent.click(screen.getByRole('tab',{name:'Шашки'}));
+ expect(screen.getByRole('tab',{name:'Вызвать'})).toHaveAttribute('aria-selected','true');
+ expect(screen.getByRole('textbox',{name:'Имя игрока'})).toBeVisible();
+});
+
+it('shows online presence beside quick-pick avatars in other games',async()=>{
+ vi.mocked(gameApi.lobby).mockResolvedValue(empty);
+ vi.mocked(gameApi.players).mockResolvedValue([{userId:'online',displayName:'Online player',avatarUrl:null,lastSeenAt:new Date().toISOString()}]);
+ render(<MemoryRouter><NewGameLobby kind="darts"/></MemoryRouter>);
+ fireEvent.click(screen.getByRole('tab',{name:'Вызвать'}));
+ expect(await screen.findByLabelText('В сети: Online player')).toBeVisible();
+});
+
+it('preserves the meeting mode across cards and other games',async()=>{
+ vi.mocked(gameApi.lobby).mockResolvedValue(empty);
+ vi.mocked(gameApi.players).mockResolvedValue([]);
+ vi.spyOn(cardApi,'lobby').mockResolvedValue({matchId:null,searching:false,invites:[]});
+ vi.spyOn(cardApi,'searchPlayers').mockResolvedValue([]);
+ render(<MemoryRouter><BarGamesLobby initial="darts" embedded/></MemoryRouter>);
+ expect(screen.getByText('Выбор игры · 7')).toBeVisible();
+ fireEvent.click(screen.getByRole('tab',{name:'Вызвать'}));
+ fireEvent.click(screen.getByRole('tab',{name:'Карты'}));
+ await waitFor(()=>expect(cardApi.lobby).toHaveBeenCalled());
+ expect(screen.getByRole('tab',{name:'Вызвать'})).toHaveAttribute('aria-selected','true');
+ fireEvent.click(screen.getByRole('tab',{name:'Бильярд'}));
+ expect(screen.getByRole('tab',{name:'Вызвать'})).toHaveAttribute('aria-selected','true');
+ fireEvent.click(screen.getByRole('tab',{name:'Найти'}));
+ fireEvent.click(screen.getByRole('tab',{name:'Карты'}));
+ expect(screen.getByRole('tab',{name:'Найти'})).toHaveAttribute('aria-selected','true');
 });
