@@ -1,3 +1,5 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
+import { ChatPositionSettings } from '../components/ChatPositionSettings.js';
 import { ThemeSettings } from '../components/ThemeSettings.js';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -16,6 +18,7 @@ import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
 export function ProfileSettingsScreen(): JSX.Element {
   const navigate = useNavigate();
+  const owner = useAuthStore(state => state.user?.id);
   const queryClient = useQueryClient();
   const logout = useLogout();
   const updateUser = useAuthStore((state) => state.updateUser);
@@ -195,7 +198,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       </div>
 
       {isLoading ? (
-        <div className="profile-settings-loading">Загрузка...</div>
+        <StartupSplash />
       ) : (
         <>
           <div className="section-label">Аккаунт</div>
@@ -346,6 +349,7 @@ export function ProfileSettingsScreen(): JSX.Element {
             />
           </div>
 
+          <ChatPositionSettings owner={owner} />
           <ThemeSettings />
           <ProfileSupportSections profileReady={data !== undefined} />
 

@@ -639,7 +639,7 @@ describe('BonusGamesScreen', () => {
       'Открыть бонусную игру?',
     );
     expect(dialog.querySelector('.modal-copy')).toHaveTextContent(
-      'Открыть «Точность 2» за 4 звезды?',
+      'Открыть «Точность 2» за 4?',
     );
     expect(dialog.querySelector('.modal-actions')).not.toBeNull();
     expect(within(dialog).getByRole('button', { name: 'Открыть за 4 звезды' })).toHaveClass(

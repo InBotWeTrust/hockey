@@ -507,6 +507,7 @@ describe('InventoryScreen', () => {
       renderInventory(`/inventory?category=${category}`);
 
       await screen.findByRole('heading', { name: title });
+      await waitFor(() => expect(screen.queryByLabelText('Загрузка приложения')).not.toBeInTheDocument());
       const main = screen.getByRole('main');
       expect(main).toHaveClass('section-scene');
       expect(screen.getByRole('tab',{name:title})).toHaveAttribute('aria-selected','true');
@@ -691,7 +692,7 @@ describe('InventoryScreen', () => {
     expect(summary).toHaveClass('receipt-payment-summary');
     expect(summary.querySelector('.lucide-circle-dollar-sign')).not.toBeNull();
     expect(summary.querySelector('.lucide-russian-ruble')).toBeNull();
-    expect(within(summary).getByText('40 000 монет')).toBeInTheDocument();
+    expect(within(summary).getByLabelText('40 000 монет')).toBeInTheDocument();
     expect(within(summary).getByText('·')).toBeInTheDocument();
     expect(within(summary).getByText('699 ₽')).toBeInTheDocument();
     expect(within(summary).queryByText('за')).not.toBeInTheDocument();

@@ -1,8 +1,9 @@
+import { installBarInviteSchema } from './inviteChatTestSchema.js';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { joinCardRoom, readCardRoom, commandCardRoom, inviteToRoom } from './durakRooms.js';
+import { joinCardRoom, readCardRoom, commandCardRoom, inviteToRoom, inviteCardsFromProfile } from './durakRooms.js';
 import { inviteCards, respondCards } from './durakService.js';
 const url = process.env.TEST_CARD_DATABASE_URL;
 (url ? describe : describe.skip)('isolated card rooms', () => {
@@ -27,6 +28,7 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     await pool.query(
       await readFile(new URL('../../db/migrations/197_durak_tables.sql', import.meta.url), 'utf8'),
     );
+    await installBarInviteSchema(pool);
     for (const id of users)
       await pool.query('insert into users(id,display_name) values($1,$2)', [id, id]);
   });
@@ -37,6 +39,7 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     }
   });
   afterEach(async () => {
+    await pool.query('truncate messages,chat_members,chats cascade');
     await pool.query(
       'truncate bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_queue,bar_card_matches',
     );
@@ -106,8 +109,8 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     expect(room.countdownAt! - room.serverNow).toBeLessThanOrEqual(5000);
     await commandCardRoom(pool, users[4]!, roomId, room.revision, { type: 'leave' });
     room = await readCardRoom(pool, users[3]!, roomId);
-    expect(room.status).toBe('waiting');
-    expect(room.ready).toEqual([]);
+    expect(room.status).toBe('ended');
+    expect(room.countdownAt).toBeNull();
     await commandCardRoom(pool, users[3]!, roomId, room.revision, { type: 'leave' });
   });
   it('starts once under concurrent joins, hides hands and rejects strangers', async () => {
@@ -194,11 +197,43 @@ const url = process.env.TEST_CARD_DATABASE_URL;
   it('fills six seats exactly once under simultaneous admission', async () => {
     const results = await Promise.all(users.slice(0, 6).map((user) => joinCardRoom(pool, user, 6)));
     expect(new Set(results.map((r) => r.roomId)).size).toBe(1);
-    const room = await readCardRoom(pool, users[0]!, results[0]!.roomId);
+    let room = await readCardRoom(pool, users[0]!, results[0]!.roomId);
+    expect(room.status).toBe('confirming');
+    for(const user of users.slice(0,6)) room=await commandCardRoom(pool,user,room.id,room.revision,{type:'ready'});
     expect(room.status).toBe('countdown');
     expect(room.seats).toHaveLength(6);
     expect(new Set(room.seats.map((s) => s.userId)).size).toBe(6);
     const overflow = await joinCardRoom(pool, users[6]!, 6);
     expect(overflow.roomId).not.toBe(room.id);
   });
+  it('invites each participant to a private table from the profile without duplicate messages', async () => {
+    const [owner,one,two,stranger]=users as [string,string,string,string,...string[]];
+    const invitation=await inviteCardsFromProfile(pool,owner,one,4);
+    expect((await inviteCardsFromProfile(pool,owner,one,4)).id).toBe(invitation.id);
+    await inviteToRoom(pool,owner,invitation.roomId,two);
+    const cards=(await pool.query("select metadata from messages where metadata->>'type'='bar_game_invite' and metadata->>'status'='pending'")).rows;
+    expect(cards).toHaveLength(2);
+    expect(cards.every(r=>r.metadata.capacity===4 && r.metadata.roomId===invitation.roomId)).toBe(true);
+    await expect(respondCards(pool,stranger,invitation.id,'accept')).rejects.toMatchObject({statusCode:404});
+    await Promise.all([respondCards(pool,one,invitation.id,'accept'),respondCards(pool,one,invitation.id,'accept')]);
+    expect((await pool.query("select metadata from messages where metadata->>'inviteId'=$1 and metadata->>'type'='bar_game_invite_status'",[invitation.id])).rows).toHaveLength(1);
+  });
+  it('rolls back the private table when the invited profile does not exist', async () => {
+    const before=await pool.query('select id from bar_card_rooms');
+    await expect(inviteCardsFromProfile(pool,users[0]!,randomUUID(),6)).rejects.toMatchObject({statusCode:404});
+    expect((await pool.query('select id from bar_card_rooms')).rows).toEqual(before.rows);
+  });
+
+  it('preserves multiple sizes selected in a profile invitation', async () => {
+    const first=await inviteCardsFromProfile(pool,users[0]!,users[1]!,[2,4,6]);
+    const room=await readCardRoom(pool,users[0]!,first.roomId);
+    expect(room.formats).toEqual([2,4,6]);
+    const message=(await pool.query("select metadata from messages where metadata->>'inviteId'=$1",[first.id])).rows[0];
+    expect(message.metadata.capacities).toEqual([2,4,6]);
+    expect((await inviteCardsFromProfile(pool,users[0]!,users[1]!,[2,4,6])).id).toBe(first.id);
+    expect((await pool.query('select id from messages')).rows).toHaveLength(1);
+    await inviteToRoom(pool,users[0]!,first.roomId,users[2]!);
+    expect((await readCardRoom(pool,users[0]!,first.roomId)).formats).toEqual([2,4,6]);
+  });
+
 });

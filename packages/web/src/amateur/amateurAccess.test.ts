@@ -30,6 +30,19 @@ describe('Amateur access helpers', () => {
     });
   });
 
+  it('allows an invitation response after reaching the threshold with a stale beginner session', () => {
+    const action = vi.fn();
+    const access = deriveAmateurAccess({
+      competitionLevel: 'beginner',
+      qualifyingGoals: 38227,
+      unlockGoalsRequired: 100,
+    });
+    expect(access.hasFullAccess).toBe(true);
+    guardAmateurMutation(access, action);
+    expect(action).toHaveBeenCalledOnce();
+    expect(useAmateurAccessToastStore.getState().toast).toBeNull();
+  });
+
   it('does not optimistically authorize while the competition level is unknown', () => {
     expect(
       deriveAmateurAccess({

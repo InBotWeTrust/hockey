@@ -1,3 +1,4 @@
+import { installBarInviteSchema } from './inviteChatTestSchema.js';
 import {randomUUID} from 'node:crypto';
 import {Pool} from 'pg';
 import {beforeAll,afterAll,it,expect} from 'vitest';
@@ -14,6 +15,8 @@ beforeAll(async()=>{
  create table bar_card_rooms(id uuid primary key,data jsonb);
  create table bar_card_queue(expires_at timestamptz);
  create table bar_card_invites(id uuid primary key,receiver_id uuid,room_id uuid,status text,expires_at timestamptz,created_at timestamptz default now());`);
+ await db.query('alter table bar_card_invites add column match_id uuid');
+ await installBarInviteSchema(db);
  await db.query('insert into users values($1,$2,null),($3,$4,$5)',[owner,'Owner',target,'Invited','/invited-avatar.png']);
  await db.query('insert into bar_card_rooms values($1,$2)',[room,JSON.stringify({seats:[owner],owner,capacity:2,status:'waiting',searchUntil:null,countdownAt:null,proposed:false,ready:[],revision:1,game:null,deadline:null})]);
  await db.query("insert into bar_card_invites(id,receiver_id,room_id,status,expires_at) values($1,$2,$3,'pending',now()+interval '1 hour')",[invite,target,room]);

@@ -1,0 +1,33 @@
+.currency-amount {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.currency-amount svg { flex-shrink: 0; }
+.currency-amount--coins { color: var(--reward-coin); }
+.currency-amount--stars { color: var(--reward-star); }
+/* Existing currency hues, with enough luminance for the purchase-button surface. */
+.currency-amount--coins.currency-amount--on-action { color: #83e3a5; }
+.currency-amount--stars.currency-amount--on-action { color: #f7d477; }
+:root .modal-card .btn.purchase-action,
+:root .modal-card .btn.purchase-action:disabled {
+  background: var(--purchase-action-bg, var(--liquid-selected-bg));
+  border: 1px solid var(--purchase-action-border, var(--liquid-border));
+  box-shadow: var(--purchase-action-shadow, var(--liquid-selected-shadow));
+  color: #fff;
+  opacity: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  letter-spacing: 0.02em;
+}
+:root[data-theme='light'] .modal-card .btn.purchase-action {
+  --purchase-action-bg: rgba(15, 23, 42, 0.92);
+  --purchase-action-border: rgba(15, 23, 42, 0.92);
+  --purchase-action-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.22), inset 0 -8px 18px rgba(3, 7, 18, 0.08), var(--shadow-cta);
+}
+:root .modal-card .btn.purchase-action:disabled { cursor: not-allowed; }

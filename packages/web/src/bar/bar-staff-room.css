@@ -29,3 +29,13 @@
 .bar-staff-room__conversation-actions .bar-identity__icon-actions .icon-btn {width:38px;height:38px;min-width:38px;}
 .bar-staff-room__seated .bar-emotion-base {animation:bar-emotion-out 700ms ease-in-out both;}
 .bar-staff-room__seated .bar-emotion-current {animation:bar-emotion-in 700ms ease-in-out;}
+
+.bar-staff-room__portrait {position:absolute;inset:0;}
+.bar-staff-room__chair {transition:opacity 1s ease;}
+.bar-staff-room__chair--hidden {opacity:0;}
+.bar-staff-room__portrait--leaving {animation:bar-office-departure 1s ease forwards;pointer-events:none;}
+@keyframes bar-office-departure {from {opacity:1;} to {opacity:0;}}
+@media (prefers-reduced-motion:reduce) {
+ .bar-staff-room__chair {transition:none;}
+ .bar-staff-room__portrait--leaving {animation:none;opacity:0;}
+}

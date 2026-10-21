@@ -1,4 +1,4 @@
-import type { Pool } from 'pg';
+import type { Pool, PoolClient } from 'pg';
 import type {
   ChatDTO,
   ChatRow,
@@ -600,15 +600,15 @@ export interface SendMessageOpts {
   markReadForUserIds?: string[];
 }
 
-export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<ChatMessageDTO> {
+export async function sendMessage(pool: Pool, opts: SendMessageOpts, transactionClient?: PoolClient): Promise<ChatMessageDTO> {
   const pollOptions = opts.pollOptions ?? [];
   if (pollOptions.length > 3) {
     throw new InvalidInputError('Poll can have at most 3 options');
   }
 
-  const client = await pool.connect();
+  const client = transactionClient ?? await pool.connect();
   try {
-    await client.query('begin');
+    if (!transactionClient) await client.query('begin');
     // Lazy-upsert membership so unread/lastRead works for system-channel senders.
     await client.query(
       `insert into chat_members (chat_id, user_id) values ($1, $2)
@@ -617,8 +617,8 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
     );
     const r = await client.query<MessageRow>(
       `with ins as (
-         insert into messages (chat_id, sender_id, content, reply_to_id, metadata)
-         values ($1, $2, $3, $4, $5::jsonb)
+         insert into messages (chat_id, sender_id, content, reply_to_id, metadata, created_at, updated_at)
+         values ($1, $2, $3, $4, $5::jsonb, statement_timestamp(), statement_timestamp())
          returning *
        )
        select ins.*,
@@ -676,17 +676,17 @@ export async function sendMessage(pool: Pool, opts: SendMessageOpts): Promise<Ch
         );
       }
     }
-    await client.query('commit');
+    if (!transactionClient) await client.query('commit');
 
     const dto = toChatMessageDTO(row);
     if (pollOptions.length === 0) return dto;
     const hydrated = await hydrateChannelPolls(pool, [dto], opts.senderId);
     return hydrated[0]!;
   } catch (err) {
-    await client.query('rollback').catch(() => undefined);
+    if (!transactionClient) await client.query('rollback').catch(() => undefined);
     throw err;
   } finally {
-    client.release();
+    if (!transactionClient) client.release();
   }
 }
 
@@ -852,13 +852,14 @@ export async function findOrCreateDM(
   pool: Pool,
   userA: string,
   userB: string,
+  transactionClient?: PoolClient,
 ): Promise<FindOrCreateDMResult> {
   if (userA === userB) {
     throw new InvalidInputError('Cannot create a DM with yourself');
   }
-  const client = await pool.connect();
+  const client = transactionClient ?? await pool.connect();
   try {
-    await client.query('begin');
+    if (!transactionClient) await client.query('begin');
     // Advisory lock keyed on the unordered pair: same lock id regardless of arg order.
     await client.query(
       `select pg_advisory_xact_lock(hashtextextended(least($1, $2)::text || greatest($1, $2)::text, 0))`,
@@ -875,7 +876,7 @@ export async function findOrCreateDM(
       [userA, userB],
     );
     if (existing.rowCount && existing.rowCount > 0) {
-      await client.query('commit');
+      if (!transactionClient) await client.query('commit');
       return { chatId: existing.rows[0]!.id, created: false };
     }
 
@@ -889,13 +890,13 @@ export async function findOrCreateDM(
       userA,
       userB,
     ]);
-    await client.query('commit');
+    if (!transactionClient) await client.query('commit');
     return { chatId, created: true };
   } catch (err) {
-    await client.query('rollback');
+    if (!transactionClient) await client.query('rollback');
     throw err;
   } finally {
-    client.release();
+    if (!transactionClient) client.release();
   }
 }
 

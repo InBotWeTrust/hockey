@@ -17,7 +17,7 @@ export interface ConversationSnapshot {
   revision: number;
   pending: boolean;
   interventionActive?: boolean;
-  turns: { id: string; user: string; assistant: string; createdAt: string; speaker?: ConversationCharacter; intervention?: string; fightId?: string; event?: 'physical'; emotion?:CharacterEmotion; farewell?: string; officeDay?:string }[];
+  turns: { id: string; user: string; assistant: string; createdAt: string; speaker?: ConversationCharacter; intervention?: string; fightId?: string; event?: 'physical'; emotion?:CharacterEmotion; farewell?: string; officeDay?:string; officeEmptyUntil?:string }[];
   preview?: boolean;
 }
 export interface ConversationMessage {

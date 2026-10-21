@@ -93,3 +93,39 @@ it('hides navigation dots for a single entry',()=>{
  expect(screen.queryByRole('group',{name:'Вкладки игр'})).toBeNull();
  expect(screen.queryByText('1 / 1')).toBeNull();
 });
+
+it('minimizes the top menu to an icon with live notifications and restores it',()=>{
+ const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть верхнее меню'}));
+ expect(screen.queryByRole('button',{name:'Развернуть игры'})).toBeNull();
+ expect(screen.getByRole('button',{name:'Показать верхнее меню, уведомлений: 2'})).toHaveAttribute('aria-expanded','false');
+ view.rerender(<CityGamePanel entries={[entries[0]!]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Показать верхнее меню'}));
+ expect(screen.getByRole('button',{name:'Развернуть игры'})).toBeVisible();
+});
+it('restores a minimized top menu when the map requests an actionable game',()=>{
+ const change=vi.fn();const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={change}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть верхнее меню'}));
+ view.rerender(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={change} openRequest={1}/>);
+ expect(screen.getByRole('button',{name:'Свернуть игры'})).toBeVisible();
+ expect(change).toHaveBeenCalledWith(2);
+});
+
+it('persists minimizing separately from the expanded game details',()=>{
+ const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Развернуть игры'}));
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть верхнее меню'}));view.unmount();
+ render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Показать верхнее меню, уведомлений: 2'}));
+ expect(screen.getByRole('button',{name:'Свернуть игры'})).toBeVisible();
+});
+
+it('counts unfinished blocked sessions and waiting duels until completion',()=>{
+ const daily={...entries[0]!,dockState:'blocked' as const};
+ const training={...daily,id:'training',kind:'training' as const};
+ const duel={...entries[1]!,attention:false,dockState:'blocked' as const};
+ const view=render(<CityGamePanel entries={[daily,training,duel]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Игры требуют действия: 3'})).toBeVisible();
+ view.rerender(<CityGamePanel entries={[{...daily,dockState:'done'},{...training,dockState:'done'}]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ expect(screen.queryByRole('button',{name:/Игры требуют действия/})).not.toBeInTheDocument();
+});

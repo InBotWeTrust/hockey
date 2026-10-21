@@ -162,3 +162,24 @@ it('shows numeric reward counts and caps large badges', () => {
     '99+',
   ]);
 });
+
+it('persists the current section tab beyond the session without restoring over explicit selection',()=>{
+ localStorage.clear();
+ const view=render(<SectionPanorama label="Test" pages={pages} selected="1" onSelect={()=>{}} panorama="/test.webp" storageKey="section-scroll:one:shop"><p>Test</p></SectionPanorama>);
+ expect(localStorage.getItem('section-scroll:one:shop:selected')).toBe('1');
+ view.rerender(<SectionPanorama label="Test" pages={pages} selected="2" onSelect={()=>{}} panorama="/test.webp" storageKey="section-scroll:one:shop"><p>Test</p></SectionPanorama>);
+ expect(localStorage.getItem('section-scroll:one:shop:selected')).toBe('2');
+ expect(screen.getByRole('tab',{name:'Питание'})).toHaveAttribute('aria-selected','true');
+ localStorage.clear();
+});
+
+it('drags overflowed section circles with a mouse and suppresses the release click',()=>{
+ const change=vi.fn();render(<SectionPanorama label="Бонусные игры" pages={pages} selected="0" onSelect={change} panorama="/bonus.webp" storageKey="drag-test"><p>Test</p></SectionPanorama>);
+ const dock=screen.getByRole('tablist',{name:'Навык'});dock.scrollLeft=180;
+ const target=screen.getByRole('tab',{name:'Коньки'});
+ const mouse=(type:string,x:number)=>{const event=new Event(type,{bubbles:true});Object.defineProperties(event,{isPrimary:{value:true},button:{value:0},pointerId:{value:1},clientX:{value:x},clientY:{value:20},pointerType:{value:'mouse'}});fireEvent(target,event);};
+ mouse('pointerdown',220);mouse('pointermove',120);mouse('pointerup',120);
+ expect(dock.scrollLeft).toBe(280);
+ fireEvent.click(target,{detail:1});expect(change).not.toHaveBeenCalled();
+ fireEvent.click(target,{detail:0});expect(change).toHaveBeenCalledWith('1');
+});

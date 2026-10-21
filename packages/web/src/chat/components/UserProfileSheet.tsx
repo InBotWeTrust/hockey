@@ -1,3 +1,4 @@
+import { BarChallengeButton } from '../../bar/BarChallengeButton.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SocialProfile } from '../../social/SocialProfile.js';
 import { ProfileBio } from '../../social/ProfileBio.js';
@@ -468,6 +469,7 @@ function UserProfileSheetContent({
           </div>
         ) : (
           <>
+            <BarChallengeButton userId={sender.userId} name={displayName} avatarUrl={avatarUrl}/>
             {canDuel && (
               <button
                 type="button"

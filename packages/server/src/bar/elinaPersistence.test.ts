@@ -22,14 +22,16 @@ describe.skipIf(!enabled)('Elina isolated persistence',()=>{
  });
  afterAll(async()=>{await pool.query('delete from users where id=any($1::uuid[])',[[seated,empty]]);await pool.end();});
  it('uses real daily modes and enforces empty-office timing and quick departure',async()=>{
+  await pool.query(`insert into bar_staff_room_state(user_id,day,presence_mode,presence_until) values($1,$2,'seated',now()+interval '30 minutes') on conflict(user_id) do update set presence_mode='seated',presence_until=now()+interval '30 minutes'`,[seated,day]);
+  await pool.query(`insert into bar_staff_room_state(user_id,day,presence_mode,presence_until) values($1,$2,'empty',now()+interval '30 minutes') on conflict(user_id) do nothing`,[empty,day]);
   expect((await staffRoomEvent(pool,seated,'enter',randomUUID())).phase).toBe('seated');
-  const entry=randomUUID();expect(await staffRoomEvent(pool,empty,'enter',entry)).toMatchObject({phase:'empty',warnAfterMs:30000});
-  await pool.query("update bar_staff_room_entries set entered_at=now()-interval '4 seconds' where user_id=$1",[empty]);
+  const entry=randomUUID();expect(await staffRoomEvent(pool,empty,'enter',entry)).toMatchObject({phase:'empty'});
+  await pool.query("update bar_staff_room_entries set empty_since=now()-interval '4 seconds' where user_id=$1",[empty]);
   await expect(staffRoomEvent(pool,empty,'warn',entry)).rejects.toMatchObject({code:'staff_room_not_ready'});
   await staffRoomEvent(pool,empty,'leave',entry);await expect(staffRoomEvent(pool,empty,'warn',entry)).rejects.toMatchObject({code:'staff_room_not_ready'});
-  await staffRoomEvent(pool,empty,'enter',entry);await pool.query("update bar_staff_room_entries set entered_at=now()-interval '31 seconds' where user_id=$1",[empty]);
+  await staffRoomEvent(pool,empty,'enter',entry);await pool.query("update bar_staff_room_entries set empty_since=now()-interval '16 seconds' where user_id=$1",[empty]);
   const warnings=await Promise.all([staffRoomEvent(pool,empty,'warn',entry),staffRoomEvent(pool,empty,'warn',entry)]);
-  expect(warnings.every(x=>x.phase==='warning')).toBe(true);
+  expect(warnings.every(x=>x.phase==='escorted')).toBe(true);
   expect((await pool.query("select jsonb_array_length(turns) as count from bar_conversations where user_id=$1 and character_id='oleg'",[empty])).rows[0].count).toBe(1);
  });
  it('rejects a conversation when absent without reserving a message',async()=>{
@@ -37,7 +39,7 @@ describe.skipIf(!enabled)('Elina isolated persistence',()=>{
   expect((await pool.query('select 1 from bar_visitor_receipts where user_id=$1',[empty])).rowCount).toBe(0);
  });
  it('expires abandoned visits and refreshes the lease without restarting the visit',async()=>{
-  const entry=randomUUID();await staffRoomEvent(pool,seated,'enter',entry);
+  const entry=(await staffRoomEvent(pool,seated,'enter',randomUUID())).entryId!;
   await pool.query("update bar_staff_room_entries set last_seen_at=now()-interval '3 minutes' where user_id=$1",[seated]);
   await expect(requireElinaOffice(pool,seated)).rejects.toMatchObject({code:'elina_unavailable'});
   const started=(await pool.query('select entered_at from bar_staff_room_entries where user_id=$1 and entry_id=$2',[seated,entry])).rows[0].entered_at;
@@ -46,7 +48,7 @@ describe.skipIf(!enabled)('Elina isolated persistence',()=>{
   expect((await pool.query('select entered_at from bar_staff_room_entries where user_id=$1 and entry_id=$2',[seated,entry])).rows[0].entered_at).toEqual(started);
  });
  it('persists ordinary replies, warns once and ejects once without duplicate charges',async()=>{
-  const entry=randomUUID();await staffRoomEvent(pool,seated,'enter',entry);
+  await staffRoomEvent(pool,seated,'enter',randomUUID());
   expect((await requireElinaOffice(pool,seated)).warnings).toBe(0);
   for(const intervention of [undefined,'office-warning','office-eject']){
    const before=await store.read(seated,'elina'),id=randomUUID();

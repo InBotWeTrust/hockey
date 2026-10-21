@@ -61,19 +61,32 @@ it('offers an ordinary Elina conversation with no game and no idle warning',asyn
  await act(async()=>vi.advanceTimersByTimeAsync(30001));
  expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
 });
-it('shows the same-canvas empty chair and waits thirty seconds before Oleg',async()=>{
- vi.useFakeTimers();vi.mocked(staffRoomEvent).mockImplementation(async action=>({phase:action==='warn'?'warning':'empty',warnAfterMs:30000}));
+it('shows the same-canvas empty chair and waits fifteen seconds before Oleg',async()=>{
+ vi.useFakeTimers();vi.mocked(staffRoomEvent).mockImplementation(async action=>({phase:action==='warn'?'warning':'empty',warnAfterMs:15000}));
  const view=mount();await act(async()=>{});fireEvent.load(view.container.querySelector('img')!);
  expect(screen.getByAltText('Пустое кресло Элины')).toHaveAttribute('src','/bar/emotions/elina/empty-chair-v1.webp');
  expect(screen.queryByRole('button',{name:'Разговор'})).toBeNull();
- await act(async()=>vi.advanceTimersByTimeAsync(29999));expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
+ await act(async()=>vi.advanceTimersByTimeAsync(14999));expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
  await act(async()=>vi.advanceTimersByTimeAsync(1));expect(screen.getByText('/bar warning')).toBeInTheDocument();
 });
 it('rechecks Elina on return and closes a conversation when she is no longer available',async()=>{
- vi.mocked(staffRoomEvent).mockResolvedValueOnce({phase:'seated',day:'2026-10-20',warnAfterMs:0}).mockResolvedValue({phase:'empty',day:'2026-10-21',warnAfterMs:30000});
+ vi.mocked(staffRoomEvent).mockResolvedValueOnce({phase:'seated',day:'2026-10-20',warnAfterMs:0}).mockResolvedValue({phase:'empty',day:'2026-10-21',warnAfterMs:15000});
  mount();await screen.findByRole('button',{name:'Разговор'});fireEvent.click(screen.getByRole('button',{name:'Разговор'}));
  expect(screen.getByText('Разговор с Элина')).toBeInTheDocument();
  expect(screen.getByAltText('Аватар Элина')).toHaveAttribute('src','/bar/emotions/elina/neutral-v1.webp');
  fireEvent.focus(window);await waitFor(()=>expect(screen.queryByText('Разговор с Элина')).toBeNull());
  expect(screen.getByAltText('Пустое кресло Элины')).toBeInTheDocument();
+ expect(document.querySelector('[data-departing="true"]')).not.toBeNull();
+});
+
+it('cancels an empty-office escort when the visitor leaves voluntarily',async()=>{
+ vi.useFakeTimers();vi.mocked(staffRoomEvent).mockResolvedValue({phase:'empty',warnAfterMs:15000});
+ const view=mount();await act(async()=>{});fireEvent.load(view.container.querySelector('img')!);
+ await act(async()=>vi.advanceTimersByTimeAsync(5000));fireEvent.click(screen.getByRole('button',{name:'Вернуться в бар'}));view.unmount();
+ await act(async()=>vi.advanceTimersByTimeAsync(15000));expect(staffRoomEvent).not.toHaveBeenCalledWith('warn',expect.anything());
+});
+it('requests an immediate escort when the server deadline already elapsed',async()=>{
+ vi.useFakeTimers();vi.mocked(staffRoomEvent).mockImplementation(async action=>({phase:action==='warn'?'escorted':'empty',warnAfterMs:0}));
+ const view=mount();await act(async()=>{});fireEvent.load(view.container.querySelector('img')!);
+ await act(async()=>vi.advanceTimersByTimeAsync(1));expect(screen.getByText('/bar warning')).toBeInTheDocument();
 });

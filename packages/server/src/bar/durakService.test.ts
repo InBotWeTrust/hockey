@@ -1,3 +1,4 @@
+import { installBarInviteSchema } from './inviteChatTestSchema.js';
 import { Pool } from 'pg';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -38,6 +39,7 @@ suite('isolated online card service', () => {
     await pool.query(
       await readFile(new URL('../../db/migrations/197_durak_tables.sql', import.meta.url), 'utf8'),
     );
+    await installBarInviteSchema(pool);
     [a, b, c] = [randomUUID(), randomUUID(), randomUUID()];
     for (const id of [a, b, c])
       await pool.query('insert into users(id,display_name) values($1,$2)', [id, id]);

@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
-import { joinCardRoom, readCardRoom, commandCardRoom, inviteToRoom } from './durakRooms.js';
+import { joinCardRoom, readCardRoom, commandCardRoom, inviteToRoom, inviteCardsFromProfile } from './durakRooms.js';
 import {
   cardLobby,
   queueCards,
@@ -22,6 +22,10 @@ const action = z.discriminatedUnion('type', [
 ]);
 export const durakRoutes: FastifyPluginAsync<{ backgroundTicksEnabled?: boolean }> = async (app, options) => {
   const auth = { preHandler: [app.authenticate] };
+  app.post('/bar/cards/profile-invites', auth, (req) => {
+    const body = z.object({ userId: z.string().uuid(), capacity: z.union([z.number().int().min(2).max(6), z.array(z.number().int().min(2).max(6)).min(1).max(5)]) }).strict().parse(req.body);
+    return inviteCardsFromProfile(app.pg, req.user.id, body.userId, body.capacity);
+  });
   app.post('/bar/cards/rooms', auth, (req) => {
     const body = z
       .object({

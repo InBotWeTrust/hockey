@@ -4420,7 +4420,7 @@ describe('DailyScreen', () => {
     renderWith(['/?view=training&section=course'],undefined,undefined,true);
     await screen.findByRole('heading',{name:'Начальное обучение'});
     fireEvent.click(screen.getByRole('button',{name:'Назад'}));
-    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
+    expect(screen.getByLabelText('location')).toHaveTextContent(/^\/sections$/);
   });
   it('shows the initial-course hub and opens its seven-card catalog when enabled', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -4597,7 +4597,7 @@ describe('DailyScreen', () => {
     expect(screen.getByText(/Старые результаты сохранены/)).toBeInTheDocument();
   });
 
-  it('keeps the training page shell visible while the catalog is loading', async () => {
+  it('keeps the full loading screen visible until the training catalog is ready', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4613,23 +4613,9 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Загрузка приложения')).toBeVisible());
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
     resolveCourse(
@@ -6631,7 +6617,8 @@ describe('DailyScreen', () => {
           JSON.stringify({
             ticket: {
               user_id: 'u1',
-              duel_kinds: ['express', 'classic'],
+              duel_kinds: ['express', 'classic', 'sniper', 'marathon', 'rhythm'],
+        marathon_windows_ms: [4000,7000],
               created_at: '2026-05-16T10:00:00.000Z',
               expires_at: '2026-05-16T10:02:00.000Z',
             },
@@ -6665,6 +6652,7 @@ describe('DailyScreen', () => {
     expect(express).toHaveAttribute('aria-pressed', 'true');
     expect(expressPlus).toHaveAttribute('aria-pressed', 'true');
     expect(classic).toHaveAttribute('aria-pressed', 'true');
+    for(const label of ['Снайпер','Марафон · 4 сек','Марафон · 7 сек','Ритм']) expect(screen.getByRole('button',{name:label})).toHaveAttribute('aria-pressed','true');
     expect(express.childElementCount).toBe(0);
     expect(express.style.background).toBe('var(--liquid-choice-selected-bg, var(--liquid-selected-bg))');
 
@@ -6680,7 +6668,8 @@ describe('DailyScreen', () => {
       );
       expect(joinCall).toBeTruthy();
       expect(JSON.parse(String(joinCall?.[1]?.body))).toEqual({
-        duel_kinds: ['express', 'classic'],
+        duel_kinds: ['express', 'classic', 'sniper', 'marathon', 'rhythm'],
+        marathon_windows_ms: [4000,7000],
       });
     });
   });
@@ -6741,7 +6730,7 @@ describe('DailyScreen', () => {
         ? {
             matches: [],
             duel_lock: null,
-            format_locks: { classic: lock, express_plus: lock, express: null },
+            format_locks: { classic: lock, express_plus: lock, express: null, sniper:lock, marathon:lock, rhythm:lock },
           }
         : url.includes('/duel/amateur/templates')
           ? { templates: challengeTemplates }
@@ -6803,7 +6792,7 @@ describe('DailyScreen', () => {
         ? {
             matches: [],
             duel_lock: null,
-            format_locks: unsafe ? { classic: lock, express_plus: lock, express: lock } : {},
+            format_locks: unsafe ? { classic: lock, express_plus: lock, express: lock, sniper:lock, marathon:lock, rhythm:lock } : {},
           }
         : url.includes('/duel/amateur/templates')
           ? { templates: challengeTemplates }
@@ -6860,7 +6849,7 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Начать поиск' }));
     await waitFor(() => {
       const call = fetchMock.mock.calls.find(([input]) => String(input).includes('/matchmaking/join'));
-      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic'] });
+      expect(JSON.parse(String(call?.[1]?.body))).toEqual({ duel_kinds: ['express_plus', 'classic','sniper','marathon','rhythm'], marathon_windows_ms:[4000,7000] });
     });
   });
 

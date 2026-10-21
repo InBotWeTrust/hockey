@@ -11,7 +11,7 @@ export function gameActivityCounts(state:BarGameLobby,user:string,character:Game
  const online=state.invites.filter(i=>i.receiverId===user&&i.status==='pending'&&i.expiresAt>state.serverNow).length+Number(!!state.matchId&&!character);
  return character&&state.matchId?{online,[character]:1}:{online};
 }
-export function useBarActivity():BarActivity {
+export function useBarActivity(includeInvites=true):BarActivity {
  const user=useAuthStore(s=>s.user?.id);
  const [value,setValue]=useState<{owner:string;counts:BarActivity}|null>(null);
  useEffect(()=>{
@@ -23,9 +23,9 @@ export function useBarActivity():BarActivity {
    reading=true;
    try {
     const [c,g]=await Promise.allSettled([lobby(),gameApi.lobby()]);
-    if(c.status==='fulfilled')cards=cardActivityCount(c.value,user,c.value.serverNow??Date.now());
+    if(c.status==='fulfilled')cards=cardActivityCount(includeInvites?c.value:{...c.value,invites:[]},user,c.value.serverNow??Date.now());
     if(g.status==='fulfilled'){
-     const state=g.value;
+     const state=includeInvites?g.value:{...g.value,invites:[]};
      if(state.matchId){
       try {const match=await gameApi.read(state.matchId);games=gameActivityCounts(state,user,match.character);}catch{/* Retain known activity until the next poll. */}
      }else games=gameActivityCounts(state,user,null);
@@ -37,7 +37,7 @@ export function useBarActivity():BarActivity {
   const timer=setInterval(()=>void refresh(),3000);
   window.addEventListener('focus',refresh);document.addEventListener('visibilitychange',refresh);
   return()=>{alive=false;clearInterval(timer);window.removeEventListener('focus',refresh);document.removeEventListener('visibilitychange',refresh);};
- },[user]);
+ },[user,includeInvites]);
  if(import.meta.env.DEV && location.pathname.endsWith('/durak-preview.html') && new URLSearchParams(location.search).get('bar-activity')==='demo')return {online:2,veronika:1};
  return value && value.owner===user?value.counts:{};
 }

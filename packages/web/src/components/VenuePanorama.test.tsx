@@ -1,3 +1,5 @@
+import {QueryClient,QueryClientProvider} from '@tanstack/react-query';
+import {act} from '@testing-library/react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -103,4 +105,24 @@ it.each(['course','advanced'])('redirects production direct exercise URL %s to o
  render(<MemoryRouter initialEntries={[`/?view=training&section=${section}&exercise=first-shot&play=1`]}><VenuePanorama level="beginner" owner="test"><Location/></VenuePanorama></MemoryRouter>);
  await waitFor(()=>expect(screen.getByText('/?view=training&section=open&from=sections')).toBeInTheDocument());
  expect(screen.getByText('В разработке')).toBeVisible();
+});
+
+it.each(['beginner','amateur','professional'] as const)('does not redirect the production open rink for %s', async level => {
+ vi.stubEnv('DEV',false); vi.stubEnv('VITE_TRAINING_EXERCISES_ENABLED','false');
+ render(<MemoryRouter initialEntries={['/?view=training&play=1']}><VenuePanorama level={level} owner="test"><Location/></VenuePanorama></MemoryRouter>);
+ expect(screen.getByText('/?view=training&play=1')).toBeInTheDocument();
+ expect(screen.queryByText('В разработке')).not.toBeInTheDocument();
+});
+
+it('publishes incoming duel invitations on the stadium circle and clears resolved events',async()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ client.setQueryData(['amateur-duel','events'],{events:[
+  {status:'invited',me:{side:'opponent',state:'invited'}},
+  {status:'invited',me:{side:'challenger',state:'invited'}},
+ ]});
+ render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/?view=amateur&section=duels']}><VenuePanorama level="amateur" owner={null}><span>Дуэли</span></VenuePanorama></MemoryRouter></QueryClientProvider>);
+ await waitFor(()=>expect(screen.getByRole('tab',{name:'Дуэли'})).toHaveTextContent('1'));
+ await act(async()=>{client.setQueryData(['amateur-duel','events'],{events:[]});});
+ await waitFor(()=>expect(screen.getByRole('tab',{name:'Дуэли'}).querySelector('.section-scene__attention')).toBeNull());
+ client.clear();
 });
