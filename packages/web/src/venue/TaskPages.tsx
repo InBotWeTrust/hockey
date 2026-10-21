@@ -10,6 +10,6 @@ export function TaskPage({
   return id === 'tasks' ? (
     <AchievementsScreen profileContext={profileContext} />
   ) : (
-    <WeeklyChallengeScreen profileContext={profileContext} />
+    <WeeklyChallengeScreen profileContext={profileContext} heading="Челленджи" />
   );
 }

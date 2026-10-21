@@ -7977,7 +7977,7 @@ function DuelResultDetailRow({
   );
 }
 
-function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
+export function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const artwork = DUEL_KIND_ARTWORK_IMAGES[match.rules.duelKind];
   const chips = [
     formatRuCount(match.rules.totalPeriods, 'период', 'периода', 'периодов'),
@@ -8048,7 +8048,7 @@ function DuelRulesPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
   );
 }
 
-function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
+export function DuelOpponentPanel({ match }: { match: AmateurDuelMatch }): JSX.Element {
   const opponentStatus = duelOpponentStatus(match);
   const opponentName = splitOpponentName(match.opponent.display_name);
   return (

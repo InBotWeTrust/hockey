@@ -53,3 +53,12 @@ it('renders two independent columns, preserves forms and keeps the selected page
   expect(screen.getByLabelText('Form 2')).toBeVisible();
   expect(screen.getAllByTestId('venue-column-scroll')).toHaveLength(5);
 });
+it('shares saved scroll offsets with the mobile page renderer',()=>{
+ vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockImplementation(()=>({width:834,height:800}) as DOMRect);
+ sessionStorage.removeItem('shared-scroll');
+ const view=render(<VenueColumns pages={pages} selected="0" onSelect={vi.fn()} storageKey="shared-scroll" dockedChat={false}/>);
+ const node=screen.getAllByTestId('venue-column-scroll')[0]!;
+ fireEvent.wheel(node);node.scrollTop=280;fireEvent.scroll(node);
+ expect(JSON.parse(sessionStorage.getItem('shared-scroll')??'{}')['0']).toBe(280);
+ view.unmount();
+});

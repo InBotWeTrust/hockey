@@ -281,13 +281,15 @@ export function BonusGamesScreen({embeddedSkill}:{embeddedSkill?:BonusSkillCode}
   }, [selectedAllowance, allowanceCountdown, allowanceNowMs]);
   useEffect(() => {
     if (
-      !embeddedSkill ||
       selectedAllowance === undefined ||
       Date.parse(selectedAllowance.resets_at) > allowanceNowMs ||
       refreshedAllowanceResetRef.current === selectedAllowance.resets_at
     ) {
       return;
     }
+    const resetKey=['bonus-games-allowance-reset',selectedAllowance.resets_at];
+    if(queryClient.getQueryData(resetKey))return;
+    queryClient.setQueryData(resetKey,true);
     refreshedAllowanceResetRef.current = selectedAllowance.resets_at;
     void catalogQuery.refetch();
   }, [allowanceCountdown, catalogQuery, selectedAllowance,embeddedSkill]);
@@ -537,7 +539,7 @@ export function BonusGamesScreen({embeddedSkill}:{embeddedSkill?:BonusSkillCode}
           </button>
           <div className="bonus-games-catalog__heading">
             <h1 id={`bonus-games-title-${embeddedSkill??'root'}`} className="bonus-games-catalog__title screen-title-on-arena">
-              Бонусные игры
+              {embeddedSkill ? skillLabels[embeddedSkill] : 'Бонусные игры'}
             </h1>
             <button
               type="button"

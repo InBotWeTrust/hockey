@@ -1,12 +1,4 @@
-const ApartmentPage = lazy(() =>
-  import('../venue/ApartmentPages.js').then((m) => ({ default: m.ApartmentPage })),
-);
-const TaskPage = lazy(() => import('../venue/TaskPages.js').then((m) => ({ default: m.TaskPage })));
 import { Suspense, lazy } from 'react';
-const StadiumPage = lazy(() =>
-  import('../venue/StadiumPages.js').then((m) => ({ default: m.StadiumPage })),
-);
-const YardPage = lazy(() => import('../venue/YardPages.js').then((m) => ({ default: m.YardPage })));
 import { ColumnNavigationProvider, toLocation } from '../layout/ColumnNavigation.js';
 import { readColumnHistory } from '../layout/columnNavigationStore.js';
 import { isGameLocation } from '../layout/gameRoutes.js';
@@ -29,6 +21,16 @@ import { SectionPanorama } from './SectionPanorama.js';
 
 import { venueSceneFor, trainingHref, type Level } from './venueScenes.js';
 export { venueSceneFor } from './venueScenes.js';
+
+const ApartmentPage = lazy(() =>
+  import('../venue/ApartmentPages.js').then((m) => ({ default: m.ApartmentPage })),
+);
+const TaskPage = lazy(() => import('../venue/TaskPages.js').then((m) => ({ default: m.TaskPage })));
+const StadiumPage = lazy(() =>
+  import('../venue/StadiumPages.js').then((m) => ({ default: m.StadiumPage })),
+);
+const YardPage = lazy(() => import('../venue/YardPages.js').then((m) => ({ default: m.YardPage })));
+
 interface VenueNavigation {
   onBack: () => void;
   setAttention: (id: string, attention: number) => void;

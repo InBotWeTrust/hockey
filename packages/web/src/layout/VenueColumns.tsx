@@ -103,11 +103,12 @@ function ColumnScroll({
 }) {
   const scroll = useRef<HTMLDivElement>(null),
     content = useRef<HTMLDivElement>(null);
-  const key = `${storageKey}:column:${page}`;
+  const key = storageKey;
   const desired = useRef<number | null>(null);
   useLayoutEffect(() => {
     try {
-      const value = Number(sessionStorage.getItem(key) ?? 0);
+      const stored=JSON.parse(sessionStorage.getItem(key)??'{}');
+      const value=Number(stored?.[page]??0);
       desired.current = Number.isFinite(value) ? Math.max(0, value) : 0;
     } catch {
       desired.current = 0;
@@ -122,7 +123,7 @@ function ColumnScroll({
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(restore);
     if (content.current) observer?.observe(content.current);
     return () => observer?.disconnect();
-  }, [key]);
+  }, [key,page]);
   return (
     <div
       ref={scroll}
@@ -140,7 +141,9 @@ function ColumnScroll({
       onScroll={() => {
         if (desired.current !== null) return;
         try {
-          sessionStorage.setItem(key, String(scroll.current?.scrollTop ?? 0));
+          const stored=JSON.parse(sessionStorage.getItem(key)??'{}');
+          const previous=stored&&typeof stored==='object'&&!Array.isArray(stored)?stored:{};
+          sessionStorage.setItem(key,JSON.stringify({...previous,[page]:scroll.current?.scrollTop??0}));
         } catch {
           /* Optional scroll persistence. */
         }

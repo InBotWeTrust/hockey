@@ -1,3 +1,4 @@
+import {ChatPresentationProvider} from '../presentation/ChatPresentationContext.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -95,6 +96,30 @@ async function runAllTimersInAct(): Promise<void> {
 }
 
 describe('ChatRoomScreen', () => {
+  it('cancels an embedded recording when the chat becomes hidden without sending it', async () => {
+    const stopped=vi.fn(),trackStopped=vi.fn();
+    class Recorder {
+      static isTypeSupported(){return false;}
+      state:RecordingState='inactive';mimeType='audio/webm';onstop:(()=>void)|null=null;ondataavailable:unknown=null;onerror:unknown=null;
+      start(){this.state='recording';}
+      stop(){stopped();this.state='inactive';this.onstop?.();}
+    }
+    vi.stubGlobal('MediaRecorder',Recorder);
+    const previous=Object.getOwnPropertyDescriptor(navigator,'mediaDevices');
+    Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async()=>({getTracks:()=>[{stop:trackStopped}]})}});
+    const upload=vi.spyOn(api,'uploadChatAttachment');
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    const tree=(visible:boolean)=><QueryClientProvider client={client}><MemoryRouter><ChatPresentationProvider owner={SELF_ID} location={{pathname:'/chat/c1',search:'',hash:''}} visible={visible} onNavigate={vi.fn()} onOutside={vi.fn()}><ChatRoomScreen/></ChatPresentationProvider></MemoryRouter></QueryClientProvider>;
+    try {
+      const view=render(tree(true));
+      fireEvent.click(await screen.findByRole('button',{name:'Записать голосовое'}));
+      await screen.findByRole('button',{name:'Остановить запись'});
+      view.rerender(tree(false));
+      await waitFor(()=>expect(stopped).toHaveBeenCalledTimes(1));
+      expect(trackStopped).toHaveBeenCalled();expect(upload).not.toHaveBeenCalled();
+    } finally {vi.unstubAllGlobals();Object.defineProperty(navigator,'mediaDevices',previous??{configurable:true,value:undefined});}
+  });
+
   beforeEach(() => {
     vi.spyOn(socialApi, 'summary').mockResolvedValue({followersCount: 1, followingCount: 0, following: false, canFollow: true});
     const user: AuthUser = {

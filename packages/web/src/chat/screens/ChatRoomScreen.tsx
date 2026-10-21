@@ -397,7 +397,7 @@ function DuelInviteActions({
 }
 
 export function ChatRoomScreen(): JSX.Element {
-  const {visible:chatVisible}=useChatPresentation();
+  const {visible:chatVisible,embedded:chatEmbedded}=useChatPresentation();
   const chatVisibleRef=useRef(chatVisible);chatVisibleRef.current=chatVisible;
   const params = useParams<{ chatId: string }>();
   const chatId = params.chatId ?? '';
@@ -826,6 +826,12 @@ export function ChatRoomScreen(): JSX.Element {
     window.addEventListener('hockey:chat-window-cancel-voice',cancel);
     return()=>window.removeEventListener('hockey:chat-window-cancel-voice',cancel);
   },[meId,chatId,stopVoiceTracks]);
+
+  useEffect(()=>{
+    if(!chatEmbedded||chatVisible||voiceRecorderRef.current?.state!=='recording')return;
+    voiceCancelRef.current=true;voiceRecorderRef.current.stop();stopVoiceTracks();
+    setAttachmentError('Запись отменена при сворачивании чата.');
+  },[chatEmbedded,chatVisible,stopVoiceTracks]);
 
   const startVoiceRecording = useCallback(async (): Promise<void> => {
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {

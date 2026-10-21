@@ -1,3 +1,4 @@
+import {ReferralsScreen} from '../screens/ReferralsScreen.js';
 import { useLocation } from 'react-router-dom';
 import { ProfileScreen } from '../screens/ProfileScreen.js';
 import { ProfileRewardsScreen } from '../screens/ProfileRewardsScreen.js';
@@ -24,7 +25,7 @@ export function ApartmentPage({
       <ProfileStoryScreen />
     );
   if (id === 'rewards') return <ProfileRewardsScreen />;
-  if (id === 'friends') return <ProfileFriendsScreen />;
+  if (id === 'friends') return pathname==='/referrals'?<ReferralsScreen/>:<ProfileFriendsScreen />;
   if (id === 'settings') return <ProfileSettingsScreen />;
   if (pathname === '/profile/stats') return <ProfileStatsScreen />;
   if (pathname === '/profile/arena') return <ProfileArenaScreen />;

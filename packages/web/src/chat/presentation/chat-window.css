@@ -85,3 +85,5 @@
 .chat-window--docked .chat-window__header {
   cursor: default;
 }
+/* The application shell assigns relative positioning to its direct children. */
+.app-shell > .chat-window {position:absolute;z-index:80;}

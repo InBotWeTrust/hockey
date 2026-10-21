@@ -24,7 +24,7 @@ vi.mock('../screens/ProfileStorySeriesScreen.js', () => ({
 }));
 vi.mock('../screens/AchievementsScreen.js', () => ({ AchievementsScreen: () => <p>Задания</p> }));
 vi.mock('../screens/WeeklyChallengeScreen.js', () => ({
-  WeeklyChallengeScreen: () => <p>Челленджи</p>,
+  WeeklyChallengeScreen: ({heading='Задания'}:{heading?:string}) => <p>{heading}</p>,
 }));
 it('renders story details in the apartment and preserves artwork positions', () => {
   render(

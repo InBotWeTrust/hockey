@@ -1,3 +1,4 @@
+import {useColumnLayout} from '../layout/useColumnLayout.js';
 import { VenueColumns } from '../layout/VenueColumns.js';
 import { useHorizontalPan } from '../bar/useHorizontalPan.js';
 import { saveSectionTab } from '../city/sectionEntry.js';
@@ -85,6 +86,8 @@ export function SectionPanorama({
     0,
     pages.findIndex((page) => page.id === selected),
   );
+  const layout=useColumnLayout(root,pages.length,index,dockedChat);
+  const useColumns=Boolean(renderPage&&layout.contentWidth>430);
   const blockClickUntil = useRef(0);
   const gesture = useRef<{ id: number; x: number; y: number } | null>(null);
   const scenePosition = pages[index]?.position ?? index;
@@ -121,7 +124,7 @@ export function SectionPanorama({
     } catch {
       positions.current = {};
     }
-  }, [storageKey]);
+  }, [storageKey,useColumns]);
   useLayoutEffect(() => {
     pendingRestore.current = positions.current[selected] ?? 0;
     if (scroll.current) scroll.current.scrollTop = pendingRestore.current;
@@ -135,7 +138,7 @@ export function SectionPanorama({
     // Keep the new page anchored; only the panorama animates on selection.
     dragX.stop();
     dragX.set(0);
-  }, [storageKey, selected, index, scenePosition, reduced, position, target, dragX]);
+  }, [storageKey, selected, index, scenePosition, reduced, position, target, dragX,useColumns]);
   useLayoutEffect(() => {
     const restore = () => {
       const node = scroll.current,
@@ -148,7 +151,7 @@ export function SectionPanorama({
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(restore);
     if (content.current) observer?.observe(content.current);
     return () => observer?.disconnect();
-  }, [children, selected, storageKey]);
+  }, [children, selected, storageKey,useColumns]);
   const saveScroll = () => {
     if (!scroll.current || pendingRestore.current !== null) return;
     positions.current[selected] = scroll.current.scrollTop;
@@ -161,7 +164,7 @@ export function SectionPanorama({
   return (
     <main
       ref={root}
-      className={`screen section-scene ${renderPage ? 'section-scene--columns' : ''} ${className}`}
+      className={`screen section-scene ${renderPage ? 'section-scene--adaptive' : ''} ${useColumns ? 'section-scene--columns' : ''} ${className}`}
       aria-label={label}
     >
       <motion.div
@@ -238,7 +241,7 @@ export function SectionPanorama({
           );
         }}
       >
-        {renderPage ? (
+        {useColumns && renderPage ? (
           <VenueColumns
             pages={pages.map((page) => ({ ...page, render: () => renderPage(page.id) }))}
             selected={selected}

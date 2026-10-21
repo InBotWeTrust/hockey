@@ -135,8 +135,10 @@ function firstVisibleFilter(catalog: WeeklyChallengeCatalogResponse): ChallengeF
 
 export function WeeklyChallengeScreen({
   profileContext = false,
+  heading = 'Задания',
 }: {
   profileContext?: boolean;
+  heading?: string;
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -252,7 +254,7 @@ export function WeeklyChallengeScreen({
             <ArrowLeft size={16} />
           </button>
           <h1 className="screen-title-on-arena weekly-challenge-screen__title page-header-standard__title">
-            Задания
+            {heading}
           </h1>
         </div>
 
