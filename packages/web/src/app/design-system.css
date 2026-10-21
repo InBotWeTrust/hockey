@@ -14319,7 +14319,8 @@ button.daily-calendar__day:active {
   gap: 10px;
 }
 
-.profile-customization-card__fields label {
+.profile-customization-card__fields label,
+.profile-bio-field > span {
   display: grid;
   gap: 6px;
   color: var(--ink);
@@ -15879,3 +15880,15 @@ button.daily-calendar__day:active {
   color: #3b2600;
   background: linear-gradient(135deg, #ffe18a, #f4b942);
 }
+
+/* Settings sections share the same card edge and vertical rhythm. */
+.profile-settings-screen > .section-label { margin-bottom:8px; }
+.profile-settings-screen .profile-community-section { margin:0 14px 20px; gap:10px; }
+.profile-settings-screen .profile-community-section > .section-label { padding-inline:0; margin:0; }
+.profile-settings-screen .profile-community-icon-grid { display:flex; justify-content:flex-start; gap:16px; padding:0; border-top:0; }
+.profile-settings-screen .profile-community-icon-card { flex:0 0 50px; }
+
+/* Settings must style the bio field even before a social page has loaded. */
+.profile-bio-field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
+.profile-bio-field textarea { font: inherit; font-size: 14px; font-weight: 400; line-height: 1.45; color: var(--muted); padding: 11px 12px; border: 1px solid rgba(100,116,139,.24); border-radius: 13px; background: var(--liquid-card-bg); resize: vertical; }
+.profile-bio-field small { color: var(--muted); }

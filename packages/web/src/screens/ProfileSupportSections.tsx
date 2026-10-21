@@ -917,8 +917,6 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
         </>
       )}
 
-      <CommunitySection />
-
       <AdminAndroidReleaseOnly>
         <>
           <div className="section-label" style={{ marginBottom: 8 }}>
@@ -1019,6 +1017,8 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
           </Fragment>
         ))}
       </div>
+
+      <CommunitySection />
 
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
       {officialMessageOpen && (

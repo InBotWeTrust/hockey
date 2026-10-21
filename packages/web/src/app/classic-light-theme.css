@@ -4367,7 +4367,7 @@
 }/* Keep current navigation glyphs and readable standalone headings. */
 :root[data-theme='light'] .app-shell .section-label { color:#fff; text-shadow:0 1px 3px #0009; }
 :root[data-theme='light'] .app-shell .glass .section-label { color:var(--ink); text-shadow:none; }
-:root[data-theme='light'] .profile-theme-settings .segmented-tabs__item:first-child { flex:1.8; }
+:root[data-theme='light'] .profile-theme-settings:not(.profile-chat-position-settings) .segmented-tabs__item:first-child { flex:1.8; }
 :root[data-theme='light'] .profile-theme-settings .segmented-tabs__item { padding-inline:6px; }
 /* Trophy labels need a stable reading surface over profile scenery. */
 :root[data-theme="light"] .profile-trophy-showcase {
