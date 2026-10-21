@@ -14344,7 +14344,8 @@ button.daily-calendar__day:active {
   gap: 10px;
 }
 
-.profile-customization-card__fields label {
+.profile-customization-card__fields label,
+.profile-bio-field > span {
   display: grid;
   gap: 6px;
   color: var(--ink);
