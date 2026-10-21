@@ -61,7 +61,7 @@ export function VenueColumns({
               }}
             >
               <ColumnScroll storageKey={storageKey} page={page.id}>
-                {visited.current.has(page.id) ? page.render() : null}
+                {visited.current.has(page.id) && (visible || layout.contentWidth > 430) ? page.render() : null}
               </ColumnScroll>
             </section>
           );
