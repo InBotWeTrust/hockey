@@ -507,6 +507,7 @@ describe('InventoryScreen', () => {
       renderInventory(`/inventory?category=${category}`);
 
       await screen.findByRole('heading', { name: title });
+      await waitFor(() => expect(screen.queryByLabelText('Загрузка приложения')).not.toBeInTheDocument());
       const main = screen.getByRole('main');
       expect(main).toHaveClass('section-scene');
       expect(screen.getByRole('tab',{name:title})).toHaveAttribute('aria-selected','true');

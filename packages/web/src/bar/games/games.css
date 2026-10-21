@@ -1586,14 +1586,19 @@
 .bar-naval-reserve { margin-right: 18px; }
 
 .bar-naval-reserve-ship {
-  background: var(--liquid-card-bg);
+  flex-direction: column;
+  gap: 4px;
+  min-height: 62px;
+  background: #20394b;
   border-color: var(--liquid-border);
   box-shadow: var(--liquid-shadow);
-  color: var(--liquid-ink);
-  backdrop-filter: var(--liquid-blur);
-  -webkit-backdrop-filter: var(--liquid-blur);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1.25;
 }
-.bar-naval-reserve-ship:disabled { opacity: .5; border-color: var(--liquid-border-soft); }
+.bar-naval-reserve-ship .bar-naval-miniature .bar-naval-hull { fill: #c2d3dc; }
+.bar-naval-reserve-ship:disabled { opacity: 1; border-color: var(--liquid-border-soft); }
+.bar-naval-reserve-ship:disabled > span { opacity: .6; }
 
 .bar-naval-cell { position: relative; }
 .bar-naval-cell[data-hit='true'], .bar-naval-cell[data-ship-color][data-hit='true'] { box-shadow: none; }
@@ -1890,4 +1895,11 @@
 .bar-games-lobby .duel-opponent-search:focus-within {
   outline: 2px solid var(--liquid-border);
   outline-offset: 2px;
+}
+
+/* These controls sit on game artwork in both application themes. */
+.bar-game-screen--playing .bar-game-notice-row > .icon-btn {
+ color:#fff;
+ border:1px solid rgba(255,255,255,.72);
+ background:rgba(18,20,23,.32);
 }

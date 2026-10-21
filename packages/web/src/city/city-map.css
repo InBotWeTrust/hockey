@@ -72,3 +72,5 @@
 .district-apartment-avatar svg { width:22px; height:22px; color:inherit; }
 .district-apartment:hover .district-apartment-avatar,
 .district-apartment:focus-visible .district-apartment-avatar { opacity:1; }
+
+.district-dock span { border:var(--navigation-border); box-sizing:border-box; }

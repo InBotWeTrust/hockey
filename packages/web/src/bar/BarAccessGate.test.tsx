@@ -94,3 +94,17 @@ it('checks access at countdown zero and waits for server confirmation before ent
   expect(screen.getByText('Private bar contents')).toBeInTheDocument();
  } finally {view.unmount();vi.useRealTimers();}
 });
+
+it('uses the full loading screen only until initial access is known', async () => {
+ let resolve!: (access:{blockedUntil:null;fightId:null})=>void;
+ vi.mocked(fetchBarAccess).mockReturnValueOnce(new Promise(done=>{resolve=done;}));
+ render(<MemoryRouter><BarAccessGate><p>Ready bar</p></BarAccessGate></MemoryRouter>);
+ expect(screen.getByLabelText('Загрузка приложения')).toBeVisible();
+ await act(async()=>resolve({blockedUntil:null,fightId:null}));
+ expect(screen.queryByLabelText('Загрузка приложения')).toBeNull();
+ expect(screen.getByText('Ready bar')).toBeVisible();
+ vi.mocked(fetchBarAccess).mockReturnValueOnce(new Promise(()=>{}));
+ act(()=>window.dispatchEvent(new Event('bar-access-changed')));
+ expect(screen.queryByLabelText('Загрузка приложения')).toBeNull();
+ expect(screen.getByText('Ready bar')).toBeVisible();
+});

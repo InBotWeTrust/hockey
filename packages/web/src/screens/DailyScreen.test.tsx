@@ -4568,7 +4568,7 @@ describe('DailyScreen', () => {
       'Упражнение: board-side');
   });
 
-  it('keeps the training page shell visible while the catalog is loading', async () => {
+  it('keeps the full loading screen visible until the training catalog is ready', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4584,23 +4584,9 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    expect(await screen.findByRole('heading', { name: 'Тренировка' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /Начальный уровень/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: /Продвинутый уровень/ })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).not.toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Открытая тренировка' })).toHaveAttribute(
-      'aria-disabled',
-      'true',
-    );
-    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByLabelText('Загрузка приложения')).toBeVisible());
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
 
     resolveCourse(

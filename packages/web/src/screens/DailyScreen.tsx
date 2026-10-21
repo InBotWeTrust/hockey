@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
@@ -121,7 +122,6 @@ import {
   type InitialTrainingExerciseKey,
 } from '../api/initialTraining.js';
 import {
-  INITIAL_TRAINING_HUB_LOADING_CATALOG,
   InitialTrainingCatalog,
   InitialTrainingHub,
 } from '../components/InitialTrainingCourse.js';
@@ -732,9 +732,7 @@ export function DailyScreen(): JSX.Element {
             </div>
           </div>
         ) : (
-          <div className="route-loading" role="status">
-            Загрузка…
-          </div>
+          <StartupSplash />
         )}
       </main>
     );
@@ -3781,17 +3779,7 @@ function TrainingPlaceholder({
     trainingSection !== 'course' &&
     trainingSection !== 'advanced'
   ) {
-    return (
-      <ModeShell title="Тренировка" onBack={onBack} variant="section-hub">
-        <InitialTrainingHub
-          catalog={INITIAL_TRAINING_HUB_LOADING_CATALOG}
-          loading
-          onOpenCourse={() => undefined}
-          onOpenTraining={() => undefined}
-          onOpenAdvanced={() => undefined}
-        />
-      </ModeShell>
-    );
+    return <StartupSplash />;
   }
 
   if (courseCatalogError && !courseCatalog && !autoPlay && trainingSection !== 'open') {
@@ -3973,7 +3961,7 @@ function TrainingPlaceholder({
           </div>
           <div className="training-info-overview__copy">
             {loading && !data ? (
-              <div className="training-info-copy">Загрузка...</div>
+              <StartupSplash />
             ) : (
               <>
                 {error && <div className="training-info-error">{error}</div>}

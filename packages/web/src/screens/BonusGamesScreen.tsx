@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
 import { BonusRecordsModal, formatBonusPreviewRecord } from '../profile/BonusRecordsModal.js';
 import {CYBERPUNK_STORY,CyberpunkHints} from '../game/CyberpunkBriefing';
@@ -573,9 +574,7 @@ export function BonusGamesScreen(): JSX.Element {
         ) : null}
 
         {catalogQuery.isLoading ? (
-          <div className="bonus-games-catalog__notice" role="status">
-            Загружаем бонусные игры…
-          </div>
+          <StartupSplash />
         ) : catalogQuery.isError ? (
           <div
             className="bonus-games-catalog__notice bonus-games-catalog__notice--error"

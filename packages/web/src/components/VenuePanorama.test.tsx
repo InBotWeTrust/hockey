@@ -104,3 +104,10 @@ it.each(['course','advanced'])('redirects production direct exercise URL %s to o
  await waitFor(()=>expect(screen.getByText('/?view=training&section=open&from=sections')).toBeInTheDocument());
  expect(screen.getByText('В разработке')).toBeVisible();
 });
+
+it.each(['beginner','amateur','professional'] as const)('does not redirect the production open rink for %s', async level => {
+ vi.stubEnv('DEV',false); vi.stubEnv('VITE_TRAINING_EXERCISES_ENABLED','false');
+ render(<MemoryRouter initialEntries={['/?view=training&play=1']}><VenuePanorama level={level} owner="test"><Location/></VenuePanorama></MemoryRouter>);
+ expect(screen.getByText('/?view=training&play=1')).toBeInTheDocument();
+ expect(screen.queryByText('В разработке')).not.toBeInTheDocument();
+});

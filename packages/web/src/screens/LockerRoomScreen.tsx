@@ -1,3 +1,4 @@
+import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { X } from 'lucide-react';
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
@@ -61,7 +62,7 @@ export function LockerRoomScreen(): JSX.Element {
       <section className="locker-room-content">
         <h1 className="bonus-games-catalog__title screen-title-on-arena">Раздевалка</h1>
         {profile.isPending ? (
-          <p role="status">Загружаем раздевалку…</p>
+          <StartupSplash />
         ) : !profile.data ? (
           <section role="alert">
             <p>Не удалось загрузить раздевалку.</p>
