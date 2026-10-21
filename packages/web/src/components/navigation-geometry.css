@@ -20,3 +20,5 @@
  background:var(--liquid-card-bg); border:1px solid var(--liquid-border); box-shadow:none; color:var(--liquid-ink);
  backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%)); -webkit-backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%));
 }
+.app-shell .navigation-collapsed-surface .city-game-restore.icon-btn { color:inherit; }
+.app-shell .navigation-collapsed-surface .city-game-restore.icon-btn svg { width:25px; height:25px; stroke-width:1.5; color:inherit; filter:none; }
