@@ -692,7 +692,7 @@ describe('InventoryScreen', () => {
     expect(summary).toHaveClass('receipt-payment-summary');
     expect(summary.querySelector('.lucide-circle-dollar-sign')).not.toBeNull();
     expect(summary.querySelector('.lucide-russian-ruble')).toBeNull();
-    expect(within(summary).getByText('40 000 монет')).toBeInTheDocument();
+    expect(within(summary).getByLabelText('40 000 монет')).toBeInTheDocument();
     expect(within(summary).getByText('·')).toBeInTheDocument();
     expect(within(summary).getByText('699 ₽')).toBeInTheDocument();
     expect(within(summary).queryByText('за')).not.toBeInTheDocument();

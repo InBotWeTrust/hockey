@@ -1,4 +1,5 @@
 import {StartupSplash} from '../onboarding/StartupSplash.js';
+import { CurrencyAmount } from '../shop/PurchaseAction.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
 import { ShopProductCard } from '../shop/ShopProductCard.js';
 import { ShopPurchaseModal } from '../shop/ShopPurchaseModal.js';
@@ -917,7 +918,7 @@ function InventoryItemModal({
 
         <button
           type="button"
-          className="modal-primary btn--cta"
+          className="modal-primary btn btn--cta purchase-action"
           disabled={!canBuy || isBuying}
           onClick={onBuy}
         >
@@ -1047,14 +1048,13 @@ function ReceiptEmailModal({
           aria-label={`${numberText(pack.coinAmount)} монет за ${numberText(pack.priceRub)} рублей`}
         >
           <span className="receipt-payment-summary__coins">
-            <CircleDollarSign size={16} strokeWidth={2.55} aria-hidden="true" />
-            {numberText(pack.coinAmount)} монет
+            <CurrencyAmount amount={pack.coinAmount} currency="coins"/>
           </span>
           <span className="receipt-payment-summary__separator">·</span>
           <span className="receipt-payment-summary__rubles">{rubText(pack.priceRub)}</span>
         </div>
         <div className="modal-actions receipt-payment-actions">
-          <button type="submit" className="modal-primary btn btn--cta">
+          <button type="submit" className="modal-primary btn btn--cta purchase-action">
             Перейти к оплате
           </button>
         </div>

@@ -1,4 +1,5 @@
 import {StartupSplash} from '../onboarding/StartupSplash.js';
+import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { RhythmShotNotice } from '../components/duel/RhythmShotNotice.js';
@@ -9398,6 +9399,12 @@ function RecoveryKitModal({
     },
   });
 
+  const applySelected = () => {
+    if (selected === null) return;
+    if (action === 'start_classic') guardAmateurMutation(amateurAccess, () => mutation.mutate(selected));
+    else mutation.mutate(selected);
+  };
+
   return (
     <AccessibleModal
       title="Сократить восстановление"
@@ -9425,7 +9432,7 @@ function RecoveryKitModal({
               <img src={item.imageUrl ?? '/inventory/recovery-30.webp'} alt="" />
               <span>
                 <strong>{minutes === 60 ? '1 час' : `${minutes} минут`}</strong>
-                <small>{stock > 0 ? `В запасе: ${stock}` : `${item.currencyPrice} монет`}</small>
+                <small>{stock > 0 ? `В запасе: ${stock}` : <CurrencyAmount amount={item.currencyPrice} currency="coins"/>}</small>
               </span>
               <DuelEquipmentSelectionRadio selected={selectedItemId === itemId} />
             </button>
@@ -9443,27 +9450,24 @@ function RecoveryKitModal({
             В банк
           </button>
         ) : null}
+        {selected !== null && selectedStock <= 0 ? (
+          <PurchaseAction amount={selected.currencyPrice} currency="coins" suffix="и применить" pending={mutation.isPending} pendingLabel="Применяем..."
+          onClick={applySelected}/>
+        ) : (
         <button
           type="button"
           className="modal-primary btn--cta"
           disabled={selected === null || mutation.isPending}
-          onClick={() => {
-            if (selected === null) return;
-            if (action === 'start_classic') {
-              guardAmateurMutation(amateurAccess, () => mutation.mutate(selected));
-              return;
-            }
-            mutation.mutate(selected);
-          }}
+          onClick={applySelected}
         >
           {mutation.isPending
             ? 'Применяем...'
             : selected === null
               ? 'Выберите набор'
-              : selectedStock > 0
-                ? 'Использовать набор'
-                : `Купить за ${selected.currencyPrice} и применить`}
+              : 'Использовать набор'}
         </button>
+        )}
+
       </div>
     </AccessibleModal>
   );
