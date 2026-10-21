@@ -22,7 +22,16 @@
   .app-shell--wide .district-panel:not(.district-panel--collapsed) {
     left: 50%;
     right: auto;
-    width: min(560px, calc(100% - 24px));
+    width: max-content;
+    max-width: calc(100% - 24px);
+    transform: translateX(-50%);
+  }
+  .app-shell--wide .section-scene__panel {
+    left: 50%;
+    right: auto;
+    width: max-content;
+    max-width: calc(100% - 24px);
+    margin-inline: 0;
     transform: translateX(-50%);
   }
   .app-shell.app-shell--wide main.bar-space {
@@ -35,7 +44,8 @@
   .app-shell--wide .bar-bottom-chrome {
     left: 50%;
     right: auto;
-    width: min(560px, calc(100% - 24px));
+    width: max-content;
+    max-width: calc(100% - 24px);
     transform: translateX(-50%);
   }
 }
