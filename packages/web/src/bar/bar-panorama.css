@@ -670,3 +670,6 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 .bar-avatar-dock { background:var(--surface-card-bg,var(--liquid-chrome-bg)); border-color:var(--liquid-border); box-shadow:var(--liquid-shadow); }
 
 .bar-avatar-dock__portrait,.bar-avatar-dock__exit>span { border:var(--navigation-border); }
+
+/* The integrated dock shares its parent's edge instead of drawing a divider. */
+.bar-bottom-chrome:not(.bar-bottom-chrome--terminal-open) .bar-avatar-dock { box-shadow:none; }
