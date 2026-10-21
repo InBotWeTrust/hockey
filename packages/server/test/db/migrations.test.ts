@@ -1618,7 +1618,8 @@ describe.skipIf(!hasIntegrationEnv)('050 duel inventory resource migration', () 
     await pool.query(
       `insert into admin_inventory_items (title, item_kind, rarity)
        values ('Бронзовая клюшка', 'stick', 'common'),
-              ('Бронзовые коньки', 'skates', 'common')`,
+              ('Бронзовые коньки', 'skates', 'common')
+       on conflict do nothing`,
     );
 
     const userId = '00000000-0000-4000-8000-000000000501';
