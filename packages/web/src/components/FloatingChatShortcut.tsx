@@ -38,7 +38,7 @@ export function FloatingChatShortcut({owner,unreadCount}:{owner?:string;unreadCo
  },[visible,location.pathname,location.search]);
  if(!visible)return null;
  const style:CSSProperties={...(placement.top===undefined?{}:{top:placement.top,bottom:'auto'}),...(placement.left===undefined?{}:{left:placement.left,right:'auto'})};
- return <button ref={button} type="button" className={`icon-btn floating-chat${placement.collapsed?' floating-chat--collapsed':''}`} data-side={side} aria-label="Открыть чат" title="Чат" style={style} onClick={()=>{rememberChatReturn(owner,location.pathname+location.search+location.hash);navigate('/chat');}}>
+ return <button ref={button} type="button" className={`icon-btn floating-chat${placement.collapsed?' floating-chat--collapsed navigation-collapsed-surface':''}`} data-side={side} aria-label="Открыть чат" title="Чат" style={style} onClick={()=>{rememberChatReturn(owner,location.pathname+location.search+location.hash);navigate('/chat');}}>
   <MessageCircle aria-hidden="true"/>{unreadCount>0&&<small className="floating-chat__badge" aria-label={`Непрочитанные: ${unreadCount}`}>{unreadCount>99?'99+':unreadCount}</small>}
  </button>;
 }

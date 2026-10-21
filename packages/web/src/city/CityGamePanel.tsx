@@ -1,3 +1,4 @@
+import '../components/navigation-geometry.css';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {Gamepad2,ChevronDown,ChevronLeft,ChevronRight,ChevronUp} from 'lucide-react';
 import type {ArenaEntry} from '../screens/DailyScreen.js';
@@ -37,7 +38,7 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
  // The existing scoreboard owns the timer value; this view only changes its presentation.
  const trainingStatus=active.kind==='training'&&active.meta?`${active.dockState==='done'?'Завершена · ':''}${active.meta}`:null;
  const timer=active.scoreboard?.props as {timer?:string;timerLabel?:string}|undefined;
- if(minimized)return <section className="city-game-minimized glass" aria-label="Мои игры"><button type="button" className="icon-btn city-game-restore" aria-label={`Показать верхнее меню${actionable.length?`, уведомлений: ${actionable.length}`:''}`} aria-expanded={false} onClick={()=>setMinimized(false)}><Gamepad2 aria-hidden="true"/>{actionable.length>0&&<small className="district-badge">{actionable.length>99?'99+':actionable.length}</small>}</button></section>;
+ if(minimized)return <section className="city-game-minimized navigation-collapsed-surface" aria-label="Мои игры"><button type="button" className="icon-btn city-game-restore" aria-label={`Показать верхнее меню${actionable.length?`, уведомлений: ${actionable.length}`:''}`} aria-expanded={false} onClick={()=>setMinimized(false)}><Gamepad2 aria-hidden="true"/>{actionable.length>0&&<small className="district-badge">{actionable.length>99?'99+':actionable.length}</small>}</button></section>;
  return <section className={`city-game-panel glass${expanded?' is-expanded':''}`} aria-label="Мои игры">
   <div className="city-game-summary">
    <button className="city-game-toggle" aria-label={expanded?'Свернуть игры':'Развернуть игры'} aria-expanded={expanded} aria-controls="city-game-details" onClick={()=>setExpanded(value=>!value)}>
