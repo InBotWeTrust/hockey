@@ -1,3 +1,4 @@
+import {useHorizontalPan} from '../bar/useHorizontalPan.js';
 import {saveSectionTab} from '../city/sectionEntry.js';
 import { MapExitLink } from './MapExitLink.js';
 import '../components/navigation-geometry.css';
@@ -67,6 +68,7 @@ export function SectionPanorama({
   const panel = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null),
     dock = useRef<HTMLDivElement>(null);
+  const dockPan=useHorizontalPan(dock);
   const positions = useRef<Record<string, number>>({});
   const pendingRestore = useRef<number | null>(null);
   const content = useRef<HTMLDivElement>(null);
@@ -253,6 +255,7 @@ export function SectionPanorama({
           </MapExitLink>
           <div
             ref={dock}
+            {...dockPan}
             className="section-scene__dock"
             role="tablist"
             aria-label={label === 'Бонусные игры' ? 'Навык' : `Разделы: ${label}`}

@@ -290,3 +290,9 @@
 }
 
 .venue-scene .profile-settings-header { grid-template-columns: minmax(0, 1fr); }
+
+.section-scene__dock { user-select:none; -webkit-user-select:none; }
+@media (hover:hover) and (pointer:fine) {
+  .section-scene__dock,.section-scene__dock button { cursor:grab; }
+  .section-scene__dock:active,.section-scene__dock:active button { cursor:grabbing; }
+}
