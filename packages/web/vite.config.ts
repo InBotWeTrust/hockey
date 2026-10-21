@@ -43,6 +43,15 @@ export default defineConfig({
             handler: 'NetworkOnly',
           },
           {
+            urlPattern: ({ url }) => url.origin === self.location.origin && /^\/bar\/game-thumbnails\/[a-z]+-v[0-9]+\.webp$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'hockey-game-thumbnails',
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 32, maxAgeSeconds: 60 * 60 * 24 * 365 },
+            },
+          },
+          {
             urlPattern: ({ request }) => request.destination === 'image',
             handler: 'CacheFirst',
             options: {

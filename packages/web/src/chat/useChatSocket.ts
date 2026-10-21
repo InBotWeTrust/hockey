@@ -1,3 +1,4 @@
+import { applyBarInviteEvent } from '../bar/inviteEvents.js';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { ChatSocket, type ChatSocketStatus } from './ws.js';
@@ -233,6 +234,7 @@ export function useChatSocket(): ChatSocketStatus {
         }
         switch (event.type) {
           case 'message:new':
+            event.message = applyBarInviteEvent(event.message, meId);
             applyMessageNewToChatList(
               qc,
               event.chatId,
@@ -254,6 +256,7 @@ export function useChatSocket(): ChatSocketStatus {
             applyMessageDeleted(qc, event.chatId, event.messageId);
             return;
           case 'message:updated':
+            event.message = applyBarInviteEvent(event.message, meId);
             applyMessageUpdated(qc, event.chatId, event.message);
             return;
           case 'chat:read':

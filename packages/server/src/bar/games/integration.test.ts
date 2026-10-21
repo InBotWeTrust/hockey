@@ -1,3 +1,5 @@
+import { findOrCreateDM, sendMessage } from '../../chat/service.js';
+import { installBarInviteSchema } from '../inviteChatTestSchema.js';
 import { readFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { Pool } from 'pg';
@@ -54,6 +56,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       await pool.query(
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
       );
+    await installBarInviteSchema(pool);
     for (const [id, name] of [
       [a, 'A'],
       [b, 'B'],
@@ -73,7 +76,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     vi.spyOn(ochkoDeck, 'createPrivateOchko').mockImplementation((now,version=12,character=true) => version>=12?barOchkoSeries.create(Array.from({length:36},(_,i)=>35-i),now,character,0):barOchko.createOchko(1, now));
     await pool.query('update users set xp=100');
     await pool.query(
-      'truncate bar_visitor_receipts,bar_visitor_accounts,currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
+      'truncate message_reactions,messages,chat_members,chats,bar_visitor_receipts,bar_visitor_accounts,currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
     );
   });
   it('schedules character arm matches and replays three seconds ahead', async () => {
@@ -560,4 +563,54 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       expect((await pool.query("select * from currency_ledger where metadata->>'bar_game_match_id'=$1 and reason='bar_ochko_stake'",[v.id])).rows).toHaveLength(1);
     }finally{clock.mockRestore();}
   });
+  it.each(['darts','billiards','checkers','ochko','armwrestling','battleship'] as const)('persists %s invitations and one decline across retries', async kind => {
+    const [first, retry] = await Promise.all([inviteGame(pool,a,b,kind),inviteGame(pool,a,b,kind)]);
+    expect(retry.id).toBe(first.id);
+    const unread = await pool.query('select m.id from messages m join chat_members cm on cm.chat_id=m.chat_id and cm.user_id=$1 where m.sender_id<>$1 and m.created_at>cm.last_read_at',[b]);
+    expect(unread.rows).toHaveLength(1);
+    expect((await pool.query("select * from messages where metadata->>'type'='bar_game_invite'")).rows).toHaveLength(1);
+    await expect(respondGame(pool,c,first.id,'accept')).rejects.toMatchObject({statusCode:404});
+    await Promise.all([respondGame(pool,b,first.id,'decline'),respondGame(pool,b,first.id,'decline')]);
+    const messages = (await pool.query('select metadata,sender_id from messages order by created_at')).rows;
+    expect(messages).toHaveLength(2);
+    expect(messages[0].metadata).toMatchObject({status:'declined',kind,capacity:2});
+    expect(messages[1].sender_id).toBe(b);
+  });
+  it('updates the chat card and keeps one accept message for concurrent accepts', async () => {
+    const invitation=await inviteGame(pool,a,b,'darts');
+    const [first,second]=await Promise.all([respondGame(pool,b,invitation.id,'accept'),respondGame(pool,b,invitation.id,'accept')]);
+    expect(first.matchId).toBe(second.matchId);
+    const rows=(await pool.query("select metadata from messages where metadata->>'type'='bar_game_invite'")).rows;
+    expect(rows[0].metadata).toMatchObject({status:'accepted',matchId:first.matchId});
+    expect((await pool.query('select id from messages')).rows).toHaveLength(2);
+  });
+  it('expires a chat invitation without a second message', async () => {
+    const invitation=await inviteGame(pool,a,b,'darts');
+    await pool.query("update bar_game_invites set expires_at=now()-interval '1 second' where id=$1",[invitation.id]);
+    await gameLobby(pool,b);
+    expect((await pool.query('select metadata from messages')).rows).toHaveLength(1);
+    expect((await pool.query('select metadata from messages')).rows[0].metadata.status).toBe('expired');
+  });
+
+  it('keeps ordinary chat sends independently committed and unread', async () => {
+    const {chatId}=await findOrCreateDM(pool,a,b);
+    const message=await sendMessage(pool,{chatId,senderId:a,content:'Обычное сообщение'});
+    expect((await pool.query('select id from messages where id=$1',[message.id])).rows).toHaveLength(1);
+    const unread=await pool.query('select m.id from messages m join chat_members cm on cm.chat_id=m.chat_id and cm.user_id=$1 where m.sender_id<>$1 and m.created_at>cm.last_read_at',[b]);
+    expect(unread.rows).toHaveLength(1);
+  });
+  it('cancels once and rolls back an invitation if saving its chat card fails', async () => {
+    const invitation=await inviteGame(pool,a,b,'darts');
+    await Promise.all([respondGame(pool,a,invitation.id,'cancel'),respondGame(pool,a,invitation.id,'cancel')]);
+    expect((await pool.query("select id from messages where metadata->>'inviteId'=$1",[invitation.id])).rows).toHaveLength(2);
+    await pool.query(`create function reject_invite_card() returns trigger language plpgsql as $$ begin raise exception 'test rejection'; end $$;
+      create trigger test_reject_invite before insert on messages for each row execute function reject_invite_card();`);
+    try {
+      await expect(inviteGame(pool,a,b,'darts')).rejects.toThrow('test rejection');
+      expect((await pool.query("select id from bar_game_invites where status='pending'")).rows).toHaveLength(0);
+    } finally {
+      await pool.query('drop trigger test_reject_invite on messages; drop function reject_invite_card()');
+    }
+  });
+
 });

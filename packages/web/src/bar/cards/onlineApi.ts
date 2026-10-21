@@ -32,6 +32,7 @@ export type Invite = {
   sender_name: string;
   room_id?: string | null;
   capacity?: number | null;
+  capacities?: number[] | null;
   sender_avatar_url?: string | null;
   receiver_name: string;
   status: string;
