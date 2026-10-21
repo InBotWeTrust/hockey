@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { useGameInvites } from './gameInviteStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
-import { UserAvatar } from '../../chat/components/UserAvatar.js';
+import { InvitationToast } from '../../components/InvitationToast.js';
 export function GameInvites() {
   const user = useAuthStore((s) => s.user?.id);
   const navigate = useNavigate();
@@ -65,63 +65,9 @@ export function GameInvites() {
     }
   };
   if (!invite) return null;
+  const label = {battleship:'морской бой',billiards:'бильярд',darts:'дартс',armwrestling:'армрестлинг',ochko:'очко',checkers:'шашки'}[invite.kind];
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 10px)',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'min(402px, calc(100vw - 24px))',
-        zIndex: 700,
-        pointerEvents: 'auto',
-      }}
-    >
-      <div
-        className="glass"
-        style={{
-          borderRadius: 22,
-          padding: 12,
-          display: 'grid',
-          gap: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <UserAvatar
-            avatarUrl={invite.senderAvatarUrl ?? null}
-            name={invite.senderName}
-            size={42}
-            fontSize={16}
-          />
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                color: 'var(--ink)',
-                fontSize: 14,
-                fontWeight: 950,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {invite.senderName}
-            </div>
-            <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 760, marginTop: 2 }}>
-              Приглашает сыграть в{' '}
-              {invite.kind === 'battleship' ? 'морской бой' : invite.kind === 'billiards'
-                ? 'бильярд'
-                : invite.kind === 'darts'
-                  ? 'дартс'
-                  : invite.kind === 'armwrestling'
-                    ? 'армрестлинг'
-                    : invite.kind === 'ochko'
-                      ? 'очко'
-                      : 'шашки'}
-            </div>
-          </div>
-        </div>
+    <InvitationToast name={invite.senderName} avatarUrl={invite.senderAvatarUrl} description={`Приглашает сыграть в ${label}`}>
         {error && <p role="alert">{error}</p>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
@@ -141,7 +87,6 @@ export function GameInvites() {
             Принять
           </button>
         </div>
-      </div>
-    </div>
+    </InvitationToast>
   );
 }

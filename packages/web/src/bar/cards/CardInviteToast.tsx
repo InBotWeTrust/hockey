@@ -1,4 +1,4 @@
-import { UserAvatar } from '../../chat/components/UserAvatar.js';
+import { InvitationToast } from '../../components/InvitationToast.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../auth/authStore.js';
@@ -83,54 +83,7 @@ export function CardInviteToast({
   };
   if (suppressed || !invitation) return null;
   return (
-    <div
-      role="status"
-      aria-live="polite"
-      style={{
-        position: 'fixed',
-        top: 'calc(var(--app-safe-top) + 10px)',
-        left: '50%',
-        transform: 'translateX(-50%)',
-        width: 'min(402px, calc(100vw - 24px))',
-        zIndex: 700,
-        pointerEvents: 'auto',
-      }}
-    >
-      <div
-        className="glass"
-        style={{
-          borderRadius: 22,
-          padding: 12,
-          display: 'grid',
-          gap: 10,
-        }}
-      >
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          <UserAvatar
-            avatarUrl={invitation.sender_avatar_url}
-            name={invitation.sender_name}
-            size={42}
-            fontSize={16}
-          />
-          <div style={{ minWidth: 0 }}>
-            <div
-              style={{
-                color: 'var(--ink)',
-                fontSize: 14,
-                fontWeight: 950,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {invitation.sender_name}
-            </div>
-            <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 760, marginTop: 2 }}>
-              Приглашает сыграть в карты
-              {invitation.capacity ? ` · стол на ${invitation.capacity}` : ''}
-            </div>
-          </div>
-        </div>
+    <InvitationToast name={invitation.sender_name} avatarUrl={invitation.sender_avatar_url} description={`Приглашает сыграть в карты${invitation.capacities?.length ? ` · стол на ${invitation.capacities.join(' / ')}` : invitation.capacity ? ` · стол на ${invitation.capacity}` : ''}`}>
         {error && <p role="alert">{error}</p>}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button
@@ -150,7 +103,6 @@ export function CardInviteToast({
             Принять
           </button>
         </div>
-      </div>
-    </div>
+    </InvitationToast>
   );
 }

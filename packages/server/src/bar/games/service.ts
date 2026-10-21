@@ -1,3 +1,4 @@
+import { createBarInviteMessage } from '../inviteChat.js';
 import { admitVisitorGame } from '../visitorService.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
@@ -401,6 +402,7 @@ export const inviteGame = (pool: Pool, user: string, target: string, kind: BarGa
       'insert into bar_game_invites(id,kind,sender_id,receiver_id,expires_at) values($1,$2,$3,$4,$5)',
       [id, kind, user, target, new Date(now + 60000)],
     );
+    await createBarInviteMessage(pool, c, { id, senderId: user, receiverId: target, kind, capacity: 2, expiresAt: new Date(now + 60000), roomId: null });
     return { id };
   });
 export const respondGame = (
@@ -422,7 +424,7 @@ export const respondGame = (
     const invite = result.rows[0];
     if (!invite || (action === 'cancel' ? invite.sender_id !== user : invite.receiver_id !== user))
       throw new AppError('not_found', 'Приглашение не найдено.', 404);
-    if (action === 'accept' && invite.status === 'accepted') return { matchId: invite.match_id };
+    if ((action === 'accept' && invite.status === 'accepted') || (action === 'decline' && invite.status === 'declined') || (action === 'cancel' && invite.status === 'cancelled')) return { matchId: invite.match_id };
     if (invite.status !== 'pending')
       throw new AppError('bar_invite_expired', 'Приглашение уже недоступно.', 409);
     let matchId: string | null = null;
