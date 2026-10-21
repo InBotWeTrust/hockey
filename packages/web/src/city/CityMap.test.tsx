@@ -139,13 +139,12 @@ it('does not open the apartment after a map swipe',()=>{
 });
 
 for(const [level,id,name] of [['beginner','yard','Дворовый каток'],['amateur','stadium','Стадион «Центральный»'],['professional','pro','Арена Ультимейт']] as const){
- it(`anchors the game panel to the ${level} venue and starts home there`,()=>{
+ it(`fixes the game panel above the map and starts at the ${level} home venue`,()=>{
   sessionStorage.setItem(`city-place-v2:test:${level}`,'bank');
   const view=render(<CityMap {...base} level={level} startAtDaily gamePanel={<div>Game panel</div>}/>);
   expect(view.container.querySelector('.district-game-anchor')).toHaveAttribute('data-venue',id);
-  const venue = screen.getByRole('button',{name:`На карте: ${name}`});
-  expect((view.container.querySelector('.district-game-anchor') as HTMLElement).style.left).toBe(venue.style.left);
-  expect(screen.getByRole('heading',{name})).toBeVisible();expect(view.container.querySelector('.district-world')).toContainElement(screen.getByText('Game panel'));
+  expect(view.container.querySelector('.district-game-anchor')?.parentElement).toHaveClass('district');
+  expect(screen.getByRole('heading',{name})).toBeVisible();expect(view.container.querySelector('.district-world')).not.toContainElement(screen.getByText('Game panel'));
  });
 }
 for(const [level,name] of [['beginner','Дворовый каток'],['amateur','Стадион «Центральный»'],['professional','Арена Ультимейт']] as const){
@@ -268,4 +267,9 @@ it.each([['beginner','Дворовый каток'],['amateur','Стадион �
 it('places the amateur locker on the stadium facade instead of the street',()=>{
  render(<CityMap {...base} level="amateur"/>);
  expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'49%',top:'57%'});
+});
+
+it('anchors the game menu outside the horizontally scrolling map',()=>{
+ render(<CityMap {...base} level="amateur" gamePanel={<button>Игры сверху</button>}/>);
+ expect(screen.getByLabelText('Карта района')).not.toContainElement(screen.getByRole('button',{name:'Игры сверху'}));
 });

@@ -93,3 +93,29 @@ it('hides navigation dots for a single entry',()=>{
  expect(screen.queryByRole('group',{name:'Вкладки игр'})).toBeNull();
  expect(screen.queryByText('1 / 1')).toBeNull();
 });
+
+it('minimizes the top menu to an icon with live notifications and restores it',()=>{
+ const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть верхнее меню'}));
+ expect(screen.queryByRole('button',{name:'Развернуть игры'})).toBeNull();
+ expect(screen.getByRole('button',{name:'Показать верхнее меню, уведомлений: 2'})).toHaveAttribute('aria-expanded','false');
+ view.rerender(<CityGamePanel entries={[entries[0]!]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Показать верхнее меню'}));
+ expect(screen.getByRole('button',{name:'Развернуть игры'})).toBeVisible();
+});
+it('restores a minimized top menu when the map requests an actionable game',()=>{
+ const change=vi.fn();const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={change}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть верхнее меню'}));
+ view.rerender(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={change} openRequest={1}/>);
+ expect(screen.getByRole('button',{name:'Свернуть игры'})).toBeVisible();
+ expect(change).toHaveBeenCalledWith(2);
+});
+
+it('persists minimizing separately from the expanded game details',()=>{
+ const view=render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Развернуть игры'}));
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть верхнее меню'}));view.unmount();
+ render(<CityGamePanel entries={entries} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ fireEvent.click(screen.getByRole('button',{name:'Показать верхнее меню, уведомлений: 2'}));
+ expect(screen.getByRole('button',{name:'Свернуть игры'})).toBeVisible();
+});
