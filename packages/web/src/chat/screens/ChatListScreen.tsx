@@ -30,9 +30,9 @@ import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import {DistrictPageHeader} from '../../components/DistrictPageHeader.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
-import { ChatSectionDock } from '../components/ChatSectionDock.js';
+import { ChatExitLink } from '../components/ChatExitLink.js';
+import '../components/chat-section-dock.css';
 import { SocialFeed } from '../../social/SocialFeed.js';
-import { useFeedReadState } from '../../social/useFeedReadState.js';
 
 const PUSH_PREFERENCES_QUERY_KEY = ['push', 'preferences'] as const;
 
@@ -44,12 +44,10 @@ function chatHaystack(chat: ChatDTO): string {
   return parts.join(' ').toLowerCase();
 }
 
-export function ChatListScreen(): JSX.Element {
+export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const feedRead=useFeedReadState();
   const [searchParams, setSearchParams] = useSearchParams();
-  const unreadByChat = useChatStore((s) => s.unreadByChat);
   const setActive = useChatStore((s) => s.setActive);
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
 
@@ -63,11 +61,7 @@ export function ChatListScreen(): JSX.Element {
     queryFn: fetchChatList,
     staleTime: 30_000,
   });
-  const unreadMessages = useMemo(() => {
-    const counts = { ...unreadByChat };
-    for (const chat of data ?? []) counts[chat.id] = Math.max(counts[chat.id] ?? 0, chat.unreadCount ?? 0);
-    return Object.values(counts).reduce((sum, count) => sum + Math.max(0, count), 0);
-  }, [data, unreadByChat]);
+
   const { data: pushPreferences } = useQuery<PushPreferences>({
     queryKey: PUSH_PREFERENCES_QUERY_KEY,
     queryFn: fetchPushPreferences,
@@ -227,7 +221,7 @@ export function ChatListScreen(): JSX.Element {
         paddingBottom: 'calc(112px + var(--app-safe-bottom, 0px))',
       }}
     >
-      <DistrictPageHeader title={searchParams.get('view') === 'feed' ? 'Лента' : 'Чат'} showBack={false}/>
+      {!embedded&&<DistrictPageHeader title={searchParams.get('view') === 'feed' ? 'Лента' : 'Чат'} showBack={false}/>}
 
       {searchParams.get('view')==='feed'?<div className="chat-feed-content"><SocialFeed/></div>:<><div
         className="chat-edge-top"
@@ -388,11 +382,7 @@ export function ChatListScreen(): JSX.Element {
         }}
       />
       </>}
-      <ChatSectionDock active={searchParams.get('view') === 'feed' ? 'feed' : 'chat'} chatUnread={unreadMessages} feedUnread={feedRead.status.data?.unreadCount ?? 0} onChange={(tab) => {
-        const next = new URLSearchParams(searchParams);
-        if (tab === 'feed') next.set('view', 'feed'); else next.delete('view');
-        setSearchParams(next);
-      }}/>
+      {!embedded&&<nav className="chat-section-dock" aria-label="Навигация"><ChatExitLink/></nav>}
     </main>
   );
 }
