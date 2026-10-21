@@ -1,3 +1,4 @@
+import {saveSectionTab} from '../city/sectionEntry.js';
 import { MapExitLink } from './MapExitLink.js';
 import '../components/navigation-geometry.css';
 import { useLayoutEffect, useRef, type ReactNode } from 'react';
@@ -60,6 +61,9 @@ export function SectionPanorama({
   className?: string;
   columns?: number;
 }): JSX.Element {
+  useLayoutEffect(() => {
+    if (pages.some(page => page.id === selected)) saveSectionTab(storageKey, selected);
+  }, [storageKey, selected, pages]);
   const panel = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null),
     dock = useRef<HTMLDivElement>(null);

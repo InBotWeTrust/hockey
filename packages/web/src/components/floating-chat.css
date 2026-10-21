@@ -1,0 +1,14 @@
+.app-shell .floating-chat.icon-btn{position:absolute;z-index:25;right:12px;bottom:var(--navigation-bottom);width:56px;height:56px;min-width:56px;min-height:56px;padding:0;border-radius:50%;border:var(--navigation-selected-border);color:var(--liquid-ink,#f8f9fb);background:var(--liquid-card-bg,rgba(34,48,67,.8));box-shadow:var(--navigation-selected-shadow);backdrop-filter:var(--liquid-blur,blur(20px));-webkit-backdrop-filter:var(--liquid-blur,blur(20px))}
+.app-shell .floating-chat[data-side="left"]{left:12px;right:auto}
+.floating-chat svg{width:25px;height:25px;stroke-width:1.5}
+.floating-chat__badge{position:absolute;top:-4px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:rgb(220,38,38);color:white;font:800 10px/18px system-ui;text-align:center;box-shadow:0 0 0 1px rgba(218,230,246,.8);pointer-events:none}
+
+.app-shell .floating-chat.icon-btn:not(.floating-chat--collapsed){
+  background:rgba(24,33,46,.16);
+  border:1px solid rgba(255,255,255,.75);
+  color:#fff;
+  box-shadow:0 3px 10px #0005;
+  backdrop-filter:blur(5px);
+  -webkit-backdrop-filter:blur(5px);
+}
+.app-shell .floating-chat.icon-btn:not(.floating-chat--collapsed) svg{color:#fff;filter:drop-shadow(0 1px 2px #0006)}
