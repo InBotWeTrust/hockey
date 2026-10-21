@@ -3357,14 +3357,14 @@ function DailyStatsMetric({ label, value }: { label: string; value: string }): J
         borderRadius: 16,
         padding: '12px 8px',
         textAlign: 'center',
-        background: 'var(--liquid-inset-bg)',
+        background: 'var(--daily-stats-metric-bg, var(--liquid-inset-bg))',
         border: '1px solid rgba(255, 255, 255, 0.7)',
         boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.72)',
       }}
     >
       <div
         style={{
-          color: 'var(--liquid-muted)',
+          color: 'var(--daily-stats-label, var(--liquid-muted))',
           fontSize: 9,
           fontWeight: 900,
           letterSpacing: '0.12em',
@@ -3413,7 +3413,7 @@ function DailyStatsPeriodRow({
         gap: 10,
         borderRadius: 16,
         padding: '10px 12px',
-        background: 'var(--liquid-inset-bg)',
+        background: 'var(--daily-stats-period-bg, var(--liquid-inset-bg))',
         border: '1px solid rgba(255, 255, 255, 0.58)',
       }}
     >
@@ -3430,7 +3430,7 @@ function DailyStatsPeriodRow({
         <div
           style={{
             marginTop: 3,
-            color: 'var(--liquid-muted)',
+            color: 'var(--daily-stats-detail, var(--liquid-muted))',
             fontSize: 10,
             fontWeight: 800,
             lineHeight: 1.15,
@@ -3441,7 +3441,7 @@ function DailyStatsPeriodRow({
       </div>
       <div
         style={{
-          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
+          color: period ? 'var(--daily-stats-score, var(--liquid-muted))' : 'var(--daily-stats-empty, var(--liquid-muted))',
           fontFamily: 'var(--font-mono)',
           fontSize: 14,
           fontWeight: 800,
@@ -3454,7 +3454,7 @@ function DailyStatsPeriodRow({
       <div
         style={{
           minWidth: 42,
-          color: period ? 'var(--liquid-muted)' : 'var(--liquid-muted)',
+          color: period ? 'var(--daily-stats-rate, var(--liquid-muted))' : 'var(--daily-stats-empty, var(--liquid-muted))',
           fontFamily: 'var(--font-mono)',
           fontSize: 13,
           fontWeight: 800,
