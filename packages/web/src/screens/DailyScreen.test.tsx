@@ -2553,7 +2553,8 @@ describe('DailyScreen', () => {
 
   it('shows loader while fetching state', () => {
     renderWith();
-    expect(screen.getByRole('status')).toHaveClass('route-loading');
+    expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
+    expect(screen.getByRole('main', { name: 'Загрузка приложения' })).toHaveClass('onboarding-flow--startup');
   });
 
   it('renders a high-contrast arena error state when the daily request fails', async () => {
