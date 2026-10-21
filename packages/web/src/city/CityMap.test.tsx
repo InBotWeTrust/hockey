@@ -273,3 +273,21 @@ it('anchors the game menu outside the horizontally scrolling map',()=>{
  render(<CityMap {...base} level="amateur" gamePanel={<button>Игры сверху</button>}/>);
  expect(screen.getByLabelText('Карта района')).not.toContainElement(screen.getByRole('button',{name:'Игры сверху'}));
 });
+
+it('drags the navigation circles with a mouse without selecting a place',()=>{
+ sessionStorage.clear();render(<CityMap {...base} level="amateur"/>);
+ const dock=screen.getByRole('navigation',{name:'Места района'});
+ dock.scrollLeft=200;
+ const bank=screen.getByRole('button',{name:'Выбрать Банк'});
+ const mouse=(type:string,x:number)=>{const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:100});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(bank,event);};
+ mouse('pointerdown',250);
+ mouse('pointermove',150);
+ mouse('pointerup',150);
+ expect(dock.scrollLeft).toBe(300);
+ fireEvent.click(bank,{detail:1});
+ expect(bank).toHaveAttribute('aria-pressed','false');
+ mouse('pointerdown',150);
+ mouse('pointerup',150);
+ fireEvent.click(bank,{detail:1});
+ expect(bank).toHaveAttribute('aria-pressed','true');
+});

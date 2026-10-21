@@ -74,3 +74,10 @@
 .district-apartment:focus-visible .district-apartment-avatar { opacity:1; }
 
 .district-dock span { border:var(--navigation-border); box-sizing:border-box; }
+/* Mouse dragging follows the same navigation gesture used by the bar. */
+.district-dock { user-select: none; -webkit-user-select: none; }
+@media (hover: hover) and (pointer: fine) {
+  .district-dock { cursor: grab; }
+  .district-dock button { cursor: inherit; }
+  .district-dock:active { cursor: grabbing; }
+}
