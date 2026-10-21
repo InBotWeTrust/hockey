@@ -288,3 +288,5 @@
 .section-scene .training-history__title {
   margin-left: 0;
 }
+
+.venue-scene .profile-settings-header { grid-template-columns: minmax(0, 1fr); }

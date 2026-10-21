@@ -6,7 +6,7 @@ export function ChatPositionSettings({ owner }: { owner?: string | undefined }):
   const position = useMapChatPosition(owner);
   return <section className="profile-theme-section" aria-label="Положение чата">
     <div className="section-label">Положение чата</div>
-    <div className="glass profile-theme-settings">
+    <div className="glass profile-theme-settings profile-chat-position-settings">
       <SegmentedTabs items={[{id:'left',label:'Слева'},{id:'right',label:'Справа'}]}
         activeTab={position} ariaLabel="Положение иконки чата"
         onChange={side => setMapChatPosition(owner, side)}/>

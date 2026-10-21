@@ -3,4 +3,6 @@
 .profile-theme-section { margin: 0 0 20px; display: grid; gap: 8px; }
 .profile-theme-settings .segmented-tabs { display: flex; width: 100%; }
 .profile-theme-settings .segmented-tabs__item { flex: 1; }
-.profile-theme-settings .segmented-tabs__item:first-child { flex: 1.5; }
+.profile-theme-settings:not(.profile-chat-position-settings) .segmented-tabs__item:first-child { flex: 1.5; }
+
+.profile-chat-position-settings .segmented-tabs__item:first-child { flex: 1; }
