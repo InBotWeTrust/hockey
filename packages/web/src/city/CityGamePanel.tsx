@@ -12,7 +12,7 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
  const swipe=useRef<{id:number;x:number;y:number}|null>(null);
  const blockClickUntil=useRef(0);
  const active=entries[activeIndex]??entries[0];
- const actionable=entries.map((entry,index)=>({entry,index})).filter(({entry})=>entry.attention||((entry.kind==='daily'||entry.kind==='training')&&(entry.dockState==='ready'||entry.dockState==='active'||entry.dockState==='break')));
+ const actionable=entries.map((entry,index)=>({entry,index})).filter(({entry})=>entry.attention||(entry.dockState!==undefined&&entry.dockState!=='done'&&(entry.kind==='daily'||entry.kind==='training'||entry.kind==='duel')));
  const notificationKey=actionable.map(({entry})=>entry.id).sort().join('|');
  const previous=useRef(notificationKey);
  const handledOpen=useRef(0);

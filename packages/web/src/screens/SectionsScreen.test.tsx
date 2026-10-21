@@ -359,7 +359,7 @@ describe('SectionsScreen', () => {
       client.setQueryData(['amateur-duel','events'],{events:[{status:'invited',me:{side:'opponent',state:'invited'}}]});
       client.setQueryData(['tournaments','classic','active'],{games:[{state:'available'},{state:'closed'}]});
     });
-    expect(await screen.findByLabelText('Непрочитанные: 2')).toHaveTextContent('2');
+    expect(screen.queryByRole('button',{name:'Открыть Чат'})).not.toBeInTheDocument();
     expect(await screen.findByLabelText('Дуэли и турниры: 2')).toHaveTextContent('2');
     await act(async()=>{client.setQueryData(chatKeys.unread(),{});useChatStore.getState().setUnread({});});
     await waitFor(()=>expect(screen.queryByLabelText('Непрочитанные: 2')).toBeNull());
