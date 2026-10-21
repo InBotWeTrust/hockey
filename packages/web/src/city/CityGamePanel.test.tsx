@@ -119,3 +119,13 @@ it('persists minimizing separately from the expanded game details',()=>{
  fireEvent.click(screen.getByRole('button',{name:'Показать верхнее меню, уведомлений: 2'}));
  expect(screen.getByRole('button',{name:'Свернуть игры'})).toBeVisible();
 });
+
+it('counts unfinished blocked sessions and waiting duels until completion',()=>{
+ const daily={...entries[0]!,dockState:'blocked' as const};
+ const training={...daily,id:'training',kind:'training' as const};
+ const duel={...entries[1]!,attention:false,dockState:'blocked' as const};
+ const view=render(<CityGamePanel entries={[daily,training,duel]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ expect(screen.getByRole('button',{name:'Игры требуют действия: 3'})).toBeVisible();
+ view.rerender(<CityGamePanel entries={[{...daily,dockState:'done'},{...training,dockState:'done'}]} activeIndex={0} onActiveIndexChange={()=>{}}/>);
+ expect(screen.queryByRole('button',{name:/Игры требуют действия/})).not.toBeInTheDocument();
+});

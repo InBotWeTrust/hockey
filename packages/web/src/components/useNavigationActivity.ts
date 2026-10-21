@@ -31,10 +31,11 @@ export function useNavigationActivity(enabled: boolean) {
     enabled,
     refetchInterval: 30_000,
   });
+  const duelActionCount = (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length;
   const gameActionCount =
-    (amateurEvents?.events ?? []).filter(isActionableDuelEvent).length +
+    duelActionCount +
     (classicTournamentGames?.games ?? []).filter(
       (game) => game.state !== 'closed' && String(game.state) !== 'completed',
     ).length;
-  return { totalUnread, unreadMessageCount, gameActionCount };
+  return { totalUnread, unreadMessageCount, gameActionCount, duelActionCount };
 }

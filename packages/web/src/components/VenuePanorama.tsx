@@ -1,3 +1,4 @@
+import {useNavigationActivity} from './useNavigationActivity.js';
 import { AppToast } from './AppToast.js';
 import { ApartmentReferralAttention } from './ApartmentRoom.js';
 import { useYardLighting } from '../city/yardLighting.js';
@@ -86,9 +87,16 @@ export function VenuePanorama({
         panorama={scene.id === 'yard' ? yard.panorama : `/section-panoramas/${scene.id}-v1.webp`}
         storageKey={`section-scroll:${owner ?? 'guest'}:${scene.id}`}
       >
+        {scene.id === 'stadium' && <StadiumDuelAttention enabled={Boolean(owner)}/>}
         {scene.id === 'apartment' && <ApartmentReferralAttention onCount={updateReferrals}/>}
         {scene.redirect ? <p role="status">Загрузка…</p> : children}
       </SectionPanorama>
     </VenueContext.Provider>
   );
+}
+
+function StadiumDuelAttention({enabled}:{enabled:boolean}) {
+  const {duelActionCount}=useNavigationActivity(enabled);
+  useVenueAttention('duels',duelActionCount);
+  return null;
 }
