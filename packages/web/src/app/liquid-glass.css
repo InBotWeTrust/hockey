@@ -540,3 +540,15 @@
   backdrop-filter: var(--liquid-blur);
   -webkit-backdrop-filter: var(--liquid-blur);
 }
+
+/* Filled calendar days need dark ink; result dots stay clean at small sizes. */
+:where(:root:not([data-theme='light'])) .daily-calendar__day:is(.daily-calendar__day--completed, .daily-calendar__day--incomplete) {
+  color: #14212e;
+  text-shadow: none;
+}
+:where(:root:not([data-theme='light'])) .daily-calendar__day:is(.daily-calendar__day--completed, .daily-calendar__day--incomplete) .daily-calendar__goal-count {
+  opacity: 1;
+}
+:where(:root:not([data-theme='light'])) .daily-calendar__duel-result {
+  box-shadow: none;
+}
