@@ -1,3 +1,6 @@
+import {useContext} from 'react';
+import {ChatDraftContext} from '../presentation/ChatPresentationContext.js';
+import {chatDraftKey,useChatDraftStore} from '../presentation/chatDraftStore.js';
 import { useEffect, useRef, useState } from 'react';
 import type { ClipboardEvent, CSSProperties, ReactNode } from 'react';
 import {
@@ -82,7 +85,12 @@ export function ChatInput({
   onSend,
   onEdit,
 }: ChatInputProps): JSX.Element {
-  const [value, setValue] = useState('');
+  const draft=useContext(ChatDraftContext);
+  const draftKey=draft?.owner?chatDraftKey(draft.owner,draft.chatId):null;
+  const savedValue=useChatDraftStore(state=>draftKey?state.drafts[draftKey]??'':'');
+  const [localValue,setLocalValue]=useState('');
+  const value=draftKey?savedValue:localValue;
+  const setValue=(text:string)=>{if(draft?.owner)useChatDraftStore.getState().set(draft.owner,draft.chatId,text);else setLocalValue(text);};
   const [attachMenuOpen, setAttachMenuOpen] = useState(false);
   const ref = useRef<HTMLTextAreaElement | null>(null);
   const attachMenuRef = useRef<HTMLDivElement | null>(null);
@@ -410,6 +418,7 @@ export function ChatInput({
           </div>
         )}
         <textarea
+          data-voice-recording={voiceState==='recording'}
           ref={ref}
           value={value}
           onChange={(e) => setValue(e.target.value.slice(0, MAX_LEN))}

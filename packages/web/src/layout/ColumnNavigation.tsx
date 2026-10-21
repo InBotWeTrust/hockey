@@ -130,7 +130,7 @@ export function ColumnNavigationProvider({
   const matches = useMemo(
     () => [
       {
-        params: matchPath('/chat/:chatId/*', location.pathname)?.params ?? {},
+        params: matchPath('/chat/:chatId/posts/:postId/comments',location.pathname)?.params ?? matchPath('/chat/:chatId/*', location.pathname)?.params ?? {},
         pathname: location.pathname,
         pathnameBase: location.pathname,
         route: { path: location.pathname },

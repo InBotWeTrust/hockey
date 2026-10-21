@@ -1,3 +1,4 @@
+import {useChatDraftStore} from '../chat/presentation/chatDraftStore.js';
 import {GameNavigationBoundary} from '../layout/GameNavigationBoundary.js';
 import {appSurface} from '../layout/appSurface.js';
 import '../layout/wide-shell.css';
@@ -337,7 +338,7 @@ function AppExperience(): JSX.Element {
   const user = useAuthStore((s) => s.user);
   const surface = appSurface(location);
   const wideSurface = surface==='venue'||surface==='panorama'||surface==='game';
-  useEffect(()=>{clearColumnHistory();},[user?.id]);
+  useEffect(()=>{clearColumnHistory();useChatDraftStore.getState().switchOwner(user?.id??null);},[user?.id]);
   const {unreadMessageCount}=useChatUnreadActivity(Boolean(user));
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
   useEffect(() => {
