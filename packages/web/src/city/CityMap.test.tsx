@@ -49,15 +49,13 @@ function mapGeometry(){
  const scroll=vi.fn();viewport.scrollTo=scroll;
  return {viewport,scroll};
 }
-it('selects and centers first, recenters an off-center selection, then opens the centered bank',()=>{
+it('opens the bank immediately even when its map object is off center',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
- const {viewport,scroll}=mapGeometry();const bank=screen.getByRole('button',{name:'На карте: Банк'});
- fireEvent.click(bank);expect(base.onNavigate).not.toHaveBeenCalled();
- expect(screen.getByRole('heading',{name:'Банк'})).toBeVisible();
- scroll.mockClear();fireEvent.click(bank);
- expect(base.onNavigate).not.toHaveBeenCalled();expect(scroll).toHaveBeenCalled();
- viewport.scrollLeft=886;fireEvent.click(bank);
+ const {viewport}=mapGeometry();viewport.scrollLeft=500;
+ fireEvent.click(screen.getByRole('button',{name:'На карте: Банк'}));
+ expect(base.onNavigate).toHaveBeenCalledTimes(1);
  expect(base.onNavigate).toHaveBeenCalledWith('/inventory?tab=bank');
+ expect(sessionStorage.getItem('city-place-v2:test:beginner')).toBe('bank');
 });
 for(const [level,title,left] of [['beginner','Дворовый каток',181],['amateur','Стадион «Центральный»',1117],['professional','Арена Ультимейт',2410]] as const){
  it(`opens the centered daily venue for ${level}`,()=>{
@@ -67,7 +65,7 @@ for(const [level,title,left] of [['beginner','Дворовый каток',181],
   expect(base.onNavigate).toHaveBeenCalledWith('/daily');
  });
 }
-it('keeps development buildings closed and dock taps as selection only',()=>{
+it('keeps development buildings closed on both map and dock clicks',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
  const {viewport}=mapGeometry();
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Спортзал'}));viewport.scrollLeft=1375;
@@ -84,24 +82,25 @@ it('does not open a centered building after a swipe',()=>{
  expect(base.onNavigate).not.toHaveBeenCalled();
 });
 
-it('puts profile first, centers it before opening, and recenters after a swipe',()=>{
+it('puts profile first and opens it immediately regardless of map position',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
- const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(dock.querySelector('button')).toHaveAttribute('aria-label','Открыть профиль');
+ expect(screen.getByRole('navigation',{name:'Места района'}).querySelector('button')).toHaveAttribute('aria-label','Открыть профиль');
  const {viewport}=mapGeometry();viewport.scrollLeft=500;
- const avatar=screen.getByRole('button',{name:'Открыть профиль'});fireEvent.click(avatar);
- expect(base.onNavigate).not.toHaveBeenCalled();expect(screen.getByRole('heading',{name:'Моя квартира'})).toBeVisible();
- fireEvent.click(avatar);expect(base.onNavigate).not.toHaveBeenCalled();
- viewport.scrollLeft=0;fireEvent.click(avatar);expect(base.onNavigate).toHaveBeenCalledWith('/profile');
- base.onNavigate.mockClear();viewport.scrollLeft=500;fireEvent.click(avatar);expect(base.onNavigate).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Открыть профиль'}));
+ expect(base.onNavigate).toHaveBeenCalledTimes(1);
+ expect(base.onNavigate).toHaveBeenCalledWith('/profile');
+ expect(sessionStorage.getItem('city-place-v2:test:beginner')).toBe('profile');
 });
-it('opens chat directly from the phone booth while its circle only selects',()=>{
+it('opens chat immediately from both its circle and map object',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
- mapGeometry();
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Телефонная будка'}));
- expect(base.onNavigate).not.toHaveBeenCalled();
- fireEvent.click(screen.getByRole('button',{name:'На карте: Телефонная будка'}));
+ expect(base.onNavigate).toHaveBeenCalledTimes(1);
  expect(base.onNavigate).toHaveBeenCalledWith('/chat');
+ base.onNavigate.mockClear();
+ fireEvent.click(screen.getByRole('button',{name:'На карте: Телефонная будка'}));
+ expect(base.onNavigate).toHaveBeenCalledTimes(1);
+ expect(base.onNavigate).toHaveBeenCalledWith('/chat');
+ expect(sessionStorage.getItem('city-place-v2:test:beginner')).toBe('chat');
 });
 
 it('shows live counters on their circles and removes zero badges',()=>{
@@ -123,19 +122,19 @@ it('renders persisted weather on the actual city map without intercepting input'
  expect(screen.getByRole('heading',{name:'Магазин'})).toBeVisible();
  view.unmount();localStorage.removeItem('city-weather-v1');
 });
-it('centers the apartment first and opens profile on the next centered tap',()=>{
+it('opens profile on the first apartment tap',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner" avatarUrl="/avatar.webp"/>);
- const {viewport}=mapGeometry();const apartment=screen.getByRole('button',{name:'На карте: Моя квартира'});
- fireEvent.click(apartment);expect(base.onNavigate).not.toHaveBeenCalled();expect(screen.getByRole('heading',{name:'Моя квартира'})).toBeVisible();
- viewport.scrollLeft=0;fireEvent.click(apartment);expect(base.onNavigate).toHaveBeenCalledWith('/profile');
+ mapGeometry();fireEvent.click(screen.getByRole('button',{name:'На карте: Моя квартира'}));
+ expect(base.onNavigate).toHaveBeenCalledTimes(1);
+ expect(base.onNavigate).toHaveBeenCalledWith('/profile');
 });
 it('does not open the apartment after a map swipe',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
- const {viewport}=mapGeometry();viewport.setPointerCapture=vi.fn();const apartment=screen.getByRole('button',{name:'На карте: Моя квартира'});
- fireEvent.click(apartment);viewport.scrollLeft=0;
- fireEvent.pointerDown(viewport,{isPrimary:true,button:0,pointerType:'mouse',pointerId:1,clientX:200,clientY:200});
- fireEvent.pointerMove(viewport,{pointerId:1,clientX:100,clientY:200});fireEvent.pointerUp(viewport,{pointerId:1});
- fireEvent.click(apartment,{detail:1});expect(base.onNavigate).not.toHaveBeenCalled();
+ const {viewport}=mapGeometry();viewport.setPointerCapture=vi.fn();
+ const pointer=(type:string,x:number)=>{const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{isPrimary:{value:true},pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(viewport,event);};
+ pointer('pointerdown',200);pointer('pointermove',100);pointer('pointerup',100);
+ fireEvent.click(screen.getByRole('button',{name:'На карте: Моя квартира'}),{detail:1});
+ expect(base.onNavigate).not.toHaveBeenCalled();
 });
 
 for(const [level,id,name] of [['beginner','yard','Дворовый каток'],['amateur','stadium','Стадион «Центральный»'],['professional','pro','Арена Ультимейт']] as const){
@@ -149,11 +148,11 @@ for(const [level,id,name] of [['beginner','yard','Дворовый каток'],
  });
 }
 for(const [level,name] of [['beginner','Дворовый каток'],['amateur','Стадион «Центральный»'],['professional','Арена Ультимейт']] as const){
- it(`shows the game timer only under the ${level} home venue and opens urgent games`,()=>{
+ it(`shows the game timer only under the ${level} home venue and enters the section directly`,()=>{
   const open=vi.fn();const view=render(<CityMap {...base} level={level} gameStatus={{label:'04:59',urgent:true}} onOpenGamePanel={open}/>);
   expect(screen.getAllByLabelText('Статус игр: 04:59')).toHaveLength(1);
   const circle=screen.getByRole('button',{name:`Выбрать ${name}`});expect(circle).toContainElement(screen.getByLabelText('Статус игр: 04:59'));
-  fireEvent.click(circle);expect(open).toHaveBeenCalledOnce();
+  fireEvent.click(circle);expect(open).not.toHaveBeenCalled();expect(base.onNavigate).toHaveBeenCalledWith('/daily');
   view.rerender(<CityMap {...base} level={level} gameStatus={{label:null,urgent:false}} onOpenGamePanel={open}/>);expect(screen.queryByLabelText(/Статус игр:/)).not.toBeInTheDocument();
  });
 }
@@ -229,13 +228,11 @@ for(const [level,place,label,path] of [['beginner','Дворовый каток'
  });
 }
 
-it('opens a centered building from its dock circle and recenters it after a pan',()=>{
+it('opens a dock section on one click after panning the map elsewhere',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();render(<CityMap {...base} level="beginner"/>);
- const {viewport,scroll}=mapGeometry();const circle=screen.getByRole('button',{name:'Выбрать Банк'});
- fireEvent.click(circle);expect(base.onNavigate).not.toHaveBeenCalled();
- viewport.scrollLeft=700;scroll.mockClear();fireEvent.click(circle);
- expect(base.onNavigate).not.toHaveBeenCalled();expect(scroll).toHaveBeenCalled();
- viewport.scrollLeft=886;fireEvent.click(circle);
+ const {viewport}=mapGeometry();viewport.scrollLeft=700;
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Банк'}));
+ expect(base.onNavigate).toHaveBeenCalledTimes(1);
  expect(base.onNavigate).toHaveBeenCalledWith('/inventory?tab=bank');
 });
 
@@ -268,4 +265,17 @@ it.each([['beginner','Дворовый каток'],['amateur','Стадион �
 it('places the amateur locker on the stadium facade instead of the street',()=>{
  render(<CityMap {...base} level="amateur"/>);
  expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'49%',top:'57%'});
+});
+
+it.each(['На карте: Банк','Выбрать Банк'])('opens %s on its first click and persists selection before leaving',label=>{
+ sessionStorage.clear();
+ const navigate=vi.fn(()=>expect(sessionStorage.getItem('city-place-v2:test:amateur')).toBe('bank'));
+ const view=render(<CityMap {...base} onNavigate={navigate} level="amateur"/>);
+ fireEvent.click(screen.getByRole('button',{name:label}));
+ expect(navigate).toHaveBeenCalledTimes(1);
+ expect(navigate).toHaveBeenCalledWith('/inventory?tab=bank');
+ view.unmount();
+ render(<CityMap {...base} level="amateur"/>);
+ expect(screen.getByRole('heading',{name:'Банк'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'Выбрать Банк'})).toHaveAttribute('aria-pressed','true');
 });
