@@ -10,7 +10,7 @@ export function ChatPositionSettings({ owner }: { owner?: string | undefined }):
       <SegmentedTabs items={[{id:'left',label:'Слева'},{id:'right',label:'Справа'}]}
         activeTab={position} ariaLabel="Положение иконки чата"
         onChange={side => setMapChatPosition(owner, side)}/>
-      <p>Над нижним меню. Когда меню свёрнуто, чат находится справа от него.</p>
+      <p>Кнопку чата можно перетаскивать по экрану. Здесь можно вернуть её к выбранному краю.</p>
     </div>
   </section>;
 }

@@ -13,7 +13,7 @@ import {
   useTransform,
 } from 'motion/react';
 import './section-panorama.css';
-import { LogOut } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 
 export interface PanoramaPage {
   id: string;
@@ -249,9 +249,9 @@ export function SectionPanorama({
         <div className="section-scene__navigation">
           <MapExitLink className="section-scene__exit">
             <span>
-              <LogOut size={22} aria-hidden="true" />
+              <ArrowLeft size={22} aria-hidden="true" />
             </span>
-            <small>Выход</small>
+            <small>Назад</small>
           </MapExitLink>
           <div
             ref={dock}

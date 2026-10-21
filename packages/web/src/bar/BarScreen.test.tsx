@@ -63,12 +63,12 @@ describe('bar board', () => {
       <Route path="/bar" element={<h1>Бар у телевизора</h1>}/>
     </Routes></MemoryRouter>);
     const dock=screen.getByRole('navigation',{name:'Разделы трансляций'});
-    expect(dock).toContainElement(screen.getByRole('button',{name:'Выход в бар'}));
+    expect(dock).toContainElement(screen.getByRole('button',{name:'Назад в бар'}));
     expect(dock).toContainElement(screen.getByRole('tab',{name:'Онлайн'}));
     expect(dock).toContainElement(screen.getByRole('tab',{name:'Предстоящие'}));
     expect(screen.queryByText('Выбери события')).not.toBeInTheDocument();
     expect(view.container.querySelector('.bar-filters')).toBeNull();
-    fireEvent.click(screen.getByRole('button',{name:'Выход в бар'}));
+    fireEvent.click(screen.getByRole('button',{name:'Назад в бар'}));
     expect(screen.getByRole('heading',{name:'Бар у телевизора'})).toBeInTheDocument();
     expect(sessionStorage.getItem('bar-active-slot')).toBe('bar-10');
     expect(disconnect).toHaveBeenCalled();

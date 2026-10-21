@@ -12,3 +12,12 @@
   -webkit-backdrop-filter:blur(5px);
 }
 .app-shell .floating-chat.icon-btn:not(.floating-chat--collapsed) svg{color:#fff;filter:drop-shadow(0 1px 2px #0006)}
+
+.app-shell .floating-chat.icon-btn{width:44px;height:44px;min-width:44px;min-height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;z-index:110;}
+.floating-chat svg{width:22px;height:22px}
+.app-shell .floating-chat--playing.icon-btn{opacity:.4;background-clip:padding-box;border:3px solid transparent;box-shadow:none;}
+.floating-chat--playing svg{width:19px;height:19px}
+.app-shell .floating-chat--playing:active,.app-shell .floating-chat--playing:focus-visible{opacity:1}
+.floating-chat:active{cursor:grabbing}
+
+.app-shell .floating-chat.icon-btn{scroll-margin-top:max(8px,var(--app-safe-top,0px));scroll-margin-bottom:max(8px,var(--app-safe-bottom,0px))}

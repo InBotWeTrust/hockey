@@ -121,7 +121,7 @@ it('keeps an exit to the map before every bar character circle',()=>{
  const exit=screen.getByRole('link',{name:'На карту'});
  expect(exit).toHaveAttribute('href','/sections');
  expect(navigation.firstElementChild).toBe(exit);
- expect(exit).toHaveTextContent('Выход');
+ expect(exit).toHaveTextContent('Назад');
 });
 
 it('opens the concealed office from the TV bay without highlighting its door', () => {
