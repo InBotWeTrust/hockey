@@ -297,3 +297,12 @@ it.each(['На карте: Банк','Выбрать Банк'])('opens %s on it
  expect(screen.getByRole('heading',{name:'Банк'})).toBeVisible();
  expect(screen.getByRole('button',{name:'Выбрать Банк'})).toHaveAttribute('aria-pressed','true');
 });
+
+it('renders the profile glass directly over the map while retaining the apartment hit area',()=>{
+ render(<CityMap {...base} level="beginner"/>);
+ const hit=screen.getByRole('button',{name:'На карте: Моя квартира'});
+ const marker=document.querySelector('.district-apartment-avatar');
+ expect(marker?.parentElement).toBe(hit.parentElement);
+ expect(hit).toHaveStyle({width:'4%',height:'9%'});
+ expect(marker).toHaveStyle({left:'5.8%',top:'34.1%'});
+});
