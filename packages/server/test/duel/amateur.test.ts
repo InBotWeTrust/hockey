@@ -2450,6 +2450,29 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(classicUsers.map((user: { userId: string }) => user.userId)).toContain(userB);
   });
 
+  it.each([{level:1,goals:300},{level:2,goals:40}])('lets an eligible player at level $level with $goals goals challenge, accept and get ready',async({level,goals})=>{
+    await pool.query('update users set level=$1,lifetime_goals_total=$2 where id=any($3::uuid[])',[level,goals,[userA,userB]]);
+    const created=await challenge(await createTemplate());
+    expect(created.statusCode).toBe(200);
+    const matchId=created.json().match.id;
+    const accepted=await app.inject({method:'POST',url:`/duel/amateur/matches/${matchId}/accept`,headers:auth(tokenB)});
+    expect(accepted.statusCode).toBe(200);
+    for(const token of [tokenA,tokenB]){
+      const ready=await app.inject({method:'POST',url:`/duel/amateur/matches/${matchId}/ready`,headers:auth(token),payload:{loadout:{}}});
+      expect(ready.statusCode).toBe(200);
+    }
+    const state=await app.inject({method:'GET',url:`/duel/amateur/matches/${matchId}`,headers:auth(tokenA)});
+    expect(state.statusCode).toBe(200);expect(state.json().match.status).toBe('active');
+  });
+  it.each([{level:1,goals:300},{level:2,goals:40}])('matches eligible players at level $level with $goals goals',async({level,goals})=>{
+    await pool.query('update users set level=$1,lifetime_goals_total=$2 where id=any($3::uuid[])',[level,goals,[userA,userB]]);
+    const templateId=await createTemplate();
+    const first=await app.inject({method:'POST',url:'/duel/amateur/matchmaking/join',headers:auth(tokenA),payload:{template_id:templateId}});
+    expect(first.statusCode).toBe(200);
+    const second=await app.inject({method:'POST',url:'/duel/amateur/matchmaking/join',headers:auth(tokenB),payload:{template_id:templateId}});
+    expect(second.statusCode).toBe(200);expect(second.json().match.status).toBe('ready_check');
+  });
+
   it('rejects duel challenges from beginners and against beginners', async () => {
     const templateId = await createTemplate();
 

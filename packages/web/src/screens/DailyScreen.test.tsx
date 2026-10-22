@@ -638,14 +638,19 @@ describe('DailyScreen', () => {
     });
   });
 
-  it('lets a beginner browse Amateur duel tabs but guards matchmaking locally', async () => {
-    useAuthStore.getState().updateUser({ competitionLevel: 'beginner' });
+  it.each([
+    {name:'beginner below threshold',session:'beginner',profile:'beginner',goals:116,allowed:false},
+    {name:'login without level after qualification',session:null,profile:'amateur',goals:300,allowed:true},
+    {name:'stale beginner session after qualification',session:'beginner',profile:'amateur',goals:300,allowed:true},
+    {name:'server level-2 player below goal threshold',session:null,profile:'amateur',goals:40,allowed:true},
+  ] as const)('checks matchmaking access for $name', async ({session,profile,goals,allowed}) => {
+    useAuthStore.setState({user:{id:'u1',displayName:'Tester',...(session?{competitionLevel:session}:{})}});
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
       if (url.endsWith('/me')) {
-        return new Response(JSON.stringify({ competitionLevel: 'beginner' }), {
+        return new Response(JSON.stringify({ id:'u1',competitionLevel:profile,amateurUnlockGoalsRequired:300,stats:{goals} }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
@@ -684,7 +689,7 @@ describe('DailyScreen', () => {
         return new Response(
           JSON.stringify({
             ...baseState,
-            lifetime_total_goals: 116,
+            lifetime_total_goals: goals,
             amateur_unlock_goals_required: 300,
           }),
           { status: 200, headers: { 'content-type': 'application/json' } },
@@ -709,16 +714,9 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Игра' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Начать поиск' }));
 
-    expect(useAmateurAccessToastStore.getState().toast).toMatchObject({
-      goalsRemaining: 184,
-      unlockGoalsRequired: 300,
-    });
-    expect(
-      fetchMock.mock.calls.some(([input, init]) => {
-        const url = input instanceof Request ? input.url : String(input);
-        return url.includes('/duel/amateur/matchmaking/join') && init?.method === 'POST';
-      }),
-    ).toBe(false);
+    await waitFor(()=>expect(fetchMock.mock.calls.some(([input,init])=>String(input).includes('/duel/amateur/matchmaking/join')&&init?.method==='POST')).toBe(allowed));
+    if(allowed)expect(useAmateurAccessToastStore.getState().toast).toBeNull();
+    else expect(useAmateurAccessToastStore.getState().toast).toMatchObject({goalsRemaining:184,unlockGoalsRequired:300});
   });
 
   it('maps a stale Amateur matchmaking rejection to the shared toast', async () => {
