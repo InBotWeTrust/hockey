@@ -73,6 +73,9 @@ it.skipIf(!hasIntegrationEnv)('settles a timely final goal after the siren and r
  await pool.query("update bonus_game set qualification_rules=jsonb_set(qualification_rules,'{targetPoints}','2'),target_goals=2 where id=$1",[game.id]);
  const u=await findOrCreateTelegramUser(pool,{providerUid:'rhythm-last-shot-local',displayName:'Local final shot'});await pool.query('update users set level=2 where id=$1',[u.id]);
  const created=await startOrResumeBonusAttempt(pool,{userId:u.id,gameId:game.id,now,seedSecret:'local-final-shot-rhythm'});
+ // A random attempt UUID changes the phase and can leave this narrow siren window without a goal.
+ // Pin only the test fixture seed; shots are still resolved and validated by the real service.
+ await pool.query('update bonus_game_attempt set attempt_seed=$2 where id=$1',[created.attempt.id,'0'.repeat(63)+'1']);
  await acknowledgeBonusPreview(pool,{userId:u.id,attemptId:created.attempt.id,now,dismissFuture:false});
  const state=await startBonusPeriod(pool,{userId:u.id,attemptId:created.attempt.id,now,dailyAttemptLimit:100});
  const rule=state.rules.periods[0]!;const flight=(PUCK_START.y-GOAL_OPENING.y)/rule.puckSpeedPerMs;
