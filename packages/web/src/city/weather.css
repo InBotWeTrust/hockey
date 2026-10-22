@@ -16,3 +16,5 @@
 @media(prefers-reduced-motion:reduce){.city-weather,.city-weather-haze{animation:none!important;will-change:auto}}
 
 .city-weather[data-paused="true"],.city-weather[data-paused="true"] .city-weather-haze{animation-play-state:paused}
+
+.city-weather--rain .city-weather-tint,.city-weather--sleet .city-weather-tint{background:linear-gradient(rgba(29,43,59,.20),rgba(55,74,94,.10))}

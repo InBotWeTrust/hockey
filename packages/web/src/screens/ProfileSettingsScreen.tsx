@@ -1,5 +1,6 @@
 import {SectionLoading} from '../components/SectionLoading.js';
 import { ChatPositionSettings } from '../components/ChatPositionSettings.js';
+import {CitySettings} from '../city/CitySettings.js';
 import { ThemeSettings } from '../components/ThemeSettings.js';
 import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -351,6 +352,7 @@ export function ProfileSettingsScreen(): JSX.Element {
 
           <ChatPositionSettings owner={owner} />
           <ThemeSettings />
+          <CitySettings key={owner??data?.id} owner={owner??data?.id} />
           <ProfileSupportSections profileReady={data !== undefined} />
 
           <div className="profile-logout-wrap">

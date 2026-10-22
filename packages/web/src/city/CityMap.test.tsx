@@ -112,9 +112,9 @@ it('shows live counters on their circles and removes zero badges',()=>{
  expect(screen.queryByLabelText('Непрочитанные: 120')).toBeNull();
  expect(document.querySelector('.district-badge')).toBeNull();
 });
-it('renders persisted weather on the actual city map without intercepting input',()=>{
- localStorage.setItem('city-weather-v1',JSON.stringify({weather:'fog',until:Date.now()+3_600_000,blizzardAt:Date.now()+6*24*3_600_000}));
- const view=render(<CityMap {...defaultProps} level="beginner"/>);
+it('renders actual city weather instead of the old synthetic schedule without intercepting input',()=>{
+ localStorage.setItem('city-weather-v1',JSON.stringify({weather:'overcast',until:Date.now()+3_600_000,blizzardAt:Date.now()+6*24*3_600_000}));
+ const view=render(<CityMap {...defaultProps} level="beginner" currentWeather={{kind:'fog',temperature:5,description:'Туман',observedAt:new Date().toISOString(),fetchedAt:new Date().toISOString()}}/>);
  expect(view.container.querySelector('[data-weather="fog"]')).not.toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Магазин'}));
  expect(screen.getByRole('heading',{name:'Магазин'})).toBeVisible();

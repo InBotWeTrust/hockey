@@ -32,6 +32,7 @@ const schema = z
     PORT: z.coerce.number().default(3000),
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     OPENAI_API_KEY: optionalNonEmptyString,
+    WEATHERAPI_KEY: optionalNonEmptyString,
     CLOSEROUTER_API_KEY: optionalNonEmptyString,
     BAR_CLOSEROUTER_PROVIDER: z.string().regex(/^(auto|provider-\d+)$/).default('auto'),
     BAR_CLOSEROUTER_MODEL: z.string().min(1).default('openai/gpt-5.6-terra'),
