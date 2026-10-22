@@ -218,6 +218,7 @@ type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic' | 'bar';
 export interface ArenaEntry {
+  matchId?: string | null;
   dockTimer?:string;
   inProgress?: boolean;
   dockState?: 'ready'|'active'|'break'|'done'|'blocked';
@@ -1549,6 +1550,7 @@ export function GameHub({
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          matchId: game.duel_match_id,
           inProgress: isActive || isBreak || isPaused,
           attention: !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
           dockState: waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
@@ -2117,7 +2119,7 @@ function ArenaTableauNavButton({
 }
 
 export function ArenaCubeFace({ entry }: { entry: ArenaEntry }): JSX.Element {
-  const showDuelIdentity = entry.kind === 'duel' && Boolean(entry.opponentName);
+  const showDuelIdentity = (entry.kind === 'duel' || entry.kind === 'bar') && Boolean(entry.opponentName);
 
   return (
     <div

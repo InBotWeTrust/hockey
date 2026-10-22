@@ -746,7 +746,9 @@ export function PoolField({
         )
   );
   return (
-    <div className="bar-pool-field">
+    <div className="bar-pool-field" data-pregame={pregame}
+      onContextMenu={event => event.preventDefault()}
+      onDragStart={event => event.preventDefault()}>
       <div className="bar-pool-table-stage">
       <svg
         ref={svg}
@@ -855,7 +857,7 @@ export function PoolField({
       </svg>
       <svg className="bar-pool-cue-overlay" viewBox="-.15 -.13 1.3 2.28" aria-hidden="true">{cueGraphic}</svg>
       </div>
-      {!pregame && <div className="bar-pool-controls">
+      <div className="bar-pool-controls" aria-hidden={pregame || undefined}>
         <label className="bar-pool-power bar-pool-power--pull">
           <span>
             Оттяни и отпусти <strong>{Math.round(displayPower * 100)}%</strong>
@@ -867,7 +869,7 @@ export function PoolField({
             min="0"
             max="100"
             value={Math.round(power * 100)}
-            disabled={disabled || game.ballInHand}
+            disabled={pregame || disabled || game.ballInHand}
             onPointerDown={(e) => {
               if (disabled || game.ballInHand) return;
               e.preventDefault();
@@ -920,7 +922,7 @@ export function PoolField({
         <button
           className="bar-pool-spin-button"
           aria-label="Выбрать точку удара"
-          disabled={disabled || game.ballInHand}
+          disabled={pregame || disabled || game.ballInHand}
           onClick={() => setSpinOpen(true)}
         >
           <span className="bar-pool-spin-ball">
@@ -930,7 +932,7 @@ export function PoolField({
             />
           </span>
         </button>
-      </div>}
+      </div>
       {spinOpen && !pregame && (
         <PoolSpinPicker
           spin={spin}

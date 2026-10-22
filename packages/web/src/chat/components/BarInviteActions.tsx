@@ -51,9 +51,11 @@ export function BarInviteActions({ invite, isOwn }: { invite: BarInviteMetadata;
   };
   const destination = current.roomId ? `/bar/cards/room/${encodeURIComponent(current.roomId)}` : current.matchId ? `/bar/${invite.kind === 'cards' ? 'cards' : 'games'}/match/${encodeURIComponent(current.matchId)}` : null;
   const buttonStyle = { minWidth: 0, padding: '9px 10px', fontSize: 12, letterSpacing: 0, whiteSpace: 'nowrap' as const, flex: 1 };
+  const seconds = Math.max(0, Math.ceil((Date.parse(invite.expiresAt) - now) / 1000));
+  const remaining = seconds >= 60 ? `${Math.floor(seconds / 60)} мин ${seconds % 60} сек` : `${seconds} сек`;
   return <div style={{ display: 'grid', gap: 10 }}>
     {status === 'pending' ? <>
-      <div style={{fontSize:12,opacity:.8}}>{isOwn ? 'Ожидаем ответа' : 'Приглашение в игру'} · {Math.max(0,Math.ceil((Date.parse(invite.expiresAt)-now)/1000))} сек</div>
+      <div style={{fontSize:12,opacity:.8}}>{isOwn ? 'Ожидаем ответа' : 'Приглашение в игру'} · {remaining}</div>
       <div style={{display:'flex',gap:8}}>
         {isOwn ? <button className="btn btn--ghost" style={buttonStyle} disabled={busy} onClick={() => void answer('cancel')}>Отменить приглашение</button> : <>
           <button className="btn btn--ghost" style={buttonStyle} disabled={busy} onClick={() => void answer('decline')}>Отклонить</button>

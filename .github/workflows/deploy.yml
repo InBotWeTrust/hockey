@@ -326,6 +326,7 @@ jobs:
           # line silently never executes. Manifests as prod stuck on the
           # previous IMAGE_TAG while Actions reports success.
           docker compose run --rm -T server node packages/server/dist/db/migrate-cli.js < /dev/null
+          docker compose run --rm -T server node packages/server/dist/ops/barReleaseAuditCli.js < /dev/null
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ]; then
             docker compose run --rm -T \
               server node packages/server/dist/ops/existingUserInventoryGrantCli.js < /dev/null

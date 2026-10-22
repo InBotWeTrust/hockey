@@ -1,11 +1,19 @@
 .section-loading {
+  position: relative;
+  z-index: 1;
   display: grid;
   justify-items: center;
   align-content: center;
   gap: 12px;
   min-height: 120px;
   padding: 24px 20px;
-  color: var(--muted);
+  color: var(--ink);
   text-align: center;
   font-size: 14px;
+}
+
+/* Loading and retry screens must not inherit a rink intended for gameplay. */
+.app-shell:has(.section-loading)::before {
+  background: var(--liquid-modal-bg, #08182b) !important;
+  filter: none;
 }
