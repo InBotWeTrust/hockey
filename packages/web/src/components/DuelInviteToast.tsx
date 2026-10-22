@@ -1,16 +1,15 @@
+import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
 import { InvitationToast } from './InvitationToast.js';
 import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { acceptAmateurDuel, declineAmateurDuel } from '../api/amateurDuel.js';
-import { deriveAmateurAccess, guardAmateurMutation } from '../amateur/amateurAccess.js';
-import { useAuthStore } from '../auth/authStore.js';
+import { guardAmateurMutation } from '../amateur/amateurAccess.js';
 import type { AmateurDuelInviteMessageMetadata, ChatMessageDTO } from '../chat/api.js';
 import {
   DUEL_INVITE_RECEIVED_EVENT,
   type DuelInviteReceivedDetail,
 } from '../chat/useChatSocket.js';
-import { useDailyStore } from '../stores/dailyStore.js';
 
 interface DuelInviteToastState {
   chatId: string;
@@ -35,13 +34,7 @@ export function DuelInviteToast({ suppressed = false }: { suppressed?: boolean }
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<DuelInviteToastState | null>(null);
-  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
-  const dailyData = useDailyStore((state) => state.data);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
 
   useEffect(() => {
     const onInvite = (event: Event): void => {

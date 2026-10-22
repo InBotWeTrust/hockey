@@ -1,3 +1,4 @@
+import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
 import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
@@ -30,7 +31,6 @@ import {
 } from '../api/bonusGames.js';
 import { ApiError } from '../api/apiFetch.js';
 import {
-  deriveAmateurAccess,
   guardAmateurMutation,
   wasAmateurLevelRequiredErrorHandled,
 } from '../amateur/amateurAccess.js';
@@ -124,11 +124,7 @@ export function BonusGamesScreen(): JSX.Element {
     progressRequestRef.current = true;
     void refreshDaily();
   }, [competitionLevel, dailyData, refreshDaily]);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const [switchGame, setSwitchGame] = useState<BonusGameCard | null>(null);
   const [purchaseGame, setPurchaseGame] = useState<BonusGameCard | null>(null);
   const [selectedLevel, setSelectedLevel] = useState<1 | 2 | 3>(1);
@@ -148,7 +144,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [developmentToast]);
   const [selectedSkill, setSelectedSkill] = useState<BonusSkillCode>(() => {
     const stored = searchParams.get('skill') ?? localStorage.getItem(LAST_SKILL_STORAGE_KEY);
-    if (competitionLevel === 'beginner' && stored !== 'speed' && stored !== 'accuracy') return 'speed';
+    if (amateurAccess.competitionLevel==='beginner' && !amateurAccess.hasFullAccess && stored !== 'speed' && stored !== 'accuracy') return 'speed';
     return stored === 'accuracy' || stored === 'marksmanship' || stored === 'endurance' || stored === 'rhythm' || stored === 'challenge'
       ? stored
       : 'speed';
@@ -281,7 +277,7 @@ export function BonusGamesScreen(): JSX.Element {
   }, [allowanceCountdown, catalogQuery, selectedAllowance]);
   const canStartNewAttempt = selectedAllowance === undefined || selectedAllowance.remaining > 0;
   const selectSkill = (skill: BonusSkillCode): void => {
-    if (skill !== 'speed' && skill !== 'accuracy' && competitionLevel === 'beginner') { guardAmateurMutation(amateurAccess, () => undefined); return; }
+    if (skill !== 'speed' && skill !== 'accuracy' && amateurAccess.competitionLevel==='beginner' && !amateurAccess.hasFullAccess) { guardAmateurMutation(amateurAccess, () => undefined); return; }
     setSelectedSkill(skill);
     const next=new URLSearchParams(searchParams);next.set('skill',skill);setSearchParams(next,{replace:true});
     localStorage.setItem(LAST_SKILL_STORAGE_KEY, skill);
