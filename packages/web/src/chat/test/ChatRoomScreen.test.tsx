@@ -269,7 +269,7 @@ describe('ChatRoomScreen', () => {
         },
       },
     ]);
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           error: {

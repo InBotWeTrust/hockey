@@ -183,7 +183,7 @@ describe('TournamentCatalog', () => {
         },
       ],
     });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           error: {
@@ -2178,7 +2178,7 @@ describe('TournamentCatalog', () => {
         },
       ],
     });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           attempt: {

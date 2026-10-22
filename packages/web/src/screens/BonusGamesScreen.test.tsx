@@ -695,6 +695,7 @@ describe('BonusGamesScreen', () => {
     });
     const client = renderCatalog();
     client.setQueryData(['profile'], { starBalance: 10 });
+    const invalidateProfile=vi.spyOn(client,'invalidateQueries');
 
     fireEvent.click(await screen.findByRole('button', { name: 'Открыть за 4 звезды' }));
     fireEvent.click(
@@ -704,7 +705,7 @@ describe('BonusGamesScreen', () => {
     );
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Играть' })).toBeEnabled());
-    expect(client.getQueryState(['profile'])?.isInvalidated).toBe(true);
+    expect(invalidateProfile).toHaveBeenCalledWith({queryKey:['profile']});
     await waitFor(() => expect(useDailyStore.getState().data?.lifetime_total_goals).toBe(117));
 
     const unlockCall = vi
