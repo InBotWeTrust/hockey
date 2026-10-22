@@ -8,7 +8,7 @@ import {FloatingShortcut} from '../components/FloatingShortcut.js';
 import {isOpenRinkRoute} from '../components/BottomNav.js';
 import {useChatOverlayOpen} from '../chat/ChatOverlayContext.js';
 import type {ArenaEntry} from '../screens/DailyScreen.js';
-import {gameNotifications} from './gameNotifications.js';
+import {gameNotifications,viewedGameIds} from './gameNotifications.js';
 import './floating-games.css';
 export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange,renderFace,renderActions,openRequest=0}:{owner?:string|undefined;entries:ArenaEntry[];activeIndex:number;onActiveIndexChange:(index:number)=>void;renderFace:(entry:ArenaEntry)=>ReactNode;renderActions:(entry:ArenaEntry)=>ReactNode;openRequest?:number}):JSX.Element {
  const [open,setOpen]=useState(false);const location=useLocation(),chatOpen=useChatOverlayOpen();
@@ -17,7 +17,7 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
  useEffect(()=>{if(open&&!chatOpen)minimizedButton.current?.focus({preventScroll:true});},[open,chatOpen]);
  const handledOpen=useRef(openRequest);
  const lastRoute=useRef(location.pathname+location.search);
- const notices=gameNotifications(entries),active=entries[activeIndex]??entries[0];
+ const notices=gameNotifications(entries,viewedGameIds(entries,location.pathname,location.search)),active=entries[activeIndex]??entries[0];
  const show=()=>{if(notices.firstIndex!==null)onActiveIndexChange(notices.firstIndex);setOpen(true);};
  useEffect(()=>{if(openRequest!==handledOpen.current){handledOpen.current=openRequest;setOpen(true);}},[openRequest]);
  useEffect(()=>{const route=location.pathname+location.search;if(lastRoute.current!==route){lastRoute.current=route;setOpen(false);}},[location.pathname,location.search]);

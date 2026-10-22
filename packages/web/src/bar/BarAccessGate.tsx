@@ -72,14 +72,7 @@ export function BarAccessGate({ children }: { children: ReactNode }) {
     </AccessibleModal>;
   }
   if (error)
-    return (
-      <main className="screen bar-oleg-status">
-        <p role="alert">Не удалось проверить доступ в бар.</p>
-        <button className="btn btn--cta" onClick={() => setRetry((n) => n + 1)}>
-          Повторить
-        </button>
-      </main>
-    );
+    return <SectionLoading message="Не удалось проверить доступ в бар." retry={() => setRetry(n => n + 1)} />;
   if (!access)
     return <SectionLoading />;
   return <>{children}</>;

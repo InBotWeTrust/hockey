@@ -303,7 +303,6 @@ export function DurakTable({
       {pregame && <nav className="durak-return-nav"><button className="icon-btn durak-tool icon-btn--page-back" aria-label="Назад" onClick={() => navigate('/bar', {replace:true})}><ArrowLeft size={20}/></button></nav>}
       {!pregame && (
       <section className="durak-controls">
-        <button className="icon-btn durak-tool icon-btn--page-back" aria-label="Назад" onClick={() => navigate('/bar', {replace:true})}><ArrowLeft size={20}/></button>
         <button
           className="icon-btn durak-tool"
           aria-label="Выйти из игры"
