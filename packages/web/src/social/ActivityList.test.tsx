@@ -19,7 +19,7 @@ function setup(fail=false) {
 it('marks all from the server snapshot and removes event attention after success',async()=>{
   const {readFeed,asOf}=setup();
   expect(await screen.findByLabelText('Новое событие')).toBeInTheDocument();
-  expect(screen.getByRole('button',{name:'Прочитать всё'})).toHaveClass('icon-btn--dark');
+  expect(screen.getByRole('button',{name:'Прочитать всё'})).not.toHaveClass('icon-btn--dark');
   fireEvent.click(await screen.findByRole('button',{name:'Прочитать всё'}));
   await waitFor(()=>expect(readFeed).toHaveBeenCalledWith({through:asOf}));
   await waitFor(()=>expect(screen.queryByLabelText('Новое событие')).toBeNull());
