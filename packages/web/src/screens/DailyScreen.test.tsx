@@ -9512,3 +9512,19 @@ describe('city game hub presentation',()=>{
   fireEvent.click(screen.getByRole('button',{name:'На лёд'}));await waitFor(()=>expect(open).toHaveBeenCalledOnce());
  });
 });
+
+
+describe('floating game hub presentation',()=>{
+ it('keeps active gameplay snapshots intact while its menu remains available',async()=>{
+  useDailyStore.setState({data:{...baseState,state:'period_active',period_ends_at:new Date(Date.now()-1000).toISOString()},inFlight:true});
+  useTrainingSessionStore.setState({data:trainingIdleState,inFlight:true});
+  const refresh=vi.spyOn(useDailyStore.getState(),'refresh');
+  const trainingRefresh=vi.spyOn(useTrainingSessionStore.getState(),'refresh');
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/?view=daily&play=1']}><div className="app-shell"><GameHub presentation="floating" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></div></MemoryRouter></QueryClientProvider>);
+  expect(screen.getByRole('button',{name:'Открыть игры'})).toHaveClass('floating-shortcut--playing');
+  fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));
+  await waitFor(()=>expect(screen.getByRole('dialog',{name:'Игры'})).toBeVisible());
+  expect(refresh).not.toHaveBeenCalled();
+  expect(trainingRefresh).not.toHaveBeenCalled();
+ });
+});

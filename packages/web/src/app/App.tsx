@@ -1,3 +1,5 @@
+import {GameMenuProvider} from '../city/GameMenuContext.js';
+import {GlobalGames} from '../city/GlobalGames.js';
 import {ChatOverlay} from '../chat/ChatOverlay.js';
 import {FloatingChatShortcut} from '../components/FloatingChatShortcut.js';
 import {useChatUnreadActivity} from '../components/useChatUnreadActivity.js';
@@ -327,7 +329,7 @@ export function appThemeColor(pathname:string,search=''):string {
 function AppExperience(): JSX.Element {
   const authenticated=useAuthStore(s=>Boolean(s.user&&s.accessToken));
   const owner=useAuthStore(s=>s.user?.id);
-  return <ChatOverlay enabled={authenticated} owner={owner}><AppScene/></ChatOverlay>;
+  return <ChatOverlay enabled={authenticated} owner={owner}><GameMenuProvider><AppScene/></GameMenuProvider></ChatOverlay>;
 }
 
 function AppScene(): JSX.Element {
@@ -670,6 +672,7 @@ function AppScene(): JSX.Element {
           </Suspense>
           </VenuePanorama>
         </div>
+        {user&&<GlobalGames/>}
         {user&&<FloatingChatShortcut owner={user.id} unreadCount={unreadMessageCount}/>}
       </div>
     </>

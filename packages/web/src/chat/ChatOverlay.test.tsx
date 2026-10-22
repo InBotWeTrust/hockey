@@ -42,6 +42,7 @@ it('keeps the game mounted with its original route while browsing and closing ch
   );
   fireEvent.click(screen.getByText('Открыть'));
   await waitFor(() => expect(screen.getByRole('dialog', { name: 'Чат' })).toBeVisible());
+  expect(screen.getByRole('dialog', {name:'Чат'}).parentElement).toHaveStyle({background:'rgba(0, 0, 0, 0.12)'});
   expect(screen.getByText('/?view=daily')).toBeInTheDocument();
   fireEvent.click(await screen.findByText('Диалог'));
   expect(await screen.findByText('Сообщения')).toBeVisible();

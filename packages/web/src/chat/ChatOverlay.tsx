@@ -1,3 +1,4 @@
+import {chatBackdropStyle} from '../components/chatBackdrop.js';
 import { lazy, Suspense, useRef, useState, useEffect, type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate, type Location } from 'react-router-dom';
 import { Expand, Minimize2, X } from 'lucide-react';
@@ -140,12 +141,7 @@ function ChatSheet({
       initialFocusRef={closeButton}
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface chat-overlay${expanded ? ' chat-overlay--expanded' : ''}`}
       cardStyle={{ height: `${Math.round((keyboardOpen ? 1 : selection.height) * 10000) / 100}%` }}
-      backdropStyle={{
-        height: 'var(--app-viewport-height, 100dvh)',
-        bottom: 'auto',
-        background: 'var(--liquid-inset-bg)',
-        backdropFilter: 'none',
-      }}
+      backdropStyle={chatBackdropStyle}
       beforeHeader={
         <div
           role="slider"
