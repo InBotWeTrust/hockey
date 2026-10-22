@@ -1,3 +1,4 @@
+import {chatBackdropStyle} from '../components/chatBackdrop.js';
 import { useVisitor, visitorChanged, visitorTime } from './visitorApi.js';
 import { apiFetch } from '../api/apiFetch.js';
 import { BarMemoryControls } from './BarMemoryControls.js';
@@ -181,7 +182,7 @@ export function BarConversation({
       open={!closing}
       onClose={close}
       onExitComplete={onClose}
-      backdropStyle={{ background: 'var(--liquid-inset-bg)', backdropFilter: 'none', height: 'var(--app-viewport-height, 100dvh)', bottom: 'auto' }}
+      backdropStyle={chatBackdropStyle}
       smoothSheet
       dragListener={false}
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface bar-conversation${!data?.turns.length ? ' bar-conversation--empty' : ''}${expanded ? ' bar-conversation--expanded' : ''}`}

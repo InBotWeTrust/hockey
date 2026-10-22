@@ -1,9 +1,9 @@
-.app-shell .floating-chat.icon-btn{position:absolute;z-index:25;right:12px;bottom:var(--navigation-bottom);width:56px;height:56px;min-width:56px;min-height:56px;padding:0;border-radius:50%;border:var(--navigation-selected-border);color:var(--liquid-ink,#f8f9fb);background:var(--liquid-card-bg,rgba(34,48,67,.8));box-shadow:var(--navigation-selected-shadow);backdrop-filter:var(--liquid-blur,blur(20px));-webkit-backdrop-filter:var(--liquid-blur,blur(20px))}
-.app-shell .floating-chat[data-side="left"]{left:12px;right:auto}
-.floating-chat svg{width:25px;height:25px;stroke-width:1.5}
-.floating-chat__badge{position:absolute;top:-4px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:rgb(220,38,38);color:white;font:800 10px/18px system-ui;text-align:center;box-shadow:0 0 0 1px rgba(218,230,246,.8);pointer-events:none}
+.app-shell .floating-shortcut.icon-btn{position:absolute;z-index:25;right:12px;bottom:var(--navigation-bottom);width:56px;height:56px;min-width:56px;min-height:56px;padding:0;border-radius:50%;border:var(--navigation-selected-border);color:var(--liquid-ink,#f8f9fb);background:var(--liquid-card-bg,rgba(34,48,67,.8));box-shadow:var(--navigation-selected-shadow);backdrop-filter:var(--liquid-blur,blur(20px));-webkit-backdrop-filter:var(--liquid-blur,blur(20px))}
+.app-shell .floating-shortcut[data-side="left"]{left:12px;right:auto}
+.floating-shortcut svg{width:25px;height:25px;stroke-width:1.5}
+.floating-shortcut__badge{position:absolute;top:-4px;right:-3px;min-width:18px;height:18px;padding:0 4px;border-radius:20px;background:rgb(220,38,38);color:white;font:800 10px/18px system-ui;text-align:center;box-shadow:0 0 0 1px rgba(218,230,246,.8);pointer-events:none}
 
-.app-shell .floating-chat.icon-btn:not(.floating-chat--collapsed){
+.app-shell .floating-shortcut.icon-btn:not(.floating-shortcut--collapsed){
   background:rgba(24,33,46,.16);
   border:1px solid rgba(255,255,255,.75);
   color:#fff;
@@ -11,13 +11,16 @@
   backdrop-filter:blur(5px);
   -webkit-backdrop-filter:blur(5px);
 }
-.app-shell .floating-chat.icon-btn:not(.floating-chat--collapsed) svg{color:#fff;filter:drop-shadow(0 1px 2px #0006)}
+.app-shell .floating-shortcut.icon-btn:not(.floating-shortcut--collapsed) svg{color:#fff;filter:drop-shadow(0 1px 2px #0006)}
 
-.app-shell .floating-chat.icon-btn{width:44px;height:44px;min-width:44px;min-height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;z-index:110;}
-.floating-chat svg{width:22px;height:22px}
-.app-shell .floating-chat--playing.icon-btn{opacity:.4;background-clip:padding-box;border:3px solid transparent;box-shadow:none;}
-.floating-chat--playing svg{width:19px;height:19px}
-.app-shell .floating-chat--playing:active,.app-shell .floating-chat--playing:focus-visible{opacity:1}
-.floating-chat:active{cursor:grabbing}
+.app-shell .floating-shortcut.icon-btn{width:44px;height:44px;min-width:44px;min-height:44px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;z-index:110;}
+.floating-shortcut svg{width:22px;height:22px}
+.app-shell .floating-shortcut--playing.icon-btn:not(.floating-shortcut--collapsed){opacity:.4;background-clip:padding-box;border:3px solid transparent;box-shadow:none;}
+.floating-shortcut--playing svg{width:19px;height:19px}
+.app-shell .floating-shortcut--playing:active,.app-shell .floating-shortcut--playing:focus-visible{opacity:1}
+.floating-shortcut:active{cursor:grabbing}
 
-.app-shell .floating-chat.icon-btn{scroll-margin-top:max(8px,var(--app-safe-top,0px));scroll-margin-bottom:max(8px,var(--app-safe-bottom,0px))}
+.app-shell .floating-shortcut.icon-btn{scroll-margin-top:max(8px,var(--app-safe-top,0px));scroll-margin-bottom:max(8px,var(--app-safe-bottom,0px))}
+
+.floating-shortcut__badge--neutral{background:rgb(225,235,245);color:#18222e;box-shadow:0 0 0 1px #18222e}
+.app-shell .floating-games.icon-btn{border-radius:13px}
