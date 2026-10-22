@@ -1,4 +1,4 @@
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
 import { type ReactNode, useCallback, useEffect, useState } from 'react';
@@ -855,7 +855,7 @@ export function ProfileScreen(): JSX.Element {
   }, [apartment, inventoryQuery.data, profileQuery.data]);
 
   if (profileQuery.isLoading) {
-    return <StartupSplash />;
+    return <SectionLoading />;
   }
 
   if (profileQuery.isError || profileQuery.data === undefined) {

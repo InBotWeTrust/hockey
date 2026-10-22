@@ -3,6 +3,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { ChatListScreen } from '../screens/ChatListScreen.js';
+import { ChatOverlay } from '../ChatOverlay.js';
+import { FloatingChatShortcut } from '../../components/FloatingChatShortcut.js';
 import { useAuthStore, type AuthUser } from '../../auth/authStore.js';
 import * as api from '../api.js';
 import * as pushApi from '../../api/push.js';
@@ -67,8 +69,35 @@ describe('ChatListScreen — global search dropdown', () => {
     vi.spyOn(socialApi, 'feed').mockResolvedValue({items:[],nextCursor:null});
     renderScreen('/chat?view=feed');
     expect(screen.getByRole('heading',{name:'Лента'})).toBeVisible();
-    expect(screen.queryByRole('button',{name:'Чат'})).toBeNull();
+    expect(screen.getByRole('button',{name:/^Чат/})).toHaveAttribute('aria-pressed','false');
+    fireEvent.click(screen.getByRole('button',{name:/^Чат/}));
+    expect(screen.getByLabelText('Поиск чатов')).toBeVisible();
+    expect(screen.getByRole('button',{name:/^Чат/})).toHaveAttribute('aria-pressed','true');
+    fireEvent.click(screen.getByRole('button',{name:/^Лента/}));
     expect(screen.queryByLabelText('Поиск чатов')).toBeNull();
+  });
+
+  it('switches booth tabs with counters without opening the floating chat sheet', async () => {
+    vi.spyOn(socialApi, 'feed').mockResolvedValue({items:[],nextCursor:null});
+    useChatStore.setState({unreadByChat:{one:3}});
+    const qc=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    render(<QueryClientProvider client={qc}><MemoryRouter initialEntries={['/chat?view=feed']}>
+      <ChatOverlay><ChatListScreen/><FloatingChatShortcut owner="booth" unreadCount={3}/></ChatOverlay>
+    </MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByRole('button',{name:'Лента, непрочитанных: 2'})).toHaveAttribute('aria-pressed','true');
+    fireEvent.click(screen.getByRole('button',{name:'Чат, непрочитанных: 3'}));
+    expect(screen.getByRole('heading',{name:'Чат'})).toBeVisible();
+    expect(screen.queryByRole('dialog',{name:'Чат'})).toBeNull();
+    expect(screen.queryByRole('button',{name:'Открыть чат'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Новый диалог'}));
+    await waitFor(() => expect(screen.getByRole('dialog',{name:'Новый чат'})).toBeVisible());
+    expect(screen.queryByRole('dialog',{name:'Чат'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:'Закрыть'}));
+    expect(screen.getByRole('button',{name:'Чат, непрочитанных: 3'})).toHaveAttribute('aria-pressed','true');
+    expect(screen.queryByRole('dialog',{name:'Чат'})).toBeNull();
+    fireEvent.click(screen.getByRole('button',{name:/^Лента/}));
+    expect(screen.getByRole('heading',{name:'Лента'})).toBeVisible();
+    expect(screen.queryByRole('button',{name:'Открыть чат'})).toBeNull();
   });
 
   it('embeds only the chat list without feed navigation or a duplicate heading', async () => {

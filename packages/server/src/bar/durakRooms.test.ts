@@ -52,6 +52,8 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     expect(c.roomId).not.toBe(a.roomId);
     const room = await readCardRoom(pool, users[0]!, a.roomId);
     expect(room.seats).toHaveLength(2);
+    expect(room.searchUntil!-room.serverNow).toBeGreaterThan(119000);
+    expect(room.searchUntil!-room.serverNow).toBeLessThanOrEqual(120000);
     expect((await joinCardRoom(pool, users[0]!, 5)).roomId).toBe(a.roomId);
     expect((await readCardRoom(pool, users[0]!, a.roomId)).searchUntil).toBe(room.searchUntil);
     await expect(inviteCards(pool, users[3]!, users[0]!)).rejects.toMatchObject({
@@ -140,6 +142,10 @@ const url = process.env.TEST_CARD_DATABASE_URL;
   it('room invitations reuse notification responses and reserve available seats', async () => {
     const id = (await joinCardRoom(pool, users[5]!, 3, false)).roomId;
     const invite = await inviteToRoom(pool, users[5]!, id, users[6]!);
+    const deadline=(await pool.query('select expires_at from bar_card_invites where id=$1',[invite.id])).rows[0].expires_at;
+    const snapshot=await readCardRoom(pool,users[5]!,id);
+    expect(deadline.getTime()-snapshot.serverNow).toBeGreaterThan(299000);
+    expect(deadline.getTime()-snapshot.serverNow).toBeLessThanOrEqual(300000);
     const result = await respondCards(pool, users[6]!, invite.id, 'accept');
     expect(result.roomId).toBe(id);
     expect((await respondCards(pool, users[6]!, invite.id, 'accept')).roomId).toBe(id);

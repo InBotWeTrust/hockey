@@ -72,3 +72,15 @@ it('opens without a modal backdrop, page inertness or scroll lock',()=>{
  expect(background).not.toHaveAttribute('aria-hidden','true');
  background.remove();document.body.style.overflow='';
 });
+
+it('pulses only for a started duel, including waiting, until it completes', () => {
+ const duel={...daily,id:'started',kind:'duel' as const,dockState:'blocked' as const,inProgress:true};
+ const view=show({entries:[duel]});
+ expect(screen.getByLabelText('Незавершённых игр: 1')).toHaveClass('floating-shortcut__badge--pulse');
+ view.unmount();
+ const pending=show({entries:[{...duel,inProgress:false,dockState:'ready'}]});
+ expect(screen.getByLabelText('Незавершённых игр: 1')).not.toHaveClass('floating-shortcut__badge--pulse');
+ pending.unmount();
+ show({entries:[{...duel,dockState:'done'}]});
+ expect(screen.queryByLabelText('Незавершённых игр: 1')).toBeNull();
+});

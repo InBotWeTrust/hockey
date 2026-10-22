@@ -206,3 +206,23 @@
   transform: scale(3);
   transform-origin: center top;
 }
+
+/* The composer's light controls must not inherit the bar's white-on-panorama chrome. */
+:root[data-theme='light'] .bar-conversation__composer textarea {
+  color: var(--liquid-ink) !important;
+  caret-color: var(--liquid-ink);
+}
+:root[data-theme='light'] .bar-conversation__composer textarea::placeholder {
+  color: var(--muted);
+  opacity: 1;
+}
+:root[data-theme='light'] .bar-conversation__composer button[aria-label='Отправить'] {
+  background: rgba(15, 23, 42, 0.035);
+  color: rgba(15, 23, 42, 0.52) !important;
+  border: 1px solid rgba(15, 23, 42, 0.1) !important;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 4px 10px rgba(15, 23, 42, 0.04);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}

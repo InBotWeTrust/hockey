@@ -2549,7 +2549,8 @@ describe('DailyScreen', () => {
   it('shows loader while fetching state', () => {
     renderWith();
     expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
-    expect(screen.getByRole('main', { name: 'Загрузка приложения' })).toHaveClass('onboarding-flow--startup');
+    expect(screen.getByRole('status')).toHaveClass('section-loading');
+    expect(screen.queryByLabelText('Загрузка приложения')).toBeNull();
   });
 
   it('renders a high-contrast arena error state when the daily request fails', async () => {
@@ -4566,7 +4567,7 @@ describe('DailyScreen', () => {
       'Упражнение: board-side');
   });
 
-  it('keeps the full loading screen visible until the training catalog is ready', async () => {
+  it('keeps loading local until the training catalog is ready', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4582,7 +4583,7 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    await waitFor(() => expect(screen.getByLabelText('Загрузка приложения')).toBeVisible());
+    await waitFor(() => expect(screen.getByText('Идёт загрузка…')).toBeVisible());
     expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
     expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();
@@ -9509,6 +9510,17 @@ describe('city game hub presentation',()=>{
 
 
 describe('floating game hub presentation',()=>{
+ it('includes a saved bar party in the floating monitor and returns to it',async()=>{
+  useDailyStore.setState({data:baseState,inFlight:true});
+  useTrainingSessionStore.setState({data:trainingIdleState,inFlight:true});
+  const enter=vi.fn();
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/sections']}><div className="app-shell"><GameHub presentation="floating" extraEntries={[{id:'bar-party',kind:'bar',dockState:'active',inProgress:true,attention:true,eyebrow:'Игры бара',title:'Бильярд',subtitle:'Партия продолжается',meta:'',ctaLabel:'Вернуться',onEnter:enter}]} onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></div></MemoryRouter></QueryClientProvider>);
+  expect(document.querySelector('.floating-shortcut__badge--pulse')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));
+  expect(screen.getByRole('article',{name:'Игры бара: Бильярд'})).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Вернуться'}));expect(enter).toHaveBeenCalledOnce();
+ });
+
  it('keeps active gameplay snapshots intact while its menu remains available',async()=>{
   useDailyStore.setState({data:{...baseState,state:'period_active',period_ends_at:new Date(Date.now()-1000).toISOString()},inFlight:true});
   useTrainingSessionStore.setState({data:trainingIdleState,inFlight:true});

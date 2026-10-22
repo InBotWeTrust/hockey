@@ -1,3 +1,4 @@
+import {BAR_INVITATION_MS} from '../invitationDeadline.js';
 import { createBarInviteMessage } from '../inviteChat.js';
 import { admitVisitorGame } from '../visitorService.js';
 import { randomInt, randomUUID } from 'node:crypto';
@@ -401,9 +402,9 @@ export const inviteGame = (pool: Pool, user: string, target: string, kind: BarGa
     const id = randomUUID();
     await c.query(
       'insert into bar_game_invites(id,kind,sender_id,receiver_id,expires_at) values($1,$2,$3,$4,$5)',
-      [id, kind, user, target, new Date(now + 60000)],
+      [id, kind, user, target, new Date(now + BAR_INVITATION_MS)],
     );
-    await createBarInviteMessage(pool, c, { id, senderId: user, receiverId: target, kind, capacity: 2, expiresAt: new Date(now + 60000), roomId: null });
+    await createBarInviteMessage(pool, c, { id, senderId: user, receiverId: target, kind, capacity: 2, expiresAt: new Date(now + BAR_INVITATION_MS), roomId: null });
     return { id };
   });
 export const respondGame = (

@@ -11,7 +11,7 @@ function readPosition(prefix:string,owner?: string): Point | null {
     return null;
   }
 }
-export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false,side='right',initialTop,label,count,badgeLabel,neutralBadge=false,className='',icon,onOpen}:{owner?:string|undefined;storagePrefix:string;visible?:boolean;playing?:boolean;side?:'left'|'right';initialTop?:number;label:string;count:number;badgeLabel:string;neutralBadge?:boolean;className?:string;icon:ReactNode;onOpen:()=>void}):JSX.Element|null {
+export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false,side='right',initialTop,label,count,badgeLabel,neutralBadge=false,pulseBadge=false,className='',icon,onOpen}:{owner?:string|undefined;storagePrefix:string;visible?:boolean;playing?:boolean;side?:'left'|'right';initialTop?:number;label:string;count:number;badgeLabel:string;neutralBadge?:boolean;pulseBadge?:boolean;className?:string;icon:ReactNode;onOpen:()=>void}):JSX.Element|null {
   const button = useRef<HTMLButtonElement>(null);
   const [point, setPoint] = useState<Point | null>(() => readPosition(storagePrefix,owner));
   const previousSide = useRef(side);
@@ -130,7 +130,7 @@ export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false
     >
       {icon}
       {count > 0 && (
-        <small className={`floating-shortcut__badge${neutralBadge?' floating-shortcut__badge--neutral':''}`} aria-label={`${badgeLabel}: ${count}`}>
+        <small className={`floating-shortcut__badge${neutralBadge?' floating-shortcut__badge--neutral':''}${pulseBadge&&!neutralBadge?' floating-shortcut__badge--pulse':''}`} aria-label={`${badgeLabel}: ${count}`}>
           {count > 99 ? '99+' : count}
         </small>
       )}

@@ -1,6 +1,6 @@
 import { FittedNotice } from '../../game/FittedNotice.js';
 import { useEffect, useRef, useState } from 'react';
-import { LogOut, X } from 'lucide-react';
+import { ArrowLeft, LogOut, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
@@ -284,8 +284,10 @@ export function MultiDurakTable({
           })}
         </div>
       </section>
+      {pregame && <nav className="durak-return-nav"><button className="icon-btn durak-tool icon-btn--page-back" aria-label="Назад" onClick={() => navigate('/bar', {replace:true})}><ArrowLeft size={20}/></button></nav>}
       {!pregame && (
       <section className="durak-controls">
+        <button className="icon-btn durak-tool icon-btn--page-back" aria-label="Назад" onClick={() => navigate('/bar', {replace:true})}><ArrowLeft size={20}/></button>
         <button
           className="icon-btn durak-tool"
           aria-label="Выйти из игры"

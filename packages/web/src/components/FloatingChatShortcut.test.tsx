@@ -14,7 +14,6 @@ function Location() {
 it('keeps chat available throughout gameplay but hides it on auth and chat routes', () => {
   for (const route of [
     '/sections',
-    '/chat?view=feed',
     '/bar',
     '/?view=daily',
     '/?view=training&play=1',
@@ -24,7 +23,7 @@ it('keeps chat available throughout gameplay but hides it on auth and chat route
     '/bonus-games/123/play',
   ])
     expect(isChatShortcutVisible(new URL(route, 'http://local'))).toBe(true);
-  for (const route of ['/chat', '/chat/123', '/login', '/auth/vk/callback'])
+  for (const route of ['/chat', '/chat?view=feed', '/chat?view=chat', '/chat/123', '/login', '/auth/vk/callback'])
     expect(isChatShortcutVisible(new URL(route, 'http://local'))).toBe(false);
 });
 it('opens the chat list and preserves the source location for the overlay', () => {

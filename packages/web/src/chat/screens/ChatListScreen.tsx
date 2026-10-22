@@ -1,4 +1,4 @@
-import {StartupSplash} from '../../onboarding/StartupSplash.js';
+import {SectionLoading} from '../../components/SectionLoading.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -30,7 +30,8 @@ import { SearchResultsDropdown } from '../components/SearchResultsDropdown.js';
 import { useDebouncedValue } from '../../lib/useDebouncedValue.js';
 import {DistrictPageHeader} from '../../components/DistrictPageHeader.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
-import { ChatExitLink } from '../components/ChatExitLink.js';
+import { ChatSectionDock } from '../components/ChatSectionDock.js';
+import { useFeedReadState } from '../../social/useFeedReadState.js';
 import '../components/chat-section-dock.css';
 import { SocialFeed } from '../../social/SocialFeed.js';
 
@@ -50,6 +51,9 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
   const [searchParams, setSearchParams] = useSearchParams();
   const setActive = useChatStore((s) => s.setActive);
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin');
+  const unreadByChat = useChatStore((s) => s.unreadByChat);
+  const feedRead = useFeedReadState(!embedded);
+  const activeTab = searchParams.get('view') === 'feed' ? 'feed' : 'chat';
 
   // Leaving any active chat as we land on the list.
   useEffect(() => {
@@ -61,6 +65,9 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
     queryFn: fetchChatList,
     staleTime: 30_000,
   });
+
+  const unreadCounts = {...Object.fromEntries((data ?? []).map(chat => [chat.id, chat.unreadCount])), ...unreadByChat};
+  const chatUnread = Object.values(unreadCounts).reduce((sum, count) => sum + Math.max(0, count), 0);
 
   const { data: pushPreferences } = useQuery<PushPreferences>({
     queryKey: PUSH_PREFERENCES_QUERY_KEY,
@@ -204,14 +211,14 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
 
   function openPicker(): void {
     if (isAdmin) {
-      setSearchParams({ group: '1' });
+      setSearchParams(embedded ? {group:'1'} : {view:'chat',group:'1'});
       return;
     }
-    setSearchParams({ new: '1' });
+    setSearchParams(embedded ? {new:'1'} : {view:'chat',new:'1'});
   }
 
   function closePicker(): void {
-    setSearchParams({});
+    setSearchParams(embedded ? {} : {view:'chat'});
   }
 
   return (
@@ -284,7 +291,7 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
       {dropdownOpen && <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />}
 
       {!dropdownOpen && isLoading && (
-        <StartupSplash />
+        <SectionLoading />
       )}
 
       {!dropdownOpen && isError && (
@@ -382,7 +389,7 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
         }}
       />
       </>}
-      {!embedded&&<nav className="chat-section-dock" aria-label="Навигация"><ChatExitLink/></nav>}
+      {!embedded&&<ChatSectionDock active={activeTab} chatUnread={chatUnread} feedUnread={feedRead.status.data?.unreadCount ?? 0} onChange={tab => setSearchParams({view:tab})}/>}
     </main>
   );
 }
