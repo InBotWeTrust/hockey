@@ -4,6 +4,14 @@ import { createDefaultBarLayout, moveBarOccupant } from '@hockey/game-core';
 import { MemoryRouter } from 'react-router-dom';
 import { BarScene } from './BarScene.js';
 function pointer(target:Element,type:string,x:number){const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:200});Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(target,event);}
+it('enables the layered panorama in a dev deployment without preview query flags',()=>{
+ vi.stubEnv('VITE_BAR_MAP_ENABLED','true');
+ try{
+  const view=render(<MemoryRouter><BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={vi.fn()} onAction={vi.fn()}/></MemoryRouter>);
+  expect(view.container.querySelector('[data-bar-map-preview="v30"]')).not.toBeNull();
+  expect(view.container.querySelectorAll('[data-map-character]')).toHaveLength(8);
+ }finally{vi.unstubAllEnvs();}
+});
 it('navigates by avatar click and suppresses clicks after dragging the dock', () => {
  const select=vi.fn();render(<BarScene layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()}/>);
  const avatar=screen.getByRole('button',{name:'Арсенич'}),nav=screen.getByRole('navigation',{name:'Места в баре'}).querySelector('.bar-avatar-dock__slots')!;
