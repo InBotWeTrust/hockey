@@ -530,16 +530,6 @@
   color: rgba(21, 40, 61, 0.64);
   opacity: 1
 }
-:root[data-theme="light"] .icon-btn.chat-room-header__control--surface {
-  background: var(--chrome-surface-bg);
-  border-color: var(--chrome-surface-border);
-  color: #10243a;
-  box-shadow:
-    0 7px 18px rgba(2, 8, 23, 0.2),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
-  backdrop-filter: blur(12px) saturate(140%);
-  -webkit-backdrop-filter: blur(12px) saturate(140%)
-}
 :root[data-theme="light"] .chat-room-header__profile {
   border: 0;
   background: transparent;
