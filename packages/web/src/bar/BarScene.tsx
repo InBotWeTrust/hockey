@@ -1,3 +1,4 @@
+import {BarMapScene} from './BarMapScene.js';
 import {BarInteriorBackdrop} from './BarInteriorBackdrop.js';
 import {useHorizontalPan} from './useHorizontalPan.js';
 import {useBarInvitation, type PendingBarInvitation} from './useBarInvitation.js';
@@ -30,7 +31,7 @@ function CharacterSilhouette() {
     <path d="M87 110 Q120 99 153 110 Q180 119 188 155 L211 274 Q213 291 198 294 Q184 296 180 280 L159 190 L160 299 L153 449 Q152 468 136 468 Q121 468 122 450 L120 320 L118 450 Q119 468 104 468 Q88 468 87 449 L80 299 L81 190 L60 280 Q56 296 42 294 Q27 291 29 274 L52 155 Q60 119 87 110 Z" />
   </svg>;
 }
-export function BarScene({
+function ClassicBarScene({
   layout,
   activeSlotId,
   onSelectSlot,
@@ -263,4 +264,12 @@ export function BarScene({
       </div>
     </main>
   );
+}
+
+export type BarSceneProps=Parameters<typeof ClassicBarScene>[0];
+export function BarScene(props:BarSceneProps){
+ const art=new URLSearchParams(location.search).get('bar-art');
+ const localMap=import.meta.env.DEV&&location.pathname.endsWith('/durak-preview.html')&&(art==='map-v29'||art==='map-v30');
+ return import.meta.env.VITE_BAR_MAP_ENABLED||localMap
+  ?<BarMapScene {...props} layered={!localMap||art!=='map-v29'}/>:<ClassicBarScene {...props}/>;
 }

@@ -1,0 +1,35 @@
+.bar-map-scene {background:#21160e;}
+.bar-map-viewport {position:absolute;inset:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;touch-action:pan-x;overscroll-behavior-x:contain;}
+.bar-map-viewport::-webkit-scrollbar {display:none;}
+.bar-map-world {position:relative;height:100%;aspect-ratio:3;width:auto;isolation:isolate;}
+.bar-map-background,.bar-map-counter {position:absolute;inset:0;width:100%;height:100%;max-width:none;pointer-events:none;}
+.bar-map-character {position:absolute;pointer-events:none;z-index:3;}
+.bar-map-character--behind-counter {z-index:1;}
+/* The counter has transparent gaps below its fascia; Igor ends behind the solid front. */
+.bar-map-scene[data-bar-map-preview="v30"] .bar-map-character--behind-counter {clip-path:inset(0 0 48% 0);}
+.bar-map-character img,.bar-map-character svg {position:absolute;max-width:none;}
+.bar-map-character .bar-space__character-hit {pointer-events:none;}
+.bar-map-character .bar-space__character-hit path {pointer-events:auto;cursor:pointer;}
+.bar-map-counter {z-index:2;clip-path:polygon(28.5% 36%,48.2% 36%,48.2% 61.5%,28.5% 61.5%);}
+.bar-map-target {position:absolute;z-index:4;border:0;border-radius:0;background:transparent;box-shadow:none;padding:0;cursor:pointer;touch-action:pan-x;}
+.bar-map-target:focus-visible {outline:2px solid white;outline-offset:3px;}
+/* Centering stays on the anchor; only the child scales, around its own center. */
+.bar-map-pulse {position:absolute;left:50%;top:50%;width:34px;height:34px;transform:translate(-50%,-50%);pointer-events:none;}
+.bar-map-pulse__ring {position:absolute;inset:0;box-sizing:border-box;border:2px solid rgba(255,255,255,.6);border-radius:50%;transform-origin:50% 50%;animation:var(--bar-map-pulse-animation,bar-object-breathe) 1s ease-out infinite;pointer-events:none;}
+.bar-map-target[data-map-target="television"] .bar-map-pulse__ring {border-color:rgba(20,29,42,.95);box-shadow:0 0 0 1px rgba(255,255,255,.35);}
+.bar-map-target:is([data-map-target="club-cards"],[data-map-target="darts"],[data-map-target="checkers"]) {--bar-map-pulse-animation:bar-map-pulse-contrast;}
+.bar-map-target:is([data-map-target="club-cards"],[data-map-target="darts"],[data-map-target="checkers"]) .bar-map-pulse {width:40px;height:40px;}
+.bar-map-target:is([data-map-target="club-cards"],[data-map-target="darts"],[data-map-target="checkers"]) .bar-map-pulse__ring {border-color:rgba(255,255,255,.9);border-width:2px;box-shadow:none;}
+@keyframes bar-map-pulse-contrast {0%{opacity:0;transform:scale(.2)}15%{opacity:.8}65%{opacity:.6}85%,100%{opacity:0;transform:scale(1.2)}}
+@media(prefers-reduced-motion:reduce){.bar-map-pulse__ring {animation:none;opacity:.18;transform:scale(.7);}}
+.bar-map-scene::after {display:none;}
+.bar-map-scene .bar-space__header {position:absolute;top:0;pointer-events:none;}
+
+.bar-map-prop {position:absolute;z-index:4;max-width:none;object-fit:contain;pointer-events:none;filter:drop-shadow(0 3px 2px #170c0855);}
+.bar-map-scene[data-bar-map-preview="v30"] .bar-map-target {z-index:5;}
+
+.bar-map-counter--sprite {inset:auto;clip-path:none;object-fit:contain;}
+
+.bar-map-background--enter {animation:bar-background-in .7s ease both;}
+.bar-map-scene .bar-space__header .icon-btn {pointer-events:auto;}
+@media(prefers-reduced-motion:reduce){.bar-map-background--enter {animation:none;}}

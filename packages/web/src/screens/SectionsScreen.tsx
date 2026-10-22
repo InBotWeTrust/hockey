@@ -6,6 +6,7 @@ import {useBarActivity} from '../bar/barActivity.js';
 import {caretakerBlocked} from '../city/caretakerSchedule.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
 import { fetchAdminAttention } from '../admin/api.js';
+import {useProfileCity,useCityWeather,validCityWeather} from '../city/cityLocation.js';
 import { CityMap } from '../city/CityMap.js';
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -93,6 +94,9 @@ export function SectionsScreen(): JSX.Element {
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
   const user = useAuthStore((state) => state.user);
   const userId = user?.id;
+  const cityQuery=useProfileCity(userId);
+  const cityWeatherQuery=useCityWeather(userId,cityQuery.data?.city);
+  const cityWeather=validCityWeather(cityWeatherQuery.data);
   const { unreadMessageCount, gameActionCount } = useNavigationActivity(Boolean(user));
   const cardInviteCount=useCardInvites(state=>state.incoming.length);
   const gameInviteCount=useGameInvites(state=>state.owner===userId?state.incoming.length:0);
@@ -294,7 +298,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
+      <CityMap city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (
