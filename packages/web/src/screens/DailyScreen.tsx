@@ -219,6 +219,7 @@ type ModeInfoModalContent = { title: string; text: string };
 type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
 export interface ArenaEntry {
   dockTimer?:string;
+  inProgress?: boolean;
   dockState?: 'ready'|'active'|'break'|'done'|'blocked';
   attention?: boolean;
   deadlineAt?: number | undefined;
@@ -1445,6 +1446,7 @@ export function GameHub({
       (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
+      inProgress: event.status === 'active',
       attention: isActionableDuelEvent(event),
       dockState: event.me.state==='period_active'?'active':event.me.state==='break_active'?'break':isActionableDuelEvent(event)?'ready':'blocked',
       deadlineAt: timestampMs(event.status==='ready_check'||event.status==='invited'?event.ready_expires_at:timestampMs(event.starts_at)>now?event.starts_at:event.me.state==='period_active'?event.period_ends_at:event.me.state==='break_active'?event.break_ends_at:event.ends_at)||undefined,
@@ -1545,6 +1547,7 @@ export function GameHub({
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          inProgress: isActive || isBreak || isPaused,
           attention: !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
           dockState: waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
           deadlineAt: timestampMs(isReady?game.readiness_ends_at:isBreak?game.break_ends_at:isActive?game.closes_at:game.starts_at),
@@ -1662,6 +1665,7 @@ export function GameHub({
         : 0;
       return {
         id: `classic-${game.tournament_id}`,
+        inProgress: started && !completed,
         attention: !completed,
         dockState: completed?'done':locked?'blocked':isBreak?'break':game.state==='period_active'?'active':'ready',
         deadlineAt: timestampMs(isBreak?game.break_ends_at:game.closes_at),

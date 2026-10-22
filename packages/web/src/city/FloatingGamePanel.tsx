@@ -2,7 +2,7 @@ import {useGameWindowPosition} from './useGameWindowPosition.js';
 import {CityGameDetails} from './CityGamePanel.js';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useLocation} from 'react-router-dom';
-import {Box,Minimize2} from 'lucide-react';
+import {Monitor,Minimize2} from 'lucide-react';
 import {createPortal} from 'react-dom';
 import {FloatingShortcut} from '../components/FloatingShortcut.js';
 import {isOpenRinkRoute} from '../components/BottomNav.js';
@@ -24,7 +24,7 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
  const playing=isOpenRinkRoute(location)||location.pathname.startsWith('/duel/');
  const allowed=!/^\/(?:login|auth|mobile-auth)(?:\/|$)/.test(location.pathname)&&!chatOpen;
  return <>
-  <FloatingShortcut owner={owner} storagePrefix="floating-games-position-v1" side="left" initialTop={80} visible={allowed&&!open} playing={playing} label="Открыть игры" count={notices.count} badgeLabel="Незавершённых игр" neutralBadge={!notices.urgent} className="floating-games" icon={<Box aria-hidden="true"/>} onOpen={show}/>
+  <FloatingShortcut owner={owner} storagePrefix="floating-games-position-v1" side="left" initialTop={80} visible={allowed&&!open} playing={playing} label="Открыть игры" count={notices.count} badgeLabel="Незавершённых игр" neutralBadge={!notices.urgent} pulseBadge={notices.pulsing} className="floating-games" icon={<Monitor aria-hidden="true"/>} onOpen={show}/>
   {open&&active&&allowed&&createPortal(
    <div className="floating-games-layer" style={{alignItems:'center'}}>
     <section role="dialog" aria-modal="false" aria-label="Игры" className="city-game-panel glass is-expanded floating-games-window" style={cardStyle} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();setOpen(false);}}}>
