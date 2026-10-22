@@ -1,6 +1,6 @@
 import { useRef } from 'react';
 import { useOchkoReveal } from './useResultReady.js';
-import { HelpCircle, LogOut } from 'lucide-react';
+import { ArrowLeft, HelpCircle, LogOut } from 'lucide-react';
 import { formatRussianCount } from '../../lib/russianPlural.js';
 import {
   barDarts,
@@ -91,6 +91,7 @@ function actionResult(view: BarGameSnapshot): string {
 export function GameMenu({
   view,
   now,
+  onBack,
   onExit,
   onRules,
   notice,
@@ -98,6 +99,7 @@ export function GameMenu({
 }: {
   view: BarGameSnapshot;
   now: number;
+  onBack?: (() => void) | undefined;
   onExit?: (() => void) | undefined;
   onRules?: (() => void) | undefined;
   notice?: string | null | undefined;
@@ -367,11 +369,14 @@ export function GameMenu({
         </div>
       )}
       <div className="bar-game-notice-row">
+        <div className="bar-game-navigation">
+        {onBack && <button className="icon-btn icon-btn--page-back" aria-label="Назад" onClick={onBack}><ArrowLeft size={18}/></button>}
         {onExit && (
           <button className="icon-btn" aria-label="Выйти из партии" onClick={onExit}>
             <LogOut size={18} />
           </button>
         )}
+        </div>
         <FittedNotice
           fit
           maxLines={2}

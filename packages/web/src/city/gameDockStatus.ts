@@ -7,7 +7,7 @@ function timerFor(entry:ArenaEntry):string|null{
 }
 export function gameDockStatus(entries:ArenaEntry[]):GameDockStatus{
  const urgent=entries.some(entry=>entry.attention);
- const events=entries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done').sort((a,b)=>(a.deadlineAt??Infinity)-(b.deadlineAt??Infinity));
+ const events=entries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic'||entry.kind==='bar')&&entry.dockState!=='done').sort((a,b)=>(a.deadlineAt??Infinity)-(b.deadlineAt??Infinity));
  for(const entry of events){const timer=timerFor(entry);if(timer)return {label:timer,urgent};}
  const available=entries.filter(entry=>entry.dockState==='ready'||entry.dockState==='active'||entry.dockState==='break');
  const ordered=[...available.filter(entry=>entry.dockState==='active'||entry.dockState==='break'),...available.filter(entry=>entry.dockState==='ready')];

@@ -160,6 +160,9 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
   });
   it('matches queues atomically and isolates game kinds', async () => {
     await queueGame(pool, c, 'checkers');
+    const waiting=await gameLobby(pool,c);
+    expect(waiting.expiresAt!-waiting.serverNow).toBeGreaterThan(119000);
+    expect(waiting.expiresAt!-waiting.serverNow).toBeLessThanOrEqual(120000);
     await Promise.all([queueGame(pool, a, 'darts'), queueGame(pool, b, 'darts')]);
     const la = await gameLobby(pool, a),
       lb = await gameLobby(pool, b),
@@ -173,6 +176,10 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
   });
   it('accepts invitations once and begins only after both ready and shared countdown', async () => {
     const invite = await inviteGame(pool, a, b, 'billiards');
+    const deadline=(await pool.query('select expires_at from bar_game_invites where id=$1',[invite.id])).rows[0].expires_at;
+    const lobby=await gameLobby(pool,a);
+    expect(deadline.getTime()-lobby.serverNow).toBeGreaterThan(299000);
+    expect(deadline.getTime()-lobby.serverNow).toBeLessThanOrEqual(300000);
     const [one, two] = await Promise.all([
       respondGame(pool, b, invite.id, 'accept'),
       respondGame(pool, b, invite.id, 'accept'),
