@@ -222,10 +222,9 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
     <main className="screen bar-screen online-durak-lobby durak-room-lobby">
       <header className="bar-header">
         <button
-          className="icon-btn"
-          aria-label="Покинуть стол"
-          disabled={busy}
-          onClick={() => void send({ type: 'leave' })}
+          className="icon-btn icon-btn--page-back"
+          aria-label="Назад"
+          onClick={() => navigate('/bar', {replace:true})}
         >
           <ChevronLeft size={22} />
         </button>

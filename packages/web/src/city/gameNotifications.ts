@@ -1,6 +1,6 @@
 import type {ArenaEntry} from '../screens/DailyScreen.js';
 function isPendingEvent(entry:ArenaEntry):boolean {
- return (entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!==undefined&&entry.dockState!=='done';
+ return (entry.kind==='duel'||entry.kind==='classic'||entry.kind==='bar')&&entry.dockState!==undefined&&entry.dockState!=='done';
 }
 function eventPriority(a:ArenaEntry,b:ArenaEntry):number {
  return Number(Boolean(b.attention))-Number(Boolean(a.attention))||((a.deadlineAt??Infinity)-(b.deadlineAt??Infinity)||0);

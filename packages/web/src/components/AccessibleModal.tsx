@@ -1,3 +1,4 @@
+import {lockBackground} from './backgroundLock.js';
 import {
   useEffect,
   useId,
@@ -24,14 +25,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
-interface BackgroundSnapshot {
-  element: HTMLElement;
-  inert: string | null;
-  ariaHidden: string | null;
-}
-
 const activeModalStack: symbol[] = [];
-const backgroundLocks = new WeakMap<HTMLElement, BackgroundSnapshot & { count: number }>();
 let deferredRestoreTarget: HTMLElement | null = null;
 
 export type DismissReason = 'backdrop' | 'escape' | 'close-button' | 'drag';
@@ -40,10 +34,6 @@ function focusableElements(dialog: HTMLElement): HTMLElement[] {
   return Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }
 
-function restoreAttribute(element: HTMLElement, name: string, value: string | null): void {
-  if (value === null) element.removeAttribute(name);
-  else element.setAttribute(name, value);
-}
 
 export function AccessibleModal({
   title,
@@ -121,19 +111,7 @@ export function AccessibleModal({
     const backgrounds = Array.from(document.body.children)
       .filter((element): element is HTMLElement => element instanceof HTMLElement)
       .filter((element) => element !== portalBranch && !element.hasAttribute('data-pwa-update-root'))
-      .map((element) => {
-        const existing = backgroundLocks.get(element);
-        const lock = existing ?? {
-          element, count: 0,
-          inert: element.getAttribute('inert'),
-          ariaHidden: element.getAttribute('aria-hidden'),
-        };
-        lock.count += 1;
-        backgroundLocks.set(element, lock);
-        element.setAttribute('inert', '');
-        element.setAttribute('aria-hidden', 'true');
-        return lock;
-      });
+      .map(lockBackground);
 
     const modalId = modalIdRef.current;
     activeModalStack.push(modalId);
@@ -174,14 +152,7 @@ export function AccessibleModal({
       document.removeEventListener('keydown', onKeyDown);
       const stackIndex = activeModalStack.lastIndexOf(modalId);
       if (stackIndex !== -1) activeModalStack.splice(stackIndex, 1);
-      for (const background of backgrounds) {
-        background.count -= 1;
-        if (background.count === 0) {
-          restoreAttribute(background.element, 'inert', background.inert);
-          restoreAttribute(background.element, 'aria-hidden', background.ariaHidden);
-          backgroundLocks.delete(background.element);
-        }
-      }
+      for (const release of backgrounds) release();
       const restoreTarget = restoreTargetRef.current;
       if (restoreTarget?.isConnected) {
         if (restoreTarget.closest('[inert]')) deferredRestoreTarget = restoreTarget;

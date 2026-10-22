@@ -1,3 +1,4 @@
+import {useBarMenuStore} from '../barMenuStore.js';
 import { InvitationToast } from '../../components/InvitationToast.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -37,8 +38,10 @@ export function CardInviteToast({
           alive &&
           version === generation.current &&
           storeVersion === useCardInvites.getState().version
-        )
+        ) {
+          useBarMenuStore.getState().setCards(userId,state);
           useCardInvites.getState().setIncoming(incomingInvites(state.invites, userId));
+        }
       } catch {
         /* Keep indicators until expiry or a successful refresh. */
       } finally {

@@ -216,7 +216,7 @@ type DailyView = 'arena' | 'play';
 type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type ModeInfoModalContent = { title: string; text: string };
-type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
+type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic' | 'bar';
 export interface ArenaEntry {
   dockTimer?:string;
   inProgress?: boolean;
@@ -1048,6 +1048,7 @@ function TournamentGameContextCard({
 
 export function GameHub({
   presentation = 'arena',
+  extraEntries = [],
   onDockStatusChange,
   openRequest=0,
   onOpenDailyPlay,
@@ -1056,6 +1057,7 @@ export function GameHub({
   onOpenAmateurMatch,
 }: {
   presentation?: 'arena'|'city'|'floating';
+  extraEntries?: ArenaEntry[];
   onDockStatusChange?:(status:GameDockStatus)=>void;
   openRequest?:number;
   onOpenDailyPlay: (options?: PlayOpenOptions) => void;
@@ -1758,13 +1760,14 @@ export function GameHub({
   const arenaEntries: ArenaEntry[] = prioritizeGameEntries([
     ...duelArenaEntries,
     ...classicArenaEntries,
+    ...extraEntries,
     dailyArenaEntry,
     trainingArenaEntry,
   ]);
   const dockStatus=gameDockStatus(arenaEntries);
   useEffect(()=>{onDockStatusChange?.({label:dockStatus.label,urgent:dockStatus.urgent});},[onDockStatusChange,dockStatus.label,dockStatus.urgent]);
-  const pendingEventEntryIds = arenaEntries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done').map(entry=>entry.id).join('|');
-  const firstPendingEventEntryId = arenaEntries.find(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done')?.id ?? null;
+  const pendingEventEntryIds = arenaEntries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic'||entry.kind==='bar')&&entry.dockState!=='done').map(entry=>entry.id).join('|');
+  const firstPendingEventEntryId = arenaEntries.find(entry=>(entry.kind==='duel'||entry.kind==='classic'||entry.kind==='bar')&&entry.dockState!=='done')?.id ?? null;
 
   const arenaEntryIds = arenaEntries.map((entry) => entry.id).join('|');
   const activeCubeIndex = Math.max(

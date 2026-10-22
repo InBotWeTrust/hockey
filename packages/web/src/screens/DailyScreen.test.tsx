@@ -9537,6 +9537,17 @@ describe('city game hub presentation',()=>{
 
 
 describe('floating game hub presentation',()=>{
+ it('includes a saved bar party in the floating monitor and returns to it',async()=>{
+  useDailyStore.setState({data:baseState,inFlight:true});
+  useTrainingSessionStore.setState({data:trainingIdleState,inFlight:true});
+  const enter=vi.fn();
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/sections']}><div className="app-shell"><GameHub presentation="floating" extraEntries={[{id:'bar-party',kind:'bar',dockState:'active',inProgress:true,attention:true,eyebrow:'Игры бара',title:'Бильярд',subtitle:'Партия продолжается',meta:'',ctaLabel:'Вернуться',onEnter:enter}]} onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></div></MemoryRouter></QueryClientProvider>);
+  expect(document.querySelector('.floating-shortcut__badge--pulse')).not.toBeNull();
+  fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));
+  expect(screen.getByRole('article',{name:'Игры бара: Бильярд'})).toBeVisible();
+  fireEvent.click(screen.getByRole('button',{name:'Вернуться'}));expect(enter).toHaveBeenCalledOnce();
+ });
+
  it('keeps active gameplay snapshots intact while its menu remains available',async()=>{
   useDailyStore.setState({data:{...baseState,state:'period_active',period_ends_at:new Date(Date.now()-1000).toISOString()},inFlight:true});
   useTrainingSessionStore.setState({data:trainingIdleState,inFlight:true});
