@@ -1,7 +1,9 @@
 import {render,screen,fireEvent} from '@testing-library/react';
 import {expect,it,vi} from 'vitest';
 import {CityMap} from './CityMap.js';
-const base={owner:'test',daily:'12/90 бросков сегодня',training:'4/100 бросков',tasks:'Награды: 8/53 · Уровни: 34/280',bonus:'Пройдено: 40/50',onNavigate:vi.fn()};
+// Navigation tests must not depend on the clock-selected animated weather.
+const defaultProps={owner:'test',daily:'12/90 бросков сегодня',training:'4/100 бросков',tasks:'Награды: 8/53 · Уровни: 34/280',bonus:'Пройдено: 40/50',onNavigate:vi.fn()};
+const base={...defaultProps,weatherOverride:'clear' as const};
 it('moves daily action according to player status and keeps training in yard',()=>{
  const v=render(<CityMap {...base} level="amateur"/>);
  expect(screen.getByRole('button',{name:'Войти на стадион'})).toBeVisible();
@@ -112,7 +114,7 @@ it('shows live counters on their circles and removes zero badges',()=>{
 });
 it('renders persisted weather on the actual city map without intercepting input',()=>{
  localStorage.setItem('city-weather-v1',JSON.stringify({weather:'fog',until:Date.now()+3_600_000,blizzardAt:Date.now()+6*24*3_600_000}));
- const view=render(<CityMap {...base} level="beginner"/>);
+ const view=render(<CityMap {...defaultProps} level="beginner"/>);
  expect(view.container.querySelector('[data-weather="fog"]')).not.toBeNull();
  fireEvent.click(screen.getByRole('button',{name:'Выбрать Магазин'}));
  expect(screen.getByRole('heading',{name:'Магазин'})).toBeVisible();
