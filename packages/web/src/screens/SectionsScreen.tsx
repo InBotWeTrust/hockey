@@ -1,14 +1,13 @@
+import {useGameMenu} from '../city/GameMenuContext.js';
 import {useCardInvites} from '../bar/cards/cardInvites.js';
 import {useGameInvites} from '../bar/games/gameInviteStore.js';
 import { StartupSplash } from '../onboarding/StartupSplash.js';
 import {useBarActivity} from '../bar/barActivity.js';
 import {caretakerBlocked} from '../city/caretakerSchedule.js';
-import type {GameDockStatus} from '../city/gameDockStatus.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
 import { fetchAdminAttention } from '../admin/api.js';
 import { CityMap } from '../city/CityMap.js';
-import { lazy, Suspense, useEffect, useState } from 'react';
-const CityGameHub=lazy(()=>import('./DailyScreen.js').then(module=>({default:module.GameHub})));
+import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Check } from 'lucide-react';
@@ -83,12 +82,11 @@ function numberText(value: number): string {
 export function SectionsScreen(): JSX.Element {
   const navigate = useNavigate();
   const [searchParams]=useSearchParams();
-  const [gameStatus,setGameStatus]=useState<GameDockStatus>({label:null,urgent:false});
-  const [gameOpenRequest,setGameOpenRequest]=useState(0);
   const queryClient = useQueryClient();
   const dailyData = useDailyStore((s) => s.data);
   const refreshDaily = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
+  const {status:gameStatus}=useGameMenu();
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
@@ -296,12 +294,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} gameStatus={gameStatus} onOpenGamePanel={()=>setGameOpenRequest(value=>value+1)} startAtDaily={searchParams.get('home')==='1'} gamePanel={dailyData&&<Suspense fallback={null}><CityGameHub presentation="city" onDockStatusChange={setGameStatus} openRequest={gameOpenRequest}
-        onOpenDailyPlay={()=>navigate('/?view=daily')}
-        onOpenTraining={()=>navigate('/?view=training')}
-        onOpenTrainingPlay={()=>navigate('/?view=training&play=1')}
-        onOpenAmateurMatch={id=>navigate(`/?view=amateur&match=${encodeURIComponent(id)}&play=1`)}
-      /></Suspense>} key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
+      <CityMap gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (

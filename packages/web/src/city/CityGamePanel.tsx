@@ -10,8 +10,6 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
  const minimizedKey=`${storageKey}:minimized`;
  const [minimized,setMinimized]=useState(()=>{try{return localStorage.getItem(minimizedKey)==='true';}catch{return false;}});
  useEffect(()=>{try{localStorage.setItem(minimizedKey,String(minimized));}catch{/* Persistence is optional. */}},[minimized,minimizedKey]);
- const swipe=useRef<{id:number;x:number;y:number}|null>(null);
- const blockClickUntil=useRef(0);
  const active=entries[activeIndex]??entries[0];
  const actionable=entries.map((entry,index)=>({entry,index})).filter(({entry})=>entry.attention||(entry.dockState!==undefined&&entry.dockState!=='done'&&(entry.kind==='daily'||entry.kind==='training'||entry.kind==='duel')));
  const notificationKey=actionable.map(({entry})=>entry.id).sort().join('|');
@@ -30,7 +28,6 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
   setPulse(true);const timer=setTimeout(()=>setPulse(false),900);return()=>clearTimeout(timer);
  },[notificationKey]);
  if(!active)return null;
- const next=(delta:number)=>onActiveIndexChange((activeIndex+delta+entries.length)%entries.length);
  const openNotification=()=>{
   const first=[...actionable].sort((a,b)=>Number(Boolean(b.entry.attention))-Number(Boolean(a.entry.attention))||(a.entry.deadlineAt??Infinity)-(b.entry.deadlineAt??Infinity))[0];
   if(first)onActiveIndexChange(first.index);setMinimized(false);setExpanded(true);
@@ -47,7 +44,19 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
    </button>
    {actionable.length>0&&<button className={`icon-btn city-game-notification${pulse?' is-new':''}`} aria-label={`Игры требуют действия: ${actionable.length}`} onClick={openNotification}><Gamepad2 size={18}/><small>{actionable.length>99?'99+':actionable.length}</small></button>}
   </div>
-  {expanded&&<div id="city-game-details" className="city-game-details"
+  {expanded&&<CityGameDetails entries={entries} activeIndex={activeIndex} onActiveIndexChange={onActiveIndexChange} renderFace={renderFace} renderActions={renderActions}/>}
+  <button type="button" className="city-game-minimize" aria-label="Свернуть верхнее меню" aria-expanded={true} onClick={()=>setMinimized(true)}><span className="district-navigation-handle" aria-hidden="true"/></button>
+ </section>;
+}
+
+
+export function CityGameDetails({entries,activeIndex,onActiveIndexChange,renderFace,renderActions}:{entries:ArenaEntry[];activeIndex:number;onActiveIndexChange:(index:number)=>void;renderFace:(entry:ArenaEntry)=>ReactNode;renderActions:(entry:ArenaEntry)=>ReactNode}):JSX.Element|null {
+ const swipe=useRef<{id:number;x:number;y:number}|null>(null);
+ const blockClickUntil=useRef(0);
+ const active=entries[activeIndex]??entries[0];
+ if(!active)return null;
+ const next=(delta:number)=>onActiveIndexChange((activeIndex+delta+entries.length)%entries.length);
+  return <div id="city-game-details" className="city-game-details"
     onPointerDown={event=>{swipe.current={id:event.pointerId,x:event.clientX,y:event.clientY};}}
     onPointerMove={event=>{const start=swipe.current;if(start&&Math.abs(event.clientX-start.x)>44&&Math.abs(event.clientX-start.x)>Math.abs(event.clientY-start.y)*1.2)event.currentTarget.setPointerCapture?.(event.pointerId);}}
     onPointerCancel={()=>{swipe.current=null;}}
@@ -57,7 +66,5 @@ export function CityGamePanel({entries,activeIndex,onActiveIndexChange,renderFac
    <div className="city-game-carousel"><button className="icon-btn" aria-label="Предыдущая игра" disabled={entries.length<2} onClick={()=>next(-1)}><ChevronLeft size={18}/></button><div className="city-game-position">{entries.length>1&&<div className="city-game-dots" role="group" aria-label="Вкладки игр">{entries.map((entry,index)=><button key={entry.id} type="button" className="city-game-dot" aria-label={`Выбрать ${entry.eyebrow}`} aria-pressed={index===activeIndex} onClick={()=>onActiveIndexChange(index)}/>)}</div>}{active.eyebrowStatus&&<span>{active.eyebrowStatus}</span>}</div><button className="icon-btn" aria-label="Следующая игра" disabled={entries.length<2} onClick={()=>next(1)}><ChevronRight size={18}/></button></div>
    <div className="city-game-face">{renderFace(active)}</div>
    <div className="city-game-actions">{renderActions(active)}</div>
-  </div>}
-  <button type="button" className="city-game-minimize" aria-label="Свернуть верхнее меню" aria-expanded={true} onClick={()=>setMinimized(true)}><span className="district-navigation-handle" aria-hidden="true"/></button>
- </section>;
+  </div>;
 }
