@@ -1,7 +1,8 @@
 import {render,screen,fireEvent} from '@testing-library/react';
 import {expect,it,vi} from 'vitest';
 import {CityMap} from './CityMap.js';
-const base={owner:'test',daily:'12/90 бросков сегодня',training:'4/100 бросков',tasks:'Награды: 8/53 · Уровни: 34/280',bonus:'Пройдено: 40/50',onNavigate:vi.fn()};
+// Navigation tests must not depend on the clock-selected animated weather.
+const base={weatherOverride:'clear' as const,owner:'test',daily:'12/90 бросков сегодня',training:'4/100 бросков',tasks:'Награды: 8/53 · Уровни: 34/280',bonus:'Пройдено: 40/50',onNavigate:vi.fn()};
 it('moves daily action according to player status and keeps training in yard',()=>{
  const v=render(<CityMap {...base} level="amateur"/>);
  expect(screen.getByRole('button',{name:'Войти на стадион'})).toBeVisible();
