@@ -1905,3 +1905,7 @@
  border:1px solid rgba(255,255,255,.72);
  background:rgba(18,20,23,.32);
 }
+
+.bar-game-notice-row { grid-template-columns: auto minmax(0,1fr) 34px; }
+.bar-game-navigation { display: flex; gap: 6px; }
+.bar-game-navigation > .icon-btn { width:34px; min-width:34px; height:34px; padding:0; }

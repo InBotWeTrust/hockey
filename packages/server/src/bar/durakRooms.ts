@@ -1,3 +1,4 @@
+import {BAR_INVITATION_MS} from './invitationDeadline.js';
 import { createBarInviteMessage } from './inviteChat.js';
 import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
@@ -534,9 +535,9 @@ async function inviteToRoomInTransaction(pool: Pool, client: PoolClient, user: s
     await save(client, id, data, now);
     await client.query(
       'insert into bar_card_invites(id,sender_id,receiver_id,room_id,expires_at) values($1,$2,$3,$4,$5)',
-      [inviteId, user, target, id, new Date(now + 120000)],
+      [inviteId, user, target, id, new Date(now + BAR_INVITATION_MS)],
     );
-    await createBarInviteMessage(pool, client, { id: inviteId, senderId: user, receiverId: target, kind: 'cards', capacity: data.capacity, capacities: roomFormats(data), roomId: id, expiresAt: new Date(now + 120000) });
+    await createBarInviteMessage(pool, client, { id: inviteId, senderId: user, receiverId: target, kind: 'cards', capacity: data.capacity, capacities: roomFormats(data), roomId: id, expiresAt: new Date(now + BAR_INVITATION_MS) });
     return { id: inviteId };
 }
 export async function inviteCardsFromProfile(pool: Pool, user: string, target: string, capacity: number | number[]) {

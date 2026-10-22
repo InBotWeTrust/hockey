@@ -107,3 +107,12 @@ it('shows the invited player in the reserved seat and cancels with a right-hand 
  expect(screen.queryByText('ренго か')).not.toBeInTheDocument();
  expect(screen.getByRole('button',{name:'Начать поиск'})).toBeInTheDocument();
 });
+
+it('returns to the bar without leaving the table or cancelling invitations', async () => {
+ vi.mocked(api.readRoom).mockResolvedValue({...room,pending:['target']});
+ render(<MemoryRouter initialEntries={['/room/table']}><Routes><Route path="/room/:id" element={<DurakRoomScreen previewUserId="a"/>}/><Route path="/bar" element={<p>Bar map</p>}/></Routes></MemoryRouter>);
+ await act(async()=>{});
+ fireEvent.click(screen.getByRole('button',{name:'Назад'}));
+ expect(screen.getByText('Bar map')).toBeVisible();
+ expect(api.roomCommand).not.toHaveBeenCalled();
+});

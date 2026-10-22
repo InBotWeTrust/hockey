@@ -1,4 +1,4 @@
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchBarAccess, type BarAccess } from './olegFightApi.js';
@@ -81,6 +81,6 @@ export function BarAccessGate({ children }: { children: ReactNode }) {
       </main>
     );
   if (!access)
-    return <StartupSplash />;
+    return <SectionLoading />;
   return <>{children}</>;
 }

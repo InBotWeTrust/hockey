@@ -1,3 +1,4 @@
+import {useBarMenuStore} from '../barMenuStore.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useGameInvites } from './gameInviteStore.js';
@@ -26,8 +27,10 @@ export function GameInvites() {
       const revision = useGameInvites.getState().revision;
       try {
         const s = await gameApi.lobby();
-        if (alive && generation.current === epoch && !lock.current)
+        if (alive && generation.current === epoch && !lock.current && revision === useGameInvites.getState().revision) {
+          useBarMenuStore.getState().setGames(user,s);
           useGameInvites.getState().replace(user, s.invites, revision);
+        }
       } catch {
         /* Next poll retries. */
       } finally {

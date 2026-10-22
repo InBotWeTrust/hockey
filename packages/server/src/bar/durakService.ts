@@ -1,3 +1,4 @@
+import {BAR_INVITATION_MS} from './invitationDeadline.js';
 import { createBarInviteMessage, syncBarInviteMessages, publishBarInviteMessages, discardBarInviteMessages } from './inviteChat.js';
 import { assertNewGamesFree } from './games/admission.js';
 import { randomUUID, randomInt } from 'node:crypto';
@@ -235,9 +236,9 @@ export async function inviteCards(pool: Pool, user: string, receiver: string) {
     const id = randomUUID();
     await client.query(
       'insert into bar_card_invites(id,sender_id,receiver_id,expires_at) values($1,$2,$3,$4)',
-      [id, user, receiver, new Date(now + 600_000)],
+      [id, user, receiver, new Date(now + BAR_INVITATION_MS)],
     );
-    await createBarInviteMessage(pool, client, { id, senderId: user, receiverId: receiver, kind: 'cards', capacity: 2, expiresAt: new Date(now + 600_000), roomId: null });
+    await createBarInviteMessage(pool, client, { id, senderId: user, receiverId: receiver, kind: 'cards', capacity: 2, expiresAt: new Date(now + BAR_INVITATION_MS), roomId: null });
     return { id };
   });
 }

@@ -102,3 +102,9 @@ it('resizes continuously with the handle, clamps to a third, and remembers after
   fireEvent.keyDown(screen.getByRole('slider'), { key: 'Home' });
   expect(parseFloat(screen.getByRole('dialog').style.height)).toBeCloseTo(100 / 3, 2);
 });
+
+it('keeps the booth chat tab outside the floating chat overlay', () => {
+ render(<MemoryRouter initialEntries={['/chat?view=chat']}><ChatOverlay><p>Booth chat list</p></ChatOverlay></MemoryRouter>);
+ expect(screen.queryByRole('dialog')).toBeNull();
+ expect(screen.getByText('Booth chat list')).toBeVisible();
+});

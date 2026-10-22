@@ -2,7 +2,7 @@ import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
 import {prioritizeGameEntries} from '../city/gameNotifications.js';
 import {FloatingGamePanel} from '../city/FloatingGamePanel.js';
 import {isOpenRinkRoute} from '../components/BottomNav.js';
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
@@ -216,9 +216,10 @@ type DailyView = 'arena' | 'play';
 type AmateurView = 'hub' | 'duels' | 'tournaments';
 type AmateurDuelTab = 'game' | 'locker' | 'rating' | 'history';
 type ModeInfoModalContent = { title: string; text: string };
-type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic';
+type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic' | 'bar';
 export interface ArenaEntry {
   dockTimer?:string;
+  inProgress?: boolean;
   dockState?: 'ready'|'active'|'break'|'done'|'blocked';
   attention?: boolean;
   deadlineAt?: number | undefined;
@@ -737,7 +738,7 @@ export function DailyScreen(): JSX.Element {
             </div>
           </div>
         ) : (
-          <StartupSplash />
+          <SectionLoading />
         )}
       </main>
     );
@@ -1047,6 +1048,7 @@ function TournamentGameContextCard({
 
 export function GameHub({
   presentation = 'arena',
+  extraEntries = [],
   onDockStatusChange,
   openRequest=0,
   onOpenDailyPlay,
@@ -1055,6 +1057,7 @@ export function GameHub({
   onOpenAmateurMatch,
 }: {
   presentation?: 'arena'|'city'|'floating';
+  extraEntries?: ArenaEntry[];
   onDockStatusChange?:(status:GameDockStatus)=>void;
   openRequest?:number;
   onOpenDailyPlay: (options?: PlayOpenOptions) => void;
@@ -1445,6 +1448,7 @@ export function GameHub({
       (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
+      inProgress: event.status === 'active',
       attention: isActionableDuelEvent(event),
       dockState: event.me.state==='period_active'?'active':event.me.state==='break_active'?'break':isActionableDuelEvent(event)?'ready':'blocked',
       deadlineAt: timestampMs(event.status==='ready_check'||event.status==='invited'?event.ready_expires_at:timestampMs(event.starts_at)>now?event.starts_at:event.me.state==='period_active'?event.period_ends_at:event.me.state==='break_active'?event.break_ends_at:event.ends_at)||undefined,
@@ -1545,6 +1549,7 @@ export function GameHub({
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          inProgress: isActive || isBreak || isPaused,
           attention: !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
           dockState: waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
           deadlineAt: timestampMs(isReady?game.readiness_ends_at:isBreak?game.break_ends_at:isActive?game.closes_at:game.starts_at),
@@ -1662,6 +1667,7 @@ export function GameHub({
         : 0;
       return {
         id: `classic-${game.tournament_id}`,
+        inProgress: started && !completed,
         attention: !completed,
         dockState: completed?'done':locked?'blocked':isBreak?'break':game.state==='period_active'?'active':'ready',
         deadlineAt: timestampMs(isBreak?game.break_ends_at:game.closes_at),
@@ -1754,13 +1760,14 @@ export function GameHub({
   const arenaEntries: ArenaEntry[] = prioritizeGameEntries([
     ...duelArenaEntries,
     ...classicArenaEntries,
+    ...extraEntries,
     dailyArenaEntry,
     trainingArenaEntry,
   ]);
   const dockStatus=gameDockStatus(arenaEntries);
   useEffect(()=>{onDockStatusChange?.({label:dockStatus.label,urgent:dockStatus.urgent});},[onDockStatusChange,dockStatus.label,dockStatus.urgent]);
-  const pendingEventEntryIds = arenaEntries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done').map(entry=>entry.id).join('|');
-  const firstPendingEventEntryId = arenaEntries.find(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done')?.id ?? null;
+  const pendingEventEntryIds = arenaEntries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic'||entry.kind==='bar')&&entry.dockState!=='done').map(entry=>entry.id).join('|');
+  const firstPendingEventEntryId = arenaEntries.find(entry=>(entry.kind==='duel'||entry.kind==='classic'||entry.kind==='bar')&&entry.dockState!=='done')?.id ?? null;
 
   const arenaEntryIds = arenaEntries.map((entry) => entry.id).join('|');
   const activeCubeIndex = Math.max(
@@ -3780,7 +3787,7 @@ function TrainingPlaceholder({
     trainingSection !== 'course' &&
     trainingSection !== 'advanced'
   ) {
-    return <StartupSplash />;
+    return <SectionLoading />;
   }
 
   if (courseCatalogError && !courseCatalog && !autoPlay && trainingSection !== 'open') {
@@ -4002,7 +4009,7 @@ function TrainingPlaceholder({
           </div>
           <div className="training-info-overview__copy">
             {loading && !data ? (
-              <StartupSplash />
+              <SectionLoading />
             ) : (
               <>
                 {error && <div className="training-info-error">{error}</div>}

@@ -1,4 +1,4 @@
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { useVenueNavigation, useVenueAttention } from '../components/VenuePanorama.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -333,7 +333,7 @@ export function AchievementsScreen({
         />
 
         {achievementsQuery.isLoading ? (
-          <StartupSplash />
+          <SectionLoading />
         ) : (
           <div className="achievement-list">
             {filtered.map((achievement) => (
