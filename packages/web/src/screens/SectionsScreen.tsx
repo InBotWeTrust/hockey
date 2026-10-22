@@ -1,7 +1,7 @@
 import {useGameMenu} from '../city/GameMenuContext.js';
 import {useCardInvites} from '../bar/cards/cardInvites.js';
 import {useGameInvites} from '../bar/games/gameInviteStore.js';
-import { StartupSplash } from '../onboarding/StartupSplash.js';
+import { SectionLoading } from '../components/SectionLoading.js';
 import {useBarActivity} from '../bar/barActivity.js';
 import {caretakerBlocked} from '../city/caretakerSchedule.js';
 import { useNavigationActivity } from '../components/useNavigationActivity.js';
@@ -279,7 +279,7 @@ export function SectionsScreen(): JSX.Element {
   ] as const;
 
   if (!profileQuery.data) {
-    return <StartupSplash
+    return <SectionLoading
       message={profileQuery.isError ? 'Не удалось загрузить карту.' : 'Идёт загрузка…'}
       {...(profileQuery.isError ? {retry: () => { void profileQuery.refetch(); }} : {})}
     />;

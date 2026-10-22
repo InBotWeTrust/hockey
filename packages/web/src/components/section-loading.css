@@ -1,0 +1,11 @@
+.section-loading {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 12px;
+  min-height: 120px;
+  padding: 24px 20px;
+  color: var(--muted);
+  text-align: center;
+  font-size: 14px;
+}

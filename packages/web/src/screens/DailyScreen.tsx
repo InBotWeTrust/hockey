@@ -2,7 +2,7 @@ import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
 import {prioritizeGameEntries} from '../city/gameNotifications.js';
 import {FloatingGamePanel} from '../city/FloatingGamePanel.js';
 import {isOpenRinkRoute} from '../components/BottomNav.js';
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
@@ -737,7 +737,7 @@ export function DailyScreen(): JSX.Element {
             </div>
           </div>
         ) : (
-          <StartupSplash />
+          <SectionLoading />
         )}
       </main>
     );
@@ -3780,7 +3780,7 @@ function TrainingPlaceholder({
     trainingSection !== 'course' &&
     trainingSection !== 'advanced'
   ) {
-    return <StartupSplash />;
+    return <SectionLoading />;
   }
 
   if (courseCatalogError && !courseCatalog && !autoPlay && trainingSection !== 'open') {
@@ -4002,7 +4002,7 @@ function TrainingPlaceholder({
           </div>
           <div className="training-info-overview__copy">
             {loading && !data ? (
-              <StartupSplash />
+              <SectionLoading />
             ) : (
               <>
                 {error && <div className="training-info-error">{error}</div>}
