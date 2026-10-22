@@ -61,3 +61,14 @@ it('centers the initial window vertically before any position has been saved',()
  expect(dialog.parentElement).toHaveStyle({alignItems:'center'});
  expect(dialog.style.top).toBe('');expect(dialog.style.left).toBe('');
 });
+it('opens without a modal backdrop, page inertness or scroll lock',()=>{
+ document.body.style.overflow='auto';
+ const background=document.createElement('div');background.id='nonmodal-background';document.body.append(background);
+ show();fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));
+ expect(document.querySelector('.modal-backdrop')).toBeNull();
+ expect(screen.getByRole('dialog',{name:'Игры'})).toHaveAttribute('aria-modal','false');
+ expect(document.body.style.overflow).toBe('auto');
+ expect(background).not.toHaveAttribute('inert');
+ expect(background).not.toHaveAttribute('aria-hidden','true');
+ background.remove();document.body.style.overflow='';
+});

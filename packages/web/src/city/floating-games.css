@@ -1,7 +1,7 @@
-.modal-card.floating-games-window{width:clamp(260px,78vw,320px);max-width:calc(100vw - 32px);max-height:calc(var(--app-viewport-height,100dvh) - var(--app-safe-top,0px) - var(--app-safe-bottom,0px) - 24px);padding:8px 0 12px;display:flex;flex-direction:column;border-radius:22px;overflow:hidden;position:relative;}
-.floating-games-window>.modal-header{flex:none;justify-content:flex-end;margin:0;padding:0 12px;}
-.floating-games-window>.modal-header .modal-title{display:none}
-.floating-games-window>.modal-header+div{min-height:0;margin-top:0!important;overflow:auto;overscroll-behavior:contain;}
+.floating-games-window{pointer-events:auto;width:clamp(260px,78vw,320px);max-width:calc(100vw - 32px);max-height:calc(var(--app-viewport-height,100dvh) - var(--app-safe-top,0px) - var(--app-safe-bottom,0px) - 24px);padding:8px 0 12px;display:flex;flex-direction:column;border-radius:22px;overflow:hidden;position:relative;}
+.floating-games-layer{position:fixed;inset:0;z-index:240;display:flex;justify-content:center;padding:calc(20px + var(--app-safe-top,0px)) 20px calc(20px + var(--app-safe-bottom,0px));pointer-events:none;}
+.floating-games-window__header{display:flex;flex:none;justify-content:flex-end;margin:0;padding:0 12px;}
+.floating-games-window>.city-game-details{min-height:0;overflow:auto;overscroll-behavior:contain;}
 
 .floating-games-window__handle{position:absolute;top:0;left:52px;right:52px;height:36px;display:grid;place-items:center;padding:0;border:0;background:transparent;color:inherit;cursor:grab;touch-action:none;user-select:none;-webkit-user-select:none;z-index:3;}
 .floating-games-window__handle span{width:36px;height:4px;border-radius:4px;background:currentColor;opacity:.35;pointer-events:none;}
