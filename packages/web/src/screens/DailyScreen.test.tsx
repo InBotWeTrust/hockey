@@ -2549,7 +2549,8 @@ describe('DailyScreen', () => {
   it('shows loader while fetching state', () => {
     renderWith();
     expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
-    expect(screen.getByRole('main', { name: 'Загрузка приложения' })).toHaveClass('onboarding-flow--startup');
+    expect(screen.getByRole('status')).toHaveClass('section-loading');
+    expect(screen.queryByLabelText('Загрузка приложения')).toBeNull();
   });
 
   it('renders a high-contrast arena error state when the daily request fails', async () => {
@@ -4566,7 +4567,7 @@ describe('DailyScreen', () => {
       'Упражнение: board-side');
   });
 
-  it('keeps the full loading screen visible until the training catalog is ready', async () => {
+  it('keeps loading local until the training catalog is ready', async () => {
     let resolveCourse!: (response: Response) => void;
     const courseResponse = new Promise<Response>((resolve) => {
       resolveCourse = resolve;
@@ -4582,7 +4583,7 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=training&from=sections']);
 
-    await waitFor(() => expect(screen.getByLabelText('Загрузка приложения')).toBeVisible());
+    await waitFor(() => expect(screen.getByText('Идёт загрузка…')).toBeVisible());
     expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка…');
     expect(screen.queryByRole('button', { name: /Начальный уровень/ })).not.toBeInTheDocument();
     expect(screen.queryByText(/Выбери модель периода/)).not.toBeInTheDocument();

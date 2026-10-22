@@ -1,5 +1,5 @@
 import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
 import { BonusRecordsModal, formatBonusPreviewRecord } from '../profile/BonusRecordsModal.js';
@@ -561,7 +561,7 @@ export function BonusGamesScreen(): JSX.Element {
         ) : null}
 
         {catalogQuery.isLoading ? (
-          <StartupSplash />
+          <SectionLoading />
         ) : catalogQuery.isError ? (
           <div
             className="bonus-games-catalog__notice bonus-games-catalog__notice--error"

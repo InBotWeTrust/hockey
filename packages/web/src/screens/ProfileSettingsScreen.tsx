@@ -1,4 +1,4 @@
-import {StartupSplash} from '../onboarding/StartupSplash.js';
+import {SectionLoading} from '../components/SectionLoading.js';
 import { ChatPositionSettings } from '../components/ChatPositionSettings.js';
 import { ThemeSettings } from '../components/ThemeSettings.js';
 import { useEffect, useRef, useState } from 'react';
@@ -198,7 +198,7 @@ export function ProfileSettingsScreen(): JSX.Element {
       </div>
 
       {isLoading ? (
-        <StartupSplash />
+        <SectionLoading />
       ) : (
         <>
           <div className="section-label">Аккаунт</div>

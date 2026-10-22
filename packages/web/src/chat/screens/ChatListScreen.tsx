@@ -1,4 +1,4 @@
-import {StartupSplash} from '../../onboarding/StartupSplash.js';
+import {SectionLoading} from '../../components/SectionLoading.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -284,7 +284,7 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
       {dropdownOpen && <SearchResultsDropdown query={debouncedFilter} chatHits={filteredChats} />}
 
       {!dropdownOpen && isLoading && (
-        <StartupSplash />
+        <SectionLoading />
       )}
 
       {!dropdownOpen && isError && (

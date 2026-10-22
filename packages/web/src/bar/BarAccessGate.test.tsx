@@ -95,11 +95,12 @@ it('checks access at countdown zero and waits for server confirmation before ent
  } finally {view.unmount();vi.useRealTimers();}
 });
 
-it('uses the full loading screen only until initial access is known', async () => {
+it('keeps access loading local and preserves ready contents on background refresh', async () => {
  let resolve!: (access:{blockedUntil:null;fightId:null})=>void;
  vi.mocked(fetchBarAccess).mockReturnValueOnce(new Promise(done=>{resolve=done;}));
  render(<MemoryRouter><BarAccessGate><p>Ready bar</p></BarAccessGate></MemoryRouter>);
- expect(screen.getByLabelText('Загрузка приложения')).toBeVisible();
+ expect(screen.queryByLabelText('Загрузка приложения')).toBeNull();
+ expect(screen.getByRole('status')).toHaveTextContent('Идёт загрузка');
  await act(async()=>resolve({blockedUntil:null,fightId:null}));
  expect(screen.queryByLabelText('Загрузка приложения')).toBeNull();
  expect(screen.getByText('Ready bar')).toBeVisible();

@@ -1,9 +1,11 @@
+import {commonRouteModules} from './routeModules.js';
+import {scheduleRoutePreload} from './routePreload.js';
 import {GameMenuProvider} from '../city/GameMenuContext.js';
 import {GlobalGames} from '../city/GlobalGames.js';
 import {ChatOverlay} from '../chat/ChatOverlay.js';
 import {FloatingChatShortcut} from '../components/FloatingChatShortcut.js';
 import {useChatUnreadActivity} from '../components/useChatUnreadActivity.js';
-import { StartupSplash } from '../onboarding/StartupSplash.js';
+import { SectionLoading } from '../components/SectionLoading.js';
 import { VenuePanorama } from '../components/VenuePanorama.js';
 import {GameEntryRoute} from './GameEntryRoute.js';
 import { useApplicationTheme } from './theme.js';
@@ -92,7 +94,7 @@ const MonthlyRatingRewardPreviewScreen = import.meta.env.DEV
     )
   : null;
 const InventoryScreen = lazy(() =>
-  import('../screens/InventoryScreen.js').then((module) => ({ default: module.InventoryScreen })),
+  commonRouteModules.inventory().then((module) => ({ default: module.InventoryScreen })),
 );
 const PricesScreen = lazy(() =>
   import('../screens/PricesScreen.js').then((module) => ({ default: module.PricesScreen })),
@@ -123,7 +125,7 @@ const WeeklyChallengeScreen = lazy(() =>
 );
 const ProfileRewardsScreen = lazy(() => import('../screens/ProfileRewardsScreen.js').then(module=>({default:module.ProfileRewardsScreen})));
 const ProfileScreen = lazy(() =>
-  import('../screens/ProfileScreen.js').then((module) => ({ default: module.ProfileScreen })),
+  commonRouteModules.profile().then((module) => ({ default: module.ProfileScreen })),
 );
 const ReferralsScreen = lazy(() =>
   import('../screens/ReferralsScreen.js').then((module) => ({ default: module.ReferralsScreen })),
@@ -165,15 +167,15 @@ const BarGamesPage = lazy(()=>import('../bar/games/CharacterLaunch.js').then(m=>
 const DurakRoomScreen = lazy(() => import('../bar/cards/DurakRoomScreen.js').then(m => ({default:m.DurakRoomScreen})));
 const OnlineDurakScreen = lazy(() => import('../bar/cards/OnlineDurakScreen.js').then(m => ({default:m.OnlineDurakScreen})));
 const DurakScreen = lazy(() => import('../bar/cards/DurakScreen.js').then((m) => ({ default: m.DurakScreen })));
-const BarBroadcastsScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarBroadcastsScreen })));
-const BarScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarScreen })));
+const BarBroadcastsScreen = lazy(() => commonRouteModules.bar().then((m) => ({ default: m.BarBroadcastsScreen })));
+const BarScreen = lazy(() => commonRouteModules.bar().then((m) => ({ default: m.BarScreen })));
 const BarStaffRoom = lazy(() => import('../bar/BarStaffRoom.js').then(module => ({default: module.BarStaffRoom})));
-const BarMatchScreen = lazy(() => import('../bar/BarScreen.js').then((m) => ({ default: m.BarMatchScreen })));
+const BarMatchScreen = lazy(() => commonRouteModules.bar().then((m) => ({ default: m.BarMatchScreen })));
 const SectionsScreen = lazy(() =>
-  import('../screens/SectionsScreen.js').then((module) => ({ default: module.SectionsScreen })),
+  commonRouteModules.sections().then((module) => ({ default: module.SectionsScreen })),
 );
 const BonusGamesScreen = lazy(() =>
-  import('../screens/BonusGamesScreen.js').then((module) => ({ default: module.BonusGamesScreen })),
+  commonRouteModules.bonusGames().then((module) => ({ default: module.BonusGamesScreen })),
 );
 const BonusGamePlayScreen = lazy(() =>
   import('../screens/BonusGamePlayScreen.js').then((module) => ({
@@ -202,7 +204,7 @@ const AdminScreen = lazy(() =>
   import('../admin/AdminScreen.js').then((module) => ({ default: module.AdminScreen })),
 );
 const ChatListScreen = lazy(() =>
-  import('../chat/screens/ChatListScreen.js').then((module) => ({
+  commonRouteModules.chatList().then((module) => ({
     default: module.ChatListScreen,
   })),
 );
@@ -263,7 +265,7 @@ function ChatRealtime(): JSX.Element {
 }
 
 export function RouteLoading(): JSX.Element {
-  return <StartupSplash />;
+  return <SectionLoading />;
 }
 
 export function appBackdropClassName(pathname: string, search = ''): string {
@@ -342,6 +344,12 @@ function AppScene(): JSX.Element {
   const user = useAuthStore((s) => s.user);
   const {unreadMessageCount}=useChatUnreadActivity(Boolean(user));
   const androidReleaseAccess = canAccessAndroidRelease(user?.role);
+  const playing = isOpenRinkRoute(location);
+  useEffect(() => {
+    if (!user?.id || playing) return;
+    return scheduleRoutePreload(Object.values(commonRouteModules));
+  }, [user?.id, playing]);
+
   useEffect(() => {
     if (user !== null) preloadCriticalArtwork();
   }, [user]);
