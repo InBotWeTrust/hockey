@@ -80,6 +80,13 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
       'truncate message_reactions,messages,chat_members,chats,bar_visitor_receipts,bar_visitor_accounts,currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
     );
   });
+  it('creates a new Grigory stake with five deals using the real deck constructor',async()=>{
+    vi.mocked(ochkoDeck.createPrivateOchko).mockRestore();
+    const offer=await proposeOchkoStake(pool,a);
+    const match=await startOchkoStake(pool,a,{requestId:randomUUID(),offerId:offer.offerId,stars:20});
+    expect(match.runtime.engineVersion).toBeGreaterThanOrEqual(20);
+    expect(match.runtime.game).toHaveProperty('series.totalRounds',5);
+  });
   it('returns presence timestamps from PostgreSQL for game invitations',async()=>{
     const seen=new Date('2026-10-21T12:00:00.000Z');
     await pool.query('update users set last_seen_at=case when id=$1 then $2::timestamptz else null end',[b,seen]);

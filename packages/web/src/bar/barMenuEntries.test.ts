@@ -27,6 +27,13 @@ it('keeps a saved local card party reachable after navigating away',()=>{
  const open=vi.fn();const rows=barMenuEntries('me',null,null,undefined,undefined,open,1000,true);
  expect(rows).toHaveLength(1);rows[0]!.onEnter();expect(open).toHaveBeenCalledWith('/bar/cards/computer/maria');
 });
+it.each([0,1] as const)('shows the opponent identity and game label for player %s',player=>{
+ const opponent={userId:'other',displayName:'Соперник',avatarUrl:'/other.webp'};
+ const self={userId:'me',displayName:'Я',avatarUrl:'/self.webp'};
+ const match={kind:'billiards',player,participants:player===0?[self,opponent]:[opponent,self],ready:null,runtime:{game:{winner:null}}} as BarGameSnapshot;
+ const row=barMenuEntries('me',null,{matchId:'match',invites:[]} as unknown as BarGameLobby,undefined,match,vi.fn())[0];
+ expect(row).toMatchObject({eyebrow:'Бильярд',title:'Соперник',opponentName:'Соперник',opponentAvatarUrl:'/other.webp'});
+});
 
 it('does not announce a legacy card match as started before ready confirmation',()=>{
  const lobby={matchId:'old',searching:false,invites:[]};

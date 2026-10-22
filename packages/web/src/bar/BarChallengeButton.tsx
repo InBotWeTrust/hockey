@@ -1,5 +1,5 @@
 import '../components/navigation-geometry.css';
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Check, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { BarGameId } from '@hockey/game-core';
@@ -18,6 +18,10 @@ export function BarChallengeButton({ userId, name, avatarUrl }: { userId: string
   const [error,setError] = useState<string|null>(null);
   const [sent,setSent] = useState(false);
   const pending = useRef(false);
+  const tableSizes = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (open && selected === 'cards') tableSizes.current?.scrollIntoView?.({block:'nearest',behavior:'auto'});
+  }, [open,selected]);
   const navigate = useNavigate();
   const send = async (kind: BarGameId | 'cards') => {
     if (pending.current || !selected || (kind === 'cards' && !capacities.length)) return;
@@ -47,7 +51,7 @@ export function BarChallengeButton({ userId, name, avatarUrl }: { userId: string
               {selected===id&&<Check size={11} strokeWidth={3}/>}
             </span>
           </button>
-          {id==='cards' && selected==='cards' && <div style={{padding:'4px 3px 8px'}}>
+          {id==='cards' && selected==='cards' && <div ref={tableSizes} style={{padding:'4px 3px 8px'}}>
             <p className="modal-copy" style={{margin:'0 0 8px'}}>Игроков за столом · можно несколько</p>
             <div role="group" aria-label="Размер стола" style={{display:'grid',gridTemplateColumns:'repeat(5, minmax(0, 1fr))',gap:6}}>
               {[2,3,4,5,6].map(n=><button type="button" className="glass" key={n} aria-label={`${n} ${n<5?'игрока':'игроков'}`} aria-pressed={capacities.includes(n)} disabled={busy}

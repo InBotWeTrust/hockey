@@ -1,5 +1,8 @@
 import { expect, it } from 'vitest';
 import { createPrivateOchko } from './ochkoDeck.js';
+it('defaults new character games to five deals instead of a legacy engine',()=>{
+ expect(createPrivateOchko(0)).toHaveProperty('series.totalRounds',5);
+});
 
 it('keeps the new round pause in private character and online decks', () => {
   for (const character of [true, false]) {

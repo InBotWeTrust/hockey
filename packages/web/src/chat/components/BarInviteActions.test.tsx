@@ -10,6 +10,10 @@ vi.mock('../../bar/cards/onlineApi.js', () => ({ respond: vi.fn() }));
 const invite = { type: 'bar_game_invite' as const, inviteId: 'invite', kind: 'darts' as const, senderId: 'a', receiverId: 'b', capacity: 2, expiresAt: new Date(Date.now()+60000).toISOString(), status: 'pending' as const, matchId: null, roomId: null };
 function show(metadata: BarInviteMetadata = invite, isOwn = false) { return render(<QueryClientProvider client={new QueryClient()}><MemoryRouter><BarInviteActions invite={metadata} isOwn={isOwn}/></MemoryRouter></QueryClientProvider>); }
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
+it.each([[290,'4 мин 50 сек'],[60,'1 мин 0 сек'],[59,'59 сек']] as const)('formats %s seconds as %s', (seconds,copy)=>{
+ vi.useFakeTimers();show({...invite,expiresAt:new Date(Date.now()+seconds*1000).toISOString()},true);
+ expect(screen.getByText(`Ожидаем ответа · ${copy}`)).toBeInTheDocument();
+});
 it('accepts once while request is pending and shows a destination afterwards', async () => {
   let finish!: (v: { matchId: string }) => void;
   vi.mocked(gameApi.respond).mockReturnValue(new Promise(resolve => { finish=resolve; }));

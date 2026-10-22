@@ -97,7 +97,6 @@ export function BarGameScreen() {
             now={match.now}
             disabled={match.busy || match.armBlocked || rulesOpen || exit}
             send={match.send}
-            onBack={back}
             onExit={() =>
               view.runtime.game.winner !== null || view.ready?.cancelled ? back() : setExit(true)
             }
@@ -169,7 +168,6 @@ export function GameTable({
   now,
   disabled,
   send,
-  onBack,
   onExit,
   onRules,
   notice,
@@ -179,7 +177,6 @@ export function GameTable({
   now: number;
   disabled: boolean;
   send: (a: BarGameAction | { type: 'ready' }) => void;
-  onBack?: (() => void) | undefined;
   onExit?: (() => void) | undefined;
   onRules?: (() => void) | undefined;
   notice?: string | null | undefined;
@@ -226,7 +223,6 @@ export function GameTable({
       <GameMenu
         view={view}
         now={now}
-        onBack={onBack}
         onExit={onExit}
         onRules={onRules}
         notice={notice ?? (game.kind === 'battleship' && !view.ready?.players.includes(player) ? navalHint : null)}

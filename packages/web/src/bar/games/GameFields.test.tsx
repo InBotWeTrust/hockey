@@ -22,6 +22,18 @@ const snapshot = (kind: 'darts' | 'billiards' | 'checkers'): BarGameSnapshot => 
   ready: null,
   serverNow: 0,
 });
+it('reserves the pool controls during readiness', () => {
+  const game = barPool.create(0);
+  const {container} = render(<PoolField game={game} balls={game.balls} disabled pregame send={vi.fn()} />);
+  expect(container.querySelector('.bar-pool-controls')).not.toBeNull();
+});
+it('blocks native context menus and dragging on the pool aiming surface', () => {
+  const game = barPool.create(0);
+  render(<PoolField game={game} balls={game.balls} disabled={false} send={vi.fn()} />);
+  const table = screen.getByRole('img', {name:'Бильярдный стол'});
+  expect(fireEvent.contextMenu(table)).toBe(false);
+  expect(fireEvent.dragStart(table)).toBe(false);
+});
 it('offers only legal checkers destinations and sends the complete selected path', () => {
   const game = barCheckers.create(0),
     send = vi.fn();

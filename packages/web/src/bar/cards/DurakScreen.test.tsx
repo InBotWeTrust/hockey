@@ -61,7 +61,7 @@ it.each(['attack', 'defend', 'taking'] as const)(
       </MemoryRouter>,
     );
     expect(screen.queryByRole('heading', { name: 'Дурак с Марией' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Назад' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Назад' })).not.toBeInTheDocument();
     const menu = screen.getByRole('region', { name: 'Меню игры' });
     expect(menu).toHaveTextContent('Мария');
     expect(menu).toHaveTextContent(String(game.hands[1].length));
