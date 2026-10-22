@@ -6,7 +6,6 @@ import {rememberChatReturn} from '../chat/chatReturn.js';
 import {useChatOverlayOpen} from '../chat/ChatOverlayContext.js';
 import {FloatingShortcut} from './FloatingShortcut.js';
 export function isChatShortcutVisible(location:{pathname:string;search:string}):boolean {
- if(location.pathname==='/chat'&&new URLSearchParams(location.search).get('view')==='feed')return true;
  return !/^\/(?:chat|login|auth|mobile-auth)(?:\/|$)/.test(location.pathname);
 }
 export function FloatingChatShortcut({owner,unreadCount}:{owner?:string;unreadCount:number}):JSX.Element {

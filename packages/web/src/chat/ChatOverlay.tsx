@@ -46,9 +46,9 @@ export function ChatOverlay({
     state: null,
     key: 'chat-background',
   });
-  const isChat =
-    /^\/chat(?:\/|$)/.test(location.pathname) &&
-    new URLSearchParams(location.search).get('view') !== 'feed';
+  const booth = location.pathname === '/chat' &&
+    ['chat', 'feed'].includes(new URLSearchParams(location.search).get('view') ?? '');
+  const isChat = /^\/chat(?:\/|$)/.test(location.pathname) && !booth;
   const open = enabled && isChat;
   const backgroundIndex = useRef<number | null>(null);
   if (!isChat) {
