@@ -2,6 +2,7 @@ import { configureBarInviteChat } from './bar/inviteChat.js';
 import { visitorRoutes } from './bar/visitorRoutes.js';
 import {staffRoomRoutes} from './bar/staffRoomRoutes.js';
 import Fastify from 'fastify';
+import {cityWeatherRoutes} from './cityWeather/routes.js';
 import { socialRoutes } from './social/routes.js';
 import { healthRoutes } from './routes/health.js';
 import { loadConfig, resolveBonusDailyAttemptLimit, type AppConfig } from './config.js';
@@ -216,6 +217,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     ...(config.SYSTEM_USER_ID !== undefined ? { systemUserId: config.SYSTEM_USER_ID } : {}),
   });
   await app.register(meRoutes);
+  await app.register(cityWeatherRoutes, config.WEATHERAPI_KEY ? {apiKey:config.WEATHERAPI_KEY} : {});
   await app.register(referralRoutes);
   await app.register(referralAdminRoutes);
   if (config.NODE_ENV !== 'test') await app.register(referralRiskCleanupPlugin);

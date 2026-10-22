@@ -65,3 +65,16 @@ it('decodes resolution changes, ignores stale completions and retries failures',
  expect(result.current).toContain('6144-');
  unmount();expect(vi.getTimerCount()).toBe(0);
 });
+
+it('recalculates for a changed city and ignores an old city image decoding later',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(new Date('2026-10-23T10:00:00Z'));
+ const pending:Array<()=>void>=[];
+ vi.stubGlobal('Image',class{src='';decode(){return new Promise<void>(resolve=>pending.push(resolve));}});
+ const moscow={latitude:55.75,longitude:37.62,timeZone:'Europe/Moscow'};
+ const vladivostok={latitude:43.1,longitude:131.9,timeZone:'Asia/Vladivostok'};
+ const {result,rerender}=renderHook(({city})=>useCityImage(city),{initialProps:{city:moscow}});
+ expect(result.current).toContain('city-day-');
+ rerender({city:vladivostok});expect(pending.length).toBe(1);
+ rerender({city:moscow});
+ await act(async()=>pending[0]!());expect(result.current).toContain('city-day-');
+});
