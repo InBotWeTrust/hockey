@@ -1,3 +1,4 @@
+import {useAmateurAccess} from '../../amateur/useAmateurAccess.js';
 import {
   Fragment,
   useEffect,
@@ -34,7 +35,6 @@ import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../../api/gameplayLo
 import { ApiError } from '../../api/apiFetch.js';
 import {
   amateurAccessDetailsFromError,
-  deriveAmateurAccess,
   guardAmateurMutation,
 } from '../../amateur/amateurAccess.js';
 import { useGameplayLockRefresh } from '../../hooks/useGameplayLockRefresh.js';
@@ -47,7 +47,6 @@ import {
 import { chatKeys } from '../../lib/queryKeys.js';
 import { useChatStore } from '../chatStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
-import { useDailyStore } from '../../stores/dailyStore.js';
 import { ChatBubble } from '../components/ChatBubble.js';
 import { ChatInput } from '../components/ChatInput.js';
 import { ChatRoomHeader } from '../components/ChatRoomHeader.js';
@@ -404,12 +403,7 @@ export function ChatRoomScreen(): JSX.Element {
   const goto = searchParams.get('goto');
   const me = useAuthStore((s) => s.user);
   const meId = me?.id ?? null;
-  const dailyData = useDailyStore((state) => state.data);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel: me?.competitionLevel ?? null,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const isAdmin = me?.role === 'admin';
   const setActive = useChatStore((s) => s.setActive);
   const resetUnread = useChatStore((s) => s.resetUnread);

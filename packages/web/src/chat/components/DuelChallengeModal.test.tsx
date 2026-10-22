@@ -100,8 +100,9 @@ describe('DuelChallengeModal Amateur preview access', () => {
   });
 
 
-  it('shows Rhythm by name and sends its profile challenge without a Marathon window', async () => {
-    useAuthStore.getState().updateUser({competitionLevel:'amateur'});
+  it.each([null,'beginner','amateur'] as const)('sends a Rhythm profile challenge after qualification with session level %s', async (level) => {
+    useAuthStore.setState({user:{id:'me',displayName:'Me',...(level?{competitionLevel:level}:{})}});
+    useDailyStore.setState({data:{lifetime_total_goals:300,amateur_unlock_goals_required:300} as DailyStateResponse});
     const fetchMock=vi.spyOn(globalThis,'fetch').mockImplementation(async(input)=>{
       const data=String(input).includes('/templates')?{templates:[{...template,id:'rhythm',duel_kind:'rhythm',title:'Ритм',period_duration_ms:150000}]}:String(input).includes('/challenge-availability')?{available:true}:{match:{}};
       return new Response(JSON.stringify(data),{status:200,headers:{'content-type':'application/json'}});
@@ -116,7 +117,7 @@ describe('DuelChallengeModal Amateur preview access', () => {
   });
   it('marks the selected duel type with a check indicator and pressed state', async () => {
     useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ templates: [template] }), {
         status: 200,
         headers: { 'content-type': 'application/json' },

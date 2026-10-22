@@ -16,7 +16,7 @@
 }
 
 /* A single material for map, chat and game shortcuts in collapsed navigation. */
-.app-shell :is(.district-panel, .floating-chat.icon-btn, .city-game-minimized).navigation-collapsed-surface {
+.app-shell :is(.district-panel, .floating-shortcut.icon-btn, .city-game-minimized).navigation-collapsed-surface {
  background:var(--liquid-card-bg); border:1px solid var(--liquid-border); box-shadow:none; color:var(--liquid-ink);
  backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%)); -webkit-backdrop-filter:var(--liquid-blur,blur(18px) saturate(145%));
 }

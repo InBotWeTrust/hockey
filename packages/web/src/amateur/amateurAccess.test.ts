@@ -43,31 +43,31 @@ describe('Amateur access helpers', () => {
     expect(useAmateurAccessToastStore.getState().toast).toBeNull();
   });
 
-  it('does not optimistically authorize while the competition level is unknown', () => {
+  it('accepts server-confirmed qualifying goals when the session omits the level', () => {
     expect(
       deriveAmateurAccess({
         qualifyingGoals: 300,
         unlockGoalsRequired: 300,
       }),
-    ).toMatchObject({ hasFullAccess: false, goalsRemaining: 0 });
+    ).toMatchObject({ hasFullAccess: true, goalsRemaining: 0 });
   });
 
   it.each(['amateur', 'professional'] as const)(
-    'does not authorize a %s level until the complete progress snapshot is available',
+    'keeps a confirmed %s level eligible while progress loads',
     (competitionLevel) => {
       expect(deriveAmateurAccess({ competitionLevel })).toMatchObject({
-        hasFullAccess: false,
+        hasFullAccess: true,
         qualifyingGoals: null,
         unlockGoalsRequired: null,
         goalsRemaining: null,
       });
       expect(deriveAmateurAccess({ competitionLevel, qualifyingGoals: 300 })).toMatchObject({
-        hasFullAccess: false,
+        hasFullAccess: true,
         unlockGoalsRequired: null,
         goalsRemaining: null,
       });
       expect(deriveAmateurAccess({ competitionLevel, unlockGoalsRequired: 300 })).toMatchObject({
-        hasFullAccess: false,
+        hasFullAccess: true,
         qualifyingGoals: null,
         goalsRemaining: null,
       });
@@ -75,7 +75,7 @@ describe('Amateur access helpers', () => {
   );
 
   it.each(['amateur', 'professional'] as const)(
-    'does not authorize a %s level with malformed progress values',
+    'does not let malformed progress revoke a confirmed %s status',
     (competitionLevel) => {
       expect(
         deriveAmateurAccess({
@@ -83,14 +83,14 @@ describe('Amateur access helpers', () => {
           qualifyingGoals: 'not-a-count',
           unlockGoalsRequired: 300,
         }),
-      ).toMatchObject({ hasFullAccess: false, qualifyingGoals: null, goalsRemaining: null });
+      ).toMatchObject({ hasFullAccess: true, qualifyingGoals: null, goalsRemaining: null });
       expect(
         deriveAmateurAccess({
           competitionLevel,
           qualifyingGoals: 300,
           unlockGoalsRequired: Number.NaN,
         }),
-      ).toMatchObject({ hasFullAccess: false, unlockGoalsRequired: null, goalsRemaining: null });
+      ).toMatchObject({ hasFullAccess: true, unlockGoalsRequired: null, goalsRemaining: null });
     },
   );
 
@@ -153,7 +153,7 @@ describe('Amateur access helpers', () => {
       ).toBeNull();
       expect(
         deriveAmateurAccess({
-          competitionLevel: 'amateur',
+          competitionLevel: 'beginner',
           qualifyingGoals: 300,
           unlockGoalsRequired: ambiguousCount,
         }).hasFullAccess,

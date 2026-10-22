@@ -1,3 +1,4 @@
+import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -21,7 +22,6 @@ import {
 import { useAuthStore } from '../auth/authStore.js';
 import {
   amateurAccessDetailsFromError,
-  deriveAmateurAccess,
   guardAmateurMutation,
 } from '../amateur/amateurAccess.js';
 import { VenueBadge, type VenueRole } from '../components/VenueBadge.js';
@@ -40,7 +40,6 @@ import {
 import { TournamentPlayoffBracket } from './TournamentPlayoffBracket.js';
 import { TournamentMatchdayResults } from './TournamentMatchdayResults.js';
 import { TournamentDescription } from './TournamentDescription.js';
-import { useDailyStore } from '../stores/dailyStore.js';
 import { tournamentTechnicalReason, tournamentTieBreakPresentation } from './resultPresentation.js';
 
 type TournamentTab = 'standings' | 'schedule' | 'playoff' | 'rules';
@@ -794,14 +793,7 @@ function TournamentDetails({ tournament }: { tournament: TournamentSummary }) {
   const navigate = useNavigate();
   const location = useLocation();
   const currentUserId = useAuthStore((state) => state.user?.id ?? null);
-  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel);
-  const qualifyingGoals = useDailyStore((state) => state.data?.lifetime_total_goals);
-  const unlockGoalsRequired = useDailyStore((state) => state.data?.amateur_unlock_goals_required);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel: competitionLevel ?? null,
-    qualifyingGoals: qualifyingGoals ?? null,
-    unlockGoalsRequired: unlockGoalsRequired ?? null,
-  });
+  const amateurAccess = useAmateurAccess();
   const [tab, setTab] = useState<TournamentTab>(() =>
     tournamentInitialTab(location.search, tournament.startsAt),
   );

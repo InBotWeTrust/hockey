@@ -1,3 +1,7 @@
+import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
+import {prioritizeGameEntries} from '../city/gameNotifications.js';
+import {FloatingGamePanel} from '../city/FloatingGamePanel.js';
+import {isOpenRinkRoute} from '../components/BottomNav.js';
 import {StartupSplash} from '../onboarding/StartupSplash.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SniperBreakdown } from '../components/duel/SniperBreakdown.js';
@@ -141,7 +145,6 @@ import { ordinaryDuelLockCopy, type GameplayLockDTO } from '../api/gameplayLock.
 import { useGameplayLockRefresh } from '../hooks/useGameplayLockRefresh.js';
 import {
   amateurAccessDetailsFromError,
-  deriveAmateurAccess,
   guardAmateurMutation,
 } from '../amateur/amateurAccess.js';
 import {
@@ -1050,7 +1053,7 @@ export function GameHub({
   onOpenTrainingPlay,
   onOpenAmateurMatch,
 }: {
-  presentation?: 'arena'|'city';
+  presentation?: 'arena'|'city'|'floating';
   onDockStatusChange?:(status:GameDockStatus)=>void;
   openRequest?:number;
   onOpenDailyPlay: (options?: PlayOpenOptions) => void;
@@ -1059,6 +1062,8 @@ export function GameHub({
   onOpenAmateurMatch: (matchId: string, options?: PlayOpenOptions) => void;
 }): JSX.Element {
   const navigate = useNavigate();
+  const hubLocation=useLocation();
+  const backgroundGameplay=presentation==='floating'&&(isOpenRinkRoute(hubLocation)||hubLocation.pathname.startsWith('/duel/'));
   const queryClient = useQueryClient();
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
@@ -1066,12 +1071,7 @@ export function GameHub({
   });
   const data = useDailyStore((s) => s.data)!;
   const panelOwner = useAuthStore((s)=>s.user?.id??'anonymous');
-  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: data.lifetime_total_goals,
-    unlockGoalsRequired: data.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const refresh = useDailyStore((s) => s.refresh);
   const trainingData = useTrainingSessionStore((s) => s.data);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
@@ -1103,16 +1103,12 @@ export function GameHub({
   const isTrainingLockedByTournament =
     trainingData?.gameplay_lock?.blocked === true && !isTrainingLockedByDaily;
   const isDailyLockedByTraining = data.state === 'idle' && data.gameplay_lock?.blocked === true;
-  useGameplayLockRefresh(data.gameplay_lock);
-  useGameplayLockRefresh(trainingData?.gameplay_lock);
-  const amateurUnlockGoalsRequired = Math.max(
-    0,
-    data.amateur_unlock_goals_required ?? DEFAULT_AMATEUR_UNLOCK_GOALS_REQUIRED,
-  );
+  useGameplayLockRefresh(presentation==='floating'?null:data.gameplay_lock);
+  useGameplayLockRefresh(presentation==='floating'?null:trainingData?.gameplay_lock);
   const amateurEvents = useQuery({
     queryKey: ['amateur-duel', 'events'],
     queryFn: fetchAmateurEvents,
-    enabled: data.lifetime_total_goals >= amateurUnlockGoalsRequired,
+    enabled: amateurAccess.hasFullAccess,
     refetchInterval: presentation==='city'?false:30_000,
     refetchOnMount: presentation==='city'?false:true,
   });
@@ -1132,11 +1128,12 @@ export function GameHub({
   const [activeCubeEntryId, setActiveCubeEntryId] = useState<string | null>(
     readArenaSelectedEntryId,
   );
-  const prioritizedDuelEntryIdsRef = useRef<string | null>(null);
+  const prioritizedEventEntryIdsRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void refreshTraining();
-  }, [refreshTraining]);
+    const state=useTrainingSessionStore.getState();
+    if(presentation!=='floating'||(!state.data&&!state.loading&&!state.inFlight))void refreshTraining();
+  }, [refreshTraining,presentation]);
 
   useEffect(() => {
     if (
@@ -1161,6 +1158,7 @@ export function GameHub({
   ]);
 
   useEffect(() => {
+    if(backgroundGameplay)return;
     if (data.state === 'period_active' && periodEndsAt > 0 && periodRemaining === 0) void refresh();
     if (data.state === 'break_active' && breakEndsAt > 0 && breakRemaining === 0) void refresh();
     if (data.state === 'closed' && nextDayAt > 0 && nextDayRemaining === 0) void refresh();
@@ -1168,6 +1166,7 @@ export function GameHub({
       void refresh();
     }
   }, [
+    backgroundGameplay,
     data.state,
     periodEndsAt,
     periodRemaining,
@@ -1751,16 +1750,16 @@ export function GameHub({
               }),
       };
     });
-  const arenaEntries: ArenaEntry[] = [
+  const arenaEntries: ArenaEntry[] = prioritizeGameEntries([
     ...duelArenaEntries,
     ...classicArenaEntries,
     dailyArenaEntry,
     trainingArenaEntry,
-  ];
+  ]);
   const dockStatus=gameDockStatus(arenaEntries);
   useEffect(()=>{onDockStatusChange?.({label:dockStatus.label,urgent:dockStatus.urgent});},[onDockStatusChange,dockStatus.label,dockStatus.urgent]);
-  const duelArenaEntryIds = duelArenaEntries.map((entry) => entry.id).join('|');
-  const firstDuelArenaEntryId = duelArenaEntries[0]?.id ?? null;
+  const pendingEventEntryIds = arenaEntries.filter(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done').map(entry=>entry.id).join('|');
+  const firstPendingEventEntryId = arenaEntries.find(entry=>(entry.kind==='duel'||entry.kind==='classic')&&entry.dockState!=='done')?.id ?? null;
 
   const arenaEntryIds = arenaEntries.map((entry) => entry.id).join('|');
   const activeCubeIndex = Math.max(
@@ -1777,16 +1776,16 @@ export function GameHub({
   }, [activeCubeEntryId, activeCubeEntryExists, arenaEntryIds]);
 
   useEffect(() => {
-    if (firstDuelArenaEntryId === null) {
-      prioritizedDuelEntryIdsRef.current = null;
+    if (firstPendingEventEntryId === null) {
+      prioritizedEventEntryIdsRef.current = null;
       return;
     }
-    if (prioritizedDuelEntryIdsRef.current === duelArenaEntryIds) return;
-    prioritizedDuelEntryIdsRef.current = duelArenaEntryIds;
-    if (activeCubeEntryId === firstDuelArenaEntryId) return;
-    setActiveCubeEntryId(firstDuelArenaEntryId);
-    saveArenaSelectedEntryId(firstDuelArenaEntryId);
-  }, [activeCubeEntryId, duelArenaEntryIds, firstDuelArenaEntryId]);
+    if (prioritizedEventEntryIdsRef.current === pendingEventEntryIds) return;
+    prioritizedEventEntryIdsRef.current = pendingEventEntryIds;
+    if (activeCubeEntryId === firstPendingEventEntryId) return;
+    setActiveCubeEntryId(firstPendingEventEntryId);
+    saveArenaSelectedEntryId(firstPendingEventEntryId);
+  }, [activeCubeEntryId, pendingEventEntryIds, firstPendingEventEntryId]);
 
   const handleArenaActiveIndexChange = useCallback(
     (index: number): void => {
@@ -1801,7 +1800,7 @@ export function GameHub({
   const Container=presentation==='arena'?'main':'div';
   return (
     <Container className={presentation==='arena'?'screen':undefined} style={presentation==='arena'?{position:'fixed',inset:0,width:'100%',height:'100dvh',padding:0,overflow:'hidden',background:'#06111d'}:{display:'contents'}}>
-      {presentation==='city'?<CityGamePanel key={panelOwner} storageKey={`city-game-panel-expanded-v1:${panelOwner}`} openRequest={openRequest} entries={arenaEntries} activeIndex={activeCubeIndex} onActiveIndexChange={handleArenaActiveIndexChange} renderFace={entry=><ArenaCubeFace entry={entry}/>} renderActions={entry=><ArenaCubeActions entry={entry}/>}/>:<>
+      {presentation==='floating'?<FloatingGamePanel owner={panelOwner} entries={arenaEntries} activeIndex={activeCubeIndex} onActiveIndexChange={handleArenaActiveIndexChange} renderFace={entry=><ArenaCubeFace entry={entry}/>} renderActions={entry=><ArenaCubeActions entry={entry}/>}/>:presentation==='city'?<CityGamePanel key={panelOwner} storageKey={`city-game-panel-expanded-v1:${panelOwner}`} openRequest={openRequest} entries={arenaEntries} activeIndex={activeCubeIndex} onActiveIndexChange={handleArenaActiveIndexChange} renderFace={entry=><ArenaCubeFace entry={entry}/>} renderActions={entry=><ArenaCubeActions entry={entry}/>}/>:<>
       <section
         aria-label="Игровая арена"
         style={{
@@ -4631,8 +4630,6 @@ function AmateurDuelsPage({
 }): JSX.Element {
   const navigate = useNavigate();
   const currentUserId = useAuthStore((s) => s.user?.id ?? null);
-  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
-  const dailyData = useDailyStore((s) => s.data);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
@@ -4709,11 +4706,7 @@ function AmateurDuelsPage({
     enabled: historyResultMatchId !== null,
   });
   const closeHistoryResult = useCallback(() => setHistoryResultMatchId(null), []);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const guardMutation = (action: () => void): void => {
     guardAmateurMutation(amateurAccess, action);
   };
@@ -5742,13 +5735,7 @@ export function AmateurDuelPlayView({
   onRouteTransitionConsumed?: (() => void) | undefined;
   onOpenTournamentMatch?: (fixtureId: string, matchId: string) => void;
 }): JSX.Element {
-  const competitionLevel = useAuthStore((s) => s.user?.competitionLevel ?? null);
-  const dailyData = useDailyStore((s) => s.data);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const showAmateurRestriction = (): void => {
     guardAmateurMutation(amateurAccess, () => undefined);
   };
@@ -9316,13 +9303,7 @@ function RecoveryKitModal({
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
-  const dailyData = useDailyStore((state) => state.data);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const inventory = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -10059,13 +10040,7 @@ function ClassicTournamentPlayView({
   const optimisticAddShot = useClassicTournamentStore((state) => state.optimisticAddShot);
   const submitShot = useClassicTournamentStore((state) => state.submitShot);
   const applyState = useClassicTournamentStore((state) => state.applyState);
-  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
-  const dailyData = useDailyStore((state) => state.data);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
   const queryClient = useQueryClient();
   useGameplayLockRefresh(data?.gameplay_lock);
   const [now, setNow] = useState(Date.now());

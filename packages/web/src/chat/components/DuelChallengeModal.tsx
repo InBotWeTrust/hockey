@@ -1,3 +1,4 @@
+import {useAmateurAccess} from '../../amateur/useAmateurAccess.js';
 import { duelTemplateChoices } from '../../components/duel/duelTemplateChoices.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -13,12 +14,9 @@ import {
 import { ApiError } from '../../api/apiFetch.js';
 import {
   amateurAccessDetailsFromError,
-  deriveAmateurAccess,
   guardAmateurMutation,
 } from '../../amateur/amateurAccess.js';
-import { useAuthStore } from '../../auth/authStore.js';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
-import { useDailyStore } from '../../stores/dailyStore.js';
 
 interface DuelChallengeModalProps {
   opponentUserId: string;
@@ -149,13 +147,7 @@ export function DuelChallengeModal({
   const [marathonWindow, setMarathonWindow] = useState<4000 | 7000>(7000);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
-  const dailyData = useDailyStore((state) => state.data);
-  const amateurAccess = deriveAmateurAccess({
-    competitionLevel,
-    qualifyingGoals: dailyData?.lifetime_total_goals,
-    unlockGoalsRequired: dailyData?.amateur_unlock_goals_required,
-  });
+  const amateurAccess = useAmateurAccess();
 
   const templatesQuery = useQuery({
     queryKey: ['amateur-duel', 'templates'],
