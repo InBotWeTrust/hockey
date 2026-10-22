@@ -9,6 +9,14 @@ vi.mock('./olegFightApi.js', () => ({ fetchBarAccess: vi.fn() }));
 beforeEach(() => {
   vi.clearAllMocks();
 });
+it('uses the themed inline retry state when access cannot be checked', async () => {
+  vi.mocked(fetchBarAccess).mockRejectedValue(new Error('offline'));
+  render(<MemoryRouter><BarAccessGate><p>Private bar contents</p></BarAccessGate></MemoryRouter>);
+  const error = await screen.findByRole('alert');
+  expect(error).toHaveClass('section-loading');
+  expect(error).toHaveTextContent('Не удалось проверить доступ в бар.');
+  expect(screen.queryByText('Private bar contents')).not.toBeInTheDocument();
+});
 it('does not mount bar contents while access is blocked or being checked', async () => {
   vi.mocked(fetchBarAccess).mockResolvedValue({
     blockedUntil: '2026-10-12T00:00:00Z',

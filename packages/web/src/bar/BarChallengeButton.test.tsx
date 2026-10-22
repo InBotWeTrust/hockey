@@ -8,6 +8,18 @@ vi.mock('./games/api.js',()=>({gameApi:{invite:vi.fn().mockResolvedValue({id:'in
 vi.mock('../api/apiFetch.js',()=>({apiFetch:vi.fn().mockResolvedValue({roomId:'room'})}));
 beforeEach(()=>{vi.clearAllMocks();});
 function open(){render(<MemoryRouter><BarChallengeButton userId="other" name="Александр" avatarUrl="/avatar.png"/></MemoryRouter>);fireEvent.click(screen.getByText('Предложить сыграть в баре'));}
+it('reveals the required table sizes after selecting cards, without scrolling other games',()=>{
+ const targets:HTMLElement[]=[];
+ const original=HTMLElement.prototype.scrollIntoView;
+ HTMLElement.prototype.scrollIntoView=function(){targets.push(this);};
+ try {
+  open();fireEvent.click(screen.getByRole('button',{name:'Бильярд'}));expect(targets).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button',{name:'Карты'}));
+  expect(targets).toHaveLength(1);
+  expect(targets[0]).toContainElement(screen.getByRole('group',{name:'Размер стола'}));
+  expect(screen.getByRole('button',{name:'Предложить'})).toBeDisabled();
+ } finally {HTMLElement.prototype.scrollIntoView=original;}
+});
 it('keeps one bottom action disabled until a game is selected',()=>{
  open();expect(screen.getByRole('button',{name:'Предложить'})).toBeDisabled();
  fireEvent.click(screen.getByRole('button',{name:'Морской бой'}));

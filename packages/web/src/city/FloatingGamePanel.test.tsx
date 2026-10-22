@@ -6,6 +6,13 @@ import type {ArenaEntry} from '../screens/DailyScreen.js';
 afterEach(()=>localStorage.clear());
 const daily:ArenaEntry={id:'daily',kind:'daily',eyebrow:'Ежедневная игра',title:'Период доступен',subtitle:'',meta:'',ctaLabel:'На лёд',dockState:'ready',onEnter:()=>{}};
 const props={owner:'test',entries:[daily],activeIndex:0,onActiveIndexChange:vi.fn(),renderFace:(e:ArenaEntry)=><article>{e.title}</article>,renderActions:()=> <button>На лёд</button>};
+it.each(['/bar/games/match/a','/?view=amateur&match=a&play=1','/?view=classic&tournament=a'])(
+ 'does not pulse the only current game on %s',route=>{
+  const id=route.startsWith('/bar')?'bar-game-a':route.includes('classic')?'classic-a':'duel-a';
+  render(<MemoryRouter initialEntries={[route]}><FloatingGamePanel {...props} entries={[{...daily,id,kind:route.startsWith('/bar')?'bar':'duel',inProgress:true,dockState:'active'}]}/></MemoryRouter>);
+  expect(screen.getByLabelText('Незавершённых игр: 1')).toHaveClass('floating-shortcut__badge--neutral');
+  expect(screen.getByLabelText('Незавершённых игр: 1')).not.toHaveClass('floating-shortcut__badge--pulse');
+ });
 function show(override:Partial<typeof props>={}){return render(<MemoryRouter initialEntries={['/?view=training&play=1']}><div className="app-shell"><FloatingGamePanel {...props} {...override}/></div></MemoryRouter>);}
 it('shows a neutral square during gameplay and opens a complete window without the old summary',async()=>{
  show();const button=screen.getByRole('button',{name:'Открыть игры'});
