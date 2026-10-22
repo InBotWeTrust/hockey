@@ -1153,7 +1153,7 @@ describe('DailyScreen', () => {
         effectGoalFrequencyDelta: 0,
       },
     ];
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({ ...classicIdleState, inventory_available: inventoryAvailable }),
         {
@@ -1228,7 +1228,7 @@ describe('DailyScreen', () => {
   });
 
   it('locks classic inventory circles while a period is active', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...classicIdleState,
@@ -1250,7 +1250,7 @@ describe('DailyScreen', () => {
   });
 
   it('allows changing classic inventory during the break', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...classicIdleState,
@@ -1286,7 +1286,7 @@ describe('DailyScreen', () => {
       effectGoalieFrequencyDelta: 0,
       effectGoalFrequencyDelta: 0,
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...classicIdleState,
@@ -1407,7 +1407,7 @@ describe('DailyScreen', () => {
         },
       ],
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify(breakState), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -1490,7 +1490,7 @@ describe('DailyScreen', () => {
         game_completed: true,
       },
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify(closedState), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -1820,7 +1820,7 @@ describe('DailyScreen', () => {
       period_ends_at: new Date(Date.now() + 1_200_000).toISOString(),
       break_ends_at: new Date(Date.now() + 300_000).toISOString(),
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify(data), {
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>new Response(JSON.stringify(data), {
       status: 200, headers: { 'content-type': 'application/json' },
     }));
     renderWith([mode === 'classic' ? '/?view=classic&tournament=classic-1' : '/?view=daily']);
@@ -2770,7 +2770,7 @@ describe('DailyScreen', () => {
   });
 
   it('names the next available daily period on the hub', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ ...baseState, current_period: 2 }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -2786,7 +2786,7 @@ describe('DailyScreen', () => {
   });
 
   it('keeps amateur and pro sections out of the arena after 1000 lifetime goals', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify({ ...baseState, lifetime_total_goals: 1000 }), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -3019,23 +3019,19 @@ describe('DailyScreen', () => {
 
     renderWith(['/?view=arena']);
 
+    // Incoming invitations require the player's action and are prioritized first.
+    expect(await screen.findByText('Активная дуэль (Вас вызвали)')).toBeInTheDocument();
+    expect(screen.queryByText('Вас вызвали')).not.toBeInTheDocument();
+    expect(screen.getByText('До ответа')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Отклонить' })).toHaveClass('arena-duel-invite-action--decline');
+    expect(screen.getByRole('button', { name: 'Принять' })).toHaveClass('arena-duel-invite-action--accept');
+
+    const duelDots = await screen.findAllByLabelText('Выбрать Активная дуэль');
+    fireEvent.click(duelDots[1] as HTMLElement);
     expect(await screen.findByText('Активная дуэль (Ждём ответ соперника)')).toBeInTheDocument();
     expect(screen.queryByText('Ждём ответ соперника')).not.toBeInTheDocument();
     expect(screen.getByText('До автоотмены')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Ждём ответ' })).toBeInTheDocument();
-
-    const duelDots = await screen.findAllByLabelText('Выбрать Активная дуэль');
-    fireEvent.click(duelDots[1] as HTMLElement);
-
-    expect(await screen.findByText('Активная дуэль (Вас вызвали)')).toBeInTheDocument();
-    expect(screen.queryByText('Вас вызвали')).not.toBeInTheDocument();
-    expect(screen.getByText('До ответа')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Отклонить' })).toHaveClass(
-      'arena-duel-invite-action--decline',
-    );
-    expect(screen.getByRole('button', { name: 'Принять' })).toHaveClass(
-      'arena-duel-invite-action--accept',
-    );
   });
 
   it('accepts an arena duel invitation after qualifying with a stale beginner session', async () => {
@@ -3290,7 +3286,7 @@ describe('DailyScreen', () => {
   });
 
   it('keeps an active daily period on the modes hub until the user opens it', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3329,7 +3325,7 @@ describe('DailyScreen', () => {
       daily_seed: 'seed-abc',
       period_ends_at: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(JSON.stringify(activeState), {
         status: 200,
         headers: { 'content-type': 'application/json' },
@@ -3440,7 +3436,7 @@ describe('DailyScreen', () => {
   });
 
   it('returns from an active daily period to the modes hub', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3564,7 +3560,7 @@ describe('DailyScreen', () => {
   });
 
   it('keeps the third period playable instead of showing the closed-day modal', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3597,7 +3593,7 @@ describe('DailyScreen', () => {
 
   it('renders break view with countdown', async () => {
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3620,7 +3616,7 @@ describe('DailyScreen', () => {
 
   it('opens the rink during a break so the timer surface remains visible', async () => {
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3653,7 +3649,7 @@ describe('DailyScreen', () => {
 
   it('shows the shared game stats modal on the rink for an unseen finished period', async () => {
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3869,7 +3865,7 @@ describe('DailyScreen', () => {
         },
       ],
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
@@ -3971,7 +3967,7 @@ describe('DailyScreen', () => {
         },
       ],
     };
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
           ...baseState,
