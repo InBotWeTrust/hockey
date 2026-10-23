@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import type { BarGameId, BarGameLobby, BarGameSnapshot } from '@hockey/game-core';
 import { OnlineDurakLobby } from '../cards/OnlineDurakLobby.js';
 import { SegmentedTabs } from '../../components/SegmentedTabs.js';
-import { ChevronRight, Search } from 'lucide-react';
+import { ChevronRight, Search, X } from 'lucide-react';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi, type GamePickerPlayer } from './api.js';
@@ -202,21 +202,22 @@ export function NewGameLobby({ kind, meetingTab, onMeetingTabChange }: { kind: B
           const outgoing = i.senderId === userId;
           const name = outgoing ? i.receiverName : i.senderName;
           return (
-            <div className="glass online-durak-invite" key={i.id}>
+            <div className={`glass online-durak-invite${outgoing?' bar-invite--outgoing':''}`} key={i.id}>
               <UserAvatar avatarUrl={null} name={name} size={42} fontSize={16} />
               <div className="online-durak-invite__identity">
                 <div className="duel-card-opponent-name">{name}</div>
-                <div className="duel-card-meta">{gameNames[kind]} · 2 игрока</div>
+                <div className="duel-card-meta">{gameNames[kind]}</div>
                 {outgoing && <span className="duel-card-status">Ждём ответ</span>}
               </div>
               <div className="online-durak-invite__actions">
                 {outgoing ? (
                   <button
-                    className="btn btn--ghost"
+                    className="icon-btn bar-invite-cancel"
+                    aria-label="Отменить приглашение" title="Отменить приглашение"
                     disabled={busy}
                     onClick={() => void run(() => gameApi.respond(i.id, 'cancel'))}
                   >
-                    Отменить
+                    <X size={18} aria-hidden="true"/>
                   </button>
                 ) : (
                   <>

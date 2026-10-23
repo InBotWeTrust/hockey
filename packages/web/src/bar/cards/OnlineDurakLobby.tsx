@@ -8,7 +8,7 @@ import { ComputerOpponentCarousel } from './ComputerOpponentCarousel.js';
 import { DurakLaunchModal } from './DurakModals.js';
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { ChevronLeft, Info, Search } from 'lucide-react';
+import { ChevronLeft, Info, Search, X } from 'lucide-react';
 import { SegmentedTabs } from '../../components/SegmentedTabs.js';
 import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { useAuthStore } from '../../auth/authStore.js';
@@ -291,7 +291,7 @@ export function OnlineDurakLobby({ embedded = false, meetingTab, onMeetingTabCha
             {state?.invites
               .filter((i) => i.status === 'pending')
               .map((i) => (
-                <div className="glass online-durak-invite" key={i.id}>
+                <div className={`glass online-durak-invite${i.sender_id===userId?' bar-invite--outgoing':''}`} key={i.id}>
                   <UserAvatar
                     avatarUrl={null}
                     name={i.sender_id === userId ? i.receiver_name : i.sender_name}
@@ -310,11 +310,12 @@ export function OnlineDurakLobby({ embedded = false, meetingTab, onMeetingTabCha
                   <div className="online-durak-invite__actions">
                     {i.sender_id === userId ? (
                       <button
-                        className="btn btn--ghost"
+                        className="icon-btn bar-invite-cancel"
+                        aria-label="Отменить приглашение" title="Отменить приглашение"
                         disabled={busy}
                         onClick={() => void run(() => respond(i.id, 'cancel'))}
                       >
-                        Отменить
+                        <X size={18} aria-hidden="true"/>
                       </button>
                     ) : (
                       <>

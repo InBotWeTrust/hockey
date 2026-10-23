@@ -57,7 +57,7 @@ const layeredTargets=classicTargets.map(target=>({...target,box:layeredProps.fin
 const rectangle=([left,top,width,height]:Target['box']):CSSProperties=>({left:`${left}%`,top:`${top}%`,width:`${width}%`,height:`${height}%`});
 
 /** Local composition trial. Live bar contracts and the default scene remain unchanged. */
-export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,onStaffRoom,onVisitorShop,onBack,notice,onPhysicalIncident,characterEmotions={},activityCounts={},hideIdentity=false,conversationStarted=false,layered=false}:BarSceneProps&{layered?:boolean}){
+export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,onStaffRoom,onVisitorShop,onBack,notice,onPhysicalIncident,characterEmotions={},activityCounts={},onlineGame,onlineRequestKey,hideIdentity=false,conversationStarted=false,layered=false}:BarSceneProps&{layered?:boolean}){
  const places=layered?layeredPlaces:classicPlaces;
  const targets=layered?layeredTargets:classicTargets;
  const dockLayout=layered?{...layout,slots:[...layout.slots].sort((a,b)=>
@@ -96,6 +96,7 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
  const ready=(id:BarOccupantId)=>{if(owner!==id||!centered(id)){select(id);return false;}return true;};
  const act=(action:BarAction,id:BarOccupantId)=>{if(ready(id))onAction(action,id);};
  useLayoutEffect(()=>{if(owner)focus(owner,positioned.current?'smooth':'auto');positioned.current=true;setTerminalOpen(false);gesture.cancel();gestureTarget.current=null;},[owner]);
+ useEffect(()=>{if(onlineGame&&owner==='online'&&!hideIdentity){setTerminalInvitation(null);setTerminalOpen(true);}},[onlineGame,onlineRequestKey,owner,hideIdentity]);
  useEffect(()=>()=>gesture.cancel(),[gesture]);
  useEffect(()=>{
   const el=viewport.current;if(!el||typeof ResizeObserver==='undefined')return;
@@ -140,7 +141,7 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
   </div>
   <header className="bar-space__header bonus-games-catalog__header">{onBack&&<button className="icon-btn catalog-header-back" aria-label="Назад" onClick={onBack}><ArrowLeft size={16}/></button>}<h1 className="screen-title-on-arena">Бар «4-й период»</h1></header>
   {notice&&<div className="bar-space__notice">{notice}</div>}
-  {terminalOpen&&<section className="bar-space__actions bar-space__actions--terminal" aria-label="Играть онлайн"><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>{terminalDismissed.current=true;setTerminalOpen(false);}}><X size={19}/></button></div><BarGamesLobby key={terminalInvitation?.id??'manual'} initial={terminalInvitation?.kind??'cards'} embedded/></section>}
+  {terminalOpen&&<section className="bar-space__actions bar-space__actions--terminal" aria-label="Играть онлайн"><div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>{terminalDismissed.current=true;setTerminalOpen(false);}}><X size={19}/></button></div><BarGamesLobby key={terminalInvitation?.id??'manual'} initial={terminalInvitation?.kind??onlineGame??'cards'} embedded/></section>}
   {!hideIdentity&&<div className={`bar-bottom-chrome${terminalOpen?' bar-bottom-chrome--terminal-open':''}`}>
    <section className="bar-space__actions" aria-live="polite" hidden={terminalOpen}>{profile&&owner&&<BarIdentityPanel key={owner} profile={profile} characterId={owner} actions={barActionsFor(owner)} conversationStarted={conversationStarted}
     {...(onTalk&&barCharacters.includes(owner as BarCharacter)?{onTalk:()=>onTalk(owner as BarCharacter)}:{})}
