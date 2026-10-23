@@ -15884,9 +15884,9 @@ button.daily-calendar__day:active {
 /* Settings sections share the same card edge and vertical rhythm. */
 .profile-settings-screen > .section-label { margin-bottom:8px; padding-inline:14px; }
 .profile-settings-screen .profile-theme-section > .section-label { padding-inline:14px; }
-.profile-settings-screen .profile-community-section { margin:0 14px 20px; gap:10px; }
+.profile-settings-screen .profile-community-section { margin:0 14px 20px; gap:8px; }
 .profile-settings-screen .profile-community-section > .section-label { padding-inline:0; margin:0; }
-.profile-settings-screen .profile-community-icon-grid { display:flex; justify-content:flex-start; gap:16px; padding:0; border-top:0; }
+:root .profile-settings-screen .profile-community-icon-grid { display:flex; justify-content:flex-start; gap:16px; padding:0; border-top:0; }
 .profile-settings-screen .profile-community-icon-card { flex:0 0 50px; }
 
 /* Settings must style the bio field even before a social page has loaded. */
