@@ -87,3 +87,8 @@
   backdrop-filter:blur(5px);
   -webkit-backdrop-filter:blur(5px);
 }
+
+/* Keep every location glyph at the same theme foreground and brightness. */
+.district-dock .district-location-icon,
+.district-dock button:is([aria-pressed=true],:hover,:focus-visible) .district-location-icon {color:var(--liquid-ink);filter:none;}
+.district-location-icon svg {opacity:1;}
