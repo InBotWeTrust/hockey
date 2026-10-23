@@ -5,6 +5,11 @@ const optionalNonEmptyString = z.preprocess(
   z.string().min(1).optional(),
 );
 
+const optionalProxyUrl=z.preprocess(
+ (value)=>value===''?undefined:value,
+ z.string().url().refine(value=>{try{return ['http:','https:'].includes(new URL(value).protocol);}catch{return false;}},'Proxy must use HTTP or HTTPS').optional(),
+);
+
 const optionalBoolean = z.preprocess((value) => {
   if (value === '' || value === undefined) return undefined;
   if (value === true || value === 'true' || value === '1') return true;
@@ -33,6 +38,8 @@ const schema = z
     LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace']).default('info'),
     OPENAI_API_KEY: optionalNonEmptyString,
     WEATHERAPI_KEY: optionalNonEmptyString,
+    OPENAI_PROXY_URL: optionalProxyUrl,
+    WEATHERAPI_PROXY_URL: optionalProxyUrl,
     CLOSEROUTER_API_KEY: optionalNonEmptyString,
     BAR_CLOSEROUTER_PROVIDER: z.string().regex(/^(auto|provider-\d+)$/).default('auto'),
     BAR_CLOSEROUTER_MODEL: z.string().min(1).default('openai/gpt-5.6-terra'),
