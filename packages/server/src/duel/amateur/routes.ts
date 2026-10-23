@@ -173,11 +173,14 @@ async function duelFormatLocks(
 }
 
 async function lockDuelPlayers(client: PoolClient, userIds: string[]): Promise<void> {
+  // Acceptance and monthly settlement take this gate before player locks.
+  // A shot/fight must not hold a player while waiting for the same gate.
+  await lockRatingLifecycle(client);
   for (const userId of [...new Set(userIds)].sort()) await lockUserGameplay(client, userId);
 }
 
 async function lockMatchGameplay(client: PoolClient, matchId: string): Promise<void> {
-  // Read immutable participants before acquiring match rows, keeping gameplay locks first.
+  // Read immutable participants before taking the rating gate, then gameplay and match locks.
   const { rows } = await client.query<{ challenger_user_id: string; opponent_user_id: string }>(
     "select challenger_user_id, opponent_user_id from amateur_duel_match where id = $1 and source <> 'tournament'",
     [matchId],
@@ -6366,7 +6369,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     const body = matchmakingJoinSchema.safeParse(req.body);
     if (!body.success) throw new AppError('bad_request', 'invalid matchmaking payload', 400);
     const result = await withTransaction(app, async (client) => {
-      await lockUserGameplay(client, req.user.id);
+      await lockDuelPlayers(client, [req.user.id]);
       await assertFullAmateurAccess(client, req.user.id);
       let now = new Date();
       const lock = await duelLockDto(client, req.user.id, now);

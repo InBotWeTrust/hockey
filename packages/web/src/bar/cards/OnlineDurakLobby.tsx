@@ -299,13 +299,13 @@ export function OnlineDurakLobby({ embedded = false, meetingTab, onMeetingTabCha
                     fontSize={16}
                   />
                   <div className="online-durak-invite__identity">
-                    <div className="duel-card-opponent-name">
+                    <div className="duel-card-heading"><div className="duel-card-opponent-name">
                       {i.sender_id === userId ? i.receiver_name : i.sender_name}
-                    </div>
+                    </div>{i.sender_id === userId && <span className="duel-card-status">Ждём ответ</span>}</div>
                     <div className="duel-card-meta">
                       Подкидной дурак · 36 карт{i.capacity ? ` · ${i.capacity} игроков` : ''}
                     </div>
-                    {i.sender_id === userId && <span className="duel-card-status">Ждём ответ</span>}
+
                   </div>
                   <div className="online-durak-invite__actions">
                     {i.sender_id === userId ? (

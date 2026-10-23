@@ -1646,3 +1646,7 @@
 .bar-invite--outgoing .online-durak-invite__actions {grid-column:3;grid-row:1;display:flex;margin:0;align-self:start;}
 .bar-invite--outgoing .bar-invite-cancel.icon-btn {width:36px;height:36px;min-width:36px;padding:0;}
 .online-durak-invite .duel-card-status {display:inline-flex;margin-top:8px;}
+
+.online-durak-invite .duel-card-heading {min-width:0;align-items:center;}
+.online-durak-invite .duel-card-heading .duel-card-opponent-name {overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.online-durak-invite .duel-card-heading .duel-card-status {margin-top:0;}
