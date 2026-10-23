@@ -155,6 +155,11 @@ jobs:
           OBJECT_STORAGE_MAX_UPLOAD_BYTES: ${{ vars.OBJECT_STORAGE_MAX_UPLOAD_BYTES || '26214400' }}
           # Shared provider quota with dev, explicitly approved for production.
           PRODUCTION_CLOSEROUTER_API_KEY: ${{ secrets.STAGING_CLOSEROUTER_API_KEY }}
+          # Shared service credentials/proxies explicitly approved for production.
+          PRODUCTION_OPENAI_API_KEY: ${{ secrets.STAGING_OPENAI_API_KEY }}
+          PRODUCTION_WEATHERAPI_KEY: ${{ secrets.STAGING_WEATHERAPI_KEY }}
+          PRODUCTION_OPENAI_PROXY_URL: ${{ secrets.STAGING_OPENAI_PROXY_URL }}
+          PRODUCTION_WEATHERAPI_PROXY_URL: ${{ secrets.STAGING_WEATHERAPI_PROXY_URL }}
           PRODUCTION_YOOKASSA_SHOP_ID: ${{ secrets.PRODUCTION_YOOKASSA_SHOP_ID }}
           PRODUCTION_YOOKASSA_SECRET_KEY: ${{ secrets.PRODUCTION_YOOKASSA_SECRET_KEY }}
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON: ${{ vars.ANDROID_MANIFEST_PUBLIC_KEYS_JSON }}
@@ -164,6 +169,17 @@ jobs:
           PRODUCTION_CLOSEROUTER_API_KEY_B64="$(printf '%s' "$PRODUCTION_CLOSEROUTER_API_KEY" | base64 | tr -d '\r\n')"
           [ -z "$PRODUCTION_CLOSEROUTER_API_KEY_B64" ] || echo "::add-mask::$PRODUCTION_CLOSEROUTER_API_KEY_B64"
           unset PRODUCTION_CLOSEROUTER_API_KEY
+          for service_name in PRODUCTION_OPENAI_API_KEY PRODUCTION_WEATHERAPI_KEY PRODUCTION_OPENAI_PROXY_URL PRODUCTION_WEATHERAPI_PROXY_URL; do
+            if [ -z "${!service_name:-}" ]; then
+              echo "$service_name shared service secret is required for this release"
+              exit 1
+            fi
+            service_encoded="$(printf '%s' "${!service_name}" | base64 | tr -d '\r\n')"
+            echo "::add-mask::$service_encoded"
+            printf -v "${service_name}_B64" '%s' "$service_encoded"
+            unset "$service_name"
+          done
+          unset service_encoded service_name
           FCM_PRIVATE_KEY_BASE64="$(printf '%s' "$FCM_PRIVATE_KEY" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SHOP_ID_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SHOP_ID" | base64 | tr -d '\r\n')"
           PRODUCTION_YOOKASSA_SECRET_KEY_B64="$(printf '%s' "$PRODUCTION_YOOKASSA_SECRET_KEY" | base64 | tr -d '\r\n')"
@@ -171,6 +187,10 @@ jobs:
           ANDROID_MANIFEST_PUBLIC_KEYS_BASE64="$(printf '%s' "$ANDROID_MANIFEST_PUBLIC_KEYS_JSON" | base64 | tr -d '\r\n')"
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             PRODUCTION_CLOSEROUTER_API_KEY_B64="$PRODUCTION_CLOSEROUTER_API_KEY_B64" \
+            PRODUCTION_OPENAI_API_KEY_B64="$PRODUCTION_OPENAI_API_KEY_B64" \
+            PRODUCTION_WEATHERAPI_KEY_B64="$PRODUCTION_WEATHERAPI_KEY_B64" \
+            PRODUCTION_OPENAI_PROXY_URL_B64="$PRODUCTION_OPENAI_PROXY_URL_B64" \
+            PRODUCTION_WEATHERAPI_PROXY_URL_B64="$PRODUCTION_WEATHERAPI_PROXY_URL_B64" \
             IMAGE_TAG="$IMAGE_TAG" \
             GHCR_USER="$GHCR_USER" \
             GHCR_TOKEN="$GHCR_TOKEN" \
@@ -206,6 +226,13 @@ jobs:
           PRODUCTION_CLOSEROUTER_API_KEY="$(printf '%s' "${PRODUCTION_CLOSEROUTER_API_KEY_B64:-}" | base64 --decode)"
           unset PRODUCTION_CLOSEROUTER_API_KEY_B64
           export PRODUCTION_CLOSEROUTER_API_KEY
+          for service_name in PRODUCTION_OPENAI_API_KEY PRODUCTION_WEATHERAPI_KEY PRODUCTION_OPENAI_PROXY_URL PRODUCTION_WEATHERAPI_PROXY_URL; do
+            service_encoded_name="${service_name}_B64"
+            printf -v "$service_name" '%s' "$(printf '%s' "${!service_encoded_name}" | base64 --decode)"
+            export "$service_name"
+            unset "$service_encoded_name"
+          done
+          unset service_name service_encoded_name
           FCM_PRIVATE_KEY="$(printf '%s' "${FCM_PRIVATE_KEY_BASE64:-}" | base64 --decode)"
           ANDROID_MANIFEST_PUBLIC_KEYS_JSON="$(printf '%s' "${ANDROID_MANIFEST_PUBLIC_KEYS_BASE64:-}" | base64 --decode)"
           if [ "$GRANT_EXISTING_INVENTORY" = "true" ] && [ "$CORRECT_EXISTING_INVENTORY" = "true" ]; then
