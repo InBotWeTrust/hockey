@@ -1,3 +1,4 @@
+import {rememberChatScreen} from './chatResume.js';
 import {chatBackdropStyle} from '../components/chatBackdrop.js';
 import { lazy, Suspense, useRef, useState, useEffect, type ReactNode } from 'react';
 import { Routes, Route, Navigate, useLocation, useNavigate, type Location } from 'react-router-dom';
@@ -50,6 +51,10 @@ export function ChatOverlay({
     ['chat', 'feed'].includes(new URLSearchParams(location.search).get('view') ?? '');
   const isChat = /^\/chat(?:\/|$)/.test(location.pathname) && !booth;
   const open = enabled && isChat;
+  useEffect(() => {
+    if (open && !new URLSearchParams(location.search).has('new'))
+      rememberChatScreen(owner, location.pathname);
+  }, [open, owner, location.pathname, location.search]);
   const backgroundIndex = useRef<number | null>(null);
   if (!isChat) {
     background.current = location;
