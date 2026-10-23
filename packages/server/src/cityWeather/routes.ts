@@ -1,10 +1,14 @@
 import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
+import {createServiceProxyFetch} from '../network/serviceProxy.js';
 import { AppError } from '../plugins/errors.js';
 import { CityWeatherService, citySchema, type SelectedCity } from './service.js';
 
-export const cityWeatherRoutes: FastifyPluginAsync<{ apiKey?: string }> = async (app, options) => {
+export const cityWeatherRoutes: FastifyPluginAsync<{ apiKey?: string;proxyUrl?:string }> = async (app, options) => {
+  const transport=createServiceProxyFetch('https://api.weatherapi.com',options.proxyUrl);
+  app.addHook('onClose',async()=>{await transport.close();});
   const service = new CityWeatherService({
+    fetcher:transport.fetcher,
     cache: app.redis,
     ...(options.apiKey ? { key: options.apiKey } : {}),
   });
