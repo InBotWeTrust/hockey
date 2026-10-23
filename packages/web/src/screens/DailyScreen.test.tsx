@@ -6325,13 +6325,11 @@ describe('DailyScreen', () => {
     const currentRegion = await screen.findByRole('region', { name: 'Текущие дуэли' });
     const currentStatus = await within(currentRegion).findByLabelText('Статус: Ваш ход');
     expect(currentStatus).toHaveClass('duel-card-status');
-    expect(currentStatus.parentElement).toHaveClass('duel-card-details');
+    expect(currentStatus.parentElement).toHaveClass('duel-card-heading');
     expect(currentStatus.querySelector('[aria-hidden="true"]')).not.toBeInTheDocument();
 
     const incomingRegion = await screen.findByRole('region', { name: 'Входящие приглашения' });
-    const incomingStatus = within(incomingRegion).getByLabelText('Статус: Вас вызвали');
-    expect(incomingStatus).toHaveClass('duel-card-status');
-    expect(incomingStatus.parentElement).toHaveClass('duel-card-details');
+    expect(within(incomingRegion).queryByLabelText('Статус: Вас вызвали')).not.toBeInTheDocument();
     const venue = within(incomingRegion).getByLabelText('Площадка: Нейтральное поле');
     expect(venue).toHaveClass('duel-card-venue');
     expect(venue).not.toHaveClass('venue-badge');
@@ -7165,9 +7163,9 @@ describe('DailyScreen', () => {
       whiteSpace: 'nowrap',
     });
     expect(status).toHaveClass('duel-card-status');
-    expect(status.parentElement).toHaveClass('duel-card-details');
-    expect(status.parentElement).not.toContainElement(opponentName);
-    expect(status.previousElementSibling).toHaveClass('duel-card-meta');
+    expect(status.parentElement).toHaveClass('duel-card-heading');
+    expect(status.parentElement).toContainElement(opponentName);
+    expect(status.previousElementSibling).toBe(opponentName);
     expect(designSystemCss).toMatch(
       /\.duel-card-details\s*\{[^}]*display:\s*grid;[^}]*justify-items:\s*start;/s,
     );

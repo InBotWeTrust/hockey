@@ -205,9 +205,9 @@ export function NewGameLobby({ kind, meetingTab, onMeetingTabChange }: { kind: B
             <div className={`glass online-durak-invite${outgoing?' bar-invite--outgoing':''}`} key={i.id}>
               <UserAvatar avatarUrl={null} name={name} size={42} fontSize={16} />
               <div className="online-durak-invite__identity">
-                <div className="duel-card-opponent-name">{name}</div>
+                <div className="duel-card-heading"><div className="duel-card-opponent-name">{name}</div>{outgoing && <span className="duel-card-status">Ждём ответ</span>}</div>
                 <div className="duel-card-meta">{gameNames[kind]}</div>
-                {outgoing && <span className="duel-card-status">Ждём ответ</span>}
+
               </div>
               <div className="online-durak-invite__actions">
                 {outgoing ? (

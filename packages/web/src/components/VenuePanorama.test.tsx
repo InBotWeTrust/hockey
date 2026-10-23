@@ -126,3 +126,18 @@ it('publishes incoming duel invitations on the stadium circle and clears resolve
  await waitFor(()=>expect(screen.getByRole('tab',{name:'Дуэли'}).querySelector('.section-scene__attention')).toBeNull());
  client.clear();
 });
+
+it('keeps ready duels and tournament games on their respective stadium circles',async()=>{
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ client.setQueryData(['amateur-duel','events'],{events:[
+  {id:'duel',status:'ready_check',source:'challenge',me:{state:'ready'},opponent:{state:'accepted'}},
+  {id:'regular',status:'active',source:'tournament',me:{state:'break_active'},opponent:{state:'accepted'}},
+ ]});
+ client.setQueryData(['tournaments','classic','active'],{games:[{kind:'classic',state:'available'}]});
+ const view=render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/?view=amateur&section=duels']}><VenuePanorama level="amateur" owner={null}><span>Дуэли</span></VenuePanorama></MemoryRouter></QueryClientProvider>);
+ await waitFor(()=>expect(screen.getByRole('tab',{name:'Дуэли'}).querySelector('.section-scene__attention')).toHaveTextContent('1'));
+ expect(screen.getByRole('tab',{name:'Турниры'}).querySelector('.section-scene__attention')).toHaveTextContent('2');
+ await act(async()=>{client.setQueryData(['amateur-duel','events'],{events:[]});client.setQueryData(['tournaments','classic','active'],{games:[]});});
+ await waitFor(()=>expect(screen.getByRole('tab',{name:'Турниры'}).querySelector('.section-scene__attention')).toBeNull());
+ view.unmount();client.clear();
+});
