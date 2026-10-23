@@ -893,7 +893,7 @@ export function DailyScreen(): JSX.Element {
           <AmateurDuelsPage
             onBack={openAmateurHub}
             onOpenMatch={(matchId) => {
-              setActiveAmateurMatchId(matchId);
+              // Let route synchronization open the match together with its direct-play flag.
               navigate(`/?view=amateur&match=${encodeURIComponent(matchId)}&play=1&from=sections`, {
                 replace: true,
               });

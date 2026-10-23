@@ -234,7 +234,13 @@ export function DuelChallengeModal({
         alignItems: 'flex-start',
         paddingTop: 'calc(48px + var(--app-safe-top))',
       }}
-      cardStyle={{ width: 'min(420px, calc(100vw - 28px))' }}
+      cardStyle={{
+        width: 'min(420px, calc(100vw - 28px))',
+        maxHeight: '100%',
+        boxSizing: 'border-box',
+        overflowY: 'auto',
+        overscrollBehaviorY: 'contain',
+      }}
       headerAction={
         <button
           type="button"

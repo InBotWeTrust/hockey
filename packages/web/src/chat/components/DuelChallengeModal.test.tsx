@@ -79,6 +79,17 @@ describe('DuelChallengeModal Amateur preview access', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it('keeps the challenge action reachable by scrolling within the viewport', () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ templates: [] }), {
+      headers: { 'content-type': 'application/json' },
+    }));
+    renderModal();
+    const dialog = screen.getByRole('dialog', { name: 'Выбор типа дуэли' });
+    expect(dialog.style.maxHeight).toBe('100%');
+    expect(dialog.style.overflowY).toBe('auto');
+    expect(dialog.style.boxSizing).toBe('border-box');
+  });
+
   it.each([4000, 7000])('sends the selected %i-ms Marathon profile challenge', async (window) => {
     useAuthStore.getState().updateUser({ competitionLevel: 'amateur' });
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {

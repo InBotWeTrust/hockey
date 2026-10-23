@@ -6109,6 +6109,51 @@ describe('DailyScreen', () => {
     expect(within(secondPeriodUsage).getByText('30 секунд энергии')).toBeInTheDocument();
   });
 
+  it('opens a current ready duel on the rink without mounting the legacy room', async () => {
+    const match: AmateurDuelMatchState = {
+      ...settledDuelMatch, status: 'ready_check', outcome: null,
+      server_now: new Date().toISOString(),
+      starts_at: new Date().toISOString(),
+      ends_at: new Date(Date.now() + 3_600_000).toISOString(),
+      settled_at: null, settled_reason: null, winner_user_id: null,
+      ready_expires_at: new Date(Date.now() + 600_000).toISOString(),
+      me: { ...settledDuelMatch.me, state: 'ready', current_period: 0 },
+      opponent: { ...settledDuelMatch.opponent, state: 'loadout_pending', current_period: 0 },
+    };
+    useAmateurDuelStore.setState({ match });
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}});
+    client.setQueryData(['amateur-duel', 'matches'], {matches: [match]});
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = String(input);
+      const data = url.includes('/matches/match-1') ? {match}
+        : url.includes('/matches') ? {matches: [match]}
+          : url.includes('/templates') ? {templates: []}
+            : url.includes('/rating') ? {rating: []}
+              : url.includes('/inventory/me') ? {balances: {}, equipped: {}, items: {stick: [], skates: [], nutrition: []}}
+                : url.includes('/training/state') ? trainingIdleState
+                  : {...baseState, lifetime_total_goals: 1000};
+      return new Response(JSON.stringify(data), {headers: {'content-type': 'application/json'}});
+    });
+    renderWith(['/?view=amateur&section=duels'], undefined, client);
+    const current = await screen.findByRole('region', {name: 'Текущие дуэли'});
+    const mountedRooms: string[] = [];
+    const observer = new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node.textContent?.includes('Комната дуэли')) mountedRooms.push(node.textContent);
+      }
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+    try {
+      fireEvent.click(within(current).getByText(match.opponent.display_name));
+      await screen.findByLabelText('Игровое табло');
+      expect(screen.getByLabelText('location')).toHaveTextContent('match=match-1&play=1');
+      expect(mountedRooms).toEqual([]);
+      expect(screen.queryByText('Комната дуэли')).not.toBeInTheDocument();
+    } finally {
+      observer.disconnect();
+    }
+  });
+
   it('orders duel game sections and hides empty invitation groups', async () => {
     const currentMatch: AmateurDuelMatchState = {
       ...settledDuelMatch,
