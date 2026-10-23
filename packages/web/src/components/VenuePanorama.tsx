@@ -96,7 +96,8 @@ export function VenuePanorama({
 }
 
 function StadiumDuelAttention({enabled}:{enabled:boolean}) {
-  const {duelActionCount}=useNavigationActivity(enabled);
-  useVenueAttention('duels',duelActionCount);
+  const {duelActivityCount,tournamentActivityCount}=useNavigationActivity(enabled);
+  useVenueAttention('duels',duelActivityCount);
+  useVenueAttention('tournaments',tournamentActivityCount);
   return null;
 }

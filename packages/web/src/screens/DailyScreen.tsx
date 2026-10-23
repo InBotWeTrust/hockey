@@ -5526,7 +5526,7 @@ function AmateurDuelsPage({
   );
 }
 
-function DuelListCard({
+export function DuelListCard({
   match,
   onOpen,
   onAcceptInvite,
@@ -5628,6 +5628,7 @@ function DuelListCard({
         >
           {match.opponent.display_name}
         </div>
+        {!isDuelInviteForMe(match) && <DuelStatusBadge match={match} />}
       </div>
       <div className="duel-card-details" style={{ gridColumn: '2 / 3', gridRow: '2' }}>
         <div className="duel-card-meta">
@@ -5644,7 +5645,6 @@ function DuelListCard({
             {venueRoleLabel(match.venue_role)}
           </span>
         </div>
-        <DuelStatusBadge match={match} />
       </div>
       {onAcceptInvite && onDeclineInvite && (
         <div
