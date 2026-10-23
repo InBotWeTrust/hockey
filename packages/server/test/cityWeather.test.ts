@@ -83,7 +83,7 @@ it('returns stale weather on outage, but never indefinitely', async () => {
     now: () => now,
   });
   await service.weather(city);
-  now += 31 * 60000;
+  now += 61 * 60000;
   expect((await service.weather(city)).status).toBe('stale');
   now += 25 * 3600000;
   expect((await service.weather(city)).weather).toBeNull();
@@ -98,4 +98,37 @@ it('does not call provider without key and rejects malformed location metadata',
   expect(fetcher).not.toHaveBeenCalled();
   const service = new CityWeatherService({ key: 'test-key', cache: cache(), fetcher });
   await expect(service.resolveCity('123')).rejects.toThrow();
+});
+
+it('keeps the shared city weather fresh for one hour and refreshes exactly at expiry', async () => {
+  let now = 1792746000000;
+  const fetcher = vi.fn(
+    async () =>
+      new Response(
+        JSON.stringify({
+          current: {
+            last_updated_epoch: now / 1000,
+            temp_c: 7,
+            wind_kph: 10,
+            condition: { code: 1000, text: 'Clear' },
+          },
+        }),
+      ),
+  );
+  const service = new CityWeatherService({
+    key: 'test-key',
+    cache: cache(),
+    fetcher,
+    now: () => now,
+  });
+  await service.weather(city);
+  now += 31 * 60000;
+  expect((await service.weather(city)).status).toBe('fresh');
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  now += 29 * 60000 - 1;
+  await service.weather(city);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  now += 1;
+  await service.weather(city);
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

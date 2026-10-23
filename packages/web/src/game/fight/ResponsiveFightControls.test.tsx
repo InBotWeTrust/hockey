@@ -77,3 +77,57 @@ it('disabling controls clears held buttons and pending tap release before the ne
   view.rerender(<ResponsiveFightControls disabled={false} reset={1} inRange onInput={onInput} onAttack={onAttack} />);
   expect(screen.getByRole('button', { name: 'Блок' })).toHaveAttribute('aria-pressed', 'false');
 });
+
+it('combines physical keyboard crouch, block and punch across keyboard layouts',()=>{
+ const {onInput,onAttack}=mount();
+ fireEvent.keyDown(window,{code:'ArrowDown',key:'ArrowDown'});
+ fireEvent.keyDown(window,{code:'KeyZ',key:'я'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:0,crouch:true,guard:true});
+ fireEvent.keyDown(window,{code:'KeyX',key:'ч'});
+ fireEvent.keyDown(window,{code:'KeyX',key:'ч',repeat:true});
+ expect(onAttack).toHaveBeenCalledTimes(1);
+ fireEvent.keyUp(window,{code:'KeyZ'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:0,crouch:true,guard:false});
+ fireEvent.keyUp(window,{code:'ArrowDown'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:0,crouch:false,guard:false});
+});
+
+it('keeps mouse and keyboard holds independent and clears both on blur',()=>{
+ const {onInput}=mount();
+ fireEvent.keyDown(window,{code:'ArrowRight'});
+ fireEvent.pointerDown(screen.getByRole('button',{name:'Блок'}),{pointerId:12});
+ fireEvent.keyDown(window,{code:'KeyZ'});
+ fireEvent.keyUp(window,{code:'KeyZ'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:1,crouch:false,guard:true});
+ fireEvent.blur(window);
+ expect(onInput).toHaveBeenLastCalledWith({direction:0,crouch:false,guard:false});
+});
+
+it('ignores shortcuts while disabled, typing, or using browser modifiers',()=>{
+ const onInput=vi.fn(),onAttack=vi.fn();
+ const view=render(<ResponsiveFightControls disabled reset={0} inRange onInput={onInput} onAttack={onAttack}/>);
+ fireEvent.keyDown(window,{code:'KeyX'});
+ expect(onAttack).not.toHaveBeenCalled();
+ view.rerender(<><input aria-label="Chat"/><ResponsiveFightControls disabled={false} reset={0} inRange onInput={onInput} onAttack={onAttack}/></>);
+ fireEvent.keyDown(screen.getByRole('textbox'),{code:'KeyX'});
+ fireEvent.keyDown(window,{code:'KeyX',ctrlKey:true});
+ expect(onAttack).not.toHaveBeenCalled();
+ view.unmount();fireEvent.keyDown(window,{code:'KeyX'});
+ expect(onAttack).not.toHaveBeenCalled();
+});
+
+it('releases keyboard controls on hiding and cancels opposite directions',()=>{
+ const {onInput,onAttack}=mount();
+ fireEvent.keyDown(window,{code:'ArrowLeft'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:-1,crouch:false,guard:false});
+ fireEvent.keyDown(window,{code:'ArrowRight'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:0,crouch:false,guard:false});
+ fireEvent.keyUp(window,{code:'ArrowRight'});
+ expect(onInput).toHaveBeenLastCalledWith({direction:-1,crouch:false,guard:false});
+ const hidden=vi.spyOn(document,'hidden','get').mockReturnValue(true);
+ fireEvent(document,new Event('visibilitychange'));
+ expect(onInput).toHaveBeenLastCalledWith({direction:0,crouch:false,guard:false});
+ hidden.mockRestore();
+ fireEvent.keyDown(window,{code:'KeyX'});fireEvent.keyUp(window,{code:'KeyX'});fireEvent.keyDown(window,{code:'KeyX'});
+ expect(onAttack).toHaveBeenCalledTimes(2);
+});

@@ -267,7 +267,7 @@ export function ChatListScreen({embedded=false}:{embedded?:boolean}): JSX.Elemen
           </div>
           <button
             type="button"
-            className="icon-btn icon-btn--dark"
+            className="icon-btn icon-btn--dark chat-new-dialog-button"
             aria-label={isAdmin ? 'Новый групповой чат' : 'Новый диалог'}
             onClick={openPicker}
             style={{

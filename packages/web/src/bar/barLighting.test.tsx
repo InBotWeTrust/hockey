@@ -13,7 +13,7 @@ it('decodes only the new map panorama before switching the lighting phase',async
  });
  const hook=renderHook(()=>useBarLighting('map'));
  await act(async()=>{await vi.advanceTimersByTimeAsync(1000);});
- expect(paths).toEqual(['/bar/map-v38/sunset-v1.webp']);
+ expect(paths).toEqual(['/bar/map-v41/sunset-v1.webp']);
  expect(hook.result.current.phase).toBe('day');
  await act(async()=>{complete();});
  expect(hook.result.current).toEqual({phase:'sunset',previous:'day'});

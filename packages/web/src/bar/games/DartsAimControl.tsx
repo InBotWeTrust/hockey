@@ -11,6 +11,20 @@ export function DartsAimControl({
   const current = useRef({ x: 0, y: 0 });
   const [holding, setHolding] = useState(false);
   const [marker, setMarker] = useState<{ x: number; y: number } | null>(null);
+  const cancelAim = () => {
+    drag.current = null;
+    setHolding(false);
+    setMarker(null);
+  };
+  useEffect(() => {
+    const hidden = () => { if (document.hidden) cancelAim(); };
+    window.addEventListener('blur', cancelAim);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      window.removeEventListener('blur', cancelAim);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, []);
   const update = () => {
     const d = drag.current;
     if (!d) return;
@@ -146,11 +160,8 @@ export function DartsAimControl({
           setMarker(null);
           if (!disabled) throwAt(point);
         }}
-        onPointerCancel={() => {
-          drag.current = null;
-          setHolding(false);
-          setMarker(null);
-        }}
+        onPointerCancel={cancelAim}
+        onLostPointerCapture={cancelAim}
       />
     </>
   );

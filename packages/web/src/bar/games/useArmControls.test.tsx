@@ -76,3 +76,34 @@ it('does not move the first finger to a second region and caps rapid input at te
   act(() => vi.advanceTimersByTime(100));
   expect(send).toHaveBeenLastCalledWith(expect.objectContaining({ supportHeld: false }));
 });
+
+it('holds support with physical Z while the mouse controls pressure and wrist',()=>{
+ vi.useFakeTimers();const send=vi.fn();render(<Harness send={send}/>);
+ fireEvent.keyDown(window,{code:'KeyZ',key:'я'});
+ expect(send).toHaveBeenLastCalledWith(expect.objectContaining({supportHeld:true,pressing:false}));
+ pointer('pointerDown','pressure',2);pointer('pointerMove','pressure',2,120);
+ act(()=>vi.advanceTimersByTime(100));
+ expect(send).toHaveBeenLastCalledWith(expect.objectContaining({supportHeld:true,pressing:true,wrist:'inside'}));
+ fireEvent.keyUp(window,{code:'KeyZ'});act(()=>vi.advanceTimersByTime(100));
+ expect(send).toHaveBeenLastCalledWith(expect.objectContaining({supportHeld:false,pressing:true}));
+});
+
+it('keeps pointer support after Z release and clears keyboard support when disabled',()=>{
+ vi.useFakeTimers();const send=vi.fn();const view=render(<Harness send={send}/>);
+ pointer('pointerDown','support',1);fireEvent.keyDown(window,{code:'KeyZ'});
+ fireEvent.keyUp(window,{code:'KeyZ'});act(()=>vi.advanceTimersByTime(100));
+ expect(send).toHaveBeenLastCalledWith(expect.objectContaining({supportHeld:true}));
+ pointer('pointerUp','support',1);fireEvent.keyDown(window,{code:'KeyZ'});
+ view.rerender(<Harness send={send} disabled/>);act(()=>vi.advanceTimersByTime(100));
+ expect(send).toHaveBeenLastCalledWith(expect.objectContaining({supportHeld:false,pressing:false}));
+ send.mockClear();fireEvent.keyDown(window,{code:'KeyZ'});act(()=>vi.advanceTimersByTime(300));
+ expect(send).not.toHaveBeenCalled();
+});
+
+it('does not capture Z when typing and releases keyboard support on blur',()=>{
+ vi.useFakeTimers();const send=vi.fn();render(<><input aria-label="Chat"/><Harness send={send}/></>);
+ fireEvent.keyDown(screen.getByRole('textbox'),{code:'KeyZ'});
+ fireEvent.keyDown(window,{code:'KeyZ',ctrlKey:true});expect(send).not.toHaveBeenCalled();
+ fireEvent.keyDown(window,{code:'KeyZ'});fireEvent.blur(window);act(()=>vi.advanceTimersByTime(100));
+ expect(send).toHaveBeenLastCalledWith(expect.objectContaining({supportHeld:false,pressing:false}));
+});
