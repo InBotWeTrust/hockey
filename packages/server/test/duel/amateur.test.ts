@@ -5774,6 +5774,72 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     }
   });
 
+  it.each(['shot', 'matchmaking'] as const)('waits for the rating lifecycle before taking %s gameplay locks', async action => {
+    const templateId = await createTemplate();
+    let matchId: string | undefined;
+    if (action === 'shot') {
+      matchId = (await challenge(templateId)).json().match.id;
+      expect((await acceptReadyAndStart(matchId!)).statusCode).toBe(200);
+    } else {
+      expect((await app.inject({ method: 'POST', url: '/duel/amateur/matchmaking/join', headers: auth(tokenB), payload: { template_id: templateId } })).statusCode).toBe(200);
+    }
+    const blocker = await pool.connect();
+    let pending: ReturnType<typeof app.inject> | undefined;
+    try {
+      await blocker.query('begin');
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+      await blocker.query('select pg_advisory_xact_lock(hashtextextended($1, 0))', [
+        'monthly_duel_rating:lifecycle',
+      ]);
+      pending = app.inject({
+        method: 'POST', url: action === 'shot' ? `/duel/amateur/matches/${matchId}/shot` : '/duel/amateur/matchmaking/join', headers: auth(tokenA),
+        payload: action === 'shot' ? { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' } : { template_id: templateId },
+      });
+      await waitForBlockedWriter(pool, pid, /pg_advisory_xact_lock/i);
+      // Acceptance already holds the rating gate. Neither player may be held by
+      // a request waiting for that gate, or acceptance and the request deadlock.
+      for (const userId of [userA, userB]) {
+        const probe = await blocker.query<{ acquired: boolean }>(
+          "select pg_try_advisory_xact_lock(hashtext('gameplay:' || $1)) as acquired", [userId],
+        );
+        expect(probe.rows[0]!.acquired).toBe(true);
+      }
+      await blocker.query('commit');
+      expect((await pending).statusCode).toBe(200);
+    } finally {
+      await blocker.query('rollback');
+      blocker.release();
+      await pending;
+    }
+  });
+
+  it('handles both players shooting while another invitation is accepted and the match is polled', async () => {
+    const templateId = await createTemplate({ totalPeriods: 2 });
+    const thirdUserId = await createOpponent(9812);
+    const tokenC = await createJwt({ accessSecret: JWT_SECRET, refreshSecret: REFRESH_SECRET })
+      .issueAccessToken({ sub: thirdUserId });
+    const matchId = (await challenge(templateId)).json().match.id;
+    const invitationId = (await challenge(templateId, thirdUserId)).json().match.id;
+    expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
+    expect((await app.inject({ method: 'POST', url: `/duel/amateur/matches/${matchId}/period/start`, headers: auth(tokenB) })).statusCode).toBe(200);
+    const responses = await Promise.all([
+      ...[tokenA, tokenB].map(token => app.inject({
+        method: 'POST', url: `/duel/amateur/matches/${matchId}/shot`, headers: auth(token),
+        payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+      })),
+      app.inject({ method: 'POST', url: `/duel/amateur/matches/${invitationId}/accept`, headers: auth(tokenC) }),
+      ...[tokenA, tokenB].map(token => app.inject({ method: 'GET', url: `/duel/amateur/matches/${matchId}`, headers: auth(token) })),
+    ]);
+    expect(responses.slice(0, 2).map(r => r.statusCode)).toEqual([200, 200]);
+    // A gameplay/capacity rejection is valid; a transaction failure is not.
+    expect([200, 409]).toContain(responses[2]!.statusCode);
+    expect(responses.slice(3).map(r => r.statusCode)).toEqual([200, 200]);
+    const shots = await pool.query<{ user_id: string; shots: number }>(
+      'select user_id,count(*)::int as shots from shot_session where amateur_duel_match_id=$1 group by user_id order by user_id', [matchId],
+    );
+    expect(shots.rows).toEqual([userA, userB].sort().map(user_id => ({ user_id, shots: 1 })));
+  });
+
   it('locks both shot participants in UUID order before the shooting player write', async () => {
     const matchId = (await challenge(await createTemplate())).json().match.id;
     expect((await acceptReadyAndStart(matchId)).statusCode).toBe(200);
