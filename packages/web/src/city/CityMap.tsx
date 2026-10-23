@@ -1,3 +1,4 @@
+import {CityBackground} from './CityBackground.js';
 import {rememberChatReturn} from '../chat/chatReturn.js';
 import {sectionEntryRoute} from './sectionEntry.js';
 import '../components/navigation-geometry.css';
@@ -125,13 +126,4 @@ export function CityMap(props:Props){
    <nav className="district-dock" ref={dock} {...dockPan} aria-label="Места района"><button aria-label="Открыть профиль" aria-pressed={selected==='profile'} title="Мой профиль" onClick={()=>openBuilding(places[0]!)}><span className="district-profile">{props.avatarUrl?<img src={props.avatarUrl} alt=""/>:<User aria-hidden="true"/>}</span><small className="district-dock__label">Профиль</small>{(props.referralCount??0)>0&&<small className="district-badge" aria-label={`Награды за приглашения: ${props.referralCount}`}>{props.referralCount!>99?'99+':props.referralCount}</small>}</button>{places.filter(p=>p.id!=='profile'&&p.id!=='chat').map(p=><Fragment key={p.id}><button aria-label={`Выбрать ${p.name}`} title={p.name} aria-pressed={selected===p.id} onClick={()=>openBuilding(p)}><LocationIcon id={p.id}/><small className="district-dock__label">{p.id==='yard'?'Двор':p.id==='stadium'?'Стадион':p.id==='pro'?'Арена':p.id==='bar'?'Бар':p.name}</small>{badge(p.id)}{p.id===dailyId&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>{p.id==='tasks'&&(<button aria-label="Открыть ленту" title="Лента" onClick={()=>{rememberChatReturn(owner,'/sections');onNavigate('/chat?view=feed');}}><LocationIcon id="feed"/><small className="district-dock__label">Лента</small></button>)}</Fragment>)}{props.isAdmin&&<button aria-label="Открыть админку" title="Админ" onClick={()=>onNavigate('/admin')}><span className="district-profile district-admin"><ShieldCheck size={18} strokeWidth={1.5} aria-hidden="true"/></span><small className="district-dock__label">Админ</small>{(props.adminCount??0)>0&&<small className="district-badge" aria-label={`События администратора: ${props.adminCount}`}>{props.adminCount!>99?'99+':props.adminCount}</small>}</button>}</nav></>}
   </section>
  </section>;
-}
-
-function CityBackground({image}:{image:string}){
- const [previous,setPrevious]=useState(image);
- useEffect(()=>{const timer=setTimeout(()=>setPrevious(image),1000);return()=>clearTimeout(timer);},[image]);
- return <>
- <img src={previous} alt="" aria-hidden="true" draggable={false}/>
- <img key={image} className={previous!==image?'district-light-enter':undefined} src={image} alt="Зимний хоккейный район" draggable={false} decoding="async"/>
- </>;
 }
