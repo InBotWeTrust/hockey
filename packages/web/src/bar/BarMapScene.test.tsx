@@ -28,7 +28,7 @@ it('preserves physical character interactions and cancels them during a pan',()=
 it.each(['morning','sunset','night'] as const)('uses the fresh %s panorama while preserving the game layers',phase=>{
  lighting.phase=phase;
  const view=render(<MemoryRouter><BarMapScene layered layout={createDefaultBarLayout()} activeSlotId="bar-1" onSelectSlot={vi.fn()} onAction={vi.fn()}/></MemoryRouter>);
- expect(view.container.querySelector('[data-bar-map-background]')).toHaveAttribute('src',`/bar/map-v38/${phase}-v1.webp`);
+ expect(view.container.querySelector('[data-bar-map-background]')).toHaveAttribute('src',`/bar/map-v41/${phase}-v1.webp`);
  expect(view.container.querySelectorAll('[data-map-character]')).toHaveLength(8);
  expect(view.container.querySelectorAll('[data-map-prop]')).toHaveLength(5);
 });
@@ -96,7 +96,7 @@ it('selects the game owner first and invokes the existing action after selection
 
 it('renders layered neutral masters and five independent game tables without switching back to old emotional furniture',()=>{
  const view=render(<MemoryRouter><BarMapScene layered layout={createDefaultBarLayout()} activeSlotId="bar-1" characterEmotions={{timofey:'joy'}} onSelectSlot={vi.fn()} onAction={vi.fn()}/></MemoryRouter>);
- expect(view.container.querySelector('[data-bar-map-background]')).toHaveAttribute('src','/bar/map-v38/day-v1.webp');
+ expect(view.container.querySelector('[data-bar-map-background]')).toHaveAttribute('src','/bar/map-v41/day-v1.webp');
  expect(view.container.querySelectorAll('[data-map-prop]')).toHaveLength(5);
  expect(view.container.querySelector('[data-map-character="arsenich"] img')).toHaveAttribute('src','/bar/map-v36/arsenich-neutral-v1.webp');
  for(const id of ['timofey','maria','grigory','daria'])expect(view.container.querySelector(`[data-map-character="${id}"] img`)).toHaveAttribute('src',`/bar/map-v30/${id}-neutral-v1.webp`);
