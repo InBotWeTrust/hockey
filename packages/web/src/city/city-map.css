@@ -87,5 +87,3 @@
   backdrop-filter:blur(5px);
   -webkit-backdrop-filter:blur(5px);
 }
-
-.district-weather-summary{display:flex;align-items:center;flex-wrap:wrap;gap:4px 8px;margin:0 0 8px;min-width:0;color:var(--ink);font-size:11px}.district-weather-summary strong{max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.district-weather-summary span{font-size:11px;overflow-wrap:anywhere}.district-weather-summary a{margin-left:auto;font-size:9px;color:inherit;opacity:.7}

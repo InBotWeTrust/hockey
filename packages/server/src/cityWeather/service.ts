@@ -179,7 +179,7 @@ export class CityWeatherService {
         const observedAge = previous ? this.now() - Date.parse(previous.observedAt) : Infinity;
         if (
           age >= 0 &&
-          age < 30 * minute &&
+          age < 60 * minute &&
           observedAge >= -5 * minute &&
           observedAge < 24 * 60 * minute
         )
