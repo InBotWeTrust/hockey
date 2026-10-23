@@ -4,6 +4,8 @@ import { neutralFightInput,type FightHeldInput } from '@hockey/game-core';
 import { FightHeldControls,type FightControl } from './fightHeldControls.js';
 export function ResponsiveFightControls({disabled,onInput,onAttack,inRange,reset}:{disabled:boolean;onInput:(input:FightHeldInput)=>void;onAttack:()=>void;inRange:boolean;reset:number}):JSX.Element{
  const controls=useRef(new FightHeldControls());const callback=useRef(onInput);callback.current=onInput;
+ const keyboard=useRef(new Set<string>());
+ const attackCallback=useRef(onAttack);attackCallback.current=onAttack;
  const pressTimes=useRef(new Map<number,number>());
  const releases=useRef(new Map<number,ReturnType<typeof setTimeout>>());
  const clearReleases=()=>{for(const timer of releases.current.values())clearTimeout(timer);releases.current.clear();pressTimes.current.clear();};
@@ -12,8 +14,34 @@ export function ResponsiveFightControls({disabled,onInput,onAttack,inRange,reset
  const publish=()=>{const next=controls.current.input;const previous=lastPublished.current;
   if(next.direction===previous.direction&&next.crouch===previous.crouch&&next.guard===previous.guard)return;
   lastPublished.current=next;setHeld(next);callback.current(next);};
- useEffect(()=>{const clear=()=>{const current=controls.current.input;clearReleases();controls.current.clear();lastPublished.current=neutralFightInput();setHeld(neutralFightInput());if(current.direction||current.crouch||current.guard)callback.current(neutralFightInput());};const hidden=()=>{if(document.hidden)clear();};window.addEventListener('blur',clear);document.addEventListener('visibilitychange',hidden);return()=>{clear();window.removeEventListener('blur',clear);document.removeEventListener('visibilitychange',hidden);};},[]);
- useEffect(()=>{const current=controls.current.input;clearReleases();controls.current.clear();lastPublished.current=neutralFightInput();setHeld(neutralFightInput());if(current.direction||current.crouch||current.guard)callback.current(neutralFightInput());},[disabled,reset]);
+ useEffect(()=>{const clear=()=>{const current=controls.current.input;clearReleases();keyboard.current.clear();controls.current.clear();lastPublished.current=neutralFightInput();setHeld(neutralFightInput());if(current.direction||current.crouch||current.guard)callback.current(neutralFightInput());};const hidden=()=>{if(document.hidden)clear();};window.addEventListener('blur',clear);document.addEventListener('visibilitychange',hidden);return()=>{clear();window.removeEventListener('blur',clear);document.removeEventListener('visibilitychange',hidden);};},[]);
+ useEffect(()=>{const current=controls.current.input;clearReleases();keyboard.current.clear();controls.current.clear();lastPublished.current=neutralFightInput();setHeld(neutralFightInput());if(current.direction||current.crouch||current.guard)callback.current(neutralFightInput());},[disabled,reset]);
+ useEffect(()=>{
+  const keys:Record<string,{id:number;control:FightControl}>={
+   ArrowLeft:{id:-101,control:'left'},ArrowRight:{id:-102,control:'right'},
+   ArrowDown:{id:-103,control:'down'},KeyZ:{id:-104,control:'guard'},
+  };
+  const keyDown=(event:KeyboardEvent)=>{
+   if(disabled||event.defaultPrevented||event.ctrlKey||event.metaKey||event.altKey)return;
+   const target=event.target;
+   if(target instanceof HTMLElement && (target.isContentEditable || target.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]')))return;
+   const mapped=keys[event.code];
+   if(!mapped&&event.code!=='KeyX')return;
+   event.preventDefault();
+   if(event.repeat||keyboard.current.has(event.code))return;
+   keyboard.current.add(event.code);
+   if(mapped){controls.current.press(mapped.id,mapped.control);publish();}
+   else attackCallback.current();
+  };
+  const keyUp=(event:KeyboardEvent)=>{
+   if(!keyboard.current.delete(event.code))return;
+   event.preventDefault();
+   const mapped=keys[event.code];
+   if(mapped){controls.current.release(mapped.id);publish();}
+  };
+  window.addEventListener('keydown',keyDown);window.addEventListener('keyup',keyUp);
+  return()=>{window.removeEventListener('keydown',keyDown);window.removeEventListener('keyup',keyUp);};
+ },[disabled,reset]);
  const release=(id:number,cancel=false)=>{
   if(releases.current.has(id)&&!cancel)return;
   const timer=releases.current.get(id);if(timer)clearTimeout(timer);releases.current.delete(id);

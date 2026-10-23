@@ -191,3 +191,14 @@ describe('loadConfig', () => {
     });
   });
 });
+
+describe('service proxy configuration',()=>{
+ it('accepts independent HTTP/HTTPS proxy URLs and empty optional settings',()=>{
+  const config=loadConfig({...base,OPENAI_PROXY_URL:'http://test-user:test-pass@127.0.0.1:8101',WEATHERAPI_PROXY_URL:'https://127.0.0.1:8102'});
+  expect(config.OPENAI_PROXY_URL).toContain(':8101');expect(config.WEATHERAPI_PROXY_URL).toContain(':8102');
+  expect(loadConfig({...base,OPENAI_PROXY_URL:'',WEATHERAPI_PROXY_URL:''}).OPENAI_PROXY_URL).toBeUndefined();
+ });
+ it('rejects unsupported protocols and malformed proxy URLs',()=>{
+  for(const value of ['socks5://127.0.0.1:1080','file:///tmp/proxy','not-a-url'])expect(()=>loadConfig({...base,OPENAI_PROXY_URL:value})).toThrow();
+ });
+});

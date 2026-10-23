@@ -11,6 +11,7 @@ import type { FastifyPluginAsync } from 'fastify';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
 import { SqlConversationStore } from './conversationStore.js';
+import {createServiceProxyFetch} from '../network/serviceProxy.js';
 import { createConfiguredAnswer, createConfiguredJSON, createConfiguredModeration } from './openAIAnswer.js';
 import type { ConversationContext, GeneratedAnswer } from './conversationMemoryTypes.js';
 import { cardResultSchema, SqlCardHistoryStore, type CardHistoryStore } from './cardHistory.js';
@@ -117,6 +118,7 @@ interface Options {
   store?: ConversationStore;
   answer?: Answer;
   apiKey?: string;
+  openAIProxyUrl?: string;
   closeRouterKey?: string;
   closeRouterModel?: string;
   closeRouterProvider?: string;
@@ -158,15 +160,17 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       throw new AppError('card_history_conflict', 'Запись партии уже существует.', 409);
     return { saved: true };
   });
+  const openAITransport=createServiceProxyFetch('https://api.openai.com',options.openAIProxyUrl);
+  app.addHook('onClose',async()=>{await openAITransport.close();});
   const providers = { closeRouterProvider: options.closeRouterProvider ?? 'auto', model: options.model ?? 'gpt-5.6-terra', closeRouterModel: options.closeRouterModel ?? 'openai/gpt-5.6-terra',
     ...(options.apiKey ? { openAIKey: options.apiKey } : {}), ...(options.closeRouterKey ? { closeRouterKey: options.closeRouterKey } : {}) };
   const available = !!(options.apiKey || options.closeRouterKey);
-  const answer = options.answer ?? createConfiguredAnswer(providers);
-  const infer = createConfiguredJSON(providers);
+  const answer = options.answer ?? createConfiguredAnswer(providers,openAITransport.fetcher);
+  const infer = createConfiguredJSON(providers,openAITransport.fetcher);
   const conflicts=options.conflicts ?? (!options.store ? new SqlConflictStore(app.pg) : undefined);
   const classify=options.classifyConflict ?? createConflictClassifier(infer);
   const requireModeration=available || !!options.moderate;
-  const moderate=options.moderate ?? createConfiguredModeration(providers);
+  const moderate=options.moderate ?? createConfiguredModeration(providers,openAITransport.fetcher);
   const memory = options.memory ?? (!options.store ? new SqlConversationMemory(app.pg,
     available ? createStoryValidator(infer) : undefined,available ? createStoryCreator(infer) : undefined) : undefined);
   if (!options.store && available && memory instanceof SqlConversationMemory) {

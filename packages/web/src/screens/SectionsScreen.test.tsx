@@ -223,6 +223,7 @@ function mockSectionsApi({
         ),
       );
     }
+    if (url.endsWith('/api/me/city')) return Promise.resolve(jsonResponse({city:null}));
     if (url.includes('/api/me')) {
       if (profileResponse !== undefined) return profileResponse;
       if (profileRequest === 'loading') return new Promise<Response>(() => undefined);
@@ -706,7 +707,8 @@ describe('SectionsScreen', () => {
       if (url.includes('/api/duel/amateur/rating/congratulations/') && url.endsWith('/read')) {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
-      if (url.includes('/api/me')) {
+      if (url.endsWith('/api/me/city')) return Promise.resolve(jsonResponse({city:null}));
+    if (url.includes('/api/me')) {
         return Promise.resolve(
           jsonResponse({ competitionLevel: 'amateur', pendingTournamentCongratulations: [] }),
         );

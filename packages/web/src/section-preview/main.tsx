@@ -14,6 +14,8 @@ import {
   ProfileArenaScreen,
 } from '../screens/ProfileDestinationScreens.js';
 import { ProfileStorySeriesScreen } from '../screens/ProfileStorySeriesScreen.js';
+import {useProfileCity,useCityWeather,validCityWeather,type SelectedCity} from '../city/cityLocation.js';
+import {weatherKinds,type WeatherKind} from '../city/weather.js';
 import { CityMap } from '../city/CityMap.js';
 import { BarScene } from '../bar/BarScene.js';
 import { createDefaultBarLayout } from '@hockey/game-core';
@@ -101,11 +103,26 @@ const previewFollowing = [
   { id: 'preview-follow-4', displayName: 'Дмитрий Очень Длинная Фамилия', avatarUrl: null },
 ];
 const previewSocialSummary = () => ({ followersCount: previewFans.length, followingCount: previewFollowing.length, following: false, canFollow: false });
+const previewCities:SelectedCity[]=[
+ {id:'2801268',name:'Москва',region:'Москва',country:'Россия',latitude:55.7558,longitude:37.6173,timeZone:'Europe/Moscow'},
+ {id:'2795655',name:'Владивосток',region:'Приморский край',country:'Россия',latitude:43.1155,longitude:131.8855,timeZone:'Asia/Vladivostok'},
+];
+let previewSelectedCity:SelectedCity|null=params.get('city')==='none'?null:previewCities[0]!;
 window.fetch = async (input, init) => {
   const url = String(input);
   if (!url.includes('/api/')) return Response.error();
   let data: unknown = {};
-  if (url.endsWith('/inventory/equipment') && init?.method === 'PATCH') {
+  if(url.endsWith('/me/city')){
+   if(init?.method==='PUT'){const body=JSON.parse(String(init.body)) as {cityId:string|null};previewSelectedCity=previewCities.find(city=>city.id===body.cityId)??null;}
+   data={city:previewSelectedCity};
+  }else if(url.includes('/cities?')){
+   const q=new URL(url,'http://fixture.local').searchParams.get('q')?.toLocaleLowerCase()??'';
+   data={cities:previewCities.filter(city=>city.name.toLocaleLowerCase().includes(q)).map(city=>({...city,id:Number(city.id)}))};
+  }else if(url.includes('/me/weather?')){
+   const requested=params.get('weather') as WeatherKind|null;
+   const kind=requested&&weatherKinds.includes(requested)?requested:'overcast';
+   data=params.get('weatherOffline')==='1'?{status:'unavailable',weather:null}:{status:'fresh',weather:{kind,temperature:8,description:{clear:'Ясно',overcast:'Пасмурно',rain:'Дождь',snow:'Снег',sleet:'Дождь со снегом',blizzard:'Метель',fog:'Туман'}[kind],observedAt:new Date().toISOString(),fetchedAt:new Date().toISOString()}};
+  }else if (url.endsWith('/inventory/equipment') && init?.method === 'PATCH') {
     Object.assign(inventory.equipped, JSON.parse(String(init.body)));
     data = inventory;
    } else if (/\/me\/fans\//.test(url) && init?.method === 'DELETE') {
@@ -292,9 +309,15 @@ function BarNavigationPreview() {
 }
 function MapNavigationPreview() {
   const navigate = useNavigate();
+  const city=useProfileCity('navigation-labels-qa');
+  const weather=useCityWeather('navigation-labels-qa',city.data?.city);
   return (
     <main className="screen sections-city-screen">
       <CityMap
+        city={city.data?.city??null}
+        currentWeather={validCityWeather(weather.data)}
+        weatherLoading={weather.isPending}
+        weatherStale={params.get('weatherStale')==='1'}
         level={level}
         owner="navigation-labels-qa"
         startAtDaily

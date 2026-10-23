@@ -1,8 +1,8 @@
 import {useEffect,useRef,useState} from 'react';
 
-export const weatherKinds=['clear','snow','blizzard','fog','overcast'] as const;
+export const weatherKinds=['clear','snow','blizzard','fog','overcast','rain','sleet'] as const;
 export type WeatherKind=typeof weatherKinds[number];
-export const weatherNames:Record<WeatherKind,string>={clear:'Ясно',snow:'Снегопад',blizzard:'Метель',fog:'Туман',overcast:'Пасмурно'};
+export const weatherNames:Record<WeatherKind,string>={clear:'Ясно',snow:'Снегопад',blizzard:'Метель',fog:'Туман',overcast:'Пасмурно',rain:'Дождь',sleet:'Дождь со снегом'};
 const hour=3_600_000;
 const storageKey='city-weather-v1';
 type Schedule={weather:WeatherKind;until:number;blizzardAt:number};

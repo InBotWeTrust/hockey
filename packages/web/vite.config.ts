@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 export default defineConfig({
-  define: { 'import.meta.env.VITE_PAGE_INTRODUCTIONS_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_TRAINING_EXERCISES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
+  define: { 'import.meta.env.VITE_BAR_MAP_ENABLED': JSON.stringify(true), 'import.meta.env.VITE_PAGE_INTRODUCTIONS_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_TRAINING_EXERCISES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
   plugins: [
     react(),
     VitePWA({

@@ -228,6 +228,15 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     async (kind) => {
       const invited = await challenge(kind);
       const id = invited.json().match.id;
+      const rules = invited.json().match.rules;
+      // This case isolates the siren boundary from seed-dependent inventory stumbles.
+      for (const timing of [rules.noInventoryTiming.skates, rules.noInventoryTiming.nutrition]) {
+        timing.stumbleDurationMinMs = timing.stumbleDurationMaxMs = 0;
+      }
+      await app.pg.query('update amateur_duel_match set rules_snapshot=$2 where id=$1', [
+        id,
+        JSON.stringify(rules),
+      ]);
       const post = (path: string, player: number, payload?: object) =>
         app.inject({
           method: 'POST',

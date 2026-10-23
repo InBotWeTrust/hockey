@@ -1,6 +1,8 @@
 import {useEffect, useState} from 'react';
+import {citySolarPhase,type SolarCity} from './citySolar.js';
 export type CityTimeOfDay = 'morning' | 'day' | 'sunset' | 'night';
-export function cityTimeOfDay(date: Date): CityTimeOfDay {
+export function cityTimeOfDay(date: Date, city?:SolarCity|null): CityTimeOfDay {
+ if(city)return citySolarPhase(date,city);
  const hour = date.getHours();
  if (hour >= 7 && hour < 10) return 'morning';
  if (hour >= 10 && hour < 18) return 'day';
@@ -12,11 +14,11 @@ const images = {
  sunset: ['/maps/city-sunset-4096-feaa739ef876.webp', '/maps/city-sunset-6144-ec5c4b307955.webp'],
  night: ['/maps/city-night-4096-658017a820ba.webp', '/maps/city-night-6144-32a760b2628a.webp'],
 } as const;
-export function cityImage(date: Date, pixelRatio: number): string {
- return images[cityTimeOfDay(date)][pixelRatio > 1.5 ? 1 : 0];
+export function cityImage(date: Date, pixelRatio: number, city?:SolarCity|null): string {
+ return images[cityTimeOfDay(date,city)][pixelRatio > 1.5 ? 1 : 0];
 }
-export function useCityImage(): string {
- const current = () => cityImage(new Date(), window.devicePixelRatio);
+export function useCityImage(city?:SolarCity|null): string {
+ const current = () => cityImage(new Date(), window.devicePixelRatio,city);
  const [image, setImage] = useState(current);
  useEffect(() => {
   let disposed = false;
@@ -48,6 +50,6 @@ export function useCityImage(): string {
    document.removeEventListener('visibilitychange', check);
   };
  // The effect owns its requested source for its entire lifetime.
- }, []);
+ }, [city?.latitude,city?.longitude,city?.timeZone]);
  return image;
 }

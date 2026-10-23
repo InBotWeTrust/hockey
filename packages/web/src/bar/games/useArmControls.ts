@@ -25,6 +25,7 @@ export function useArmControls({
   sendRef.current = send;
   blocked.current = disabled;
   nextSeq.current = Math.max(seq, nextSeq.current);
+  const keyboardSupport = useRef(false);
   const fingers = useRef<{ support: Finger | null; pressure: Finger | null }>({
     support: null,
     pressure: null,
@@ -48,6 +49,7 @@ export function useArmControls({
     emit();
   };
   const releaseAll = () => {
+    keyboardSupport.current = false;
     fingers.current = { support: null, pressure: null };
     if (value.current.supportHeld || value.current.pressing)
       update({ supportHeld: false, pressing: false });
@@ -56,6 +58,23 @@ export function useArmControls({
     const onHidden = () => {
       if (document.hidden) releaseAll();
     };
+    const keyDown = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyZ' || blocked.current || event.defaultPrevented || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = event.target;
+      if (target instanceof HTMLElement && (target.isContentEditable || target.closest('input,textarea,select,[contenteditable="true"],[role="textbox"]'))) return;
+      event.preventDefault();
+      if (event.repeat || keyboardSupport.current) return;
+      keyboardSupport.current = true;
+      update({ supportHeld: true });
+    };
+    const keyUp = (event: KeyboardEvent) => {
+      if (event.code !== 'KeyZ' || !keyboardSupport.current) return;
+      event.preventDefault();
+      keyboardSupport.current = false;
+      update({ supportHeld: fingers.current.support !== null });
+    };
+    window.addEventListener('keydown', keyDown);
+    window.addEventListener('keyup', keyUp);
     const heartbeat = setInterval(() => {
       if (!blocked.current && (value.current.supportHeld || value.current.pressing)) emit();
     }, 250);
@@ -63,6 +82,8 @@ export function useArmControls({
     document.addEventListener('visibilitychange', onHidden);
     return () => {
       clearInterval(heartbeat);
+      window.removeEventListener('keydown', keyDown);
+      window.removeEventListener('keyup', keyUp);
       window.removeEventListener('blur', releaseAll);
       document.removeEventListener('visibilitychange', onHidden);
       if (scheduled.current !== null) clearTimeout(scheduled.current);
@@ -122,17 +143,17 @@ export function useArmControls({
     onPointerUp: (e: PointerEvent<HTMLElement>) => {
       if (fingers.current[region]?.id !== e.pointerId) return;
       fingers.current[region] = null;
-      update(region === 'support' ? { supportHeld: false } : { pressing: false });
+      update(region === 'support' ? { supportHeld: keyboardSupport.current } : { pressing: false });
     },
     onPointerCancel: (e: PointerEvent<HTMLElement>) => {
       if (fingers.current[region]?.id !== e.pointerId) return;
       fingers.current[region] = null;
-      update(region === 'support' ? { supportHeld: false } : { pressing: false });
+      update(region === 'support' ? { supportHeld: keyboardSupport.current } : { pressing: false });
     },
     onLostPointerCapture: (e: PointerEvent<HTMLElement>) => {
       if (fingers.current[region]?.id !== e.pointerId) return;
       fingers.current[region] = null;
-      update(region === 'support' ? { supportHeld: false } : { pressing: false });
+      update(region === 'support' ? { supportHeld: keyboardSupport.current } : { pressing: false });
     },
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
