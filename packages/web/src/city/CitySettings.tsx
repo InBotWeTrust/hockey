@@ -83,7 +83,6 @@ export function CitySettings({ owner }: { owner: string | undefined }) {
                 </button>
               )}
             </div>
-            {city && <p>{[city.region, city.country].filter(Boolean).join(', ')}</p>}
             <p>
               Погода и время суток на карте соответствуют выбранному городу. Город сохраняется в
               аккаунте.

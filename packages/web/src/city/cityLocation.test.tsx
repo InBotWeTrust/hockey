@@ -118,3 +118,16 @@ it('resets with the circular icon beside the city name', async () => {
     expect.objectContaining({ method: 'PUT', body: JSON.stringify({ cityId: null }) }),
   );
 });
+it('hides provider region and country labels while retaining the selected city', async () => {
+  vi.mocked(apiFetch).mockImplementation(async (path) =>
+    path === '/me/city'
+      ? { city: { ...city, name: 'Петрозаводск', region: 'Karelia', country: 'Россия' } }
+      : { status: 'unavailable', weather: null },
+  );
+  const { client } = view();
+  expect(await screen.findByText(/^Петрозаводск$/)).toBeVisible();
+  expect(screen.queryByText('Karelia, Россия')).toBeNull();
+  expect(client.getQueryData(['profile-city', 'user-1'])).toEqual({
+    city: { ...city, name: 'Петрозаводск', region: 'Karelia', country: 'Россия' },
+  });
+});
