@@ -1,0 +1,20 @@
+import {render,screen,fireEvent} from '@testing-library/react';
+import {MemoryRouter} from 'react-router-dom';
+import {createDefaultBarLayout} from '@hockey/game-core';
+import {expect,it,vi} from 'vitest';
+import {BarScene} from './BarScene.js';
+import {BarMapScene} from './BarMapScene.js';
+vi.mock('./useBarInvitation.js',()=>({useBarInvitation:()=>null}));
+vi.mock('./games/BarGamesLobby.js',()=>({BarGamesLobby:({initial,embedded}:{initial:string;embedded:boolean})=><p>Terminal {initial} {embedded?'embedded':'standalone'}</p>}));
+it.each([['classic',BarScene],['map',BarMapScene]] as const)('restores %s terminal to the requested game without reopening after close',(name,Scene)=>{
+ vi.stubEnv('VITE_BAR_MAP_ENABLED','');
+ const layout=createDefaultBarLayout();const props={layout,activeSlotId:layout.slots.find(s=>s.occupantId==='online')!.id,onSelectSlot:vi.fn(),onAction:vi.fn(),onlineGame:'ochko' as const,onlineRequestKey:'first'};
+ const view=render(<MemoryRouter><Scene {...props}/></MemoryRouter>);
+ expect(screen.getByText('Terminal ochko embedded')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть терминал'}));
+ view.rerender(<MemoryRouter><Scene {...props}/></MemoryRouter>);
+ expect(screen.queryByText('Terminal ochko embedded')).toBeNull();
+ view.rerender(<MemoryRouter><Scene {...props} onlineRequestKey="second"/></MemoryRouter>);
+ expect(screen.getByText('Terminal ochko embedded')).toBeVisible();
+ vi.unstubAllEnvs();
+});

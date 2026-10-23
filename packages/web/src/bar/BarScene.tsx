@@ -1,3 +1,4 @@
+import type {OnlineBarGame} from './barLobbyNavigation.js';
 import {BarMapScene} from './BarMapScene.js';
 import {BarInteriorBackdrop} from './BarInteriorBackdrop.js';
 import {useHorizontalPan} from './useHorizontalPan.js';
@@ -47,7 +48,10 @@ function ClassicBarScene({
   characterEmotions = {},
   onStaffRoom,
   activityCounts = {},
+  onlineGame,onlineRequestKey,
 }: {
+  onlineGame?:OnlineBarGame;
+  onlineRequestKey?:string;
   activityCounts?: Partial<Record<BarOccupantId, number>>;
   layout: BarLayout;
   activeSlotId: string;
@@ -90,6 +94,7 @@ function ClassicBarScene({
     setTerminalInvitation(incomingInvitation);
     if(!terminalDismissed.current)setTerminalOpen(true);
   },[slot.occupantId,incomingInvitation]);
+  useEffect(()=>{if(onlineGame&&slot.occupantId==='online'&&!hideIdentity){setTerminalInvitation(null);setTerminalOpen(true);}},[onlineGame,onlineRequestKey,slot.occupantId,hideIdentity]);
   const [failedImages, setFailedImages] = useState<string[]>([]);
   const viewport = useRef<HTMLDivElement>(null);
   const track = useRef<HTMLDivElement>(null);
@@ -235,7 +240,7 @@ function ClassicBarScene({
       </button>
       {!hideIdentity && slot.occupantId === 'online' && terminalOpen && <section className="bar-space__actions bar-space__actions--terminal" aria-label="Играть онлайн">
         <div className="bar-terminal-header"><span>Играть онлайн</span><button className="icon-btn" aria-label="Закрыть терминал" onClick={()=>{terminalDismissed.current=true;setTerminalOpen(false);}}><X size={19} strokeWidth={1.5}/></button></div>
-        <BarGamesLobby key={terminalInvitation?.id ?? 'manual'} initial={terminalInvitation?.kind ?? 'cards'} embedded />
+        <BarGamesLobby key={terminalInvitation?.id ?? 'manual'} initial={terminalInvitation?.kind ?? onlineGame ?? 'cards'} embedded />
       </section>}
       <div className={`bar-bottom-chrome${terminalOpen ? ' bar-bottom-chrome--terminal-open' : ''}`} hidden={hideIdentity}>
       <section ref={panel} className="bar-space__actions" aria-live="polite" hidden={hideIdentity || terminalOpen}>

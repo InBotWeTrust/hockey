@@ -165,3 +165,17 @@ it('preserves the meeting mode across cards and other games',async()=>{
  fireEvent.click(screen.getByRole('tab',{name:'Карты'}));
  expect(screen.getByRole('tab',{name:'Найти'})).toHaveAttribute('aria-selected','true');
 });
+
+it('shows an outgoing two-player invite without redundant size and cancels from the right-hand icon',async()=>{
+ const {useAuthStore}=await import('../../auth/authStore.js');
+ useAuthStore.setState({user:{id:'me'} as never});
+ vi.mocked(gameApi.lobby).mockResolvedValue({...empty,invites:[{id:'out',matchId:null,kind:'ochko',senderId:'me',receiverId:'other',senderName:'Я',receiverName:'Анна',status:'pending',expiresAt:Date.now()+60000}]});
+ vi.mocked(gameApi.respond).mockResolvedValue({matchId:null});
+ render(<MemoryRouter><NewGameLobby kind="ochko"/></MemoryRouter>);
+ await screen.findByText('Анна');
+ expect(screen.queryByText(/2 игрока/)).toBeNull();
+ const cancel=screen.getByRole('button',{name:'Отменить приглашение'});
+ expect(cancel).toHaveClass('icon-btn');fireEvent.click(cancel);
+ await waitFor(()=>expect(gameApi.respond).toHaveBeenCalledWith('out','cancel'));
+ useAuthStore.setState({user:null});
+});

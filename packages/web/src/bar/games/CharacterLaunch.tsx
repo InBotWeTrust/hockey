@@ -1,14 +1,14 @@
 import { VisitorGameGate } from '../VisitorGameGate.js';
 import { visitorChanged } from '../visitorApi.js';
 import { useRef, useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { CHARACTER_GAME, type GameCharacter } from '@hockey/game-core';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
 import { gameApi } from './api.js';
 import { gameArt, gameCopy, gameNames, characterNames } from './content.js';
 import { gameClose } from './GameModals.js';
 import { OchkoStake } from './OchkoStake.js';
-import { BarGamesLobby } from './BarGamesLobby.js';
+import {barLobbyPath} from '../barLobbyNavigation.js';
 export function CharacterLaunch({
   character,
   close,
@@ -71,25 +71,7 @@ export function CharacterLaunch({
     </AccessibleModal>
   );
 }
+// Compatibility for saved links; the standalone lobby is no longer rendered.
 export function BarGamesPage() {
-  const [params] = useSearchParams();
-  const value = params.get('game');
-  const initial =
-    value === 'battleship' ||
-    value === 'armwrestling' ||
-    value === 'ochko' ||
-    value === 'darts' ||
-    value === 'checkers' ||
-    value === 'billiards'
-      ? value
-      : 'cards';
-  const navigate = useNavigate();
-  return (
-    <main className="bar-game-screen">
-      <button className="btn btn--ghost" onClick={() => navigate('/bar')}>
-        Вернуться в бар
-      </button>
-      <BarGamesLobby initial={initial} />
-    </main>
-  );
+ const [params]=useSearchParams();return <Navigate to={barLobbyPath(params.get('game'))} replace/>;
 }

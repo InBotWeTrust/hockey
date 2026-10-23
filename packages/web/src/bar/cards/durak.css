@@ -1640,3 +1640,9 @@
 .durak-controls:has(.icon-btn--page-back) { grid-template-columns:32px 32px minmax(0,1fr) 32px;gap:6px; }
 .durak-controls:has(.icon-btn--page-back) > .icon-btn { width:32px; min-width:32px; height:32px; padding:0; }
 .durak-controls:has(.icon-btn--page-back) .durak-actions .btn { min-width:0; flex:1; padding:8px; }
+
+/* Outgoing invitations have a trailing cancel icon; status has its own breathing room. */
+.online-durak-invite.bar-invite--outgoing {grid-template-columns:42px minmax(0,1fr) 36px;align-items:start;}
+.bar-invite--outgoing .online-durak-invite__actions {grid-column:3;grid-row:1;display:flex;margin:0;align-self:start;}
+.bar-invite--outgoing .bar-invite-cancel.icon-btn {width:36px;height:36px;min-width:36px;padding:0;}
+.online-durak-invite .duel-card-status {display:inline-flex;margin-top:8px;}

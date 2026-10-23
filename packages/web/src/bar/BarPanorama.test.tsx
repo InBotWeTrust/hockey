@@ -280,3 +280,13 @@ it('remembers the selected bar page after restarting the session',async()=>{
   await screen.findByRole('heading',{name:'Олег'});
  }finally{vi.stubGlobal('Image',image);}
 });
+
+it('returns an outgoing game to the online terminal with the requested game selected',async()=>{
+ const {gameApi}=await import('./games/api.js');const lobby=vi.spyOn(gameApi,'lobby').mockResolvedValue({matchId:null,searching:null,invites:[],expiresAt:null,serverNow:Date.now()});
+ vi.mocked(fetchBarLayout).mockResolvedValue(fixture());
+ const view=render(<MemoryRouter initialEntries={['/bar?onlineGame=ochko']}><BarPanorama/></MemoryRouter>);
+ await waitFor(()=>expect(screen.getByRole('button',{name:'Закрыть терминал'})).toBeVisible());
+ expect(screen.getByRole('tab',{name:'Очко'})).toHaveAttribute('aria-selected','true');
+ expect(screen.getByRole('heading',{name:'Бар «4-й период»'})).toBeVisible();
+ view.unmount();lobby.mockRestore();
+});
