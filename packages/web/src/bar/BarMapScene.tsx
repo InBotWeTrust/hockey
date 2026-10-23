@@ -38,11 +38,11 @@ const classicTargets:Target[]=[
  {id:'darts',owner:'daria',label:'Играть в дартс с Дарьей',box:[94.5,18,5.4,24],action:'darts'},
 ];
 const layeredPlaces:typeof classicPlaces={
- ...classicPlaces,igor:{x:38,floor:61,height:41},
- oleg:{x:8,floor:76,height:41},veronika:{x:51,floor:73,height:35},
- timofey:{x:64,floor:72,height:36},arsenich:{x:94.1,floor:75,height:35},
- maria:{x:84,floor:72.5,height:35},grigory:{x:74,floor:74,height:35},
- daria:{x:90,floor:64,height:35.5},
+ ...classicPlaces,igor:{x:38,floor:61,height:43},
+ oleg:{x:8,floor:76,height:46},veronika:{x:51,floor:73,height:37},
+ timofey:{x:64,floor:72,height:38},arsenich:{x:94.1,floor:75,height:37},
+ maria:{x:84,floor:72.5,height:37},grigory:{x:74,floor:74,height:37},
+ daria:{x:90,floor:64,height:37.5},
 };
 const newCharacters=new Set(['timofey','arsenich','maria','grigory','daria']);
 // The tabletop and all its legs are one independent sprite; click targets cover only the game.
