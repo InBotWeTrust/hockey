@@ -37,10 +37,10 @@ it('restores both scrollers instantly and animates a new selection without obser
  }finally{HTMLElement.prototype.scrollTo=original;globalThis.ResizeObserver=previous;}
 });
 
-it('removes the phone circle from the dock',()=>{
+it('keeps the feed shortcut after tasks',()=>{
  sessionStorage.clear();render(<CityMap {...base} level="beginner"/>);
  const dock=screen.getByRole('navigation',{name:'Места района'});
- expect(Array.from(dock.querySelectorAll('button')).filter(button=>button.getAttribute('aria-label')!=='Выбрать Раздевалка').slice(1,6).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Банк','Выбрать Стадион «Центральный»']);
+ expect(Array.from(dock.querySelectorAll('button')).filter(button=>!['Выбрать Раздевалка','Открыть ленту'].includes(button.getAttribute('aria-label')??'')).slice(1,6).map(b=>b.getAttribute('aria-label'))).toEqual(['Выбрать Дворовый каток','Выбрать Магазин','Выбрать Задания','Выбрать Банк','Выбрать Стадион «Центральный»']);
 });
 
 function mapGeometry(){
@@ -323,4 +323,10 @@ it('does not show weather widget until a city is selected in settings',()=>{
  const view=render(<CityMap {...base} level="beginner" city={null}/>);
  expect(screen.queryByRole('complementary',{name:/Погода:/})).toBeNull();
  expect(view.container.querySelector('.district--weather')).toBeNull();
+});
+
+it('opens the feed without a counter and remembers the map return',()=>{
+ sessionStorage.clear();localStorage.removeItem('city-navigation-collapsed-v1:test');const navigate=vi.fn();render(<CityMap {...base} level="amateur" chatCount={5} onNavigate={navigate}/>);
+ const chat=screen.getByRole('button',{name:'Открыть ленту'});expect(chat.previousElementSibling).toHaveAttribute('aria-label','Выбрать Задания');expect(chat).toHaveTextContent('Лента');expect(chat.querySelector('.district-badge')).toBeNull();fireEvent.click(chat);
+ expect(navigate).toHaveBeenCalledWith('/chat?view=feed');expect(sessionStorage.getItem('chat-return-v1:test')).toBe('/sections');
 });
