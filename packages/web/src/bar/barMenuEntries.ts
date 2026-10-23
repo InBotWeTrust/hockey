@@ -2,6 +2,7 @@ import {createDefaultBarLayout,type BarGameLobby,type BarGameSnapshot} from '@ho
 import type {ArenaEntry} from '../screens/DailyScreen.js';
 import type {Lobby,OnlineSnapshot} from './cards/onlineApi.js';
 import type {RoomView} from './cards/roomApi.js';
+import {barLobbyPath} from './barLobbyNavigation.js';
 const labels:Record<string,string>={darts:'Дартс',billiards:'Бильярд',armwrestling:'Армрестлинг',ochko:'Очко',checkers:'Шашки',battleship:'Морской бой'};
 export function barMenuEntries(owner:string,cards:Lobby|null,games:BarGameLobby|null,room:RoomView|undefined,match:BarGameSnapshot|undefined,open:(path:string)=>void,now=Date.now(),localCards=false,cardMatch?:OnlineSnapshot):ArenaEntry[]{
  const entries:ArenaEntry[]=[];
@@ -21,8 +22,8 @@ export function barMenuEntries(owner:string,cards:Lobby|null,games:BarGameLobby|
   const started=!!match&&(!match.ready||match.ready.startsAt!==null&&match.ready.startsAt<=now);
   add(`bar-game-${games.matchId}`,labels[match?.kind??'']??'Барная игра',`/bar/games/match/${games.matchId}`,started,started?'Партия продолжается':'Подтвердите готовность',undefined,match?.participants?.[match.player===0?1:0]);
  }
- if(games?.searching&&!games.matchId)add(`bar-search-${games.searching}`,labels[games.searching]??'Барная игра',`/bar/games?game=${games.searching}`,false,'Ищем соперника',games.expiresAt??undefined);
- for(const i of cards?.invites??[])if(!cards?.roomId&&!cards?.matchId&&i.sender_id===owner&&i.status==='pending'&&Date.parse(i.expires_at)>now)add(`bar-card-invite-${i.id}`,'Карты','/bar/games?game=cards',false,`Ждём ответа: ${i.receiver_name}`,Date.parse(i.expires_at));
- for(const i of games?.invites??[])if(!games?.matchId&&i.senderId===owner&&i.status==='pending'&&i.expiresAt>now)add(`bar-invite-${i.id}`,labels[i.kind]??'Барная игра',`/bar/games?game=${i.kind}`,false,`Ждём ответа: ${i.receiverName}`,i.expiresAt);
+ if(games?.searching&&!games.matchId)add(`bar-search-${games.searching}`,labels[games.searching]??'Барная игра',barLobbyPath(games.searching),false,'Ищем соперника',games.expiresAt??undefined);
+ for(const i of cards?.invites??[])if(!cards?.roomId&&!cards?.matchId&&i.sender_id===owner&&i.status==='pending'&&Date.parse(i.expires_at)>now)add(`bar-card-invite-${i.id}`,'Карты',barLobbyPath('cards'),false,`Ждём ответа: ${i.receiver_name}`,Date.parse(i.expires_at));
+ for(const i of games?.invites??[])if(!games?.matchId&&i.senderId===owner&&i.status==='pending'&&i.expiresAt>now)add(`bar-invite-${i.id}`,labels[i.kind]??'Барная игра',barLobbyPath(i.kind),false,`Ждём ответа: ${i.receiverName}`,i.expiresAt);
  return entries;
 }

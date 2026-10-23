@@ -1,3 +1,4 @@
+import {onlineBarGame} from './barLobbyNavigation.js';
 import {apiFetch} from '../api/apiFetch.js';
 import {readSectionTab,saveSectionTab} from '../city/sectionEntry.js';
 import { VisitorShop } from './VisitorShop.js';
@@ -19,6 +20,8 @@ import { barCharacters, fetchConversation, sendPhysicalIncident, type BarCharact
 export function BarPanorama() {
   const navigate = useNavigate();
   const location = useLocation();
+  const requestedGame=new URLSearchParams(location.search).get('onlineGame');
+  const onlineGame=requestedGame!==null?onlineBarGame(requestedGame):undefined;
   const [visitorShop, setVisitorShop] = useState(false);
   const activityCounts = useBarActivity();
   const account=useAuthStore(state=>state.user?.id)??'preview';
@@ -42,6 +45,7 @@ export function BarPanorama() {
   const [layoutReady,setLayoutReady]=useState(false);
   const tabKey=`section-scroll:${account==='preview'?'guest':account}:bar`;
   const [slot, setSlot] = useState(() => {
+    if(onlineGame)return createDefaultBarLayout().slots.find(s=>s.occupantId==='online')!.id;
     try { return ((account==='preview'||sessionStorage.getItem('bar-active-slot-owner')===account)?sessionStorage.getItem('bar-active-slot'):null) || readSectionTab(tabKey) || 'bar-8'; }
     catch { return readSectionTab(tabKey) || 'bar-8'; }
   });
@@ -57,10 +61,15 @@ export function BarPanorama() {
       setConversation(null); setVisitorShop(true);
     }
   }, [location.search, layoutReady, layout]);
+  useEffect(()=>{
+    if(!onlineGame)return;
+    const terminal=layout.slots.find(s=>s.occupantId==='online');
+    if(terminal){touched.current=true;setSlot(terminal.id);setConversation(null);}
+  },[onlineGame,location.key,layout]);
   const [opponent, setOpponent] = useState<ComputerOpponentId | null>(null);
   const [error, setError] = useState(false);
   const [retry, setRetry] = useState(0);
-  const touched = useRef(Boolean(readSectionTab(tabKey) || (account==='preview'&&sessionStorage.getItem('bar-active-slot'))));
+  const touched = useRef(Boolean(onlineGame || readSectionTab(tabKey) || (account==='preview'&&sessionStorage.getItem('bar-active-slot'))));
   const [conversation, setConversation] = useState<BarCharacter | null>(null);
   const [incidentError,setIncidentError]=useState(false);
   const pendingIncident=useRef<{character:BarCharacter;id:string}|null>(null);
@@ -177,6 +186,7 @@ export function BarPanorama() {
   return (
     <>
       <BarScene
+        {...(onlineGame?{onlineGame,onlineRequestKey:location.key}:{})}
         onVisitorShop={() => setVisitorShop(true)} activityCounts={activityCounts}
         layout={layout}
         onStaffRoom={(id) => {sessionStorage.setItem('bar-staff-return-slot', id); sessionStorage.setItem('bar-active-slot', id); navigate('/bar/staff-room');}}
