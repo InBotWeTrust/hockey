@@ -1,3 +1,4 @@
+import {GameEntryRoute} from '../app/GameEntryRoute.js';
 import {VenuePanorama} from '../components/VenuePanorama.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -12,7 +13,7 @@ vi.hoisted(() => {
   });
 });
 import { render, screen, waitFor, fireEvent, act, within, cleanup } from '@testing-library/react';
-import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
+import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createDuelStumbleRandomness,
@@ -3439,7 +3440,7 @@ describe('DailyScreen', () => {
     expect(shots).toBe(1);
   });
 
-  it('returns from an active daily period to the modes hub', async () => {
+  it('returns from an active daily period to the map', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>
       new Response(
         JSON.stringify({
@@ -3470,7 +3471,45 @@ describe('DailyScreen', () => {
     expect(await findArenaCta('Ежедневная игра: 1-й период')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'БРОСОК' })).not.toBeInTheDocument();
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
-    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
+  });
+
+  it.each([
+    ['daily', '/?view=daily', 'К режимам'],
+    ['active daily', '/?view=daily', 'К режимам'],
+    ['training', '/?view=training&play=1', 'К тренировке'],
+    ['closed training', '/?view=training&play=1', 'К тренировке'],
+  ])('returns from %s straight to the map without mounting the old cube', async (mode, path, backLabel) => {
+    const daily = mode === 'active daily' ? {...baseState, state: 'period_active', period_ends_at: new Date(Date.now() + 600_000).toISOString()} : baseState;
+    const training = mode === 'closed training' ? {...trainingActiveState, state: 'closed', shots_taken: trainingActiveState.shots_limit} : trainingActiveState;
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => new Response(
+      JSON.stringify(String(input).includes('/duel/training/state') ? training : daily),
+      {headers: {'content-type': 'application/json'}},
+    ));
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}, mutations: {retry: false}}});
+    render(<QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[path]} future={{v7_startTransition: true, v7_relativeSplatPath: true}}>
+        <Routes>
+          <Route path="/" element={<GameEntryRoute><DailyScreen/></GameEntryRoute>}/>
+          <Route path="/sections" element={<><div>Карта района</div><LocationProbe/></>}/>
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>);
+    const back = await screen.findByRole('button', {name: backLabel});
+    const cubes: Node[] = [];
+    const observer = new MutationObserver(records => {
+      for (const record of records) for (const node of record.addedNodes) {
+        if (node instanceof Element && (node.matches('[aria-label="Игровая арена"]') || node.querySelector('[aria-label="Игровая арена"]'))) cubes.push(node);
+      }
+    });
+    observer.observe(document.body, {childList: true, subtree: true});
+    try {
+      fireEvent.click(back);
+      await screen.findByText('Карта района');
+      expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
+      expect(cubes).toHaveLength(0);
+      expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    } finally {observer.disconnect();}
   });
 
   it('refreshes onboarding once after leaving active training, never while still playing', async () => {
@@ -3508,7 +3547,7 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'К тренировке' }));
 
-    expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/sections?home=1');
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
@@ -3768,7 +3807,7 @@ describe('DailyScreen', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
     expect(await findArenaCta('Ежедневная игра: Перерыв')).toBeInTheDocument();
-    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
     expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
 
@@ -3832,7 +3871,7 @@ describe('DailyScreen', () => {
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
 
-    expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=arena');
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/sections?home=1');
     expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
   });
 
