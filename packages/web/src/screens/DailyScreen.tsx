@@ -605,7 +605,6 @@ export function DailyScreen(): JSX.Element {
 
   const leavePlaySurface = useCallback(
     (destination: string): void => {
-      setDailyView('arena');
       navigate(destination, { replace: true });
       void refreshAfterGameExit();
     },
@@ -756,9 +755,7 @@ export function DailyScreen(): JSX.Element {
   const leavePlayForHub = (): void => {
     setPendingPlayEntrance(null);
     setPendingPlayRouteTransition(null);
-    setSelectedLevel('beginner');
-    setBeginnerMode('daily');
-    leavePlaySurface('/?view=arena');
+    leavePlaySurface('/sections?home=1');
   };
 
   const openSections = (): void => {
