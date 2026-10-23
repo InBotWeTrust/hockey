@@ -308,3 +308,19 @@ it('renders the profile glass directly over the map while retaining the apartmen
  expect(hit).toHaveStyle({width:'4%',height:'9%'});
  expect(marker).toHaveStyle({left:'5.8%',top:'34.1%'});
 });
+
+it('keeps weather visible above the map when navigation is collapsed',()=>{
+ const city={id:'1',name:'Москва',region:'Москва',country:'Россия',latitude:55.75,longitude:37.62,timeZone:'Europe/Moscow'};
+ const currentWeather={kind:'overcast' as const,temperature:8,description:'Пасмурно',observedAt:new Date().toISOString(),fetchedAt:new Date().toISOString()};
+ render(<CityMap {...base} level="beginner" city={city} currentWeather={currentWeather}/>);
+ expect(screen.getByRole('complementary',{name:'Погода: Москва'})).toHaveTextContent('+8°');
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть навигацию'}));
+ expect(screen.getByRole('complementary',{name:'Погода: Москва'})).toBeVisible();
+ expect(screen.getByRole('button',{name:'Показать навигацию'})).toBeVisible();
+});
+
+it('does not show weather widget until a city is selected in settings',()=>{
+ const view=render(<CityMap {...base} level="beginner" city={null}/>);
+ expect(screen.queryByRole('complementary',{name:/Погода:/})).toBeNull();
+ expect(view.container.querySelector('.district--weather')).toBeNull();
+});

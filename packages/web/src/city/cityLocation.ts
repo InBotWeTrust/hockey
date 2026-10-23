@@ -44,8 +44,8 @@ export function useCityWeather(owner: string | undefined, city: SelectedCity | n
     queryFn: ({ signal }) =>
       apiFetch<WeatherResult>(`/me/weather?cityId=${encodeURIComponent(city!.id)}`, { signal }),
     enabled: Boolean(owner && city),
-    staleTime: 30 * 60000,
-    refetchInterval: 30 * 60000,
+    staleTime: 60 * 60000,
+    refetchInterval: 60 * 60000,
     refetchIntervalInBackground: false,
     retry: 1,
   });

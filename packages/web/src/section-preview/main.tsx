@@ -316,6 +316,8 @@ function MapNavigationPreview() {
       <CityMap
         city={city.data?.city??null}
         currentWeather={validCityWeather(weather.data)}
+        weatherLoading={weather.isPending}
+        weatherStale={params.get('weatherStale')==='1'}
         level={level}
         owner="navigation-labels-qa"
         startAtDaily
