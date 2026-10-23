@@ -108,3 +108,25 @@ it('keeps the booth chat tab outside the floating chat overlay', () => {
  expect(screen.queryByRole('dialog')).toBeNull();
  expect(screen.getByText('Booth chat list')).toBeVisible();
 });
+
+it('reopens the last dialog from the floating shortcut and remembers returning to the list', async () => {
+  sessionStorage.clear();
+  const { FloatingChatShortcut } = await import('../components/FloatingChatShortcut.js');
+  render(<MemoryRouter initialEntries={['/sections']}>
+    <ChatOverlay owner="resume-one">
+      <FloatingChatShortcut owner="resume-one" unreadCount={0}/>
+    </ChatOverlay>
+  </MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', {name:'Открыть чат'}));
+  fireEvent.click(await screen.findByText('Диалог'));
+  await waitFor(() => expect(screen.getByText('Сообщения')).toBeVisible());
+  fireEvent.click(screen.getByRole('button', {name:'Закрыть чат'}));
+  fireEvent.click(screen.getByRole('button', {name:'Открыть чат'}));
+  await waitFor(() => expect(screen.getByText('Сообщения')).toBeVisible());
+  fireEvent.click(screen.getByText('Список'));
+  await waitFor(() => expect(screen.getByText('Диалог')).toBeVisible());
+  fireEvent.click(screen.getByRole('button', {name:'Закрыть чат'}));
+  fireEvent.click(screen.getByRole('button', {name:'Открыть чат'}));
+  await waitFor(() => expect(screen.getByText('Диалог')).toBeVisible());
+  expect(screen.queryByText('Сообщения')).toBeNull();
+});
