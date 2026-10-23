@@ -36,11 +36,14 @@ import { inventoryWithItems, coinPackages, card } from './fixtures.js';
 import '../app/global.css';
 import '../app/design-system.css';
 import '../app/liquid-glass.css';
+import '../app/light-theme.css';
+import '../app/classic-light-theme.css';
 
 // Local-only visual fixtures. No account/session mutation and no requests to a live API.
 if (!import.meta.env.DEV) throw new Error('Local preview only');
 const params = new URLSearchParams(location.search),
   scene = params.get('scene') ?? 'shop';
+document.documentElement.dataset.theme = params.get('theme') === 'light' ? 'light' : 'dark';
 const level =
   params.get('level') === 'beginner'
     ? 'beginner'

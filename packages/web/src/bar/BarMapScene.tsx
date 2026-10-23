@@ -42,7 +42,7 @@ const layeredPlaces:typeof classicPlaces={
  oleg:{x:8,floor:76,height:46},veronika:{x:51,floor:73,height:37},
  timofey:{x:64,floor:72,height:38},arsenich:{x:94.1,floor:75,height:37},
  maria:{x:84,floor:72.5,height:37},grigory:{x:74,floor:74,height:37},
- daria:{x:90,floor:64,height:37.5},
+ daria:{x:89,floor:64,height:37.5},
 };
 const newCharacters=new Set(['timofey','arsenich','maria','grigory','daria']);
 // The tabletop and all its legs are one independent sprite; click targets cover only the game.

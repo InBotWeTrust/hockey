@@ -13,10 +13,10 @@
   background: var(--liquid-card-bg);
   backdrop-filter: var(--liquid-blur, blur(18px));
   -webkit-backdrop-filter: var(--liquid-blur, blur(18px));
-  box-shadow: var(--shadow-glass);
+  box-shadow: var(--liquid-shadow, var(--shadow-glass));
   pointer-events: none;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  color: var(--liquid-ink, #f8f9fb);
+  text-shadow: none;
   font-size: 11px;
   line-height: 1.2;
 }
@@ -43,13 +43,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--liquid-muted, rgba(248, 249, 251, 0.82));
 }
 .city-weather-widget__footer {
   font-size: 8px;
-  color: rgba(255, 255, 255, 0.85);
+  color: var(--liquid-muted, rgba(248, 249, 251, 0.82));
 }
 
 .city-weather-widget__reading svg {
   flex: none;
+}
+
+:root[data-theme='light'] .city-weather-widget {
+  color: #0f172a;
+}
+:root[data-theme='light'] .city-weather-widget :is(.city-weather-widget__description, .city-weather-widget__footer) {
+  color: rgba(15, 23, 42, 0.72);
+}
+
+.district--weather .district-game-anchor {
+  --city-panel-open-top: calc(104px + var(--app-safe-top, 0px));
 }
