@@ -16,6 +16,13 @@ export function isActionableDuelEvent(match: AmateurDuelMatch): boolean {
   return false;
 }
 
+// A waiting player still has an unfinished match; navigation is not an action queue.
+export function isUnfinishedDuelEvent(match: AmateurDuelMatch): boolean {
+  return match.status === 'invited'
+    ? match.me.side === 'opponent' && match.me.state === 'invited'
+    : match.status === 'ready_check' || match.status === 'active';
+}
+
 // Navigation and the district map observe the same keys and polling policy.
 export function useNavigationActivity(enabled: boolean) {
   const {totalUnread,unreadMessageCount}=useChatUnreadActivity(enabled);
@@ -37,5 +44,19 @@ export function useNavigationActivity(enabled: boolean) {
     (classicTournamentGames?.games ?? []).filter(
       (game) => game.state !== 'closed' && String(game.state) !== 'completed',
     ).length;
-  return { totalUnread, unreadMessageCount, gameActionCount, duelActionCount };
+  const unfinishedDuels = (amateurEvents?.events ?? []).filter(isUnfinishedDuelEvent);
+  const duelActivityCount = unfinishedDuels.filter(match => match.source !== 'tournament').length;
+  const tournamentGames = (classicTournamentGames?.games ?? []).filter(
+    game => game.state !== 'closed' && String(game.state) !== 'completed',
+  );
+  const tournamentMatchIds = new Set(tournamentGames.flatMap(game =>
+    game.kind === 'playoff' && game.duel_match_id ? [game.duel_match_id] : [],
+  ));
+  const tournamentActivityCount = tournamentGames.length + unfinishedDuels.filter(match =>
+    match.source === 'tournament' && !tournamentMatchIds.has(match.id),
+  ).length;
+  const stadiumActivityCount = duelActivityCount + tournamentActivityCount;
+  return { totalUnread, unreadMessageCount, gameActionCount, duelActionCount,
+    duelActivityCount, tournamentActivityCount, stadiumActivityCount };
+
 }

@@ -97,7 +97,7 @@ export function SectionsScreen(): JSX.Element {
   const cityQuery=useProfileCity(userId);
   const cityWeatherQuery=useCityWeather(userId,cityQuery.data?.city);
   const cityWeather=validCityWeather(cityWeatherQuery.data);
-  const { unreadMessageCount, gameActionCount } = useNavigationActivity(Boolean(user));
+  const { unreadMessageCount, stadiumActivityCount } = useNavigationActivity(Boolean(user));
   const cardInviteCount=useCardInvites(state=>state.incoming.length);
   const gameInviteCount=useGameInvites(state=>state.owner===userId?state.incoming.length:0);
   const barActivity = useBarActivity(false);
@@ -298,7 +298,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap weatherLoading={cityWeatherQuery.isPending} city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={gameActionCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
+      <CityMap weatherLoading={cityWeatherQuery.isPending} city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={stadiumActivityCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (

@@ -7822,6 +7822,21 @@ button.profile-story-series-card {
   color: #abd9c0;
 }
 
+/* Keep invitation choices distinct over the dark translucent cards. */
+:root[data-theme="dark"] .duel-invite-action--decline {
+  border: 1px solid rgba(221, 127, 139, 0.72);
+  background: rgba(119, 48, 61, 0.88);
+  color: #ffedf0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
+:root[data-theme="dark"] .duel-invite-action--accept {
+  border: 1px solid rgba(114, 177, 139, 0.72);
+  background: rgba(43, 96, 65, 0.9);
+  color: #effff5;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.12);
+}
+
 .arena-duel-invite-action {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
