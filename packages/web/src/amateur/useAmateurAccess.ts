@@ -1,8 +1,6 @@
-import {useQuery} from '@tanstack/react-query';
-import {apiFetch} from '../api/apiFetch.js';
+import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 import {useAuthStore} from '../auth/authStore.js';
 import {useDailyStore} from '../stores/dailyStore.js';
-import type {ProfileData} from '../screens/profileTypes.js';
 import {deriveAmateurAccess} from './amateurAccess.js';
 
 // Login sessions may omit competitionLevel. The current server profile and
@@ -10,10 +8,7 @@ import {deriveAmateurAccess} from './amateurAccess.js';
 export function useAmateurAccess(){
  const user=useAuthStore(s=>s.user);
  const daily=useDailyStore(s=>s.data);
- const profile=useQuery<ProfileData>({
-  queryKey:['profile'],queryFn:()=>apiFetch<ProfileData>('/me'),
-  enabled:Boolean(user?.id),staleTime:30_000,
- });
+ const profile=useOwnProfileSummary();
  return deriveAmateurAccess({
   competitionLevel:profile.data?.competitionLevel??user?.competitionLevel??null,
   qualifyingGoals:daily?.lifetime_total_goals??profile.data?.stats?.goals,
