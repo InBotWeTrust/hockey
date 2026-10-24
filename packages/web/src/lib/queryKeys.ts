@@ -6,11 +6,13 @@ export const chatKeys = {
   channelComments: (postId: string) => [...chatKeys.all, 'channel-comments', postId] as const,
   search: (q: string) => [...chatKeys.all, 'search', q] as const,
   users: (q: string) => [...chatKeys.all, 'users', q] as const,
+  readWatermark: (chatId: string, viewerId: string | null) => [...chatKeys.all, 'read-watermark', viewerId, chatId] as const,
   unread: () => [...chatKeys.all, 'unread'] as const,
   info: (chatId: string) => [...chatKeys.all, 'info', chatId] as const,
 };
 
 export const userKeys = {
   all: ['user'] as const,
+  summary: (viewerId: string | null, userId: string) => ['user', 'summary', viewerId, userId] as const,
   profile: (userId: string) => [...userKeys.all, 'profile', userId] as const,
 };

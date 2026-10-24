@@ -1,3 +1,9 @@
+export interface AchievementSummary {
+  completed: number;
+  total: number;
+  levels: { completed: number; total: number };
+}
+
 export interface AchievementProgressItem {
   status?: 'locked' | 'completed_unclaimed' | 'claimed';
   stage?: {

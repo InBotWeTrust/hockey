@@ -110,7 +110,7 @@ describe('UserProfileSheet', () => {
     vi.mocked(api.fetchUserProfile).mockResolvedValue(summary);
     await renderSheet({sender:{userId:'u1',displayName:'Иван Петров',avatarUrl:null,accountKind:'player'},onClose:vi.fn()});
     await screen.findByText('Иван Петров');
-    expect(api.fetchUserProfile).toHaveBeenCalledWith('u1', {summary:true});
+    expect(api.fetchUserProfile).toHaveBeenCalledWith('u1', expect.objectContaining({summary:true,countersOnly:true}));
   });
 
   it('loads trophy history only after opening a trophy', async () => {
@@ -328,7 +328,7 @@ describe('UserProfileSheet', () => {
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
       onClose: () => {},
     });
-    expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Иван Петров')).toBeInTheDocument());
     expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
     expect(await screen.findByText('Любитель')).toBeInTheDocument();
     expect(screen.getByText('Шайбы')).toBeInTheDocument();
@@ -346,7 +346,7 @@ describe('UserProfileSheet', () => {
       screen.getByLabelText('Витрина наград').querySelectorAll('.profile-fitted-number'),
     ).toHaveLength(4);
     expect(screen.getByText('Любитель')).toHaveClass('public-profile-status');
-    expect(screen.getByRole('button', { name: /Первая шайба.*получено/i })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Первая шайба.*получено/i })).not.toBeInTheDocument();
     const identity = screen.getByText('Иван Петров').closest('.public-profile-social-identity')?.querySelector('.profile-identity__main');
     expect(identity).toHaveClass('public-profile-identity');
     expect(identity?.querySelector('[aria-hidden="true"]')).toHaveStyle({
@@ -441,11 +441,12 @@ describe('UserProfileSheet', () => {
     });
 
     expect(await screen.findByText('Задания · 1/2, уровни · 3/9')).toBeInTheDocument();
-    const task = screen.getByRole('button', { name: /Заброшено шайб/ });
-    expect(within(task).getByText('Ур. 2/8')).toHaveClass('profile-career-award__level');
+    expect(screen.queryByRole('button', { name: /Заброшено шайб/ })).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/achievements/goals.webp"]')).toBeNull();
   });
 
   it('uses the compact achievement title treatment for training monster', async () => {
+    useAuthStore.setState({ user: { id: 'u1', displayName: 'Иван Петров' } });
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
       ...publicProfile,
       achievements: [
@@ -509,6 +510,7 @@ describe('UserProfileSheet', () => {
   });
 
   it('opens achievement details without a completion badge and with a square full-width image', async () => {
+    useAuthStore.setState({ user: { id: 'u1', displayName: 'Иван Петров' } });
     await renderSheet({
       sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null },
       onClose: () => {},
@@ -525,7 +527,8 @@ describe('UserProfileSheet', () => {
     expect(screen.queryByText('Выполнено')).not.toBeInTheDocument();
   });
 
-  it('shows the same tier progress details in a profile opened from chat', async () => {
+  it('shows the same tier progress details in a own profile opened from chat', async () => {
+    useAuthStore.setState({ user: { id: 'u1', displayName: 'Иван Петров' } });
     vi.mocked(api.fetchUserProfile).mockResolvedValue({
       ...publicProfile,
       achievements: [
@@ -563,7 +566,7 @@ describe('UserProfileSheet', () => {
     expect(details.queryByText('Далее — уровень 4')).toBeNull();
   });
 
-  it('hides the achievements section when the player has no completed achievements', async () => {
+  it('keeps zero achievement counters without an empty artwork panel', async () => {
     vi.mocked(api.fetchUserProfile).mockResolvedValue({
       ...publicProfile,
       achievements: [],
@@ -574,8 +577,19 @@ describe('UserProfileSheet', () => {
       onClose: () => {},
     });
 
-    expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
-    expect(screen.queryByText(/Задания/)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByText('Иван Петров')).toBeInTheDocument());
+    expect(screen.getByText('Задания · 0/0, уровни · 0/0')).toBeInTheDocument();
+  });
+
+  it('shows stored counters without loading or recounting achievement artwork', async () => {
+    vi.mocked(api.fetchUserProfile).mockResolvedValue({
+      ...publicProfile, achievements: [],
+      achievementSummary: { completed: 10, total: 53, levels: { completed: 120, total: 281 } },
+    });
+    await renderSheet({ sender: { userId: 'u1', displayName: 'Иван Петров', avatarUrl: null }, onClose: vi.fn() });
+    expect(await screen.findByText('Задания · 10/53, уровни · 120/281')).toBeInTheDocument();
+    expect(screen.queryByText('Первая шайба')).not.toBeInTheDocument();
+    expect(document.querySelector('img[src="/sprites/gate.webp"]')).toBeNull();
   });
 
   it('does not duplicate the message action below the profile',async()=>{
@@ -601,12 +615,12 @@ describe('UserProfileSheet', () => {
         onClose: () => {},
       },
       (queryClient) => {
-        queryClient.setQueryData(userKeys.profile('me'), {
+        queryClient.setQueryData(userKeys.summary('me','me'), {
           ...publicProfile,
           id: 'me',
           competitionLevel: 'beginner',
         });
-        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+        queryClient.setQueryData(userKeys.summary('me','u1'), publicProfile);
       },
     );
 
@@ -630,7 +644,7 @@ describe('UserProfileSheet', () => {
         onClose: () => {},
       },
       (queryClient) => {
-        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+        queryClient.setQueryData(userKeys.summary('me','u1'), publicProfile);
       },
     );
 
@@ -662,8 +676,8 @@ describe('UserProfileSheet', () => {
         onClose,
       },
       (queryClient) => {
-        queryClient.setQueryData(userKeys.profile('me'), { ...publicProfile, id: 'me' });
-        queryClient.setQueryData(userKeys.profile('u1'), publicProfile);
+        queryClient.setQueryData(userKeys.summary('me','me'), { ...publicProfile, id: 'me' });
+        queryClient.setQueryData(userKeys.summary('me','u1'), publicProfile);
         queryClient.setQueryData(['amateur-duel', 'matches'], { matches: [] });
       },
     );

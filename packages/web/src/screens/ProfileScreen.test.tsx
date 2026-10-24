@@ -1,3 +1,4 @@
+import * as publicProfileApi from '../chat/api.js';
 import { VenuePanorama } from '../components/VenuePanorama.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
@@ -120,7 +121,7 @@ function mockProfileRequest(
 ): void {
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
-    if (url.endsWith('/api/me')) {
+    if (/\/api\/me(?:\?|$)/.test(url)) {
       return new Response(status === 200 ? JSON.stringify(response) : 'server error', {
         status,
         headers: { 'content-type': 'application/json' },
@@ -310,6 +311,18 @@ function renderProfile(apartment = false): void {
 }
 
 describe('ProfileScreen', () => {
+  it('loads own trophy history only when its category is opened', async () => {
+    const {trophyDetails, ...summary} = profile;
+    mockProfileRequest(200, summary);
+    const history = vi.spyOn(publicProfileApi, 'fetchUserTrophyDetails').mockResolvedValue(trophyDetails);
+    renderProfile();
+    await screen.findByText('Alice T');
+    expect(history).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', {name:/Победы в регулярке/}));
+    expect(await screen.findByText('Кубок открытия')).toBeInTheDocument();
+    expect(history).toHaveBeenCalledOnce();
+  });
+
   it('shows pending referral rewards on the apartment circle before opening referrals',async()=>{
     mockProfileRequest();renderProfile(true);
     await waitFor(()=>expect(screen.getByRole('tab',{name:'Друзья'})).toHaveTextContent('2'));
@@ -569,7 +582,7 @@ describe('ProfileScreen', () => {
     await screen.findByRole('dialog', { name: 'Рейтинг игровых дней' });
     await waitFor(() => expect(passport).toHaveTextContent('15 (20)Дней подряд'));
     expect(
-      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).endsWith('/api/me')),
+      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => /\/api\/me(?:\?|$)/.test(String(input))),
     ).toHaveLength(1);
 
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));

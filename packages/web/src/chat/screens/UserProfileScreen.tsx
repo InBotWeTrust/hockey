@@ -1,3 +1,6 @@
+import { useOwnProfileSummary } from '../../profile/useOwnProfileSummary.js';
+import { useNavigationTiming } from '../../performance/navigationTiming.js';
+import { usePublicProfile } from '../usePublicProfile.js';
 import { BarChallengeButton } from '../../bar/BarChallengeButton.js';
 import { useEffect, useState } from 'react';
 import { SocialProfile } from '../../social/SocialProfile.js';
@@ -5,16 +8,13 @@ import { useMutation, useQuery } from '@tanstack/react-query';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft } from 'lucide-react';
 import {
-  fetchUserProfile,
   findOrCreateDM,
-  type UserPublicProfileDTO,
   type FindOrCreateDMResult,
 } from '../api.js';
 import {
   checkAmateurDuelChallengeAvailability,
   fetchAmateurMatches,
 } from '../../api/amateurDuel.js';
-import { userKeys } from '../../lib/queryKeys.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { formatLastSeen } from '../lastSeen.js';
 import { UserAvatar } from '../components/UserAvatar.js';
@@ -48,18 +48,11 @@ export function UserProfileScreen(): JSX.Element {
   const [duelToast, setDuelToast] = useState<string | null>(null);
   const [challengeRequested, setChallengeRequested] = useState(false);
 
-  const { data, isLoading, isError, refetch } = useQuery<UserPublicProfileDTO>({
-    queryKey: userKeys.profile(userId),
-    queryFn: () => fetchUserProfile(userId),
-    enabled: userId.length > 0,
-    staleTime: 60_000,
-  });
-  const { data: myProfile } = useQuery<UserPublicProfileDTO>({
-    queryKey: userKeys.profile(meId ?? ''),
-    queryFn: () => fetchUserProfile(meId ?? ''),
-    enabled: meId !== null,
-    staleTime: 60_000,
-  });
+  const { data, isLoading, isError, refetch } = usePublicProfile(userId, meId, userId !== meId);
+  const ownProfile = useOwnProfileSummary(false);
+  const fallbackOwnProfile = usePublicProfile(meId ?? '', meId, true, ownProfile.data === undefined);
+  const myProfile = ownProfile.data ?? fallbackOwnProfile.data;
+  useNavigationTiming('public-profile', userId, Boolean(data));
 
   const dmMut = useMutation<FindOrCreateDMResult, Error, string>({
     mutationFn: (otherUserId) => findOrCreateDM(otherUserId),
@@ -172,7 +165,7 @@ export function UserProfileScreen(): JSX.Element {
 
       {data && (
         <>
-          <SocialProfile userId={userId}/>
+          <SocialProfile userId={userId} {...(data.social ? {initialSummary:data.social} : {})}/>
           <div
             className="glass"
             style={{
@@ -217,6 +210,8 @@ export function UserProfileScreen(): JSX.Element {
           />
 
           <ProfileAchievementsSection
+            summaryOnly={!isSelf}
+            storedSummary={data.achievementSummary}
             achievements={data.achievements ?? []}
             onOpenAchievement={setSelectedAchievement}
           />

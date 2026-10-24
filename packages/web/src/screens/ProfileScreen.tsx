@@ -1,3 +1,4 @@
+import { useTrophyHistory } from '../profile/useTrophyHistory.js';
 import {SectionLoading} from '../components/SectionLoading.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
@@ -539,17 +540,23 @@ export function TrophyHistoryModal({
   section,
   details,
   onClose,
+  total,
+  loadMore,
+  loadingMore,
 }: {
   section: TrophySectionKey;
   details: NonNullable<ProfileData['trophyDetails']>;
   onClose: () => void;
+  total?: number | undefined;
+  loadMore?: (() => void) | undefined;
+  loadingMore?: boolean | undefined;
 }): JSX.Element {
   const [expandedChallengeId, setExpandedChallengeId] = useState<string | null>(null);
   const title = TROPHY_SECTION_TITLES[section];
   const isChallenge = section === 'completedChallenges';
   const challengeItems = details.completedChallenges;
   const tournamentItems = section === 'completedChallenges' ? [] : details[section];
-  const itemCount = isChallenge ? challengeItems.length : tournamentItems.length;
+  const itemCount = total ?? (isChallenge ? challengeItems.length : tournamentItems.length);
   return (
     <AccessibleModal
       title={`${title} (${itemCount})`}
@@ -610,6 +617,7 @@ export function TrophyHistoryModal({
               </article>
             ))}
       </div>
+      {loadMore && <button className="btn btn--ghost" disabled={loadingMore} onClick={loadMore}>Показать ещё</button>}
     </AccessibleModal>
   );
 }
@@ -787,8 +795,10 @@ export function ProfileScreen(): JSX.Element {
   const updateUser = useAuthStore((state) => state.updateUser);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me'),
+    queryFn: () => apiFetch<ProfileData>('/me?summary=true'),
   });
+  const trophyHistory = useTrophyHistory(profileQuery.data?.id ?? '',selectedTrophySection,profileQuery.data !== undefined && profileQuery.data.trophyDetails === undefined);
+  const trophyDetails = profileQuery.data?.trophyDetails ?? trophyHistory.data;
   const inventoryQuery = useQuery({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,
@@ -882,7 +892,7 @@ export function ProfileScreen(): JSX.Element {
       <section className={`profile-passport ${apartment ? 'profile-passport--separate' : 'glass'}`} aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
           <div className={apartment ? 'glass apartment-profile-identity' : undefined}>
-          <SocialProfile userId={profile.id} renderIdentity={counts=><div className="public-profile-social-identity"><div className="profile-identity__main">
+          <SocialProfile userId={profile.id} {...(profile.social ? {initialSummary:profile.social} : {})} renderIdentity={counts=><div className="public-profile-social-identity"><div className="profile-identity__main">
             {MARKSMANSHIP_CONSTRUCTOR_ENABLED ? (
               <button
                 type="button"
@@ -923,7 +933,7 @@ export function ProfileScreen(): JSX.Element {
             </button>
           </div>
           <span className="profile-identity__name public-profile-name-status"><span className="public-profile-name-text" title={profile.displayName}>{profile.displayName}</span><span className="profile-identity__level public-profile-status">{getLevelLabel(profile.competitionLevel)}</span></span>
-          <ProfileBio userId={profile.id}/>
+          <ProfileBio userId={profile.id} initialBio={profile.bio}/>
           </div>}/>
           </div>
           <div className={`profile-balances ${apartment ? 'glass' : ''}`} aria-label="Баланс игрока">
@@ -1051,10 +1061,19 @@ export function ProfileScreen(): JSX.Element {
           onClose={() => setSelectedAchievement(null)}
         />
       ) : null}
-      {selectedTrophySection !== null && profile.trophyDetails !== undefined ? (
+      {selectedTrophySection !== null && trophyDetails === undefined && (
+        <AccessibleModal title="Награды" onClose={() => setSelectedTrophySection(null)} headerAction={<button className="icon-btn" aria-label="Закрыть" onClick={() => setSelectedTrophySection(null)}><X size={16}/></button>}>
+          <p className="modal-copy" role={trophyHistory.isError ? 'alert' : 'status'}>{trophyHistory.isError ? 'Не удалось загрузить награды' : 'Загрузка…'}</p>
+          {trophyHistory.isError && <button className="btn btn--ghost" onClick={() => void trophyHistory.refetch()}>Повторить</button>}
+        </AccessibleModal>
+      )}
+      {selectedTrophySection !== null && trophyDetails !== undefined ? (
         <TrophyHistoryModal
           section={selectedTrophySection}
-          details={profile.trophyDetails}
+          details={trophyDetails}
+          total={profileQuery.data?.trophyDetails ? undefined : profileQuery.data?.trophySummary?.[selectedTrophySection]}
+          loadMore={trophyHistory.hasNextPage ? () => void trophyHistory.fetchNextPage() : undefined}
+          loadingMore={trophyHistory.isFetchingNextPage}
           onClose={() => setSelectedTrophySection(null)}
         />
       ) : null}
