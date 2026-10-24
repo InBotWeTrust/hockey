@@ -1,3 +1,4 @@
+import { performancePlugin } from './plugins/performance.js';
 import { configureBarInviteChat } from './bar/inviteChat.js';
 import { visitorRoutes } from './bar/visitorRoutes.js';
 import {staffRoomRoutes} from './bar/staffRoomRoutes.js';
@@ -132,6 +133,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
     await validateOfficialAccount(app.pg, config.SYSTEM_USER_ID);
   }
   await app.register(redisPlugin, { url: config.REDIS_URL });
+  await app.register(performancePlugin,{enabled:process.env.APP_PERFORMANCE_METRICS === '1'});
   await app.register(realtimePlugin);
   await app.register(monthlyRatingLifecyclePlugin, {
     enabled: options.monthlyRatingLifecycleEnabled ?? (config.NODE_ENV === 'test' ? false : true),
