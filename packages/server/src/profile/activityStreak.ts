@@ -11,6 +11,7 @@ anchors as (
                            and (now() at time zone u.timezone)::date
   ) as anchor_day
     from users u left join activity_days a on a.user_id = u.id
+   ${userScoped ? 'where u.id = $1' : ''}
    group by u.id
 ),
 descending_days as (

@@ -1,3 +1,4 @@
+import type { AchievementSummary } from '../achievements/summary.js';
 // Row types — one per chat table. snake_case to match SQL columns; conversion
 // to camelCase happens at the API boundary (routes layer) in PR 2.
 
@@ -226,12 +227,14 @@ export interface ChannelPostReactionUserDTO {
 }
 
 export interface UserPublicProfileDTO {
+  bio?: string;
   id: string;
   displayName: string;
   avatarUrl: string | null;
   competitionLevel: CompetitionLevel;
   stats: ProfileStatsDTO;
   achievements: ProfileAchievementDTO[];
+  achievementSummary?: AchievementSummary;
   currencyBalance: number;
   starBalance: number;
   experienceBalance: number;

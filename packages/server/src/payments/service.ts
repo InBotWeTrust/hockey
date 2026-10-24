@@ -1,3 +1,4 @@
+import { completeAchievements } from '../achievements/service.js';
 import type { Pool } from 'pg';
 import { z } from 'zod';
 import { AppError } from '../plugins/errors.js';
@@ -309,6 +310,7 @@ export async function reconcileYooKassaPayment(
         "update payments set status = 'paid', paid_at = now(), updated_at = now() where id = $1",
         [payment.id],
       );
+      await completeAchievements(client, owner.user_id, ['wallet'], { source: 'payment', paymentId: payment.id });
     }
     await client.query('commit');
   } catch (error) {

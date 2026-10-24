@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
 import { hasIntegrationEnv, createTestPool, resetDatabase } from '../helpers/testDb.js';
 import { applyMigrations } from '../../src/db/migrations.js';
-import { getMyChats, searchUsers } from '../../src/chat/service.js';
+import { getMyChats, searchUsers, getUserPublicProfile } from '../../src/chat/service.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -37,6 +37,27 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
     await pool.query(`update users set account_kind = 'player' where id = any($1::uuid[])`, [
       [userA, userB, userC],
     ]);
+  });
+
+  it('serves stored public counters matching the full catalogue without write queries', async () => {
+    await pool.query('update users set lifetime_goals_total=500, lifetime_shots_total=1000 where id=$1', [userA]);
+    const full = await getUserPublicProfile(pool, userA);
+    const expected = full!.achievements.reduce((summary, achievement) => {
+      const total = achievement.stage?.total ?? 1;
+      const completed = achievement.stage
+        ? Math.min(total, achievement.stage.history.length + (achievement.status === 'completed_unclaimed' ? 1 : 0))
+        : achievement.status === 'locked' ? 0 : 1;
+      return { completed: summary.completed + Number(completed === total), total: summary.total + 1,
+        levels: { completed: summary.levels.completed + completed, total: summary.levels.total + total } };
+    }, { completed: 0, total: 0, levels: { completed: 0, total: 0 } });
+    const readOnly = { query: (sql: string, params: unknown[]) => {
+      expect(sql).not.toMatch(/\b(insert|update|delete)\b/i);
+      return pool.query(sql, params);
+    } } as unknown as Pool;
+    const compact = await getUserPublicProfile(readOnly, userA, { countersOnly: true });
+    expect(compact?.achievementSummary).toEqual(expected);
+    expect(compact?.achievements).toEqual([]);
+    expect(compact?.trophyDetails).toBeUndefined();
   });
 
   describe('getMyChats', () => {
