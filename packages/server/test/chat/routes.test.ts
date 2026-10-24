@@ -75,7 +75,9 @@ describe.skipIf(!hasIntegrationEnv)('chat routes', () => {
     expect(response.statusCode).toBe(200);
     expect(response.json()).toHaveProperty('trophySummary');
     expect(response.json()).not.toHaveProperty('trophyDetails');
-    const history = await app.inject({method:'GET',url:`/users/${userB}/trophies`,headers:{authorization:`Bearer ${tokenA}`}});
+    const unbounded = await app.inject({method:'GET',url:`/users/${userB}/trophies`,headers:{authorization:`Bearer ${tokenA}`}});
+    expect(unbounded.statusCode).toBe(400);
+    const history = await app.inject({method:'GET',url:`/users/${userB}/trophies?section=regularSeasonWins`,headers:{authorization:`Bearer ${tokenA}`}});
     expect(history.statusCode).toBe(200);
     expect(history.json()).toHaveProperty('regularSeasonWins');
     const unauthenticated = await app.inject({method:'GET',url:`/users/${userB}/trophies`});

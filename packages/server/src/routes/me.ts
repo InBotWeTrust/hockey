@@ -7,6 +7,7 @@ import { getGameSettings, type GameSettings } from '../duel/gameSettings.js';
 import { AppError } from '../plugins/errors.js';
 import {
   buildProfileProgress,
+  readPublicProfileProgress,
   fetchTrophyDetails,
   fetchTrophySummary,
 } from '../profile/summary.js';
@@ -61,7 +62,7 @@ export function buildStoryProfileFields(
   };
 }
 
-async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
+async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string, options: {summary?: boolean; countersOnly?: boolean} = {}) {
   const { rows } = await app.pg.query<MeRow>(
     `select u.id, u.bio, u.created_at, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
             u.lifetime_shots_total, u.lifetime_goals_total, u.display_source,
@@ -100,10 +101,13 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     throw new AppError('not_found', 'user not found', 404);
   }
   const row = rows[0]!;
-  const profileProgress = await buildProfileProgress(app.pg, row, { claimedOnly: false });
+  const settings = await getGameSettings(app.pg);
+  const profileProgress = options.countersOnly
+    ? await readPublicProfileProgress(app.pg, row, settings)
+    : await buildProfileProgress(app.pg, row, { claimedOnly: false, settings });
   const [trophySummary, trophyDetails, referralAttention] = await Promise.all([
     fetchTrophySummary(app.pg, row.id),
-    fetchTrophyDetails(app.pg, row.id),
+    options.summary || options.countersOnly ? Promise.resolve(undefined) : fetchTrophyDetails(app.pg, row.id),
     app.pg.query<{ count: number }>(
       `select count(*)::int as count
          from referral_reward_unlock
@@ -115,7 +119,6 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     id: row.id,
     role: row.role,
   });
-  const settings = await getGameSettings(app.pg);
 
   return {
     id: row.id,
@@ -132,8 +135,9 @@ async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string) {
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
     trophySummary,
-    trophyDetails,
-    unclaimedAchievementsCount: profileProgress.unclaimedAchievementsCount,
+    ...(trophyDetails === undefined ? {} : {trophyDetails}),
+    ...(profileProgress.achievementSummary ? {achievementSummary:profileProgress.achievementSummary} : {}),
+    unclaimedAchievementsCount: 'unclaimedAchievementsCount' in profileProgress ? profileProgress.unclaimedAchievementsCount : 0,
     unclaimedReferralRewardsCount: Number(referralAttention.rows[0]?.count ?? 0),
     currencyBalance: Number(row.currency_balance),
     starBalance: Number(row.star_balance),
@@ -191,14 +195,18 @@ export const meRoutes: FastifyPluginAsync = async (app) => {
     });
   });
 
+  app.get('/me/tournament-congratulations', { preHandler: [app.authenticate] }, async (req) => ({
+    pendingTournamentCongratulations: await listPendingRegularSeasonPodiumCongratulations(app.pg, req.user.id),
+  }));
+
   app.get('/me', { preHandler: [app.authenticate] }, async (req) => {
     const query = z
-      .object({ includeTournamentCongratulations: z.enum(['true', 'false']).optional() })
+      .object({ includeTournamentCongratulations: z.enum(['true', 'false']).optional(), summary:z.enum(['true','false']).optional(), countersOnly:z.enum(['true','false']).optional() })
       .safeParse(req.query);
     if (!query.success) {
       throw new AppError('bad_request', 'invalid query', 400);
     }
-    const profile = await getMe(app, req.user.id);
+    const profile = await getMe(app, req.user.id, {summary:query.data.summary==='true', countersOnly:query.data.countersOnly==='true'});
     if (query.data.includeTournamentCongratulations !== 'true') return profile;
     return {
       ...profile,

@@ -1,6 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import { observeFanAchievement } from './fanStages.js';
-import { getGameSettings } from '../duel/gameSettings.js';
+import { getGameSettings, type GameSettings } from '../duel/gameSettings.js';
 import { observeAchievementStage, openFirstAchievementStages } from './stageProgress.js';
 import { USER_ACTIVITY_STREAK_CTES } from '../profile/activityStreak.js';
 
@@ -249,11 +249,12 @@ export async function grantStatAchievements(
   db: Queryable,
   userId: string,
   stats: AchievementStats,
+  suppliedSettings?: GameSettings,
 ): Promise<void> {
   const achievementIds: string[] = STAT_ACHIEVEMENT_RULES.filter((rule) =>
     rule.isSatisfied(stats),
   ).map((rule) => rule.id);
-  const settings = await getGameSettings(db);
+  const settings = suppliedSettings ?? await getGameSettings(db);
   if (stats.lifetimeGoals >= settings.amateur.unlockGoalsRequired) {
     achievementIds.push('amateur-ticket');
   }
