@@ -1,14 +1,12 @@
 import {SectionLoading} from '../components/SectionLoading.js';
 import { X } from 'lucide-react';
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../api/apiFetch.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
 import { DuelLockerTab } from '../components/duel/DuelLockerTab.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
-import type { ProfileData } from './profileTypes.js';
 import './locker-room-screen.css';
 
 const backgrounds = {
@@ -21,7 +19,7 @@ export function LockerRoomScreen(): JSX.Element {
   const navigate = useNavigate();
   const owner = useAuthStore((state) => state.user?.id);
   const [infoOpen, setInfoOpen] = useState(false);
-  const profile = useQuery<ProfileData>({ queryKey: ['profile'], queryFn: () => apiFetch('/me') });
+  const profile = useOwnProfileSummary();
   const level = profile.data?.competitionLevel ?? 'beginner';
   const background = backgrounds[level];
   return (

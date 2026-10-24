@@ -274,7 +274,7 @@ export function InventoryScreen(): JSX.Element {
   const selectedCategory = activeTab === 'goods' ? parseShopCategory(searchParams.get('category')) ?? 'stick' : null;
   useEffect(() => {
     if (inventory === undefined || activeTab !== 'goods') return;
-    preloadArtwork(shopArtworkUrls(inventory, selectedCategory));
+    return preloadArtwork(shopArtworkUrls(inventory, selectedCategory));
   }, [activeTab, inventory, selectedCategory]);
   useEffect(() => {
     if (

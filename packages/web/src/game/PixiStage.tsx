@@ -7,8 +7,6 @@ const SPRITE_ASSETS = [
   '/sprites/gate.webp',
   '/sprites/goalkeeper.webp',
   '/sprites/save.webp',
-  '/sprites/lefthand.webp',
-  '/sprites/righthand.webp',
   '/sprites/ultimate-player-left.webp',
   '/sprites/ultimate-player-left-shoot.webp',
   '/sprites/ultimate-player-right.webp',
@@ -24,10 +22,11 @@ export interface PixiStageProps {
   onReady: (app: Application, scale: Scale) => void;
   onResize: (scale: Scale) => void;
   preloadAssets?: readonly string[] | undefined;
+  preloadHockeyAssets?: boolean | undefined;
   resolutionLimit?: number | undefined;
 }
 
-export function PixiStage({ onReady, onResize, preloadAssets = [], resolutionLimit = 3 }: PixiStageProps): JSX.Element {
+export function PixiStage({ onReady, onResize, preloadAssets = [], preloadHockeyAssets = true, resolutionLimit = 3 }: PixiStageProps): JSX.Element {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const callbacksRef = useRef({ onReady, onResize });
   callbacksRef.current = { onReady, onResize };
@@ -57,7 +56,7 @@ export function PixiStage({ onReady, onResize, preloadAssets = [], resolutionLim
         resolution: Math.min(window.devicePixelRatio ?? 1, resolutionLimit),
         autoDensity: true,
       });
-      await Assets.load([...SPRITE_ASSETS, ...preloadAssetsRef.current]).catch(() => undefined);
+      await Assets.load([...(preloadHockeyAssets ? SPRITE_ASSETS : []), ...preloadAssetsRef.current]).catch(() => undefined);
       if (disposed) {
         try {
           app.destroy(true, { children: true });

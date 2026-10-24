@@ -2,7 +2,7 @@ import type { Pool, PoolClient } from 'pg';
 import { appendEvent } from '../duel/eventLog.js';
 import { AppError } from '../plugins/errors.js';
 import { resolveAmateurAccess } from '../profile/amateurAccess.js';
-import { fetchWeeklyChallengeProgress } from './progress.js';
+import { fetchWeeklyChallengeProgress, fetchWeeklyChallengeProgressBatch, type WeeklyChallengeProgressMap } from './progress.js';
 import { grantWeeklyChallengeReward } from './rewards.js';
 import type {
   WeeklyChallengeCatalogResponse,
@@ -166,17 +166,24 @@ async function hasChallengeEligibility(
   return rows.length > 0;
 }
 
+interface ChallengeReadData {
+  tasks: WeeklyChallengeTaskRow[];
+  rewardClaimedAt: Date | null;
+  progress: WeeklyChallengeProgressMap;
+  eligible: boolean;
+}
+
 async function mapChallenge(
   db: Queryable,
   challenge: WeeklyChallengeRow,
   userId: string,
   now: Date,
+  loaded?: ChallengeReadData,
 ): Promise<WeeklyChallengeDTO> {
-  const tasks = await fetchTasks(db, challenge.id);
-  const rewardClaim = await fetchRewardClaim(db, challenge.id, userId);
-  const rewardClaimedAt = rewardClaim?.claimed_at ?? null;
+  const tasks = loaded?.tasks ?? await fetchTasks(db, challenge.id);
+  const rewardClaimedAt = loaded ? loaded.rewardClaimedAt : (await fetchRewardClaim(db, challenge.id, userId))?.claimed_at ?? null;
   const status = resolveWeeklyChallengeStatus(challenge, now);
-  const progress = await fetchWeeklyChallengeProgress(db, {
+  const progress = loaded?.progress ?? await fetchWeeklyChallengeProgress(db, {
     userId,
     from: challenge.start_at,
     to: challenge.end_at,
@@ -198,7 +205,7 @@ async function mapChallenge(
   const canClaimReward =
     rewardClaimedAt === null &&
     allTasksCompleted &&
-    (await hasChallengeEligibility(db, challenge, userId));
+    (loaded ? loaded.eligible : await hasChallengeEligibility(db, challenge, userId));
 
   return {
     id: challenge.id,
@@ -222,6 +229,41 @@ async function mapChallenge(
   };
 }
 
+/** Bound SQL parameter/work batches without changing catalogue or reward contracts. */
+async function mapChallenges(db: Queryable, challenges: WeeklyChallengeRow[], userId: string, now: Date): Promise<WeeklyChallengeDTO[]> {
+  if (challenges.length <= 1) return Promise.all(challenges.map(challenge => mapChallenge(db, challenge, userId, now)));
+  const result: WeeklyChallengeDTO[] = [];
+  for (let offset = 0; offset < challenges.length; offset += 50) {
+    const batch = challenges.slice(offset, offset + 50);
+    const ids = batch.map(challenge => challenge.id);
+    const tasks = await db.query<WeeklyChallengeTaskRow>(
+      `select * from weekly_challenge_tasks where challenge_id = any($1::uuid[])
+       order by challenge_id, sort_order asc, created_at asc`, [ids]);
+    const claims = await db.query<{challenge_id: string; claimed_at: Date}>(
+      'select challenge_id, claimed_at from weekly_challenge_reward_claims where challenge_id = any($1::uuid[]) and user_id = $2', [ids,userId]);
+    const participants = await db.query<{challenge_id: string}>(
+      'select challenge_id from weekly_challenge_participants where challenge_id = any($1::uuid[]) and user_id = $2', [ids,userId]);
+    const progress = await fetchWeeklyChallengeProgressBatch(db,userId,batch.map(challenge=>({from:challenge.start_at,to:challenge.end_at})));
+    const grouped = new Map<string, WeeklyChallengeTaskRow[]>();
+    for (const task of tasks.rows) {
+      const group = grouped.get(task.challenge_id) ?? [];
+      group.push(task);
+      grouped.set(task.challenge_id,group);
+    }
+    const claimed = new Map(claims.rows.map(claim=>[claim.challenge_id,claim.claimed_at]));
+    const joined = new Set(participants.rows.map(row=>row.challenge_id));
+    for (const [index, challenge] of batch.entries()) {
+      const values = progress[index];
+      if (!values) throw new Error('Missing weekly challenge progress window');
+      result.push(await mapChallenge(db,challenge,userId,now,{
+        tasks:grouped.get(challenge.id) ?? [], rewardClaimedAt:claimed.get(challenge.id) ?? null,
+        progress:values, eligible:challenge.is_automatic ? challenge.launched_at !== null : joined.has(challenge.id),
+      }));
+    }
+  }
+  return result;
+}
+
 export async function getCurrentWeeklyChallenge(
   db: Queryable,
   userId: string,
@@ -234,13 +276,9 @@ export async function getCurrentWeeklyChallenge(
     challenge?.id ?? null,
     now,
   );
-  const pendingRewards = [];
-  for (const candidate of pendingRewardCandidates) {
-    const mapped = await mapChallenge(db, candidate, userId, now);
-    if (mapped.canClaimReward) pendingRewards.push(mapped);
-  }
-  if (!challenge) return { challenge: null, pendingRewards };
-  return { challenge: await mapChallenge(db, challenge, userId, now), pendingRewards };
+  const mapped = await mapChallenges(db, [...pendingRewardCandidates, ...(challenge ? [challenge] : [])], userId, now);
+  const pendingRewards = mapped.slice(0,pendingRewardCandidates.length).filter(candidate=>candidate.canClaimReward);
+  return { challenge: challenge ? mapped.at(-1)! : null, pendingRewards };
 }
 
 export async function getWeeklyChallengeCatalog(
@@ -254,8 +292,7 @@ export async function getWeeklyChallengeCatalog(
     completed: [],
   };
   const candidates = await fetchCatalogChallenges(db, userId, now);
-  for (const candidate of candidates) {
-    const challenge = await mapChallenge(db, candidate, userId, now);
+  for (const challenge of await mapChallenges(db, candidates, userId, now)) {
     const section = classifyWeeklyChallengeForCatalog(challenge);
     if (section !== null) response[section].push(challenge);
   }
@@ -284,10 +321,10 @@ export async function getPendingWeeklyChallengeFailure(
       order by challenge.end_at asc, challenge.id asc`,
     [userId, now],
   );
-  for (const row of rows) {
-    const challenge = await mapChallenge(db, row, userId, now);
-    if (challenge.rewardClaimedAt === null && challenge.hasProgress && !challenge.allTasksCompleted)
-      return { challenge };
+  for (let offset = 0; offset < rows.length; offset += 50) {
+    const mapped = await mapChallenges(db, rows.slice(offset, offset + 50), userId, now);
+    const challenge = mapped.find(item => item.rewardClaimedAt === null && item.hasProgress && !item.allTasksCompleted);
+    if (challenge) return { challenge };
   }
   return { challenge: null };
 }

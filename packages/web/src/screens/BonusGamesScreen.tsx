@@ -299,7 +299,7 @@ export function BonusGamesScreen(): JSX.Element {
   );
   useEffect(() => {
     if (allGames.length === 0) return;
-    preloadArtwork(bonusGameArtworkUrls(allGames, selectedSkill, focusGame?.id ?? null));
+    return preloadArtwork(bonusGameArtworkUrls(allGames, selectedSkill, focusGame?.id ?? null));
   }, [allGames, focusGame?.id, selectedSkill]);
 
   return (

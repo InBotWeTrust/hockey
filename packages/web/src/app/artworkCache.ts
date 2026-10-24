@@ -18,15 +18,6 @@ const CRITICAL_ARTWORK = [
   '/daily-game/start.webp',
   '/modes/training-evening.webp',
   '/achievements/first-goal.webp',
-  '/modes/shop-retail-v2.webp',
-  '/modes/amateur-game-v3.webp',
-  '/modes/pro-game.webp',
-  '/bonus-games/section-card-v5.webp',
-  '/profile/stats-card-art.png',
-  '/profile/equipment-card-art.png',
-  '/profile/achievements-card-art.png',
-  '/profile/arena-card-art.png',
-  '/profile/settings-card-art.png',
 ] as const;
 
 export const MAX_RETAINED_ARTWORK = 64;
@@ -150,20 +141,48 @@ function retainArtwork(cache: Map<string, HTMLImageElement>, url: string, image:
   while(cache.size > MAX_RETAINED_ARTWORK)cache.delete(cache.keys().next().value!);
 }
 
+type ArtworkJob = { url: string; owner: { cancelled: boolean }; createImage: () => HTMLImageElement };
+const artworkQueues = new WeakMap<Map<string, HTMLImageElement>, { active: number; jobs: ArtworkJob[] }>();
+
+/** Speculative warming only. Visible images keep their normal browser priority. */
 export function preloadArtwork(
   urls: readonly string[],
   cache: Map<string, HTMLImageElement> = retainedArtwork,
   createImage: () => HTMLImageElement = () => new Image(),
-): void {
-  for (const url of urls) {
-    const existing=cache.get(url);
-    if (existing) {retainArtwork(cache,url,existing);continue;}
-    const image = createImage();
-    image.decoding = 'async';
-    image.fetchPriority = 'low';
-    image.src = url;
-    retainArtwork(cache, url, image);
+): () => void {
+  const owner = { cancelled: false };
+  let queue = artworkQueues.get(cache);
+  if (!queue) {
+    queue = { active: 0, jobs: [] };
+    artworkQueues.set(cache, queue);
   }
+  const state = queue;
+  for (const url of new Set(urls)) {
+    const existing = cache.get(url);
+    if (existing) { retainArtwork(cache, url, existing); continue; }
+    state.jobs.push({ url, owner, createImage });
+  }
+  const pump = (): void => {
+    while (state.active < 4 && state.jobs.length > 0) {
+      const job = state.jobs.shift()!;
+      if (job.owner.cancelled || cache.has(job.url)) continue;
+      const image = job.createImage();
+      image.decoding = 'async';
+      image.fetchPriority = 'low';
+      image.src = job.url;
+      retainArtwork(cache, job.url, image);
+      state.active++;
+      // decode also waits for network completion. It does not block visible img elements.
+      void (image.decode?.() ?? Promise.resolve()).catch(() => {
+        if (cache.get(job.url) === image) cache.delete(job.url);
+      }).finally(() => { state.active--; pump(); });
+    }
+  };
+  pump();
+  return () => {
+    owner.cancelled = true;
+    state.jobs = state.jobs.filter(job => job.owner !== owner);
+  };
 }
 
 function preloadArtworkAndWait(

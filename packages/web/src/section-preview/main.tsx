@@ -1,3 +1,4 @@
+import { ownProfileSummaryKey } from '../profile/useOwnProfileSummary.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { UserProfileScreen } from '../chat/screens/UserProfileScreen.js';
 import { userKeys } from '../lib/queryKeys.js';
@@ -364,6 +365,8 @@ const initial =
                   ? `/inventory?tab=${params.get('tab') ?? 'bank'}`
                   : `/inventory?category=${params.get('category') ?? 'stick'}`;
 const previewClient = new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+// The preview has synthetic data and deliberately does not create an auth session.
+previewClient.setQueryData(ownProfileSummaryKey(useAuthStore.getState().user?.id), {...apartmentProfile, competitionLevel: level});
 previewClient.setQueryData(userKeys.summary(useAuthStore.getState().user?.id ?? null, 'public-profile-fixture'), {
   id:'public-profile-fixture',displayName:'Игрок для проверки',avatarUrl:null,competitionLevel:level,
   stats:{shots:1280,goals:640,accuracy:50,playStreakDays:7,bestPlayStreakDays:12},

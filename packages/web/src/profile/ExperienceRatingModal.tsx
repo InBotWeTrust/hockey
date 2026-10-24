@@ -1,3 +1,4 @@
+import { useRatingCacheWindow } from './ratingCache.js';
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { TrendingUp, X } from 'lucide-react';
@@ -63,6 +64,7 @@ export function ExperienceRatingModal({
     if (node === null) setCurrentRowVisible(false);
   }, []);
 
+  useRatingCacheWindow(source?.key??['profile', 'experience-rating']);
   const query = useInfiniteQuery({
     queryKey: source?.key??['profile', 'experience-rating'],
     queryFn: ({ pageParam }) => source?source.load(pageParam):fetchExperienceRatingPage(pageParam),

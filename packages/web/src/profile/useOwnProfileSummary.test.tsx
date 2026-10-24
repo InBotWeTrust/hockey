@@ -39,3 +39,11 @@ it('does not reuse the previous account profile',async()=>{
  expect(result.current.data).toBeUndefined();
  await waitFor(()=>expect(result.current.data?.competitionLevel).toBe('beginner'));
 });
+it('can require a fresh compact response for story replay despite a warm cache', async () => {
+ const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}});
+ client.setQueryData(['profile','summary','me'],{id:'me',amateurUnlockGoalsRequired:300});
+ vi.mocked(apiFetch).mockResolvedValue({id:'me',amateurUnlockGoalsRequired:475});
+ const {result}=renderHook(()=>useOwnProfileSummary(true,{fresh:true}),{wrapper:wrapper(client)});
+ await waitFor(()=>expect(result.current.data?.amateurUnlockGoalsRequired).toBe(475));
+ expect(apiFetch).toHaveBeenCalledWith('/me?summary=true&countersOnly=true',expect.objectContaining({cache:'no-store'}));
+});

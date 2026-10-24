@@ -29,6 +29,23 @@ vi.mock('pixi.js', () => {
 import { PixiStage } from './PixiStage.js';
 
 describe('PixiStage', () => {
+  it('does not preload obsolete hand or resurfacer sprites', async () => {
+    pixiMock.load.mockClear();
+    const ready = vi.fn();
+    render(<PixiStage onReady={ready} onResize={() => {}} />);
+    await waitFor(() => expect(ready).toHaveBeenCalled());
+    const urls = pixiMock.load.mock.calls.flatMap(([assets]) => Array.isArray(assets) ? assets : [assets]);
+    expect(urls.filter(url => /lefthand|righthand|ice-resurfacer/.test(url))).toEqual([]);
+  });
+
+  it('allows fight scenes to load only their own artwork', async () => {
+    pixiMock.load.mockClear();
+    const ready = vi.fn();
+    render(<PixiStage preloadHockeyAssets={false} preloadAssets={['/fight/player.webp']} onReady={ready} onResize={() => {}} />);
+    await waitFor(() => expect(ready).toHaveBeenCalled());
+    expect(pixiMock.load).toHaveBeenCalledWith(['/fight/player.webp']);
+  });
+
   it('mounts without throwing and calls onReady', async () => {
     const onReady = vi.fn();
     render(<PixiStage onReady={onReady} onResize={() => {}} />);

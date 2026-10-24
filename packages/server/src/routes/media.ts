@@ -252,39 +252,45 @@ export const mediaRoutes: FastifyPluginAsync<MediaRoutesOptions> = async (app, o
     const row = rows[0];
     if (row === undefined) throw new AppError('not_found', 'media not found', 404);
 
-    let object;
-    try {
-      object = await options.objectStorage.getObject({ key: row.object_key });
-    } catch (err) {
-      app.log.error({ err, mediaId, key: row.object_key }, 'object storage media read failed');
-      throw new AppError('storage_read_failed', 'Не удалось открыть файл', 502);
-    }
-
+    // Object keys are immutable; use the size recorded at upload to reject invalid ranges
+    // without fetching the object, and ask storage for only the requested bytes.
+    const size = Number(row.size_bytes);
+    const range = parseByteRange(req.headers.range, size);
     const filename = encodeURIComponent(row.original_name || 'media');
-    const contentType = row.content_type || object.contentType;
-    const range = parseByteRange(req.headers.range, object.body.byteLength);
-    reply
-      .header('Cache-Control', 'private, max-age=86400')
-      .header('Accept-Ranges', 'bytes')
-      .header('Content-Disposition', `inline; filename*=UTF-8''${filename}`)
-      .type(contentType);
-
+    reply.header('Accept-Ranges', 'bytes');
     if (req.headers.range !== undefined && range === null) {
-      reply.header('Content-Range', `bytes */${object.body.byteLength}`).code(416);
+      reply.header('Content-Range', `bytes */${size}`).code(416);
       return Buffer.alloc(0);
     }
 
-    if (range !== null) {
-      const chunk = object.body.subarray(range.start, range.end + 1);
-      reply
-        .code(206)
-        .header('Content-Length', String(chunk.byteLength))
-        .header('Content-Range', `bytes ${range.start}-${range.end}/${object.body.byteLength}`);
-      return chunk;
+    const controller = new AbortController();
+    const onClose = () => controller.abort();
+    reply.raw.once('close', onClose);
+    let object;
+    try {
+      object = await options.objectStorage.getObjectStream({
+        key: row.object_key,
+        signal: controller.signal,
+        ...(range ? {range: {...range, total: size}} : {}),
+      });
+    } catch (err) {
+      reply.raw.off('close', onClose);
+      app.log.error({ err, mediaId, key: row.object_key }, 'object storage media read failed');
+      throw new AppError('storage_read_failed', 'Не удалось открыть файл', 502);
     }
-
-    reply.header('Content-Length', String(object.body.byteLength));
-    return object.body;
+    object.body.once('close', () => reply.raw.off('close', onClose));
+    reply
+      .header('Cache-Control', 'private, max-age=86400')
+      .header('Content-Disposition', `inline; filename*=UTF-8''${filename}`)
+      .type(row.content_type || object.contentType);
+    if (range !== null) {
+      reply.code(206)
+        .header('Content-Length', String(range.end - range.start + 1))
+        .header('Content-Range', `bytes ${range.start}-${range.end}/${size}`);
+    } else {
+      reply.header('Content-Length', String(size));
+    }
+    return reply.send(object.body);
   });
 
   app.post('/me/avatar', { preHandler: [app.authenticate] }, async (req) => {

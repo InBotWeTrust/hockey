@@ -396,7 +396,7 @@ export function LegacyFightView({
           </p>
         )}
         <div className="fight-arena">
-          <PixiStage
+          <PixiStage preloadHockeyAssets={false}
             onResize={layout}
             onReady={(app) => {
               appRef.current = app;
