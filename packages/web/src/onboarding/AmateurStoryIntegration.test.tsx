@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { useAuthStore } from '../auth/authStore.js';
 import { OnboardingFlow } from './OnboardingFlow.js';
 import { ProfileStorySeriesScreen } from '../screens/ProfileStorySeriesScreen.js';
 import { ProfileStoryScreen } from '../screens/ProfileDestinationScreens.js';
@@ -85,6 +86,7 @@ function page(element: JSX.Element) {
 describe('amateur cinematic integration', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({user:{id:'u1',displayName:'Alice'}});
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
     vi.mocked(completeOnboarding).mockReset().mockResolvedValue({ required: null });
   });

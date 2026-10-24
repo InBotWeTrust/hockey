@@ -1,3 +1,4 @@
+import { lazy, Suspense } from 'react';
 import {
   createContext,
   useCallback,
@@ -18,7 +19,8 @@ import {
 } from '../api/onboarding.js';
 import { apiFetch } from '../api/apiFetch.js';
 import type { ProfileData } from '../screens/profileTypes.js';
-import { OnboardingFlow, StartupSplash } from './OnboardingFlow.js';
+import { StartupSplash } from './StartupSplash.js';
+const OnboardingFlow = lazy(() => import('./OnboardingFlow.js').then(module => ({default:module.OnboardingFlow})));
 
 interface OnboardingGateValue {
   refreshAfterGameExit(): Promise<void>;
@@ -124,17 +126,18 @@ export function OnboardingGate({
     // An invalidation alone does not guarantee an inactive profile query refetches,
     // leaving the sporting passport behind the authoritative game result.
     await queryClient.invalidateQueries({ queryKey: ['profile'], refetchType: 'none' });
-    await Promise.all([
-      apiFetch<ProfileData>('/me', { cache: 'no-store' })
-        .then((profile) => queryClient.setQueryData(['profile'], profile))
-        .catch(() => undefined),
+    const profileUpdate = apiFetch<ProfileData>('/me?summary=true', { cache: 'no-store' })
+      .then((profile) => queryClient.setQueryData(['profile'], profile))
+      .catch(() => undefined);
+    // Keep optional caches fresh without making them part of the return-to-map barrier.
+    void Promise.all([
       queryClient.invalidateQueries({ queryKey: ['inventory'] }),
       queryClient.invalidateQueries({ queryKey: ['achievements'] }),
       queryClient.invalidateQueries({ queryKey: ['weekly-challenge'] }),
       queryClient.invalidateQueries({ queryKey: ['daily', 'history'] }),
       queryClient.invalidateQueries({ queryKey: ['training', 'history'] }),
-    ]);
-    const response = await fetchRequiredOnboarding();
+    ]).catch(() => undefined);
+    const [, response] = await Promise.all([profileUpdate, fetchRequiredOnboarding()]);
     queryClient.setQueryData(onboardingQueryKeys.required(), response);
     if (!response.required) return;
 
@@ -211,14 +214,14 @@ export function OnboardingGate({
     );
   } else {
     content = (
-      <OnboardingFlow
+      <Suspense fallback={<StartupSplash />}><OnboardingFlow
         runId={run.runId}
         required={run.required}
         onCompleted={acceptCompletion}
         {...(storyProfileQuery.data
           ? { unlockGoalsRequired: storyProfileQuery.data.amateurUnlockGoalsRequired }
           : {})}
-      />
+      /></Suspense>
     );
   }
 

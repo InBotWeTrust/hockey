@@ -212,7 +212,26 @@ describe('OnboardingGate', () => {
       stats: { playStreakDays: 3, bestPlayStreakDays: 3 },
     });
     expect(
-      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => String(input).endsWith('/api/me')),
+      vi.mocked(globalThis.fetch).mock.calls.filter(([input]) => /\/api\/me(?:\?|$)/.test(String(input))),
     ).toHaveLength(1);
   });
+  it('checks required onboarding without waiting for optional inventory refreshes', async () => {
+    let refresh!: () => Promise<void>;
+    function Harness() { refresh=useContext(OnboardingGateContext).refreshAfterGameExit; return <div>Игровая площадка</div>; }
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({required:null});
+    vi.spyOn(globalThis,'fetch').mockResolvedValue(new Response(JSON.stringify({id:'player-1'})));
+    const {client}=renderGate(<Harness/>);
+    await screen.findByText('Игровая площадка');
+    const real=client.invalidateQueries.bind(client);
+    let release!:()=>void;
+    const pending=new Promise<void>(resolve=>{release=resolve;});
+    vi.spyOn(client,'invalidateQueries').mockImplementation((filters,options)=>{
+      const result=real(filters,options);
+      return filters?.queryKey?.[0]==='inventory'?pending:result;
+    });
+    const refreshed=refresh();
+    try { await waitFor(()=>expect(fetchRequiredOnboarding).toHaveBeenCalledTimes(2)); }
+    finally { release(); await act(()=>refreshed); }
+  });
+
 });

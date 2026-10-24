@@ -72,6 +72,11 @@ jobs:
       - name: Build web
         run: pnpm --filter @hockey/web build
 
+      - name: Check initial load budget
+        run: |
+          node --test packages/web/scripts/audit-performance-build.node-test.mjs
+          node packages/web/scripts/audit-performance-build.mjs packages/web/dist --check
+
       # Server integration tests use the shared Postgres/Redis services and are
       # intentionally run after browser suites. Running every workspace test
       # script concurrently makes the CI job exceed the single-job budget.

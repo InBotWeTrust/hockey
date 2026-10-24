@@ -625,8 +625,8 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
 
   app.get('/users/:userId', { preHandler: [app.authenticate] }, async (req, reply) => {
     const { userId } = z.object({ userId: uuid }).parse(req.params);
-    const {summary} = z.object({summary:z.enum(['true','false']).optional()}).parse(req.query);
-    const profile = await getUserPublicProfile(app.pg, userId, {summary:summary==='true'});
+    const {summary,countersOnly} = z.object({summary:z.enum(['true','false']).optional(),countersOnly:z.enum(['true','false']).optional()}).parse(req.query);
+    const profile = await getUserPublicProfile(app.pg, userId, {summary:summary==='true',countersOnly:countersOnly==='true'});
     if (!profile) {
       reply.code(404);
       return { error: { code: 'user_not_found', message: 'user not found' } };
@@ -641,7 +641,14 @@ export const chatRoutes: FastifyPluginAsync<ChatRoutesOptions> = async (app, opt
       reply.code(404);
       return {error:{code:'user_not_found',message:'user not found'}};
     }
-    return fetchTrophyDetails(app.pg,userId);
+    const paging = z.object({
+      section: z.enum(['regularSeasonWins','tournamentChampionships','tournamentPodiums','completedChallenges']),
+      offset: z.coerce.number().int().min(0).max(100000).default(0),
+    }).parse(req.query);
+    const details = await fetchTrophyDetails(app.pg,userId,{section:paging.section,limit:21,offset:paging.offset});
+    const hasMore = details[paging.section].length > 20;
+    details[paging.section].splice(20);
+    return {...details,nextOffset:hasMore ? paging.offset + 20 : null};
   });
 
   app.post('/chat/:chatId/pin', { preHandler: [app.authenticate] }, async (req, reply) => {

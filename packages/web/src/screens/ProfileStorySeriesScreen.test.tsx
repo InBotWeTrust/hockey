@@ -1,3 +1,4 @@
+import { useAuthStore } from '../auth/authStore.js';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -54,11 +55,13 @@ function renderSeries(completed: boolean, cachedThreshold?: number) {
 describe('ProfileStorySeriesScreen', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    useAuthStore.setState({user:{id:'u1',displayName:'Alice'}});
   });
 
   it('refreshes the story threshold even when the profile cache never expires', async () => {
     renderSeries(true, 300);
     expect(await screen.findByText('Порог: 475')).toBeInTheDocument();
+    expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).includes('/me?summary=true&countersOnly=true'))).toBe(true);
     expect(screen.queryByText('Порог: 300')).not.toBeInTheDocument();
   });
 

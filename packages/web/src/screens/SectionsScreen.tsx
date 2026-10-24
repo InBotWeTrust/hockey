@@ -1,3 +1,4 @@
+import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 import {useGameMenu} from '../city/GameMenuContext.js';
 import {useCardInvites} from '../bar/cards/cardInvites.js';
 import {useGameInvites} from '../bar/games/gameInviteStore.js';
@@ -122,9 +123,12 @@ export function SectionsScreen(): JSX.Element {
       total: bonusGamesQuery.data.games.length,
     });
   }, [bonusGamesQuery.data, userId]);
-  const profileQuery = useQuery<ProfileData>({
-    queryKey: ['profile', 'sections'],
-    queryFn: () => apiFetch<ProfileData>('/me?includeTournamentCongratulations=true'),
+  const profileQuery = useOwnProfileSummary();
+  const congratulationsKey = ['profile', 'tournament-congratulations', userId] as const;
+  const congratulationsQuery = useQuery<Pick<ProfileData, 'pendingTournamentCongratulations'>>({
+    queryKey: congratulationsKey,
+    queryFn: () => apiFetch('/me/tournament-congratulations'),
+    enabled: Boolean(userId),
   });
   const isAdmin = (profileQuery.data?.role ?? user?.role) === 'admin';
   const adminAttention = useQuery({
@@ -143,7 +147,7 @@ export function SectionsScreen(): JSX.Element {
     queryFn: ({ signal }) => fetchPendingMonthlyRatingCongratulations({ signal }),
   });
 
-  const pendingCongratulations = profileQuery.data?.pendingTournamentCongratulations ?? [];
+  const pendingCongratulations = congratulationsQuery.data?.pendingTournamentCongratulations ?? [];
   const bonusGamesMeta = bonusGamesQuery.data
       ? `Пройдено: ${bonusGamesQuery.data.games.filter((game) => game.is_completed).length}/${bonusGamesQuery.data.games.length}`
       : storedBonusProgress
@@ -151,7 +155,7 @@ export function SectionsScreen(): JSX.Element {
         : bonusGamesQuery.isError
           ? 'Прогресс недоступен'
           : 'Пройдено: —/—';
-  const profileQueueReady = profileQuery.isSuccess;
+  const profileQueueReady = profileQuery.isSuccess && congratulationsQuery.isSuccess;
   const activeCongratulation = profileQueueReady ? (pendingCongratulations[0] ?? null) : null;
   const pendingMonthlyRatingCongratulations = (monthlyRatingQuery.data?.congratulations ?? [])
     .filter((congratulation) =>
@@ -171,6 +175,8 @@ export function SectionsScreen(): JSX.Element {
     : null;
   const rewardQueueError = profileQuery.isError
     ? { onRetry: () => void profileQuery.refetch() }
+    : congratulationsQuery.isError
+      ? { onRetry: () => void congratulationsQuery.refetch() }
     : profileQueueReady && activeCongratulation === null && monthlyRatingQuery.isError
       ? { onRetry: () => void monthlyRatingQuery.refetch() }
       : null;
@@ -179,7 +185,7 @@ export function SectionsScreen(): JSX.Element {
     onMutate: () => setPodiumAckError(null),
     onSuccess: (_response, congratulationId) => {
       setPodiumAckError(null);
-      queryClient.setQueryData<ProfileData>(['profile', 'sections'], (current) =>
+      queryClient.setQueryData<Pick<ProfileData, 'pendingTournamentCongratulations'>>(congratulationsKey, (current) =>
         current === undefined
           ? current
           : {

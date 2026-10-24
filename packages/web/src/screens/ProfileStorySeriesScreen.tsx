@@ -1,19 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { apiFetch } from '../api/apiFetch.js';
 import { BeginnerStoryFlow } from '../onboarding/BeginnerStoryFlow.js';
 import { AmateurStoryFlow } from '../onboarding/AmateurStoryFlow.js';
-import type { ProfileData } from './profileTypes.js';
+import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 
 export function ProfileStorySeriesScreen({ series = 1 }: { series?: 1 | 2 }): JSX.Element {
   const navigate = useNavigate();
-  const profileQuery = useQuery<ProfileData>({
-    queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me', { cache: 'no-store' }),
-    staleTime: 0,
-    refetchOnMount: 'always',
-    refetchOnWindowFocus: true,
-  });
+  const profileQuery = useOwnProfileSummary(true, {fresh: true})
 
   if (!profileQuery.isFetchedAfterMount && !profileQuery.isError) {
     return <main className="onboarding-flow onboarding-flow--status">Загружаем серию…</main>;

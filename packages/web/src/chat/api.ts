@@ -1,3 +1,4 @@
+import type { AchievementSummary } from '../achievements/progressSummary.js';
 import { apiFetch, ApiError } from '../api/apiFetch.js';
 import type {
   CompetitionLevel,
@@ -471,6 +472,8 @@ export interface UserPublicProfileDTO {
   competitionLevel: CompetitionLevel;
   stats: ProfileStats;
   achievements: ProfileAchievement[];
+  achievementSummary?: AchievementSummary;
+  bio?: string;
   currencyBalance?: number;
   starBalance?: number;
   experienceBalance?: number;
@@ -521,9 +524,15 @@ export function fetchChatInfo(chatId: string): Promise<ChatInfoDTO> {
   return apiFetch<ChatInfoDTO>(`/chat/${chatId}/info`);
 }
 
-export function fetchUserProfile(userId: string, options: {summary?:boolean} = {}): Promise<UserPublicProfileDTO> {
-  return apiFetch<UserPublicProfileDTO>(`/users/${userId}${options.summary?'?summary=true':''}`);
+export function fetchUserProfile(userId: string, options: {summary?:boolean; countersOnly?:boolean; signal?:AbortSignal} = {}): Promise<UserPublicProfileDTO> {
+  const query = new URLSearchParams();
+  if (options.summary) query.set('summary', 'true');
+  if (options.countersOnly) query.set('countersOnly', 'true');
+  return apiFetch<UserPublicProfileDTO>(`/users/${userId}${query.size ? `?${query}` : ''}`,
+    options.signal ? { signal: options.signal } : {});
 }
-export function fetchUserTrophyDetails(userId: string): Promise<NonNullable<UserPublicProfileDTO['trophyDetails']>> {
-  return apiFetch(`/users/${userId}/trophies`);
+export type TrophyDetails = NonNullable<UserPublicProfileDTO['trophyDetails']>;
+export function fetchUserTrophyDetails(userId: string, options: {section:keyof TrophyDetails;offset:number;signal?:AbortSignal}): Promise<TrophyDetails & {nextOffset?:number|null}> {
+  const query = options ? `?section=${options.section}&offset=${options.offset}` : '';
+  return apiFetch(`/users/${userId}/trophies${query}`,options?.signal ? {signal:options.signal} : {});
 }

@@ -1,4 +1,6 @@
+import { Readable } from 'node:stream';
 import Fastify from 'fastify';
+import { Agent, fetch } from 'undici';
 import { describe, expect, it, vi } from 'vitest';
 import { mediaRoutes } from '../../src/routes/media.js';
 import { errorsPlugin } from '../../src/plugins/errors.js';
@@ -18,6 +20,10 @@ function buildMediaApp(body = Buffer.from('0123456789')) {
     publicUrlForKey: (key) => `https://cdn.example.test/${key}`,
     uploadObject: vi.fn(),
     deleteObject: vi.fn(),
+    getObjectStream: vi.fn(async ({range}) => ({
+      body: Readable.from([range ? body.subarray(range.start, range.end + 1) : body]),
+      contentType: 'audio/webm',
+    })),
     getObject: vi.fn(async () => ({
       body,
       contentType: 'audio/webm',
@@ -70,6 +76,10 @@ describe('media routes', () => {
       expect(res.headers['content-length']).toBe('4');
       expect(res.headers['content-type']).toContain('audio/webm');
       expect(res.body).toBe('2345');
+      expect(objectStorage.getObject).not.toHaveBeenCalled();
+      expect(objectStorage.getObjectStream).toHaveBeenCalledWith(expect.objectContaining({
+        key: 'chat/voice.webm', range: {start: 2, end: 5, total: 10}, signal: expect.any(AbortSignal),
+      }));
     } finally {
       await app.close();
     }
@@ -91,9 +101,38 @@ describe('media routes', () => {
       expect(res.statusCode).toBe(416);
       expect(res.headers['accept-ranges']).toBe('bytes');
       expect(res.headers['content-range']).toBe('bytes */10');
+      expect(objectStorage.getObject).not.toHaveBeenCalled();
+      expect(objectStorage.getObjectStream).not.toHaveBeenCalled();
     } finally {
       await app.close();
     }
+  });
+
+  it.each([
+    [undefined, 200, '0123456789'],
+    ['bytes=-3', 206, '789'],
+    ['bytes=7-', 206, '789'],
+  ])('streams full and suffix responses (%s)', async (range, status, body) => {
+    const {app, objectStorage} = buildMediaApp();
+    await app.register(errorsPlugin);
+    await app.register(mediaRoutes, {objectStorage, mediaAccessSecret: MEDIA_SECRET});
+    try {
+      const res = await app.inject({method: 'GET', url: mediaUrl(), ...(range ? {headers: {range}} : {})});
+      expect(res.statusCode).toBe(status);
+      expect(res.body).toBe(body);
+      expect(objectStorage.getObject).not.toHaveBeenCalled();
+    } finally { await app.close(); }
+  });
+
+  it('rejects an invalid token before reading storage', async () => {
+    const {app, objectStorage} = buildMediaApp();
+    await app.register(errorsPlugin);
+    await app.register(mediaRoutes, {objectStorage, mediaAccessSecret: MEDIA_SECRET});
+    try {
+      const res = await app.inject({method: 'GET', url: `/media/${MEDIA_ID}?t=invalid`});
+      expect(res.statusCode).toBe(403);
+      expect(objectStorage.getObjectStream).not.toHaveBeenCalled();
+    } finally { await app.close(); }
   });
 
   it('lets an admin upload a voice attachment only for an official dialog', async () => {
@@ -110,6 +149,7 @@ describe('media routes', () => {
       uploadObject,
       deleteObject: vi.fn(),
       getObject: vi.fn(),
+      getObjectStream: vi.fn(),
     };
     app.decorate('pg', {
       query: vi.fn(async (sql: string) => {
@@ -165,4 +205,47 @@ describe('media routes', () => {
       await app.close();
     }
   });
+});
+
+it('aborts the storage request when the HTTP client disconnects', async () => {
+  const {app, objectStorage} = buildMediaApp();
+  let upstreamSignal: AbortSignal | undefined;
+  const stream = new Readable({read() {}});
+  vi.mocked(objectStorage.getObjectStream).mockImplementation(async ({signal}) => {
+    upstreamSignal = signal;
+    signal?.addEventListener('abort', () => stream.destroy(), {once: true});
+    stream.push(Buffer.from('0'));
+    return {body: stream, contentType: 'audio/webm'};
+  });
+  await app.register(errorsPlugin);
+  await app.register(mediaRoutes, {objectStorage, mediaAccessSecret: MEDIA_SECRET});
+  const base = await app.listen({host: '127.0.0.1', port: 0});
+  const controller = new AbortController();
+  const dispatcher = new Agent();
+  try {
+    const response = await fetch(base + mediaUrl(), {signal: controller.signal, dispatcher});
+    const reader = response.body!.getReader();
+    expect((await reader.read()).value?.byteLength).toBe(1);
+    controller.abort();
+    await vi.waitFor(() => expect(upstreamSignal?.aborted).toBe(true));
+  } finally {
+    controller.abort();
+    stream.destroy();
+    // Node 20 may leave a replacement idle socket after aborting a pooled fetch.
+    // Close only this test's client pool before waiting for the HTTP server.
+    await dispatcher.destroy();
+    await app.close();
+  }
+});
+
+it('does not cache a temporary storage failure as a successful media response', async () => {
+  const {app, objectStorage} = buildMediaApp();
+  vi.mocked(objectStorage.getObjectStream).mockRejectedValue(new Error('storage unavailable'));
+  await app.register(errorsPlugin);
+  await app.register(mediaRoutes, {objectStorage, mediaAccessSecret: MEDIA_SECRET});
+  try {
+    const response = await app.inject({method: 'GET', url: mediaUrl()});
+    expect(response.statusCode).toBe(502);
+    expect(response.headers['cache-control']).toBeUndefined();
+  } finally { await app.close(); }
 });

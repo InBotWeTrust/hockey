@@ -1,3 +1,5 @@
+import { ChunkLoadBoundary } from './ChunkLoadBoundary.js';
+import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 import {commonRouteModules} from './routeModules.js';
 import {scheduleRoutePreload} from './routePreload.js';
 import {GameMenuProvider} from '../city/GameMenuContext.js';
@@ -14,7 +16,7 @@ import { useCardInvites } from '../bar/cards/cardInvites.js';
 import {GameInvites} from '../bar/games/GameInvites.js';
 import { CardInviteToast } from '../bar/cards/CardInviteToast.js';
 import { lazy, Suspense, useCallback, useEffect } from 'react';
-import { QueryClientProvider, useQuery } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom';
 import './global.css';
 import './design-system.css';
@@ -33,8 +35,6 @@ import { WeeklyChallengeStartModal } from '../components/WeeklyChallengeStartMod
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
 import { OnboardingGate } from '../onboarding/OnboardingGate.js';
-import { apiFetch } from '../api/apiFetch.js';
-import type { ProfileData } from '../screens/profileTypes.js';
 import { arenaBackgroundClass } from '../screens/lockerRoomBackground.js';
 import { queryClient } from './queryClient.js';
 import { isNativeAndroid } from '../platform/runtime.js';
@@ -42,7 +42,6 @@ import { initializeNativeNotifications } from '../platform/nativeNotifications.j
 import { initializeAndroidUpdateChecks } from '../mobileUpdate/store.js';
 import { canAccessAndroidRelease } from '../mobileUpdate/access.js';
 import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdateModal.js';
-import { preloadCriticalArtwork } from './artworkCache.js';
 import { prepareInitialPlayerExperience } from './playerStartup.js';
 import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from './devOnlyFeatures.js';
 import { InviteScreen } from '../screens/InviteScreen.js';
@@ -350,9 +349,6 @@ function AppScene(): JSX.Element {
     return scheduleRoutePreload(Object.values(commonRouteModules));
   }, [user?.id, playing]);
 
-  useEffect(() => {
-    if (user !== null) preloadCriticalArtwork();
-  }, [user]);
   const backdropClassName = appBackdropClassName(location.pathname, location.search);
   const surfaceClassName = appSurfaceClassName(location.pathname);
   const weeklyStartModalEnabled =
@@ -369,11 +365,7 @@ function AppScene(): JSX.Element {
       '/demo',
     ].includes(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
-  const profileQuery = useQuery<ProfileData>({
-    queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me'),
-    enabled: user !== null && hasArenaBackdrop,
-  });
+  const profileQuery = useOwnProfileSummary(user !== null && hasArenaBackdrop);
   const levelBackdropClassName = hasArenaBackdrop
     ? arenaBackgroundClass(
         profileQuery.data?.competitionLevel,
@@ -421,7 +413,7 @@ function AppScene(): JSX.Element {
         )}
         <div className="app-content">
           <VenuePanorama level={user ? profileQuery.data?.competitionLevel ?? user.competitionLevel ?? null : null} owner={user?.id ?? null}>
-          <Suspense fallback={<RouteLoading />}>
+          <ChunkLoadBoundary><Suspense fallback={<RouteLoading />}>
             <Routes>
               <Route path="/profile/friends" element={<PrivateRoute><ProfileFriendsScreen /></PrivateRoute>} />
               <Route path="/locker-room" element={<PrivateRoute><LockerRoomScreen /></PrivateRoute>} />
@@ -677,7 +669,7 @@ function AppScene(): JSX.Element {
                 }
               />
             </Routes>
-          </Suspense>
+          </Suspense></ChunkLoadBoundary>
           </VenuePanorama>
         </div>
         {user&&<GlobalGames/>}
@@ -694,11 +686,11 @@ function AppFrame(): JSX.Element {
     () =>
       prepareInitialPlayerExperience(
         queryClient,
-        location.pathname === '/'
+        (location.pathname === '/' && isOpenRinkRoute(location))
           ? { preloadRootRoute: () => loadDailyScreen().then(() => undefined) }
           : {},
       ),
-    [location.pathname],
+    [location.pathname,location.search],
   );
   const isPublicEntry =
     location.pathname === '/login' ||

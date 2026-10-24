@@ -1,3 +1,8 @@
+import { ownProfileSummaryKey } from '../profile/useOwnProfileSummary.js';
+import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
+import { UserProfileScreen } from '../chat/screens/UserProfileScreen.js';
+import { userKeys } from '../lib/queryKeys.js';
+import { useAuthStore } from '../auth/authStore.js';
 import { ProfileFriendsScreen } from '../screens/ProfileFriendsScreen.js';
 import { SocialProvider } from '../social/SocialContext.js';
 import { socialApi } from '../social/api.js';
@@ -140,7 +145,7 @@ window.fetch = async (input, init) => {
   else if (/\/(fans|following)(\?|$)/.test(url)) data = { items: url.includes('/following') ? previewFollowing : previewFans, nextCursor: null };
   else if (url.includes('/social/fans/rating')) data = { items:[], nextCursor:null, currentUser:null };
   else if (/\/users\/[^/]+\/bio$/.test(url)) data = { bio: 'Играю в хоккей с детства. Люблю красивые передачи и вечерние матчи во дворе.' };
-  else if (url.endsWith('/api/me'))
+  else if (/\/api\/me(?:\?|$)/.test(url))
     data = {
       ...apartmentProfile,
       competitionLevel: level,
@@ -338,7 +343,7 @@ function MapNavigationPreview() {
   );
 }
 const initial =
-  scene === 'locker' ? '/locker-room' : scene === 'locker-alias' ? '/profile/equipment' : scene === 'apartment'
+  scene === 'public-profile' ? (params.get('page') === 'full' ? '/users/public-profile-fixture' : '/preview-public-profile') : scene === 'locker' ? '/locker-room' : scene === 'locker-alias' ? '/profile/equipment' : scene === 'apartment'
     ? params.get('page') === 'referrals'
       ? '/referrals'
       : params.get('page') && params.get('page') !== 'profile'
@@ -359,13 +364,20 @@ const initial =
                 : scene === 'bank'
                   ? `/inventory?tab=${params.get('tab') ?? 'bank'}`
                   : `/inventory?category=${params.get('category') ?? 'stick'}`;
+const previewClient = new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+// The preview has synthetic data and deliberately does not create an auth session.
+previewClient.setQueryData(ownProfileSummaryKey(useAuthStore.getState().user?.id), {...apartmentProfile, competitionLevel: level});
+previewClient.setQueryData(userKeys.summary(useAuthStore.getState().user?.id ?? null, 'public-profile-fixture'), {
+  id:'public-profile-fixture',displayName:'Игрок для проверки',avatarUrl:null,competitionLevel:level,
+  stats:{shots:1280,goals:640,accuracy:50,playStreakDays:7,bestPlayStreakDays:12},
+  achievements:[],achievementSummary:{completed:10,total:53,levels:{completed:120,total:281}},
+  social:{followersCount:12,followingCount:0,following:false,canFollow:false},bio:'',
+  trophySummary:{regularSeasonWins:1,tournamentChampionships:2,tournamentPodiums:3,completedChallenges:4},
+  createdAt:'2026-05-01T08:00:00.000Z',lastSeenAt:null,
+});
 createRoot(document.getElementById('root')!).render(
   <QueryClientProvider
-    client={
-      new QueryClient({
-        defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
-      })
-    }
+    client={previewClient}
   >
     <SocialProvider value={{viewerId:apartmentProfile.id,api:socialApi}}>
     <MemoryRouter initialEntries={[initial]}>
@@ -384,6 +396,8 @@ createRoot(document.getElementById('root')!).render(
         <div className="app-content">
           <VenuePanorama level={level} owner="local-preview" previewTime={previewTime}>
             <Routes>
+              <Route path="/preview-public-profile" element={<UserProfileSheet sender={{userId:'public-profile-fixture',displayName:'Игрок для проверки',avatarUrl:null}} onClose={()=>{}}/>}/>
+              <Route path="/users/:userId" element={<UserProfileScreen/>}/>
               <Route path="/profile" element={<ProfileScreen />} />
               <Route path="/profile/friends" element={<ProfileFriendsScreen />} />
               <Route path="/profile/equipment" element={<Navigate to="/locker-room" replace />} />

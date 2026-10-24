@@ -267,7 +267,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/tournaments', authenticated, async (req) => {
     await requireTournamentFeature(app);
-    await app.reconcileTournamentLifecycleBestEffort();
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true });
     return { tournaments: await listPlayerTournaments(app.pg, req.user.id) };
   });
 
@@ -395,7 +395,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     return { tournament: await getTournament(app.pg, params.tournamentId, req.user.id) };
   });
 
@@ -412,7 +412,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
     const query = tournamentScheduleQuerySchema.parse(req.query);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
     const [schedule, matchdays] = await Promise.all([
       getTournamentScheduleDay(app.pg, params.tournamentId, req.user.id, query.date),
@@ -481,7 +481,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/game-context', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     return getTournamentGameContext(app.pg, {
       tournamentId: params.tournamentId,
       userId: req.user.id,
@@ -498,7 +498,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
         limit: z.coerce.number().int().min(1).max(50).default(30),
       })
       .parse(req.query);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
     const standings = await getTournamentStandings(app.pg, params.tournamentId);
     const visible = standings.slice(query.cursor, query.cursor + query.limit);
@@ -513,7 +513,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   app.get('/tournaments/:tournamentId/bracket', authenticated, async (req) => {
     await requireTournamentFeature(app);
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId, req.user.id);
     return { series: await getTournamentBracket(app.pg, params.tournamentId) };
   });
@@ -663,7 +663,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
   });
 
   app.get('/admin/tournaments', admin, async () => {
-    await app.reconcileTournamentLifecycleBestEffort();
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true });
     return { tournaments: await listAdminTournaments(app.pg) };
   });
 
@@ -673,7 +673,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     return { tournament: await getTournament(app.pg, params.tournamentId) };
   });
 
@@ -684,7 +684,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId/schedule', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
     const [fixtures, matchdays] = await Promise.all([
       getTournamentSchedule(app.pg, params.tournamentId),
@@ -695,7 +695,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId/standings', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
     return {
       standings: await getTournamentStandings(app.pg, params.tournamentId, {
@@ -706,7 +706,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
 
   app.get('/admin/tournaments/:tournamentId/bracket', admin, async (req) => {
     const params = z.object({ tournamentId: uuid }).parse(req.params);
-    await app.reconcileTournamentLifecycleBestEffort({ tournamentId: params.tournamentId });
+    await app.reconcileTournamentLifecycleBestEffort({ shareInFlight: true, tournamentId: params.tournamentId });
     await getTournament(app.pg, params.tournamentId);
     return { series: await getTournamentBracket(app.pg, params.tournamentId) };
   });

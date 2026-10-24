@@ -20,19 +20,7 @@ export const EMPTY_WEEKLY_CHALLENGE_PROGRESS: WeeklyChallengeProgressMap = {
   channel_posts_commented: 0,
 };
 
-export async function fetchWeeklyChallengeProgress(
-  db: Queryable,
-  window: ProgressWindow,
-): Promise<WeeklyChallengeProgressMap> {
-  const { rows } = await db.query<{
-    goals: string;
-    played: string;
-    won: string;
-    invites: string;
-    completed: string;
-    commented_posts: string;
-  }>(
-    `with goal_progress as (
+const WEEKLY_CHALLENGE_PROGRESS_SQL = `with goal_progress as (
        select count(*)::text as goals
          from shot_session
         where user_id = $1
@@ -77,7 +65,21 @@ export async function fetchWeeklyChallengeProgress(
        cross join duel_progress
        cross join invite_progress
        cross join training_progress
-       cross join comment_progress`,
+       cross join comment_progress`;
+
+export async function fetchWeeklyChallengeProgress(
+  db: Queryable,
+  window: ProgressWindow,
+): Promise<WeeklyChallengeProgressMap> {
+  const { rows } = await db.query<{
+    goals: string;
+    played: string;
+    won: string;
+    invites: string;
+    completed: string;
+    commented_posts: string;
+  }>(
+    WEEKLY_CHALLENGE_PROGRESS_SQL,
     [window.userId, window.from, window.to],
   );
   const row = rows[0];
@@ -90,6 +92,23 @@ export async function fetchWeeklyChallengeProgress(
     trainings_completed: Number(row?.completed ?? 0),
     channel_posts_commented: Number(row?.commented_posts ?? 0),
   };
+}
+
+/** One round-trip for history pages; each range remains scoped to the same player. */
+export async function fetchWeeklyChallengeProgressBatch(
+  db: Queryable, userId: string, windows: ReadonlyArray<{from:Date;to:Date}>,
+): Promise<WeeklyChallengeProgressMap[]> {
+  if (!windows.length) return [];
+  const {rows} = await db.query<Record<string,string>>(
+    `select windows.ordinality as window_index, progress.*
+       from unnest($2::timestamptz[], $3::timestamptz[]) with ordinality as windows(start_at,end_at,ordinality)
+       cross join lateral (${WEEKLY_CHALLENGE_PROGRESS_SQL.replaceAll('$2','windows.start_at').replaceAll('$3','windows.end_at')}) progress
+       order by windows.ordinality`,
+    [userId,windows.map(window=>window.from),windows.map(window=>window.to)],
+  );
+  return rows.map(row=>({goals_scored:Number(row.goals??0),duels_played:Number(row.played??0),
+    duels_won:Number(row.won??0),duel_invites_sent:Number(row.invites??0),
+    trainings_completed:Number(row.completed??0),channel_posts_commented:Number(row.commented_posts??0)}));
 }
 
 export function isTaskCompleted(

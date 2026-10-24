@@ -1,0 +1,13 @@
+{
+  "initial": {
+    "jsBytes": 1015477,
+    "jsGzipBytes": 327383,
+    "cssBytes": 476055,
+    "cssGzipBytes": 80900,
+    "files": [
+      "assets/index-Bnrq4Eni.js",
+      "assets/index-DM2tKTFC.css"
+    ]
+  },
+  "chunks": 122
+}

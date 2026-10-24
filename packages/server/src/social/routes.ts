@@ -138,8 +138,8 @@ export const socialRoutes: FastifyPluginAsync = async app => {
     return result.rows;
   });
   app.get('/users/:userId/activity',auth,async req=>{
-    const player=userId(req.params); await getFanSummary(app.pg,req.user.id,player);
-    if(player!==req.user.id && !(await getFanSummary(app.pg,req.user.id,player)).following) throw new AppError('forbidden','Сначала станьте болельщиком игрока',403);
+    const player=userId(req.params); const summary=await getFanSummary(app.pg,req.user.id,player);
+    if(player!==req.user.id && !summary.following) throw new AppError('forbidden','Сначала станьте болельщиком игрока',403);
     return page(await activity(req.user.id,cursor(req.query),player,null));
   });
   app.get('/social/events/:eventId',auth,async req=>{

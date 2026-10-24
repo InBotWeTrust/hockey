@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, act } from '@testing-library/react';
+import { render, act, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 import { useChatSocket } from '../useChatSocket.js';
@@ -229,8 +229,8 @@ describe('useChatSocket dispatch', () => {
     expect(list?.[0]?.lastMessage?.id).toBe('m-new');
     expect(list?.[0]?.lastMessageAt).toBe('2026-04-26T10:00:00.000Z');
     expect(list?.[0]?.unreadCount).toBe(1);
-    expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.list() });
-    expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
+    await waitFor(()=>expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.list() }));
+    await waitFor(()=>expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() }));
   });
 
   it('message:new from myself on a non-active chat: prepends but does NOT bump unread', async () => {
@@ -333,7 +333,7 @@ describe('useChatSocket dispatch', () => {
     expect(invalSpy).toHaveBeenCalledWith({
       queryKey: chatKeys.messages('c-fresh-update'),
     });
-    expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.list() });
+    await waitFor(()=>expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.list() }));
   });
 
   it('chat:read: resets unread for that chat and invalidates /chat/unread', async () => {
@@ -353,7 +353,7 @@ describe('useChatSocket dispatch', () => {
     });
     expect(useChatStore.getState().unreadByChat['c1']).toBe(0);
     expect(qc.getQueryData<ChatDTO[]>(chatKeys.list())?.[0]?.unreadCount).toBe(0);
-    expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() });
+    await waitFor(()=>expect(invalSpy).toHaveBeenCalledWith({ queryKey: chatKeys.unread() }));
   });
 
   it('chat:read from a DM counterpart updates read receipt state without resetting my unread', async () => {
@@ -590,6 +590,12 @@ describe('useChatSocket dispatch', () => {
     });
     const data = qc.getQueryData<{ pages: ChatMessageDTO[][] }>(chatKeys.messages('c1'));
     expect(data?.pages[0]?.[0]?.reactions).toEqual([{ emoji: '🔥', count: 1, reactedByMe: false }]);
+  });
+
+  it('invalidates closed-chat histories on reconnect so edits and deletions are reconciled on reopen', async () => {
+    qc.setQueryData(chatKeys.messages('closed-chat'),{pages:[],pageParams:[undefined]});
+    await act(async()=>{MockWebSocket.instances[0]?.fireClose(1006);MockWebSocket.instances[0]?.fireOpen();});
+    expect(qc.getQueryState(chatKeys.messages('closed-chat'))?.isInvalidated).toBe(true);
   });
 
   it('on reconnect open: refetches list + active chat messages', async () => {

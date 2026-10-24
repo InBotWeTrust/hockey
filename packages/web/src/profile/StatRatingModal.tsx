@@ -1,3 +1,4 @@
+import { useRatingCacheWindow } from './ratingCache.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { Crosshair, Flame, Target, X } from 'lucide-react';
@@ -48,6 +49,7 @@ export function StatRatingModal({
     setCurrentRowElement(node);
     if (node === null) setCurrentRowVisible(false);
   }, []);
+  useRatingCacheWindow(['profile', 'stat-rating', metric]);
   const query = useInfiniteQuery({
     queryKey: ['profile', 'stat-rating', metric],
     queryFn: ({ pageParam }) => fetchStatRatingPage(metric, pageParam),

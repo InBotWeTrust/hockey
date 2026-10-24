@@ -1,0 +1,21 @@
+import { renderHook, waitFor, act } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactNode } from 'react';
+import { expect, it, vi } from 'vitest';
+import { fetchUserTrophyDetails } from '../chat/api.js';
+import { useTrophyHistory } from './useTrophyHistory.js';
+vi.mock('../chat/api.js',()=>({fetchUserTrophyDetails:vi.fn()}));
+it('requests only the selected category and appends the next page without duplicate awards',async()=>{
+ const empty={regularSeasonWins:[],tournamentChampionships:[],tournamentPodiums:[],completedChallenges:[]};
+ const first={id:'first',title:'Первый',startsAt:null,endsAt:null,imageUrl:null,result:'1'};
+ vi.mocked(fetchUserTrophyDetails).mockResolvedValueOnce({...empty,regularSeasonWins:[first],nextOffset:20}).mockResolvedValueOnce({...empty,regularSeasonWins:[first,{...first,id:'second'}],nextOffset:null});
+ const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+ const wrapper=({children}:{children:ReactNode})=><QueryClientProvider client={client}>{children}</QueryClientProvider>;
+ const {result}=renderHook(()=>useTrophyHistory('me','regularSeasonWins',true),{wrapper});
+ await waitFor(()=>expect(result.current.data?.regularSeasonWins).toHaveLength(1));
+ expect(result.current.hasNextPage).toBe(true);
+ await act(async()=>{await result.current.fetchNextPage();});
+ await waitFor(()=>expect(result.current.data?.regularSeasonWins.map(item=>item.id)).toEqual(['first','second']));
+ expect(fetchUserTrophyDetails).toHaveBeenLastCalledWith('me',expect.objectContaining({section:'regularSeasonWins',offset:20}));
+ expect(result.current.hasNextPage).toBe(false);
+});

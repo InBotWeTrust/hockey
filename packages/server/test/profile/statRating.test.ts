@@ -18,12 +18,11 @@ describe('listStatRating', () => {
   it('returns percentage accuracy and eligibility progress', async () => {
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [row] })
-      .mockResolvedValueOnce({ rows: [row] })
-      .mockResolvedValueOnce({ rows: [{ goals: 1200 }] });
+      .mockResolvedValue({ rows: [{page: [row], viewer: row, goals: 1200}] });
     const result = await listStatRating({ query } as unknown as Pool, row.id, 'accuracy', {
       limit: 30,
     });
+    expect(query).toHaveBeenCalledTimes(1);
     expect(result.rows[0]).toMatchObject({ accuracy: 60, goals: 1200, shots: 2000 });
     expect(result.eligibility).toEqual({ eligible: true, goals: 1200, requiredGoals: 1000 });
     expect(String(query.mock.calls[0]?.[0])).toContain('u.lifetime_goals_total >= 1000');
@@ -32,9 +31,7 @@ describe('listStatRating', () => {
   it('does not invent a rank for an ineligible accuracy viewer', async () => {
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [] })
-      .mockResolvedValueOnce({ rows: [{ goals: 640 }] });
+      .mockResolvedValue({ rows: [{page: [], viewer: null, goals: 640}] });
     const result = await listStatRating({ query } as unknown as Pool, row.id, 'accuracy', {
       limit: 30,
     });
@@ -45,9 +42,7 @@ describe('listStatRating', () => {
   it('ranks streaks by the greater of historical and current streak', async () => {
     const query = vi
       .fn()
-      .mockResolvedValueOnce({ rows: [row] })
-      .mockResolvedValueOnce({ rows: [row] })
-      .mockResolvedValueOnce({ rows: [{ goals: 1200 }] });
+      .mockResolvedValue({ rows: [{page: [row], viewer: row, goals: 1200}] });
     await listStatRating({ query } as unknown as Pool, row.id, 'streak', { limit: 30 });
     const sql = String(query.mock.calls[0]?.[0]);
     expect(sql).toContain('greatest(coalesce(hs.best_days, 0), coalesce(cs.current_days, 0))');

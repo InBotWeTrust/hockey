@@ -1,0 +1,13 @@
+{
+  "initial": {
+    "jsBytes": 573694,
+    "jsGzipBytes": 187210,
+    "cssBytes": 463017,
+    "cssGzipBytes": 78277,
+    "files": [
+      "assets/index-1wWR_DDC.css",
+      "assets/index-CNuOsiIb.js"
+    ]
+  },
+  "chunks": 145
+}

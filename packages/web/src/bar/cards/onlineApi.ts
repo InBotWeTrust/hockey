@@ -1,3 +1,4 @@
+import { coalesceLobbyRequest } from '../lobbyRequest.js';
 import { useCardInvites } from './cardInvites.js';
 import { apiFetch } from '../../api/apiFetch.js';
 import type { Action, Card, Game, Player, Suit } from './rules.js';
@@ -53,7 +54,7 @@ export type PickerPlayer = {
   avatarUrl: string | null;
   lastSeenAt?: string | null;
 };
-export const lobby = () => apiFetch<Lobby>('/bar/cards/lobby');
+export const lobby = () => coalesceLobbyRequest('cards', () => apiFetch<Lobby>('/bar/cards/lobby'));
 export const searchPlayers = (q: string) =>
   apiFetch<PickerPlayer[]>(`/bar/cards/players?q=${encodeURIComponent(q)}`);
 export const queue = (cancel = false) =>
