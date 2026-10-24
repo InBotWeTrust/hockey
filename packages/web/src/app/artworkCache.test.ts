@@ -105,34 +105,22 @@ describe('preloadArtwork', () => {
     ]);
   });
 
-  it('retains the current section artwork used by shop, bonus games, and amateurs', () => {
-    const created: Array<{ decoding: string; fetchPriority: string; src: string }> = [];
-    vi.stubGlobal(
-      'Image',
-      vi.fn(() => {
-        const image = { decoding: '', fetchPriority: '', src: '' };
-        created.push(image);
-        return image;
-      }),
-    );
-
-    preloadCriticalArtwork();
-
-    expect(created.map((image) => image.src)).toEqual(
-      expect.arrayContaining([
-        '/modes/shop-retail-v2.webp',
-        '/bonus-games/section-card-v5.webp',
-        '/modes/amateur-game-v3.webp',
-      ]),
-    );
-    expect(created.map((image) => image.src)).not.toEqual(
-      expect.arrayContaining([
-        '/modes/shop-retail.webp',
-        '/bonus-games/section-card.webp',
-        '/modes/amateur-game.webp',
-      ]),
-    );
-    vi.unstubAllGlobals();
+  it('does not download obsolete section and profile cards at startup', () => {
+    const created: Array<{ src: string }> = [];
+    vi.stubGlobal('Image', vi.fn(() => {
+      const image = { src: '' };
+      created.push(image);
+      return image;
+    }));
+    try {
+      preloadCriticalArtwork();
+      const urls = created.map(image => image.src);
+      for (const url of ['/modes/shop-retail-v2.webp', '/modes/amateur-game-v3.webp',
+        '/modes/pro-game.webp', '/bonus-games/section-card-v5.webp',
+        ...['stats', 'equipment', 'achievements', 'arena', 'settings'].map(name => `/profile/${name}-card-art.png`)]) {
+        expect(urls).not.toContain(url);
+      }
+    } finally { vi.unstubAllGlobals(); }
   });
 
   it('collects the shop overview and only the open category artwork', () => {
@@ -220,13 +208,50 @@ describe('preloadArtwork', () => {
   });
 });
 
-it('bounds retained decoded artwork across a long session and retains recently used images', () => {
+it('bounds retained decoded artwork across a long session and retains recently used images', async () => {
   const cache = new Map<string, HTMLImageElement>();
   const createImage = () => ({src:'',decoding:'',fetchPriority:''}) as unknown as HTMLImageElement;
   preloadArtwork(Array.from({length:64},(_,i)=>`/image-${i}.webp`),cache,createImage);
+  await new Promise(resolve => setTimeout(resolve, 0));
   preloadArtwork(['/image-0.webp'],cache,createImage);
   preloadArtwork(['/image-64.webp'],cache,createImage);
   expect(cache.size).toBe(64);
   expect(cache.has('/image-0.webp')).toBe(true);
   expect(cache.has('/image-1.webp')).toBe(false);
+});
+
+it('bounds speculative requests and cancels queued work when leaving a screen', async () => {
+  const cache = new Map<string, HTMLImageElement>();
+  const releases: Array<() => void> = [];
+  const create = vi.fn(() => ({src: '', decode: () => new Promise<void>(resolve => releases.push(resolve))}) as unknown as HTMLImageElement);
+  const cancel = preloadArtwork(Array.from({length: 100}, (_, i) => `/queued-${i}.webp`), cache, create);
+  expect(create).toHaveBeenCalledTimes(4);
+  releases[0]!();
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(create).toHaveBeenCalledTimes(5);
+  cancel();
+  releases.forEach(resolve => resolve());
+  await new Promise(resolve => setTimeout(resolve, 0));
+  expect(create).toHaveBeenCalledTimes(5);
+});
+
+it('shares its concurrency budget across screens and retries failed artwork', async () => {
+  const cache = new Map<string, HTMLImageElement>();
+  const finishes: Array<{resolve: () => void; reject: () => void}> = [];
+  const create = vi.fn(() => ({src: '', decode: () => new Promise<void>((resolve,reject) => finishes.push({resolve,reject:()=>reject(new Error('offline'))}))}) as unknown as HTMLImageElement);
+  const cancelFirst = preloadArtwork(['/a','/b','/c','/d','/old'],cache,create);
+  const cancelSecond = preloadArtwork(['/next','/a'],cache,create);
+  expect(create).toHaveBeenCalledTimes(4);
+  cancelFirst();
+  finishes[0]!.reject();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  expect(create).toHaveBeenCalledTimes(5);
+  expect(cache.has('/old')).toBe(false);
+  preloadArtwork(['/a'], cache, create);
+  finishes[1]!.resolve();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  expect(create).toHaveBeenCalledTimes(6);
+  expect(cache.has('/a')).toBe(true);
+  cancelSecond();
+  finishes.forEach(f=>f.resolve());
 });

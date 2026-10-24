@@ -1,3 +1,4 @@
+import { useAuthStore } from '../auth/authStore.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, within, type RenderResult } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -47,6 +48,7 @@ let inventoryResponse: InventoryState;
 
 beforeEach(() => {
   vi.unstubAllEnvs();
+  useAuthStore.setState({user:{id:'u1',displayName:'Alice'}});
   storyCompleted = false;
   inventoryResponse = {
     balances: { tokens: 1, stars: 2, experience: 3 },
@@ -75,10 +77,11 @@ beforeEach(() => {
   };
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
+  useAuthStore.setState({user:{id:'u1',displayName:'Alice'}});
   triggerHaptic.mockClear();
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input.toString();
-    if (url.endsWith('/api/me')) {
+    if (url.split('?')[0]!.endsWith('/api/me')) {
       return new Response(
         JSON.stringify({ ...profile, beginnerOnboardingCompleted: storyCompleted }),
         { status: 200 },
@@ -255,4 +258,15 @@ describe('profile destination screens', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Выбрать площадку' }));
     expect(await screen.findByRole('dialog', { name: 'Домашняя площадка' })).toBeInTheDocument();
   });
+});
+
+it.each([
+ ['/profile/story', <ProfileStoryScreen />, 'Сюжет'],
+ ['/profile/stats', <ProfileStatsScreen />, 'Статистика'],
+ ['/profile/equipment', <ProfileEquipmentScreen />, 'Инвентарь'],
+])('uses compact account metadata on %s', async (path, element, title) => {
+ renderDestination(path as string, element as JSX.Element);
+ await screen.findByRole('heading',{name:title as string});
+ expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).includes('/me?summary=true&countersOnly=true'))).toBe(true);
+ expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).endsWith('/api/me'))).toBe(false);
 });

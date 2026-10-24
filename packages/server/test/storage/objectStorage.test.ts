@@ -81,3 +81,55 @@ describe('object storage client', () => {
     );
   });
 });
+
+it('streams signed ranges without buffering the response', async () => {
+  const response = new Response('2345', {status: 206, headers: {'content-range': 'bytes 2-5/10'}});
+  const buffered = vi.spyOn(response, 'arrayBuffer');
+  const fetchImpl = vi.fn(async () => response);
+  const client = createObjectStorageClient(config, {fetchImpl});
+  const result = await client.getObjectStream({key: 'voice', range: {start: 2, end: 5, total: 10}});
+  expect(buffered).not.toHaveBeenCalled();
+  expect(fetchImpl.mock.calls[0]?.[1]?.headers).toMatchObject({Range: 'bytes=2-5'});
+  const chunks = [];
+  for await (const chunk of result.body) chunks.push(Buffer.from(chunk));
+  expect(Buffer.concat(chunks).toString()).toBe('2345');
+});
+
+it('rejects storage that ignores a range instead of streaming the whole file', async () => {
+  const response = new Response('0123456789');
+  const cancel = vi.spyOn(response.body!, 'cancel');
+  const client = createObjectStorageClient(config, {fetchImpl: vi.fn(async () => response)});
+  await expect(client.getObjectStream({key: 'voice', range: {start: 2, end: 5, total: 10}})).rejects.toThrow();
+  expect(cancel).toHaveBeenCalled();
+});
+
+it('cancels the upstream body when a downstream reader disconnects', async () => {
+  const cancel = vi.fn();
+  const response = new Response(new ReadableStream({
+    pull(controller) { controller.enqueue(new Uint8Array(1024)); },
+    cancel,
+  }));
+  const controller = new AbortController();
+  const client = createObjectStorageClient(config, {fetchImpl: vi.fn(async () => response)});
+  const result = await client.getObjectStream({key: 'voice', signal: controller.signal});
+  const closed = new Promise<void>((resolve) => result.body.once('close', resolve));
+  result.body.on('error', () => {});
+  controller.abort();
+  await closed;
+  expect(cancel).toHaveBeenCalled();
+});
+
+it('keeps an unconsumed large response bounded instead of draining it', async () => {
+  let pulls = 0;
+  const response = new Response(new ReadableStream({
+    pull(controller) {
+      pulls += 1;
+      controller.enqueue(new Uint8Array(64 * 1024));
+    },
+  }));
+  const client = createObjectStorageClient(config, {fetchImpl: vi.fn(async () => response)});
+  const result = await client.getObjectStream({key: 'large'});
+  await new Promise(resolve => setImmediate(resolve));
+  expect(pulls).toBeLessThanOrEqual(2);
+  result.body.destroy();
+});

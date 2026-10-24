@@ -1,3 +1,4 @@
+import { useAuthStore } from '../auth/authStore.js';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -23,6 +24,7 @@ function mount() {
 }
 beforeEach(() => {
   vi.clearAllMocks();
+  useAuthStore.getState().setSession({accessToken:'test',refreshToken:'test',user:{id:'locker-owner',displayName:'Игрок'}});
   sessionStorage.clear();
   vi.mocked(apiFetch).mockResolvedValue({ competitionLevel: 'beginner' });
   vi.mocked(fetchMyInventory).mockResolvedValue({
@@ -70,4 +72,11 @@ it('opens information and the existing shop without introducing clothing control
   fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
   fireEvent.click(screen.getByRole('button', { name: 'В магазин' }));
   await waitFor(() => expect(screen.getByText('Магазин')).toBeVisible());
+});
+
+it('loads the shared compact account summary instead of the full profile', async () => {
+  mount();
+  await screen.findByRole('button', { name: /Клюшка: Обычная/ });
+  expect(vi.mocked(apiFetch).mock.calls.some(([url]) => url === '/me?summary=true&countersOnly=true')).toBe(true);
+  expect(vi.mocked(apiFetch).mock.calls.some(([url]) => url === '/me')).toBe(false);
 });

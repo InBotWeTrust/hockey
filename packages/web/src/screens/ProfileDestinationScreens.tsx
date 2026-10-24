@@ -2,13 +2,12 @@ import { useState, type ReactNode } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { apiFetch } from '../api/apiFetch.js';
 import { fetchHomeArenas, type HomeArenasResponse } from '../api/arenas.js';
 import { fetchMyInventory, type InventoryState } from '../api/inventory.js';
 import { HomeArenaModal } from '../components/HomeArenaModal.js';
 import { DuelLockerTab } from '../components/duel/DuelLockerTab.js';
 import { ProfileStatsGrid } from './profileSections.js';
-import type { ProfileData } from './profileTypes.js';
+import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
 function ProfilePageHeader({
@@ -42,12 +41,7 @@ function ProfilePageStatus({ children }: { children: ReactNode }): JSX.Element {
 
 export function ProfileStoryScreen(): JSX.Element {
   const navigate = useNavigate();
-  const profileQuery = useQuery<ProfileData>({
-    queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me'),
-    staleTime: 0,
-    refetchOnMount: 'always',
-  });
+  const profileQuery = useOwnProfileSummary(true, {fresh: true});
 
   if (profileQuery.isLoading) {
     return <ProfilePageStatus>Загружаем сюжет…</ProfilePageStatus>;
@@ -143,10 +137,7 @@ export function ProfileStoryScreen(): JSX.Element {
 }
 
 export function ProfileStatsScreen(): JSX.Element {
-  const query = useQuery<ProfileData>({
-    queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me'),
-  });
+  const query = useOwnProfileSummary();
 
   if (query.isLoading) return <ProfilePageStatus>Загружаем статистику…</ProfilePageStatus>;
   if (query.isError || query.data === undefined) {
@@ -184,10 +175,7 @@ export function ProfileStatsScreen(): JSX.Element {
 export function ProfileEquipmentScreen(): JSX.Element {
   const navigate = useNavigate();
   const [infoOpen, setInfoOpen] = useState(false);
-  const profileQuery = useQuery<ProfileData>({
-    queryKey: ['profile'],
-    queryFn: () => apiFetch<ProfileData>('/me'),
-  });
+  const profileQuery = useOwnProfileSummary();
   const query = useQuery<InventoryState>({
     queryKey: ['inventory', 'me'],
     queryFn: fetchMyInventory,

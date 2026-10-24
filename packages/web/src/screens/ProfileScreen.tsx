@@ -861,7 +861,7 @@ export function ProfileScreen(): JSX.Element {
     const profile = profileQuery.data;
     const inventory = inventoryQuery.data;
     if (profile === undefined || inventory === undefined) return;
-    preloadArtwork(profileArtworkUrls(profile, inventory));
+    return preloadArtwork(profileArtworkUrls(profile, inventory));
   }, [apartment, inventoryQuery.data, profileQuery.data]);
 
   if (profileQuery.isLoading) {
