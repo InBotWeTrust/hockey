@@ -5054,18 +5054,19 @@ describe('DailyScreen', () => {
       refreshToken: 'r',
       user: { id: 'u1', displayName: 'Tester', role: 'admin' },
     });
+    const configuredTraining = {
+      ...trainingActiveState,
+      period_speed_presets: trainingActiveState.period_speed_presets.map((preset) =>
+        preset.periodNumber === 2 ? { ...preset, shooterFrequency: 1.35 } : preset,
+      ),
+    };
     const fetchMock = vi.spyOn(globalThis, 'fetch');
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input) => {
       const url = String(input);
       if (url.includes('/duel/training/state')) {
         return new Response(
-          JSON.stringify({
-            ...trainingActiveState,
-            period_speed_presets: trainingActiveState.period_speed_presets.map((preset) =>
-              preset.periodNumber === 2 ? { ...preset, shooterFrequency: 1.35 } : preset,
-            ),
-          }),
+          JSON.stringify(configuredTraining),
           {
             status: 200,
             headers: { 'content-type': 'application/json' },
@@ -5073,7 +5074,7 @@ describe('DailyScreen', () => {
         );
       }
       if (url.includes('/duel/training/start')) {
-        return new Response(JSON.stringify(trainingActiveState), {
+        return new Response(JSON.stringify(configuredTraining), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         });
