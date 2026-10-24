@@ -1,3 +1,4 @@
+import { subscribeVisibleMinute } from './visibleMinuteClock.js';
 import {useEffect, useState} from 'react';
 import {citySolarPhase,type SolarCity} from './citySolar.js';
 export type CityTimeOfDay = 'morning' | 'day' | 'sunset' | 'night';
@@ -14,11 +15,23 @@ const images = {
  sunset: ['/maps/city-sunset-4096-feaa739ef876.webp', '/maps/city-sunset-6144-ec5c4b307955.webp'],
  night: ['/maps/city-night-4096-658017a820ba.webp', '/maps/city-night-6144-32a760b2628a.webp'],
 } as const;
-export function cityImage(date: Date, pixelRatio: number, city?:SolarCity|null): string {
- return images[cityTimeOfDay(date,city)][pixelRatio > 1.5 ? 1 : 0];
+export function chooseCityImageSize(input: {width:number;height:number;dpr:number;saveData?:boolean|undefined;deviceMemory?:number|undefined}): 4096 | 6144 {
+ if(input.saveData || (input.deviceMemory !== undefined && input.deviceMemory <= 4))return 4096;
+ // The map is three viewport heights wide. Backgrounds do not need the full 3x phone DPR.
+ const pixels = Math.max(input.width, input.height * 3) * Math.min(Math.max(input.dpr, 1), 1.5);
+ return pixels > 4096 ? 6144 : 4096;
+}
+export function cityImage(date: Date, pixelRatio: number, city?:SolarCity|null, size?:4096|6144): string {
+ return images[cityTimeOfDay(date,city)][(size ?? (pixelRatio > 1.5 ? 6144 : 4096)) === 6144 ? 1 : 0];
 }
 export function useCityImage(city?:SolarCity|null): string {
- const current = () => cityImage(new Date(), window.devicePixelRatio,city);
+ const current = () => {
+  const hints = navigator as Navigator & {deviceMemory?:number;connection?:{saveData?:boolean}};
+  return cityImage(new Date(), window.devicePixelRatio,city,chooseCityImageSize({
+   width:window.innerWidth,height:window.innerHeight,dpr:window.devicePixelRatio,
+   saveData:hints.connection?.saveData,deviceMemory:hints.deviceMemory,
+  }));
+ };
  const [image, setImage] = useState(current);
  useEffect(() => {
   let disposed = false;
@@ -37,17 +50,13 @@ export function useCityImage(city?:SolarCity|null): string {
     if (token === generation) requested = '';
    });
   };
-  const interval = window.setInterval(check, 1000);
-  window.addEventListener('focus', check);
-  window.addEventListener('pageshow', check);
-  document.addEventListener('visibilitychange', check);
-  check();
+  const unsubscribe = subscribeVisibleMinute(check);
+  const resize = () => { if (!document.hidden) check(); };
+  window.addEventListener('resize', resize);
   return () => {
    disposed = true;
-   window.clearInterval(interval);
-   window.removeEventListener('focus', check);
-   window.removeEventListener('pageshow', check);
-   document.removeEventListener('visibilitychange', check);
+   unsubscribe();
+   window.removeEventListener('resize', resize);
   };
  // The effect owns its requested source for its entire lifetime.
  }, [city?.latitude,city?.longitude,city?.timeZone]);

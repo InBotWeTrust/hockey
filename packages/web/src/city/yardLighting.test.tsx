@@ -68,7 +68,7 @@ it('retries a failed background without hiding the current image', async () => {
   });
   expect(result.current.time).toBe('day');
   await act(async () => {
-    vi.advanceTimersByTime(1000);
+    vi.advanceTimersByTime(60_000);
   });
   expect(result.current.time).toBe('sunset');
 });

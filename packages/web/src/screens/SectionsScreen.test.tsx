@@ -223,7 +223,7 @@ function mockSectionsApi({
     }
     if (url.endsWith('/api/me/city')) return Promise.resolve(jsonResponse({city:null}));
     if (url.includes('/api/me')) {
-      if (profileResponse !== undefined) return profileResponse;
+      if (profileResponse !== undefined) return profileResponse.then(response => response.clone());
       if (profileRequest === 'loading') return new Promise<Response>(() => undefined);
       if (profileRequest === 'error') {
         return Promise.resolve(
@@ -436,7 +436,7 @@ describe('SectionsScreen', () => {
 
     expect(await screen.findByText('Первый турнир')).toBeInTheDocument();
     expect(fetch).toHaveBeenCalledWith(
-      '/api/me?includeTournamentCongratulations=true',
+      '/api/me/tournament-congratulations',
       expect.anything(),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Закрыть' }));
@@ -604,7 +604,7 @@ describe('SectionsScreen', () => {
     const profileCallsBeforeRetry = vi
       .mocked(fetch)
       .mock.calls.filter(([input]) =>
-        String(input).includes('/api/me?includeTournamentCongratulations=true'),
+        String(input).includes('/api/me?summary=true&countersOnly=true'),
       ).length;
     fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
     await waitFor(() =>
@@ -612,7 +612,7 @@ describe('SectionsScreen', () => {
         vi
           .mocked(fetch)
           .mock.calls.filter(([input]) =>
-            String(input).includes('/api/me?includeTournamentCongratulations=true'),
+            String(input).includes('/api/me?summary=true&countersOnly=true'),
           ).length,
       ).toBe(profileCallsBeforeRetry + 1),
     );

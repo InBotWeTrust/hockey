@@ -25,6 +25,8 @@ export function prepareCityImage(src: string): Promise<void> {
     image.onload = () => resolve();
     image.onerror = () => reject(new Error('City background failed to load'));
   });
+  image.decoding = 'async';
+  image.fetchPriority = 'high';
   image.src = src;
   // Older WebViews may not expose decode().
   entry.promise = (typeof image.decode === 'function' ? image.decode() : loaded)
