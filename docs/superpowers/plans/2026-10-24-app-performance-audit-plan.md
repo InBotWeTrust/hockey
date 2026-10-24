@@ -443,7 +443,7 @@ PixiStage ждёт 14 общих sprites до ready, включая оба хв�
 | 11 | Critical precache оболочки+карты, runtime cache lazy modules, ручное восстановление failed chunk; /assets не возвращает SPA HTML вместо отсутствующего JS | Реальные install/update/offline/quota и старая вкладка при deploy |
 | 12 | История наград: обязательная категория, 20 записей + lookahead, load more; batch progress одним SQL вместо N+1; PostgreSQL parity нескольких временных окон | Рейтинги и chat-list SQL не переписаны без EXPLAIN/объёмного fixture |
 | 13 | Устранён доказанный секундный пересчёт освещения; WeatherOverlay/CityTraffic pause сохранены | GPU, медиа, workers и 30-cycle heap профилирование на реальном устройстве; качество/игровые tick не менялись |
-| 14 | Общие typecheck/lint/build, build budget, затронутые unit/integration suites, независимое ревью | Полный web остаётся красным на 9 воспроизведённых исходных падениях; новая CI и dev/prod не запускались |
+| 14 | Общие typecheck/lint/build, build budget, затронутые unit/integration suites, независимое ревью | Полные web/server остаются красными на 9+9 воспроизведённых исходных падениях; новая CI и dev/prod не запускались |
 
 ### Измеренные результаты
 
