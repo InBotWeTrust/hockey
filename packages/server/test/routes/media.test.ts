@@ -1,5 +1,6 @@
 import { Readable } from 'node:stream';
 import Fastify from 'fastify';
+import { Agent, fetch } from 'undici';
 import { describe, expect, it, vi } from 'vitest';
 import { mediaRoutes } from '../../src/routes/media.js';
 import { errorsPlugin } from '../../src/plugins/errors.js';
@@ -220,8 +221,9 @@ it('aborts the storage request when the HTTP client disconnects', async () => {
   await app.register(mediaRoutes, {objectStorage, mediaAccessSecret: MEDIA_SECRET});
   const base = await app.listen({host: '127.0.0.1', port: 0});
   const controller = new AbortController();
+  const dispatcher = new Agent();
   try {
-    const response = await fetch(base + mediaUrl(), {signal: controller.signal});
+    const response = await fetch(base + mediaUrl(), {signal: controller.signal, dispatcher});
     const reader = response.body!.getReader();
     expect((await reader.read()).value?.byteLength).toBe(1);
     controller.abort();
@@ -229,6 +231,9 @@ it('aborts the storage request when the HTTP client disconnects', async () => {
   } finally {
     controller.abort();
     stream.destroy();
+    // Node 20 may leave a replacement idle socket after aborting a pooled fetch.
+    // Close only this test's client pool before waiting for the HTTP server.
+    await dispatcher.destroy();
     await app.close();
   }
 });
