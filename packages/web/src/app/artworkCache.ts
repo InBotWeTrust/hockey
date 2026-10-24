@@ -29,6 +29,7 @@ const CRITICAL_ARTWORK = [
   '/profile/settings-card-art.png',
 ] as const;
 
+export const MAX_RETAINED_ARTWORK = 64;
 const retainedArtwork = new Map<string, HTMLImageElement>();
 
 const PROFILE_COMMUNITY_ARTWORK = [
@@ -143,18 +144,25 @@ export function startupArtworkUrls(level: CompetitionLevel): readonly string[] {
   return urls;
 }
 
+function retainArtwork(cache: Map<string, HTMLImageElement>, url: string, image: HTMLImageElement): void {
+  cache.delete(url);
+  cache.set(url,image);
+  while(cache.size > MAX_RETAINED_ARTWORK)cache.delete(cache.keys().next().value!);
+}
+
 export function preloadArtwork(
   urls: readonly string[],
   cache: Map<string, HTMLImageElement> = retainedArtwork,
   createImage: () => HTMLImageElement = () => new Image(),
 ): void {
   for (const url of urls) {
-    if (cache.has(url)) continue;
+    const existing=cache.get(url);
+    if (existing) {retainArtwork(cache,url,existing);continue;}
     const image = createImage();
     image.decoding = 'async';
     image.fetchPriority = 'low';
     image.src = url;
-    cache.set(url, image);
+    retainArtwork(cache, url, image);
   }
 }
 
@@ -169,7 +177,7 @@ function preloadArtworkAndWait(
     image.decoding = 'async';
     image.fetchPriority = 'high';
     image.src = url;
-    cache.set(url, image);
+    retainArtwork(cache, url, image);
   }
 
   if (typeof image.decode === 'function') {

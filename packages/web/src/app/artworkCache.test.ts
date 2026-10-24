@@ -219,3 +219,14 @@ describe('preloadArtwork', () => {
     await preloading;
   });
 });
+
+it('bounds retained decoded artwork across a long session and retains recently used images', () => {
+  const cache = new Map<string, HTMLImageElement>();
+  const createImage = () => ({src:'',decoding:'',fetchPriority:''}) as unknown as HTMLImageElement;
+  preloadArtwork(Array.from({length:64},(_,i)=>`/image-${i}.webp`),cache,createImage);
+  preloadArtwork(['/image-0.webp'],cache,createImage);
+  preloadArtwork(['/image-64.webp'],cache,createImage);
+  expect(cache.size).toBe(64);
+  expect(cache.has('/image-0.webp')).toBe(true);
+  expect(cache.has('/image-1.webp')).toBe(false);
+});

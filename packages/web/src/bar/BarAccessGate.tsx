@@ -1,11 +1,11 @@
 import {SectionLoading} from '../components/SectionLoading.js';
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { fetchBarAccess, type BarAccess } from './olegFightApi.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { X } from 'lucide-react';
 import { BarReopeningCountdown } from './BarReopeningCountdown.js';
-import { OlegFightPanel } from './OlegFightPanel.js';
+const OlegFightPanel = lazy(() => import('./OlegFightPanel.js').then(module => ({default:module.OlegFightPanel})));
 import {useBarLighting} from './barLighting.js';
 import {barStreet} from './barArtwork.js';
 export function BarAccessGate({ children }: { children: ReactNode }) {
@@ -55,12 +55,12 @@ export function BarAccessGate({ children }: { children: ReactNode }) {
     };
   }, [retry]);
   if (fightId)
-    return <OlegFightPanel id={fightId} onDone={next=>{
+    return <Suspense fallback={<SectionLoading />}><OlegFightPanel id={fightId} onDone={next=>{
       acknowledged.current.add(fightId);
       setFightId(null);setAccess(next);
       if (next.blockedUntil) navigate('/sections', {replace:true});
       else navigate('/bar', {replace:true});
-    }}/>;
+    }}/></Suspense>;
   if (access?.blockedUntil) {
     const leave=()=>navigate('/sections', {replace:true});
     return <AccessibleModal title="«4-й период» закрыт для тебя" ariaLabel="Бар закрыт" onClose={leave}

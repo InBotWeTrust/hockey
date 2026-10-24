@@ -647,7 +647,7 @@ describe('DailyScreen', () => {
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input, init) => {
       const url = input instanceof Request ? input.url : String(input);
-      if (url.endsWith('/me')) {
+      if (/\/me(?:\?|$)/.test(url)) {
         return new Response(JSON.stringify({ id:'u1',competitionLevel:profile,amateurUnlockGoalsRequired:300,stats:{goals} }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -733,7 +733,7 @@ describe('DailyScreen', () => {
           { status: 403, headers: { 'content-type': 'application/json' } },
         );
       }
-      if (url.endsWith('/me')) {
+      if (/\/me(?:\?|$)/.test(url)) {
         return new Response(JSON.stringify({ competitionLevel: 'amateur' }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -3205,7 +3205,7 @@ describe('DailyScreen', () => {
     fetchMock.mockReset();
     fetchMock.mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
-      if (url.endsWith('/me')) {
+      if (/\/me(?:\?|$)/.test(url)) {
         return new Response(JSON.stringify({ competitionLevel: 'beginner' }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
@@ -3256,7 +3256,7 @@ describe('DailyScreen', () => {
   it('keeps the simple stadium for an amateur daily game', async () => {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = input instanceof Request ? input.url : String(input);
-      if (url.endsWith('/me')) {
+      if (/\/me(?:\?|$)/.test(url)) {
         return new Response(JSON.stringify({ competitionLevel: 'amateur' }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
