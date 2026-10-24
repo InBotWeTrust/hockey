@@ -1,3 +1,4 @@
+import { subscribeVisibleMinute } from './visibleMinuteClock.js';
 import { useEffect, useState } from 'react';
 import { cityTimeOfDay, type CityTimeOfDay } from './lighting.js';
 
@@ -34,17 +35,10 @@ export function useYardLighting(enabled: boolean, previewTime?: CityTimeOfDay) {
           if (!disposed && token === generation) requested = time;
         });
     };
-    const interval = window.setInterval(check, 1000);
-    window.addEventListener('focus', check);
-    window.addEventListener('pageshow', check);
-    document.addEventListener('visibilitychange', check);
-    check();
+    const unsubscribe = subscribeVisibleMinute(check);
     return () => {
       disposed = true;
-      window.clearInterval(interval);
-      window.removeEventListener('focus', check);
-      window.removeEventListener('pageshow', check);
-      document.removeEventListener('visibilitychange', check);
+      unsubscribe();
     };
   }, [enabled, previewTime, time]);
   return yardArtwork(time);

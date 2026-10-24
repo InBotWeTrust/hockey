@@ -226,6 +226,8 @@ export function AchievementTile({
       >
         <img
           src={achievement.photoUrl}
+          loading="lazy"
+          decoding="async"
           alt=""
           style={{
             width: '100%',
@@ -280,19 +282,35 @@ export function AchievementTile({
   );
 }
 
+export function ProfileAchievementSummary({ summary, style, accessory }: {
+  summary: ReturnType<typeof summarizeAchievementProgress>;
+  style?: CSSProperties | undefined;
+  accessory?: ReactNode;
+}): JSX.Element {
+  return <div className="section-label" style={{marginBottom:8,display:'flex',alignItems:'center',justifyContent:'space-between',gap:10,...style}}>
+    <span style={{minWidth:0,whiteSpace:'nowrap'}}>Задания · {summary.completed}/{summary.total}, уровни · {summary.levels.completed}/{summary.levels.total}</span>
+    {accessory}
+  </div>;
+}
+
 export function ProfileAchievementsSection({
   achievements,
   onOpenAchievement,
   labelAccessory,
   style,
   labelStyle,
+  summaryOnly = false,
+  storedSummary,
 }: {
+  summaryOnly?: boolean;
+  storedSummary?: ReturnType<typeof summarizeAchievementProgress> | undefined;
   achievements: ProfileAchievement[];
   onOpenAchievement: (achievement: ProfileAchievement) => void;
   labelAccessory?: ReactNode;
   style?: CSSProperties;
   labelStyle?: CSSProperties;
 }): JSX.Element {
+  if (summaryOnly) return <ProfileAchievementSummary summary={storedSummary ?? summarizeAchievementProgress(achievements)} style={labelStyle} />;
   const sortedAchievements = [...achievements].sort((left, right) => {
     const leftTime = left.completedAt ? Date.parse(left.completedAt) : Number.NaN;
     const rightTime = right.completedAt ? Date.parse(right.completedAt) : Number.NaN;
@@ -308,22 +326,7 @@ export function ProfileAchievementsSection({
 
   return (
     <>
-      <div
-        className="section-label"
-        style={{
-          marginBottom: 8,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 10,
-          ...labelStyle,
-        }}
-      >
-        <span style={{ minWidth: 0, whiteSpace: 'nowrap' }}>
-          Задания · {summary.completed}/{summary.total}, уровни · {summary.levels.completed}/{summary.levels.total}
-        </span>
-        {labelAccessory}
-      </div>
+      <ProfileAchievementSummary summary={summary} style={labelStyle} accessory={labelAccessory} />
       <div
         className="glass"
         style={{

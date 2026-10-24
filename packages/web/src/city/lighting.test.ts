@@ -47,6 +47,7 @@ it('changes phases only after decode and avoids loading again within a phase',as
 
 it('decodes resolution changes, ignores stale completions and retries failures',async()=>{
  vi.useFakeTimers();
+ vi.stubGlobal('innerHeight',1200);
  const dpr=vi.spyOn(window,'devicePixelRatio','get').mockReturnValue(1);
  const pending:{resolve:()=>void;reject:()=>void}[]=[];
  vi.stubGlobal('Image',class{src='';decode(){return new Promise<void>((resolve,reject)=>pending.push({resolve,reject}));}});
@@ -58,9 +59,9 @@ it('decodes resolution changes, ignores stale completions and retries failures',
  await act(async()=>pending[0]!.resolve());
  expect(result.current).toContain('4096-');
  await act(async()=>pending[1]!.reject());
- act(()=>{dpr.mockReturnValue(2);vi.advanceTimersByTime(1000);});
+ act(()=>{dpr.mockReturnValue(2);vi.advanceTimersByTime(60_000);});
  await act(async()=>pending[2]!.reject());
- act(()=>{vi.advanceTimersByTime(1000);});
+ act(()=>{vi.advanceTimersByTime(60_000);});
  await act(async()=>pending[3]!.resolve());
  expect(result.current).toContain('6144-');
  unmount();expect(vi.getTimerCount()).toBe(0);
@@ -77,4 +78,21 @@ it('recalculates for a changed city and ignores an old city image decoding later
  rerender({city:vladivostok});expect(pending.length).toBe(1);
  rerender({city:moscow});
  await act(async()=>pending[0]!());expect(result.current).toContain('city-day-');
+});
+
+it('does not recalculate solar phase every second or decode while hidden',async()=>{
+ vi.useFakeTimers();vi.setSystemTime(new Date(2026,9,16,12,0,0));
+ const hours=vi.spyOn(Date.prototype,'getHours');
+ const decode=vi.fn().mockResolvedValue(undefined);
+ vi.stubGlobal('Image',class{src='';decode=decode;});
+ const hidden=vi.spyOn(document,'hidden','get').mockReturnValue(false);
+ const {result,unmount}=renderHook(()=>useCityImage());
+ hours.mockClear();act(()=>vi.advanceTimersByTime(55_000));
+ expect(hours.mock.calls.length).toBeLessThan(3);
+ hidden.mockReturnValue(true);act(()=>document.dispatchEvent(new Event('visibilitychange')));
+ act(()=>{vi.setSystemTime(new Date(2026,9,16,18));vi.advanceTimersByTime(60_000);});
+ expect(decode).not.toHaveBeenCalled();
+ hidden.mockReturnValue(false);await act(async()=>document.dispatchEvent(new Event('visibilitychange')));
+ expect(result.current).toContain('city-sunset-');
+ unmount();expect(vi.getTimerCount()).toBe(0);
 });

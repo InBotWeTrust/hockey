@@ -165,6 +165,17 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
     );
   }
 
+  it('returns a compact own profile without historical details or achievement artwork', async () => {
+    const login = await loginTelegram({ id: '4242424242' });
+    const response = await app.inject({ method: 'GET', url: '/me?summary=true&countersOnly=true',
+      headers: { authorization: `Bearer ${login.accessToken}` } });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ id: login.user.id, achievements: [],
+      achievementSummary: { completed: 0, levels: { completed: 0 } } });
+    expect(response.json().trophyDetails).toBeUndefined();
+    expect(response.json().amateurUnlockGoalsRequired).toBeTypeOf('number');
+  });
+
   it('returns 401 without bearer', async () => {
     const res = await app.inject({ method: 'GET', url: '/me' });
     expect(res.statusCode).toBe(401);

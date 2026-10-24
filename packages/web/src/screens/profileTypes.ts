@@ -1,3 +1,5 @@
+import type { FanSummary } from '../social/api.js';
+import type { AchievementSummary } from '../achievements/progressSummary.js';
 import type { RegularSeasonPodiumCongratulation } from '../api/tournament.js';
 
 export type CompetitionLevel = 'beginner' | 'amateur' | 'professional';
@@ -39,6 +41,8 @@ export interface ProfileAchievement {
 }
 
 export interface ProfileData {
+  social?: FanSummary;
+  achievementSummary?: AchievementSummary;
   id: string;
   registeredAt: string;
   displayName: string;

@@ -227,7 +227,7 @@ async function fetchPreviousGameStats(
   };
 }
 
-async function fetchDailyHistoryStats(
+export async function fetchDailyHistoryStats(
   client: PoolClient,
   userId: string,
   limit: number,
@@ -251,18 +251,39 @@ async function fetchDailyHistoryStats(
     [userId, limit + 1, offset],
   );
 
-  const games: DailyGameStats[] = [];
-  for (const pool of rows.slice(0, limit)) {
-    const periods = await fetchRecentPeriods(client, pool.id);
-    const totals = await aggregateDailyTotals(client, pool.id);
-    games.push({
+  const page = rows.slice(0, limit);
+  const periodsByPool = new Map<string, PeriodLogEntry[]>();
+  if (page.length > 0) {
+    const result = await client.query<{
+      day_pool_id: string; period_number: number; shots_taken: number; goals: number;
+      closed_reason: 'quota' | 'timeout' | 'day_end'; started_at: Date; ended_at: Date;
+    }>(
+      `select day_pool_id, period_number, shots_taken, goals, closed_reason, started_at, ended_at
+         from period_log where day_pool_id = any($1::uuid[])
+         order by day_pool_id, period_number asc`,
+      [page.map(pool => pool.id)],
+    );
+    for (const row of result.rows) {
+      const periods = periodsByPool.get(row.day_pool_id) ?? [];
+      periods.push({
+        period_number: row.period_number, shots_taken: row.shots_taken, goals: row.goals,
+        closed_reason: row.closed_reason,
+        duration_ms: Math.max(0, row.ended_at.getTime() - row.started_at.getTime()),
+        ended_at: row.ended_at.toISOString(),
+      });
+      periodsByPool.set(row.day_pool_id, periods);
+    }
+  }
+  const games: DailyGameStats[] = page.map(pool => {
+    const periods = periodsByPool.get(pool.id) ?? [];
+    return {
       day_date: pool.day_date,
-      total_shots: totals.shots,
-      total_goals: totals.goals,
+      total_shots: periods.reduce((sum, period) => sum + period.shots_taken, 0),
+      total_goals: periods.reduce((sum, period) => sum + period.goals, 0),
       total_duration_ms: periods.reduce((sum, period) => sum + period.duration_ms, 0),
       periods,
-    });
-  }
+    };
+  });
   const hasMore = rows.length > limit;
   const { rows: summaryRows } = await client.query<{
     possible_games: number;
@@ -565,6 +586,8 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
       (error) => {
         app.log.warn({ err: error, userId }, 'failed to recover pending daily period achievements');
       },
+      userId,
+      app.pg,
     );
   };
 

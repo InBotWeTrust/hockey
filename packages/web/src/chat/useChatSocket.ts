@@ -1,3 +1,4 @@
+import { scheduleChatRefresh, cancelChatRefresh } from './chatRefresh.js';
 import { applyBarInviteEvent } from '../bar/inviteEvents.js';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient, type QueryClient } from '@tanstack/react-query';
@@ -79,8 +80,8 @@ function applyMessageNew(qc: QueryClient, chatId: string, msg: ChatMessageDTO): 
     const nextFirst = [msg, ...firstPage];
     return { ...old, pages: [nextFirst, ...old.pages.slice(1)] };
   });
-  void qc.invalidateQueries({ queryKey: chatKeys.list() });
-  void qc.invalidateQueries({ queryKey: chatKeys.unread() });
+  scheduleChatRefresh(qc, chatKeys.list());
+  scheduleChatRefresh(qc, chatKeys.unread());
 }
 
 function applyMessageDeleted(qc: QueryClient, chatId: string, messageId: string): void {
@@ -99,7 +100,7 @@ function applyMessageDeleted(qc: QueryClient, chatId: string, messageId: string)
     if (touched) didPatch = true;
     return touched ? { ...old, pages } : old;
   });
-  if (didPatch) void qc.invalidateQueries({ queryKey: chatKeys.list() });
+  if (didPatch) scheduleChatRefresh(qc, chatKeys.list());
 }
 
 function applyMessageUpdated(qc: QueryClient, chatId: string, message: ChatMessageDTO): void {
@@ -121,7 +122,7 @@ function applyMessageUpdated(qc: QueryClient, chatId: string, message: ChatMessa
   qc.setQueryData<ChatMessageDTO | undefined>(chatKeys.channelPost(message.id), (old) =>
     old ? message : old,
   );
-  void qc.invalidateQueries({ queryKey: chatKeys.list() });
+  scheduleChatRefresh(qc, chatKeys.list());
 }
 
 function applyChatRead(
@@ -140,7 +141,7 @@ function applyChatRead(
       });
       return touched ? next : old;
     });
-    void qc.invalidateQueries({ queryKey: chatKeys.unread() });
+    scheduleChatRefresh(qc, chatKeys.unread());
     return;
   }
   qc.setQueryData<ChatDTO[] | undefined>(chatKeys.list(), (old) => {
@@ -275,16 +276,13 @@ export function useChatSocket(): ChatSocketStatus {
       onStatus: (next) => {
         setStatus(next);
         if (next === 'open') {
-          if (firstOpenRef.current) {
-            firstOpenRef.current = false;
-            return;
-          }
-          // Reconnect arrival — catch up.
-          void qc.refetchQueries({ queryKey: chatKeys.list() });
+          const first = firstOpenRef.current;
+          firstOpenRef.current = false;
+          // Closed chats must also reconcile edits/deletions after a missed WS interval.
+          void qc.invalidateQueries({queryKey:['chat','messages'],refetchType:'none'});
+          if (!first) void qc.refetchQueries({ queryKey: chatKeys.list() });
           const active = useChatStore.getState().activeChatId;
-          if (active) {
-            void qc.refetchQueries({ queryKey: chatKeys.messages(active) });
-          }
+          if (active) void qc.refetchQueries({ queryKey: chatKeys.messages(active) });
         }
       },
     });
@@ -292,6 +290,7 @@ export function useChatSocket(): ChatSocketStatus {
 
     return () => {
       sock.disconnect();
+      cancelChatRefresh(qc);
       firstOpenRef.current = true;
     };
   }, [accessToken, qc]);

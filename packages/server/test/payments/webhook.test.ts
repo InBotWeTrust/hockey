@@ -166,6 +166,8 @@ describe.skipIf(!hasIntegrationEnv)('YooKassa webhook reconciliation', () => {
     expect(response.json()).toEqual({ ok: true });
     expect(await accountState()).toEqual({ balance: 40100, reserved_balance: 25 });
     expect(await paymentState()).toMatchObject({ status: 'paid', paid_at: expect.any(Date) });
+    expect((await app.pg.query("select achievement_id from user_achievements where user_id=$1 and achievement_id='wallet'", [userId])).rowCount).toBe(1);
+    expect((await app.pg.query('select completed_tasks from user_achievement_summary where user_id=$1', [userId])).rows[0].completed_tasks).toBeGreaterThanOrEqual(1);
     expect(
       (
         await app.pg.query(

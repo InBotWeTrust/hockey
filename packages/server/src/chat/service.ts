@@ -18,6 +18,7 @@ import {
 } from './errors.js';
 import {
   buildProfileProgress,
+  readPublicProfileProgress,
   fetchTrophyDetails,
   fetchTrophySummary,
 } from '../profile/summary.js';
@@ -408,11 +409,12 @@ export async function getChatInfo(
 export async function getUserPublicProfile(
   pool: Pool,
   userId: string,
-  options: { summary?: boolean } = {},
+  options: { summary?: boolean; countersOnly?: boolean } = {},
 ): Promise<UserPublicProfileDTO | null> {
   const r = await pool.query<{
     id: string;
     display_name: string;
+    bio: string;
     avatar_url: string | null;
     level: number;
     timezone: string;
@@ -424,7 +426,7 @@ export async function getUserPublicProfile(
     star_balance: number;
     experience_balance: number;
   }>(
-    `select u.id, u.display_name, u.avatar_url, u.level, u.timezone,
+    `select u.id, u.display_name, u.bio, u.avatar_url, u.level, u.timezone,
             lifetime_shots_total, lifetime_goals_total,
             u.created_at, u.last_seen_at,
             coalesce(uca.balance, 0)::int as currency_balance,
@@ -439,18 +441,20 @@ export async function getUserPublicProfile(
   if (r.rowCount === 0) return null;
   const row = r.rows[0]!;
   const [profileProgress, trophySummary, trophyDetails] = await Promise.all([
-    buildProfileProgress(pool, row, { claimedOnly: false }),
+    options.countersOnly ? readPublicProfileProgress(pool, row) : buildProfileProgress(pool, row, { claimedOnly: false }),
     fetchTrophySummary(pool, row.id),
-    options.summary ? Promise.resolve(undefined) : fetchTrophyDetails(pool, row.id),
+    options.summary || options.countersOnly ? Promise.resolve(undefined) : fetchTrophyDetails(pool, row.id),
   ]);
 
   return {
     id: row.id,
     displayName: row.display_name,
     avatarUrl: row.avatar_url,
+    bio: row.bio ?? '',
     competitionLevel: profileProgress.competitionLevel,
     stats: profileProgress.stats,
     achievements: profileProgress.achievements,
+    ...(profileProgress.achievementSummary ? { achievementSummary: profileProgress.achievementSummary } : {}),
     currencyBalance: Number(row.currency_balance),
     starBalance: Number(row.star_balance),
     experienceBalance: Number(row.experience_balance),

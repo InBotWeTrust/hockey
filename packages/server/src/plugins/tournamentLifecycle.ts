@@ -21,6 +21,7 @@ export interface TournamentLifecyclePluginOptions {
 }
 
 export interface ReconcileTournamentLifecycleBestEffortOptions {
+  shareInFlight?: boolean;
   tournamentId?: string;
   now?: Date;
 }
@@ -39,8 +40,26 @@ declare module 'fastify' {
   }
 }
 
+const inFlightReconciles = new WeakMap<Pool, Map<string, Promise<TournamentLifecycleReconcileReport | null>>>();
+
+export function reconcileBestEffort(options: ReconcileBestEffortDependencies): Promise<TournamentLifecycleReconcileReport | null> {
+  if (!options.shareInFlight) return runReconcileBestEffort(options);
+  let pending = inFlightReconciles.get(options.pool);
+  if (!pending) {
+    pending = new Map();
+    inFlightReconciles.set(options.pool, pending);
+  }
+  // Explicit simulated times must never be combined with a different clock.
+  const key = `${options.tournamentId ?? '*'}:${options.now?.getTime() ?? 'current'}`;
+  const existing = pending.get(key);
+  if (existing) return existing;
+  const task = runReconcileBestEffort(options).finally(() => pending.delete(key));
+  pending.set(key, task);
+  return task;
+}
+
 /** Lifecycle errors must not turn a valid read or completed mutation into a 500. */
-export async function reconcileBestEffort(
+async function runReconcileBestEffort(
   options: ReconcileBestEffortDependencies,
 ): Promise<TournamentLifecycleReconcileReport | null> {
   try {

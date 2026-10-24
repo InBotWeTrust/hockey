@@ -69,7 +69,7 @@ describe('UserProfileScreen', () => {
     vi.restoreAllMocks();
   });
 
-  it('shows public stats and achievements for a player opened from chat', async () => {
+  it('shows public stats and achievement counters without cards', async () => {
     renderPublicProfile();
 
     expect(await screen.findByText('Иван Петров')).toBeInTheDocument();
@@ -82,9 +82,8 @@ describe('UserProfileScreen', () => {
     expect(screen.getByText('(12)')).toBeInTheDocument();
     expect(screen.getByText('Задания · 1/1, уровни · 1/1')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: /Первая шайба.*получено/i }));
-    expect(screen.getByRole('dialog', { name: 'Первая шайба' })).toBeInTheDocument();
-    expect(screen.getByText('Первый гол всегда самый шумный.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Первая шайба/ })).not.toBeInTheDocument();
+    expect(screen.queryByText('Первый гол всегда самый шумный.')).not.toBeInTheDocument();
   });
 
   it('shows a toast without opening duel setup for a future playoff opponent', async () => {

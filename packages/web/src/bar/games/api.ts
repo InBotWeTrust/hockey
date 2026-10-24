@@ -1,3 +1,4 @@
+import { coalesceLobbyRequest } from '../lobbyRequest.js';
 import { useGameInvites } from './gameInviteStore.js';
 import type {
   BarGameId,
@@ -18,7 +19,7 @@ export const gameApi = {
     ),
   startOchkoStake: (input: { requestId: string; offerId: string; stars: number }) =>
     apiFetch<BarGameSnapshot>('/bar/games/ochko/start', post(input)),
-  lobby: () => apiFetch<BarGameLobby>('/bar/games/lobby'),
+  lobby: () => coalesceLobbyRequest('games', () => apiFetch<BarGameLobby>('/bar/games/lobby')),
   players: (q: string) =>
     apiFetch<GamePickerPlayer[]>(`/bar/games/players?q=${encodeURIComponent(q)}`),
   start: (character: GameCharacter, requestId: string, previousId?: string) =>

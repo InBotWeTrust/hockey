@@ -1,3 +1,4 @@
+import { scheduleChatRefresh } from '../chatRefresh.js';
 import {useAmateurAccess} from '../../amateur/useAmateurAccess.js';
 import {
   Fragment,
@@ -445,6 +446,8 @@ export function ChatRoomScreen(): JSX.Element {
   // Auto-follow only when the user is already near the bottom; pagination
   // (loading older messages) keeps the viewport stable instead of jumping.
   const isNearBottomRef = useRef(true);
+  const lastReadSentRef = useRef<string | null>(null);
+  const [readViewportRevision,setReadViewportRevision] = useState(0);
   const forceInitialBottomRef = useRef(true);
 
   // Lazy-fetch the chat list when entering by direct URL: without this the
@@ -554,7 +557,7 @@ export function ChatRoomScreen(): JSX.Element {
       return oldest;
     },
     staleTime: Infinity,
-    refetchOnMount: 'always',
+    refetchOnMount: true,
   });
 
   // When ?goto changes (or appears), wipe the cache for this chat so the queryFn
@@ -571,19 +574,21 @@ export function ChatRoomScreen(): JSX.Element {
   }, [goto, chatId, queryClient]);
 
   const { mutate: markRead } = useMutation({
-    mutationFn: () => markChatAsRead(chatId),
-    onSuccess: () => {
-      resetUnread(chatId);
+    mutationFn: (read: {chatId:string; marker:string; viewerId:string|null}) => markChatAsRead(read.chatId),
+    onSuccess: (_result, read) => {
+      if ((useAuthStore.getState().user?.id ?? null) !== read.viewerId) return;
+      queryClient.setQueryData(chatKeys.readWatermark(read.chatId,read.viewerId),read.marker);
+      resetUnread(read.chatId);
       queryClient.setQueryData<ChatDTO[]>(chatKeys.list(), (chats) =>
-        chats?.map((chat) => chat.id === chatId ? { ...chat, unreadCount: 0 } : chat),
+        chats?.map((chat) => chat.id === read.chatId ? { ...chat, unreadCount: 0 } : chat),
       );
-      void queryClient.invalidateQueries({ queryKey: chatKeys.unread() });
-      void queryClient.invalidateQueries({ queryKey: chatKeys.list() });
+      scheduleChatRefresh(queryClient,chatKeys.unread(),chatKeys.list());
     },
+    onError: (_error, read) => { if (lastReadSentRef.current === read.marker) lastReadSentRef.current = null; },
   });
 
   useEffect(() => {
-    if (chatId.length === 0) return;
+    if (chatId.length === 0 || document.hidden || !isNearBottomRef.current) return;
     if (!query.data) return;
     if (!query.isSuccess || query.isFetching) return;
     const loadedMessageCount = query.data.pages.reduce((count, page) => count + page.length, 0);
@@ -594,7 +599,14 @@ export function ChatRoomScreen(): JSX.Element {
       }
       return;
     }
-    markRead();
+    let newest: ChatMessageDTO | undefined;
+    for (const page of query.data.pages) for (const message of page)
+      if (!newest || message.createdAt > newest.createdAt) newest = message;
+    if (!newest) return;
+    const marker = `${chatId}:${newest.id}:${newest.createdAt}`;
+    if (lastReadSentRef.current === marker || queryClient.getQueryData(chatKeys.readWatermark(chatId,meId)) === marker) return;
+    lastReadSentRef.current = marker;
+    markRead({chatId,marker,viewerId:meId});
   }, [
     chatId,
     chatMeta?.unreadCount,
@@ -603,6 +615,8 @@ export function ChatRoomScreen(): JSX.Element {
     query.isFetching,
     queryClient,
     markRead,
+    meId,
+    readViewportRevision,
   ]);
 
   // After the goto-page is loaded, scroll to the target bubble, flash it,
@@ -627,12 +641,16 @@ export function ChatRoomScreen(): JSX.Element {
     if (!el) return;
     const onScroll = (): void => {
       const dist = el.scrollHeight - el.scrollTop - el.clientHeight;
-      isNearBottomRef.current = dist < 80;
+      const nearBottom = dist < 80;
+      if (nearBottom && !isNearBottomRef.current) setReadViewportRevision(value=>value+1);
+      isNearBottomRef.current = nearBottom;
       setShowScrollToBottom(dist > 360);
     };
     onScroll();
+    const visible = () => { if (!document.hidden) setReadViewportRevision(value=>value+1); };
+    document.addEventListener('visibilitychange',visible);
     el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    return () => {el.removeEventListener('scroll', onScroll);document.removeEventListener('visibilitychange',visible);};
   }, []);
 
   // Scroll to bottom when the latest message changes — covers initial load,

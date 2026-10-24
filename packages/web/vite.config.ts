@@ -1,11 +1,15 @@
+import { criticalPwaAssets } from './src/performance/pwaCachePolicy.js';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+
+let criticalAssets = new Set<string>();
 
 export default defineConfig({
   define: { 'import.meta.env.VITE_BAR_MAP_ENABLED': JSON.stringify(true), 'import.meta.env.VITE_PAGE_INTRODUCTIONS_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_TRAINING_EXERCISES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
   plugins: [
     react(),
+    { name: 'hockey-critical-pwa', generateBundle(_options, bundle) { criticalAssets = criticalPwaAssets(bundle); } },
     VitePWA({
       registerType: 'prompt',
       includeAssets: [
@@ -37,7 +41,20 @@ export default defineConfig({
         importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,ico,woff2,webmanifest}'],
         globIgnores: ['**/icons/app-logo.png'],
+        manifestTransforms: [async entries => ({
+          manifest: entries.filter(entry => !/\.(js|css)$/.test(entry.url) || criticalAssets.has(entry.url)),
+          warnings: [],
+        })],
         runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.origin === self.location.origin && /^\/assets\/.+\.(js|css)$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'hockey-modules',
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 180, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
           {
             urlPattern: /^\/api\//,
             handler: 'NetworkOnly',
@@ -80,6 +97,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    manifest: true,
     // Production maps would embed source text for the dev-only constructor.
     sourcemap: process.env.VITE_MARKSMANSHIP_CONSTRUCTOR === 'dev-only-enabled',
   },

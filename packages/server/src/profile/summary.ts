@@ -1,12 +1,13 @@
+import { readAchievementSummary, type AchievementSummary } from '../achievements/summary.js';
 import type { Pool, PoolClient } from 'pg';
 import {
   fetchAchievementCatalogueForUser,
   grantStatAchievements,
   type ProfileAchievementDTO,
 } from '../achievements/service.js';
-import { getGameSettings } from '../duel/gameSettings.js';
-import { ACTIVITY_STREAK_CTES } from './activityStreak.js';
-import { fetchWeeklyChallengeProgress } from '../weeklyChallenge/progress.js';
+import { getGameSettings, type GameSettings } from '../duel/gameSettings.js';
+import { USER_ACTIVITY_STREAK_CTES } from './activityStreak.js';
+import { fetchWeeklyChallengeProgressBatch } from '../weeklyChallenge/progress.js';
 import type { WeeklyChallengeTaskType } from '../weeklyChallenge/types.js';
 
 type Queryable = Pool | PoolClient;
@@ -26,6 +27,7 @@ export interface ProfileProgressDTO {
   stats: ProfileStatsDTO;
   achievements: ProfileAchievementDTO[];
   unclaimedAchievementsCount: number;
+  achievementSummary?: AchievementSummary;
 }
 
 export interface TrophySummaryDTO {
@@ -158,8 +160,8 @@ export async function fetchTrophySummary(db: Queryable, userId: string): Promise
   };
 }
 
-export async function fetchTrophyDetails(db: Queryable, userId: string): Promise<TrophyDetailsDTO> {
-  const { rows: tournamentRows } = await db.query<{
+export async function fetchTrophyDetails(db: Queryable, userId: string, options: {section?: keyof TrophyDetailsDTO; limit?: number; offset?: number} = {}): Promise<TrophyDetailsDTO> {
+  const { rows: tournamentRows } = options.section === 'completedChallenges' ? {rows:[]} : await db.query<{
     category: 'regularSeasonWins' | 'tournamentChampionships' | 'tournamentPodiums';
     id: string;
     title: string;
@@ -268,13 +270,14 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
               where fixture.tournament_id = tournament_record.id
            ) schedule_window
        ) tournament_schedule on true
-      where awards.user_id = $1
+      where awards.user_id = $1 ${options.section ? 'and awards.category = $2' : ''}
       order by coalesce(tournament_record.completed_at, history.tournament_ends_at) desc nulls last,
                coalesce(tournament_record.starts_at, history.tournament_starts_at) desc nulls last,
-               awards.tournament_id desc`,
-    [userId],
+               awards.tournament_id desc, awards.result desc
+      ${options.limit ? `limit $${options.section ? 3 : 2} offset $${options.section ? 4 : 3}` : ''}`,
+    [userId, ...(options.section ? [options.section] : []), ...(options.limit ? [options.limit, options.offset ?? 0] : [])],
   );
-  const { rows: challengeRows } = await db.query<{
+  const { rows: challengeRows } = options.section && options.section !== 'completedChallenges' ? {rows:[]} : await db.query<{
     id: string;
     title: string;
     start_at: Date;
@@ -297,29 +300,16 @@ export async function fetchTrophyDetails(db: Queryable, userId: string): Promise
        join weekly_challenge_tasks task on task.challenge_id = challenge.id
       where claim.user_id = $1
       group by challenge.id
-      order by challenge.end_at desc, challenge.start_at desc`,
-    [userId],
+      order by challenge.end_at desc, challenge.start_at desc, challenge.id desc
+      ${options.limit ? 'limit $2 offset $3' : ''}`,
+    [userId, ...(options.limit ? [options.limit, options.offset ?? 0] : [])],
   );
-  const completedChallenges = await Promise.all(
-    challengeRows.map(async (row) => {
-      const progress = await fetchWeeklyChallengeProgress(db, {
-        userId,
-        from: row.start_at,
-        to: row.end_at,
-      });
-      return {
-        id: row.id,
-        title: row.title,
-        startsAt: row.start_at.toISOString(),
-        endsAt: row.end_at.toISOString(),
-        tasks: row.tasks.map((task) => ({
-          title: task.title,
-          progress: progress[task.type],
-          target: task.target,
-        })),
-      };
-    }),
-  );
+  const challengeProgress = await fetchWeeklyChallengeProgressBatch(db,userId,
+    challengeRows.map(row=>({from:row.start_at,to:row.end_at})));
+  const completedChallenges = challengeRows.map((row,index) => ({
+    id:row.id,title:row.title,startsAt:row.start_at.toISOString(),endsAt:row.end_at.toISOString(),
+    tasks:row.tasks.map(task=>({title:task.title,progress:challengeProgress[index]![task.type],target:task.target})),
+  }));
   const details: TrophyDetailsDTO = {
     regularSeasonWins: [],
     tournamentChampionships: [],
@@ -376,7 +366,7 @@ export async function fetchPlayStreakStats(
   _timezone: string,
 ): Promise<{ currentDays: number; bestDays: number }> {
   const { rows } = await db.query<{ current_days: number; best_days: number }>(
-    `with ${ACTIVITY_STREAK_CTES}
+    `with ${USER_ACTIVITY_STREAK_CTES}
      select coalesce(current_streaks.current_days, 0)::int as current_days,
             greatest(
               coalesce(historical_streaks.best_days, 0),
@@ -395,10 +385,24 @@ export async function fetchPlayStreakStats(
   };
 }
 
+/** Read-only projection used when a public profile needs counters instead of artwork. */
+export async function readPublicProfileProgress(db: Queryable, row: ProfileProgressRow, suppliedSettings?: GameSettings) {
+  const [settings, streak, achievementSummary, unclaimedAchievementsCount] = await Promise.all([
+    suppliedSettings ?? getGameSettings(db), fetchPlayStreakStats(db, row.id, row.timezone), readAchievementSummary(db, row.id), fetchUnclaimedAchievementCount(db,row.id),
+  ]);
+  const shots = toNumber(row.lifetime_shots_total), goals = toNumber(row.lifetime_goals_total);
+  return {
+    competitionLevel: resolveCompetitionLevel(toNumber(row.level), goals, settings.amateur.unlockGoalsRequired),
+    stats: { shots, goals, accuracy: shots > 0 ? Math.round(goals / shots * 1_000) / 10 : 0,
+      playStreakDays: streak.currentDays, bestPlayStreakDays: streak.bestDays },
+    achievements: [], achievementSummary, unclaimedAchievementsCount,
+  };
+}
+
 export async function buildProfileProgress(
   db: Queryable,
   row: ProfileProgressRow,
-  opts: { claimedOnly?: boolean } = {},
+  opts: { claimedOnly?: boolean; settings?: GameSettings } = {},
 ): Promise<ProfileProgressDTO> {
   const level = toNumber(row.level);
   const shots = toNumber(row.lifetime_shots_total);
@@ -408,10 +412,10 @@ export async function buildProfileProgress(
     lifetimeShots: shots,
     lifetimeGoals: goals,
     level,
-  });
+  }, opts.settings);
 
   const [settings, playStreakStats, achievements, unclaimedAchievementsCount] = await Promise.all([
-    getGameSettings(db),
+    opts.settings ?? getGameSettings(db),
     fetchPlayStreakStats(db, row.id, row.timezone),
     fetchAchievementCatalogueForUser(db, row.id, { claimedOnly: opts.claimedOnly ?? true }),
     fetchUnclaimedAchievementCount(db, row.id),

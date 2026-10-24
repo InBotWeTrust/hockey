@@ -3,7 +3,7 @@ import {useGameMenu} from './GameMenuContext.js';
 import {lazy,Suspense,useEffect} from 'react';
 import {useNavigate} from 'react-router-dom';
 import {useDailyStore} from '../stores/dailyStore.js';
-const Hub=lazy(()=>import('../screens/DailyScreen.js').then(m=>({default:m.GameHub})));
+const Hub=lazy(()=>import('./GameHub.js').then(m=>({default:m.GameHub})));
 export function GlobalGames():JSX.Element|null {
  const {setStatus}=useGameMenu();
  const barEntries=useBarMenuEntries();

@@ -1,3 +1,7 @@
+import { useTrophyHistory } from '../../profile/useTrophyHistory.js';
+import { useOwnProfileSummary } from '../../profile/useOwnProfileSummary.js';
+import { useNavigationTiming } from '../../performance/navigationTiming.js';
+import { usePublicProfile } from '../usePublicProfile.js';
 import { BarChallengeButton } from '../../bar/BarChallengeButton.js';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SocialProfile } from '../../social/SocialProfile.js';
@@ -6,8 +10,6 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { Award, Medal, Sunrise, Target, TrendingUp, Trophy, X } from 'lucide-react';
 import {
-  fetchUserProfile,
-  fetchUserTrophyDetails,
   findOrCreateDM,
   type UserPickerItem,
   type UserPublicProfileDTO,
@@ -16,7 +18,7 @@ import {
   checkAmateurDuelChallengeAvailability,
   fetchAmateurMatches,
 } from '../../api/amateurDuel.js';
-import { chatKeys, userKeys } from '../../lib/queryKeys.js';
+import { chatKeys } from '../../lib/queryKeys.js';
 import { UserAvatar } from './UserAvatar.js';
 import type { ProfileAchievement } from '../../screens/profileTypes.js';
 import { highestCompletedLevel } from '../../achievements/progressSummary.js';
@@ -154,7 +156,7 @@ export function PublicSportingPassport({
           </button>
         </div>
         <span className="profile-identity__name public-profile-name-status"><span className="public-profile-name-text" title={displayName}>{displayName}</span><span className="profile-identity__level public-profile-status">{getLevelLabel(profile.competitionLevel)}</span></span>
-        <ProfileBio userId={profile.id}/>
+        <ProfileBio userId={profile.id} initialBio={profile.bio}/>
       </div>
       </>} profileContent={<><div className="profile-sporting-metrics" aria-label="Главные показатели">
         <div className="profile-sporting-metrics__item">
@@ -335,25 +337,13 @@ function UserProfileSheetContent({
     },
   });
 
-  const { data: profile } = useQuery<UserPublicProfileDTO>({
-    queryKey: userKeys.profile(senderId),
-    queryFn: () => fetchUserProfile(senderId, {summary:true}),
-    enabled: senderId.length > 0,
-    staleTime: 60_000,
-  });
-  const { data: myProfile } = useQuery<UserPublicProfileDTO>({
-    queryKey: userKeys.profile(meId ?? ''),
-    queryFn: () => fetchUserProfile(meId ?? '', {summary:true}),
-    enabled: meId !== null,
-    staleTime: 60_000,
-  });
+  const { data: profile, isError: profileError, refetch: retryProfile } = usePublicProfile(senderId, meId, senderId !== meId);
+  const ownProfile = useOwnProfileSummary(false);
+  const fallbackOwnProfile = usePublicProfile(meId ?? '', meId, true, ownProfile.data === undefined);
+  const myProfile = ownProfile.data ?? fallbackOwnProfile.data;
+  useNavigationTiming('public-profile', senderId, Boolean(profile));
 
-  const trophies = useQuery({
-    queryKey: ['users', senderId, 'trophies'],
-    queryFn: () => fetchUserTrophyDetails(senderId),
-    enabled: selectedTrophy !== null && profile !== undefined && profile.trophyDetails === undefined,
-    staleTime: 60_000,
-  });
+  const trophies = useTrophyHistory(senderId,selectedTrophy,profile !== undefined && profile.trophyDetails === undefined);
   const trophyDetails = profile?.trophyDetails ?? trophies.data;
 
   const isSelf = sender?.userId === meId;
@@ -441,12 +431,16 @@ function UserProfileSheetContent({
               fontSize: 13,
             }}
           >
-            Загрузка...
+            <UserAvatar avatarUrl={avatarUrl} name={displayName} size={56} />
+            <strong>{displayName}</strong>
+            {profileError ? <button className="btn btn--ghost" onClick={() => void retryProfile()}>Повторить</button> : <span role="status">Загрузка...</span>}
           </div>
         )}
 
-        {hasVisibleAchievements && (
+        {profile && (!isSelf || hasVisibleAchievements) && (
           <ProfileAchievementsSection
+            summaryOnly={!isSelf}
+            storedSummary={profile.achievementSummary}
             achievements={profileAchievements}
             onOpenAchievement={setSelectedAchievement}
             labelStyle={{ margin: '18px 0 6px', padding: '2px 6px' }}
@@ -505,6 +499,9 @@ function UserProfileSheetContent({
           <TrophyHistoryModal
             section={selectedTrophy}
             details={trophyDetails}
+            total={profile?.trophyDetails ? undefined : profile?.trophySummary?.[selectedTrophy]}
+            loadMore={trophies.hasNextPage ? () => void trophies.fetchNextPage() : undefined}
+            loadingMore={trophies.isFetchingNextPage}
             onClose={() => setSelectedTrophy(null)}
           />
         )}

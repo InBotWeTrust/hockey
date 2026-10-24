@@ -90,32 +90,30 @@ base as (
 ranked as (
   select base.*, row_number() over (order by ${config.order})::int as place from base
 )`;
-  const page = await pg.query<StatRow>(
-    `with ${base} select * from ranked where place > $1 order by place limit $2`,
-    [afterPlace, options.limit + 1],
+  const result = await pg.query<{ page: StatRow[]; viewer: StatRow | null; goals: number }>(
+    `with ${base},
+     page as (select * from ranked where place > $1 order by place limit $2)
+     select coalesce((select jsonb_agg(to_jsonb(page) order by place) from page), '[]'::jsonb) as page,
+            (select to_jsonb(ranked) from ranked where id = $3) as viewer,
+            u.lifetime_goals_total::int as goals
+       from users u where u.id = $3`,
+    [afterPlace, options.limit + 1, viewerUserId],
   );
-  const viewer = await pg.query<StatRow>(`with ${base} select * from ranked where id = $1`, [
-    viewerUserId,
-  ]);
-  const viewerTotals = await pg.query<{ goals: number }>(
-    'select lifetime_goals_total::int as goals from users where id = $1',
-    [viewerUserId],
-  );
-  if (viewerTotals.rows[0] === undefined) throw new AppError('not_found', 'user not found', 404);
-
-  const hasNextPage = page.rows.length > options.limit;
-  const visible = page.rows.slice(0, options.limit);
+  const snapshot = result.rows[0];
+  if (snapshot === undefined) throw new AppError('not_found', 'user not found', 404);
+  const hasNextPage = snapshot.page.length > options.limit;
+  const visible = snapshot.page.slice(0, options.limit);
   const last = visible.at(-1);
   return {
     metric,
     rows: visible.map(toPlayer),
     nextCursor: hasNextPage && last !== undefined ? encodeCursor(Number(last.place)) : null,
-    currentUser: viewer.rows[0] === undefined ? null : toPlayer(viewer.rows[0]),
+    currentUser: snapshot.viewer === null ? null : toPlayer(snapshot.viewer),
     eligibility:
       metric === 'accuracy'
         ? {
-            eligible: viewer.rows[0] !== undefined,
-            goals: Number(viewerTotals.rows[0].goals),
+            eligible: snapshot.viewer !== null,
+            goals: Number(snapshot.goals),
             requiredGoals: 1000,
           }
         : { eligible: true },

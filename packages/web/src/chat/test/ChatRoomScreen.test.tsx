@@ -610,6 +610,24 @@ describe('ChatRoomScreen', () => {
     await waitFor(() => expect(queryClient.getQueryData<api.ChatDTO[]>(chatKeys.list())?.map((item) => item.unreadCount)).toEqual([0, 3]));
   });
 
+  it('opens fresh cached history without re-fetching all loaded pages', async () => {
+    renderRoom('c1','',client=>client.setQueryData(chatKeys.messages('c1'),{
+      pages:[[msgFromSelf],[msgFromOther]],pageParams:[undefined,'older-page'],
+    }));
+    await screen.findByText('привет');
+    expect(api.fetchMessages).not.toHaveBeenCalled();
+  });
+
+  it('does not repeat read receipts when an already read message is edited', async () => {
+    const {queryClient}=renderRoom('c1');
+    await waitFor(()=>expect(api.markChatAsRead).toHaveBeenCalledTimes(1));
+    await act(async()=>queryClient.setQueryData(chatKeys.messages('c1'),{
+      pages:[[{...msgFromSelf,content:'изменённый текст'},msgFromOther]],pageParams:[undefined],
+    }));
+    await screen.findByText('изменённый текст');
+    expect(api.markChatAsRead).toHaveBeenCalledTimes(1);
+  });
+
   it('marks the chat as read on mount once messages have loaded', async () => {
     renderRoom('c1');
     await waitFor(() => expect(api.markChatAsRead).toHaveBeenCalledWith('c1'));
@@ -717,6 +735,7 @@ describe('ChatRoomScreen', () => {
         pages: [[{ ...msgFromSelf, id: 'stale', content: 'старое' }]],
         pageParams: [undefined],
       });
+      void queryClient.invalidateQueries({queryKey:chatKeys.messages('c1'),refetchType:'none'});
     });
 
     expect(screen.getByText('старое')).toBeInTheDocument();

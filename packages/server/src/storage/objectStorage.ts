@@ -1,3 +1,5 @@
+import { Readable } from 'node:stream';
+import type { ReadableStream } from 'node:stream/web';
 import { createHash, createHmac, randomUUID } from 'node:crypto';
 
 export interface ObjectStorageConfig {
@@ -30,10 +32,17 @@ export interface ObjectStorageGetResult {
   size: number;
 }
 
+export interface ObjectStorageStreamInput {
+  key: string;
+  range?: { start: number; end: number; total: number };
+  signal?: AbortSignal;
+}
+
 export interface ObjectStorageClient {
   maxUploadBytes: number;
   uploadObject(input: ObjectStorageUploadInput): Promise<ObjectStorageUploadResult>;
   getObject(input: { key: string }): Promise<ObjectStorageGetResult>;
+  getObjectStream(input: ObjectStorageStreamInput): Promise<{body: Readable; contentType: string}>;
   deleteObject(input: { key: string }): Promise<void>;
   publicUrlForKey(key: string): string;
 }
@@ -248,6 +257,41 @@ export function createObjectStorageClient(
         contentType:
           res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
         size: Number(res.headers.get('content-length') ?? body.byteLength),
+      };
+    },
+    async getObjectStream(input: ObjectStorageStreamInput) {
+      const url = objectUrl(config, input.key);
+      const payloadHash = sha256Hex('');
+      const rangeHeaders = input.range
+        ? {Range: `bytes=${input.range.start}-${input.range.end}`} : {};
+      const signature = authorizationHeader({
+        config, method: 'GET', url, payloadHash, date: now(),
+        extraHeaders: rangeHeaders,
+      });
+      // Bound the entire read, including the body, and propagate downstream cancellation.
+      const timeout = AbortSignal.timeout(120_000);
+      const signal = input.signal ? AbortSignal.any([input.signal, timeout]) : timeout;
+      const res = await fetchImpl(url, {
+        method: 'GET', signal,
+        headers: {
+          ...rangeHeaders,
+          Authorization: signature.authorization,
+          'x-amz-content-sha256': payloadHash,
+          'x-amz-date': signature.amzDate,
+        },
+      });
+      const validRange = input.range === undefined || (
+        res.status === 206 &&
+        res.headers.get('content-range') ===
+          `bytes ${input.range.start}-${input.range.end}/${input.range.total}`
+      );
+      if (!res.ok || !validRange || !res.body) {
+        await res.body?.cancel();
+        throw new Error(`object storage stream failed: ${res.status}`);
+      }
+      return {
+        body: Readable.fromWeb(res.body as ReadableStream<Uint8Array>, {signal}),
+        contentType: res.headers.get('content-type')?.split(';')[0]?.trim() || 'application/octet-stream',
       };
     },
     async deleteObject(input: { key: string }): Promise<void> {
