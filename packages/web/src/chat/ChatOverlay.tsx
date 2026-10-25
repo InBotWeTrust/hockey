@@ -1,3 +1,4 @@
+import { isAppKeyboardOpen } from '../app/viewport.js';
 import {rememberChatScreen} from './chatResume.js';
 import {chatBackdropStyle} from '../components/chatBackdrop.js';
 import { lazy, Suspense, useRef, useState, useEffect, type ReactNode } from 'react';
@@ -129,7 +130,7 @@ function ChatSheet({
   useEffect(() => {
     const update = () =>
       setKeyboardOpen(
-        Boolean(window.visualViewport && window.innerHeight - window.visualViewport.height > 120),
+        isAppKeyboardOpen(),
       );
     update();
     window.visualViewport?.addEventListener('resize', update);

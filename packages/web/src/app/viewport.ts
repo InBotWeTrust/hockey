@@ -1,3 +1,11 @@
+/** Safari can shrink innerHeight with the keyboard while its layout viewport stays tall. */
+export function isAppKeyboardOpen(): boolean {
+  const visual = window.visualViewport;
+  const layoutHeight = Math.max(window.innerHeight, document.documentElement.clientHeight);
+  return Boolean(visual && Math.abs(visual.scale - 1) < 0.01 &&
+    visual.height > 0 && layoutHeight - visual.height > 120);
+}
+
 /** Keep one viewport contract for application chrome and routed screens. */
 export function installAppViewport(): () => void {
   const visual = window.visualViewport;
@@ -6,11 +14,21 @@ export function installAppViewport(): () => void {
     // Safari's resting visual viewport may exclude browser/safe-area chrome.
     // Use CSS dynamic viewport units there, rather than freezing a shorter px value.
     // Only substantial occlusion at normal scale represents the soft keyboard.
-    const keyboardOpen = Boolean(visual && Math.abs(visual.scale - 1) < 0.01 &&
-      visual.height > 0 && window.innerHeight - visual.height > 120);
+    const keyboardOpen = isAppKeyboardOpen();
     root.style.setProperty('--app-viewport-height', keyboardOpen ? `${visual!.height}px` : '100dvh');
     root.style.setProperty('--app-viewport-top', keyboardOpen ? `${Math.max(0, visual!.offsetTop)}px` : '0px');
     root.classList.toggle('app-keyboard-open', keyboardOpen);
+    // Fixed app shells can prevent Safari from revealing a newly occluded field.
+    const field = document.activeElement;
+    if (keyboardOpen && field instanceof HTMLElement &&
+        field.matches('input, textarea, [contenteditable="true"]') &&
+        field.closest('.section-scene__scroll')) {
+      const bounds = field.getBoundingClientRect();
+      const visibleTop = Math.max(0, visual!.offsetTop);
+      if (bounds.top < visibleTop || bounds.bottom > visibleTop + visual!.height) {
+        field.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      }
+    }
   };
   update();
   const visualEvents = ['resize', 'scroll'] as const;

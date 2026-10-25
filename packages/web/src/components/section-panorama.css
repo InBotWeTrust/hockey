@@ -296,3 +296,19 @@
   .section-scene__dock,.section-scene__dock button { cursor:grab; }
   .section-scene__dock:active,.section-scene__dock:active button { cursor:grabbing; }
 }
+
+/* Dock row padding keeps labels clear while the material extends into the inset. */
+.app-ios-standalone .section-scene {
+  --navigation-bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) - var(--navigation-row-pad)));
+}
+.app-ios-standalone .section-scene:not(.venue-scene) .section-scene__scroll {
+  padding-top: calc(8px + var(--app-safe-top, 0px));
+}
+
+.app-ios-standalone .venue-scene :is(.achievements-screen, .weekly-challenge-screen, .mode-shell--section-hub) {
+  padding-top: calc(8px + var(--app-safe-top, 0px)) !important;
+}
+
+.app-ios-standalone .venue-scene .mode-shell--section-hub .bonus-games-catalog__title {
+  margin-top: 0;
+}
