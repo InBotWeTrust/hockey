@@ -676,3 +676,14 @@ html:has(main.bar-space), body:has(main.bar-space), .app-shell:has(main.bar-spac
 
 /* The integrated dock shares its parent's edge instead of drawing a divider. */
 .bar-bottom-chrome:not(.bar-bottom-chrome--terminal-open) .bar-avatar-dock { box-shadow:none; }
+
+/* The labeled dock already includes its own padding below the labels. */
+.app-ios-standalone .bar-bottom-chrome {
+  bottom: max(12px, calc(env(safe-area-inset-bottom, 0px) - var(--navigation-row-pad)));
+}
+.app-ios-standalone .bar-space__header {
+  padding-top: calc(8px + var(--app-safe-top, 0px));
+}
+.app-ios-standalone .bar-space__header h1 {
+  margin-top: 0;
+}

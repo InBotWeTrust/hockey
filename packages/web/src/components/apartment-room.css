@@ -3,7 +3,11 @@
   background: transparent !important;
 }
 .apartment-scene .section-scene__scroll > div > main {
-  padding-top: 16px !important;
+  padding-top: calc(16px + var(--app-safe-top, 0px)) !important;
+}
+/* Keep profile content compact while preserving the device's safe area. */
+.app-ios-standalone .apartment-scene .section-scene__scroll > div > main {
+  padding-top: calc(8px + var(--app-safe-top, 0px)) !important;
 }
 .apartment-scene .district-page-header {
   margin: 0 0 18px;
@@ -322,4 +326,10 @@
   line-height: 1.12;
   letter-spacing: normal;
   text-transform: none;
+}
+
+/* The apartment page already reserves its safe-area header gap. */
+.app-ios-standalone .apartment-scene .profile-settings-header,
+.app-ios-standalone .apartment-scene .profile-settings-header h1 {
+  margin-top: 0;
 }
