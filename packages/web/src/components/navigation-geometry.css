@@ -22,3 +22,17 @@
 }
 .app-shell .navigation-collapsed-surface .city-game-restore.icon-btn { color:inherit; }
 .app-shell .navigation-collapsed-surface .city-game-restore.icon-btn svg { width:25px; height:25px; stroke-width:1.5; color:inherit; filter:none; }
+
+/* Typing takes priority over navigation on every platform. Form actions stay visible. */
+:root.app-keyboard-open .app-shell :is(
+  .bottom-nav-shell,
+  .district-panel,
+  .section-scene__panel,
+  .bar-bottom-chrome,
+  .bar-avatar-dock,
+  .bar-broadcast-dock,
+  .chat-section-dock,
+  .floating-shortcut
+) {
+  display: none;
+}

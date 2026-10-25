@@ -39,6 +39,10 @@
 .district-dock .district-game-status {bottom:19px;}
 
 .district-panel {bottom:var(--navigation-bottom);}
+/* The expanded dock already keeps labels above its lower edge with row padding. */
+.app-ios-standalone .district-panel:not(.district-panel--collapsed) {
+  bottom:max(12px, calc(env(safe-area-inset-bottom, 0px) - var(--navigation-row-pad)));
+}
 .district-dock {gap:var(--navigation-gap);padding:var(--navigation-row-pad) 14px;}
 .district-dock button {flex-basis:var(--navigation-item);width:var(--navigation-item);gap:var(--navigation-label-gap);}
 .district-dock span {width:var(--navigation-circle);height:var(--navigation-circle);}

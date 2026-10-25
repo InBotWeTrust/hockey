@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
 import { expect, it, vi } from 'vitest';
 import { ChatOverlay } from './ChatOverlay.js';
@@ -129,4 +129,25 @@ it('reopens the last dialog from the floating shortcut and remembers returning t
   fireEvent.click(screen.getByRole('button', {name:'Открыть чат'}));
   await waitFor(() => expect(screen.getByText('Диалог')).toBeVisible());
   expect(screen.queryByText('Сообщения')).toBeNull();
+});
+
+
+it('expands above the iOS keyboard even when innerHeight also shrinks', async () => {
+  localStorage.clear();
+  const vv = Object.assign(new EventTarget(), { height: 471, offsetTop: 341, scale: 1 });
+  vi.stubGlobal('visualViewport', vv);
+  vi.stubGlobal('innerHeight', 471);
+  const layoutHeight = vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(812);
+  try {
+    const view = render(<MemoryRouter initialEntries={['/chat']}><ChatOverlay owner="ios-keyboard"><p>Background</p></ChatOverlay></MemoryRouter>);
+    expect(await screen.findByRole('dialog')).toHaveStyle({ height: '100%' });
+    vv.height = 874;
+    vi.stubGlobal('innerHeight', 874);
+    act(() => { vv.dispatchEvent(new Event('resize')); });
+    await waitFor(() => expect(screen.getByRole('dialog')).toHaveStyle({ height: '55%' }));
+    view.unmount();
+  } finally {
+    layoutHeight.mockRestore();
+    vi.unstubAllGlobals();
+  }
 });

@@ -258,7 +258,7 @@ export function AchievementsScreen({
 
   return (
     <main
-      className="screen"
+      className="screen achievements-screen"
       style={{
         padding: 'calc(22px + var(--app-safe-top)) 14px 24px',
         overflowY: 'auto',
