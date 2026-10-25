@@ -1,14 +1,17 @@
 .modal-card.sheet-card.chat-overlay {
+  container: chat-sheet / size;
   height: 55%;
-  max-height: calc(100% - var(--app-safe-top, 0px) - 12px);
-  min-height: 0;
+  /* The sheet backdrop already reserves the top safe area. */
+  max-height: 100%;
+  /* Keep room for the header and composer on short landscape viewports. */
+  min-height: min(100%, 320px);
   padding: 0;
   display: flex;
   flex-direction: column;
   overflow: hidden;
 }
 .modal-card.sheet-card.chat-overlay--expanded {
-  height: calc(100% - var(--app-safe-top, 0px) - 12px);
+  height: 100%;
 }
 .chat-overlay > .modal-header {
   flex: none;
@@ -50,6 +53,8 @@
   height: 100% !important;
   min-height: 0 !important;
   box-sizing: border-box;
+  /* The overlay header already sits below the safe area. */
+  padding-top: 0 !important;
   padding-bottom: 0 !important;
 }
 .chat-overlay__body .chat-edge-top {
@@ -114,4 +119,21 @@
 :root:not([data-theme='light']) .chat-overlay :is(textarea, .chat-list-search-input)::placeholder {
   color: var(--liquid-muted-soft);
   opacity: 1;
+}
+
+/* The software keyboard replaces the home-indicator inset. */
+:root.app-keyboard-open .chat-overlay .chat-edge-bottom--overlay {
+  padding-bottom: 10px;
+}
+
+/* Short landscape keyboard viewports must reserve their remaining space for input. */
+@container chat-sheet (max-height: 180px) {
+  :root.app-keyboard-open .chat-overlay:has(.chat-edge-bottom--overlay) .chat-overlay__grabber,
+  :root.app-keyboard-open .chat-overlay:has(.chat-edge-bottom--overlay) > .modal-header,
+  :root.app-keyboard-open .chat-overlay:has(.chat-edge-bottom--overlay) .chat-edge-top--overlay {
+    display: none;
+  }
+  :root.app-keyboard-open .chat-overlay:has(.chat-edge-bottom--overlay) [data-testid='messages-list'] {
+    padding-block: 0 !important;
+  }
 }

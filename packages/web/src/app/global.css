@@ -148,6 +148,12 @@ body {
   min-height: 100dvh;
 }
 
+/* iOS standalone sizes a fixed body to the smaller viewport, leaving a status-bar-sized gap. */
+:root.app-ios-standalone:not(.app-keyboard-open) body {
+  position: absolute;
+  min-height: 100lvh;
+}
+
 #root {
   min-height: 100vh;
   min-height: 100dvh;
