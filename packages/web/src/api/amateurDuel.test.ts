@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { useAmateurAccessToastStore } from '../amateur/amateurAccessStore.js';
 import { useAuthStore } from '../auth/authStore.js';
-import { acceptAmateurDuel, challengeAmateurDuel, declineAmateurDuel, searchAmateurOpponents } from './amateurDuel.js';
+import { finishAmateurDuelPeriod, acceptAmateurDuel, challengeAmateurDuel, declineAmateurDuel, searchAmateurOpponents } from './amateurDuel.js';
 
 describe('alternate Amateur duel mutation API', () => {
   beforeEach(() => {
@@ -39,6 +39,13 @@ describe('alternate Amateur duel mutation API', () => {
       sequence: 1,
       toast: { goalsRemaining: 184, unlockGoalsRequired: 300 },
     });
+  });
+
+  it('anchors the clock returned when a period finishes', async () => {
+    vi.spyOn(performance, 'now').mockReturnValue(4200);
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ match: { id: 'duel' } }),
+      { status: 200, headers: { 'content-type': 'application/json' } }));
+    expect((await finishAmateurDuelPeriod('duel')).match.received_at_performance_ms).toBe(4200);
   });
 
   it('sends only the selected duel formats when searching candidates', async () => {

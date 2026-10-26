@@ -653,6 +653,27 @@ describe('UserProfileSheet', () => {
     expect(screen.queryByRole('button', { name: /написать в личку/i })).not.toBeInTheDocument();
   });
 
+  it('refreshes an open duel status while the profile stays open', async () => {
+    vi.mocked(amateurDuelApi.fetchAmateurMatches).mockResolvedValueOnce({ matches: [
+      { id: 'duel', status: 'active', opponent: { user_id: 'u1' } } as amateurDuelApi.AmateurDuelMatch,
+    ] });
+    useAuthStore.setState({ accessToken: 'tok', refreshToken: null,
+      user: { id: 'me', displayName: 'Me', competitionLevel: 'amateur' } });
+    const { qc } = await renderSheet({
+      sender: { userId: 'u1', displayName: 'Иван', avatarUrl: null }, onClose: vi.fn(),
+    }, (client) => {
+      client.setQueryData(userKeys.summary('me', 'me'), { ...publicProfile, id: 'me' });
+      client.setQueryData(userKeys.summary('me', 'u1'), publicProfile);
+      client.setQueryData(['amateur-duel', 'matches'], {
+        matches: [{ id: 'duel', status: 'active', opponent: { user_id: 'u1' } }],
+      });
+    });
+    expect(await screen.findByText('Дуэль уже открыта')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText('Дуэль уже открыта')).not.toBeInTheDocument(), { timeout: 4500 });
+    expect(amateurDuelApi.fetchAmateurMatches).toHaveBeenCalled();
+    qc.clear();
+  });
+
   it('lets amateur users choose duel type before challenging from the profile sheet', async () => {
     useAuthStore.setState({
       accessToken: 'tok',

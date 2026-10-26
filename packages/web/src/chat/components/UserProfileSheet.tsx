@@ -374,7 +374,8 @@ function UserProfileSheetContent({
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
     enabled: canDuel,
-    staleTime: 10_000,
+    staleTime: 0,
+    refetchInterval: 2_000,
   });
   const hasOpenDuel = hasOpenDuelWithUser(openMatchesQuery.data?.matches ?? [], senderId);
 

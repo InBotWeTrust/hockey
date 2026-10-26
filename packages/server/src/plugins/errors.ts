@@ -39,6 +39,10 @@ function isPostgresUniqueViolation(err: unknown): boolean {
 const plugin: FastifyPluginAsync = async (app) => {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AppError) {
+      if (err.statusCode === 409 && req.routeOptions.url === '/duel/amateur/matches/:matchId/shot') {
+        req.log.info({ code: err.code, reason: err.message,
+          matchId: (req.params as { matchId: string }).matchId }, 'duel shot rejected');
+      }
       reply.status(err.statusCode).send({
         error: {
           code: err.code,

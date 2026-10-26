@@ -99,7 +99,8 @@ export function UserProfileScreen(): JSX.Element {
     queryKey: ['amateur-duel', 'matches'],
     queryFn: fetchAmateurMatches,
     enabled: canDuel,
-    staleTime: 10_000,
+    staleTime: 0,
+    refetchInterval: 2_000,
   });
   const hasOpenDuel = hasOpenDuelWithUser(openMatchesQuery.data?.matches ?? [], userId);
 

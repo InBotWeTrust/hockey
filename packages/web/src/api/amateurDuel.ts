@@ -685,7 +685,7 @@ export function submitAmateurDuelShot(
 }
 
 export function finishAmateurDuelPeriod(matchId: string): Promise<{ match: AmateurDuelMatchState }> {
-  return amateurMutation(apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/period/finish`, { method: 'POST' }));
+  return amateurMutation(apiFetch<{ match: AmateurDuelMatchState }>(`/duel/amateur/matches/${matchId}/period/finish`, { method: 'POST' }).then((res) => ({ match: stampMatch(res.match) })));
 }
 
 export function settleAmateurDuel(matchId: string): Promise<{ match: AmateurDuelMatchState }> {

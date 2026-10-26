@@ -21,9 +21,50 @@ function match(): api.AmateurDuelMatchState {
     opponent: {state: 'period_active', current_period: 1, current_period_shots: 0, shots_taken: 0, goals: 0},
   } as unknown as api.AmateurDuelMatchState;
 }
-afterEach(() => { vi.restoreAllMocks(); useAmateurDuelStore.setState({match: null}); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); useAmateurDuelStore.setState({match: null}); });
 
 describe('delayed duel clock snapshots', () => {
+  it('shares an in-flight poll instead of queuing duplicate match requests', async () => {
+    const original = match();
+    useAmateurDuelStore.setState({match: original});
+    let resolve!: (value: {match: api.AmateurDuelMatchState}) => void;
+    const fetch = vi.spyOn(api, 'fetchAmateurMatch').mockImplementation(() => new Promise(r => {resolve = r;}));
+    const first = useAmateurDuelStore.getState().refresh();
+    const second = useAmateurDuelStore.getState().refresh();
+    expect(fetch).toHaveBeenCalledTimes(1);
+    resolve({match: original});
+    await Promise.all([first, second]);
+  });
+
+  it('releases a stalled poll so the next refresh can recover', async () => {
+    vi.useFakeTimers();
+    const original = match();
+    useAmateurDuelStore.setState({match: original});
+    const fetch = vi.spyOn(api, 'fetchAmateurMatch').mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValue({match: original});
+    const stalled = useAmateurDuelStore.getState().refresh();
+    await vi.advanceTimersByTimeAsync(12000);
+    expect(useAmateurDuelStore.getState().loading).toBe(false);
+    await stalled;
+    await useAmateurDuelStore.getState().refresh();
+    expect(fetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('applies a successful period start even when a poll arrives while it is pending', async () => {
+    const original = match();
+    original.me = {...original.me, state: 'accepted', current_period: 1};
+    useAmateurDuelStore.setState({match: original, inFlight: false});
+    let resolve!: (value: {match: api.AmateurDuelMatchState}) => void;
+    vi.spyOn(api, 'startAmateurDuelPeriod').mockImplementation(() => new Promise(r => {resolve = r;}));
+    const pending = useAmateurDuelStore.getState().startPeriod();
+    vi.spyOn(api, 'fetchAmateurMatch').mockResolvedValue({match: {...original}});
+    await useAmateurDuelStore.getState().refresh();
+    const active = {...original, me: {...original.me, state: 'period_active' as const, current_period: 2}};
+    resolve({match: active});
+    await pending;
+    expect(useAmateurDuelStore.getState().match?.me).toMatchObject({state: 'period_active', current_period: 2});
+  });
+
   it.each([4000, 7000])('resumes the %i ms Marathon window once after a delayed goal acknowledgement', async (windowMs) => {
     let performanceMs = 2000;
     vi.spyOn(performance, 'now').mockImplementation(() => performanceMs);

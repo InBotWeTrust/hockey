@@ -372,8 +372,9 @@ describe('game session stores', () => {
     );
     useAmateurDuelStore.setState({ match: initial });
 
-    const olderPoll = useAmateurDuelStore.getState().refresh();
-    const newerPoll = useAmateurDuelStore.getState().refresh();
+    // Explicit loads can still race; periodic refreshes are now coalesced.
+    const olderPoll = useAmateurDuelStore.getState().load(initial.id, { reconcilePolling: true });
+    const newerPoll = useAmateurDuelStore.getState().load(initial.id, { reconcilePolling: true });
     useAmateurDuelStore.getState().optimisticAddShot('goal');
     pendingPolls[1]?.({ match: newerOpponentProgress });
     await newerPoll;
