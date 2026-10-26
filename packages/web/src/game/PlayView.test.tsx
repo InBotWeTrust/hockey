@@ -169,6 +169,19 @@ const beachGoalie: GoalieConfig = {
 };
 
 describe('PlayView', () => {
+  it.each([-120000, 120000])('uses server time for both clocks with phone offset %s', (offset) => {
+    const serverTime = Date.now() - offset;
+    vi.spyOn(performance, 'now').mockReturnValue(5000);
+    render(<PlayView active seed="clock-offset" goalieId="rookie" periodNumber={2}
+      suppressedByModal={false} showIceCar={false} onBack={vi.fn()}
+      optimisticAddShot={vi.fn()} submitShot={async () => ({serverResult: 'miss', state: {}})}
+      applyState={vi.fn()} goals={0} shots={0} stopAtPeriodEnd
+      serverNow={new Date(serverTime).toISOString()} receivedAtPerformanceMs={5000}
+      periodEndsAt={serverTime + 60000} scoreboardEndsAt={serverTime + 60000} />);
+    expect(screen.getByRole('button', {name: 'БРОСОК'})).toBeEnabled();
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('01:00');
+  });
+
   it('displays cumulative quota counters without disabling a playable period', () => {
     render(
       <PlayView active seed="quota" goalieId="rookie" periodNumber={3}

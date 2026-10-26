@@ -758,8 +758,14 @@ export function PlayView<TState>({
   const periodExpiredRef = useRef(false);
   const expiryCheckRef = useRef<() => boolean>(() => false);
   const sampledPeriodElapsed = getPeriodElapsedMs?.();
+  const serverClockNow = (): number => {
+    const timestamp = serverNow ? Date.parse(serverNow) : NaN;
+    return Number.isFinite(timestamp) && receivedAtPerformanceMs !== undefined
+      ? timestamp + Math.max(0, performance.now() - receivedAtPerformanceMs)
+      : Date.now();
+  };
   expiryCheckRef.current = () => stopAtPeriodEnd && periodEndsAt !== undefined && (
-    getPeriodElapsedMs ? getPeriodElapsedMs() >= ((sampledPeriodElapsed ?? 0) + (periodRemainingMs ?? 0)) : Date.now() >= periodEndsAt
+    getPeriodElapsedMs ? getPeriodElapsedMs() >= ((sampledPeriodElapsed ?? 0) + (periodRemainingMs ?? 0)) : serverClockNow() >= periodEndsAt
   );
   const maxSceneTimeRef = useRef(maxSceneTimeMs);
   maxSceneTimeRef.current = maxSceneTimeMs;
@@ -977,7 +983,7 @@ export function PlayView<TState>({
   const stickEffectsRef = useRef<StickEffects>(stickEffects);
   stickEffectsRef.current = stickEffects;
 
-  const [now, setNow] = useState(Date.now());
+  const [, setNow] = useState(Date.now());
   const [currentDuelCondition, setCurrentDuelCondition] = useState<DuelPlayerCondition | null>(
     () =>
       active && duelCondition
@@ -1097,9 +1103,9 @@ export function PlayView<TState>({
     const id = window.setInterval(() => setNow(Date.now()), 500);
     return () => window.clearInterval(id);
   }, [periodEndsAt, scoreboardEndsAt]);
-  const remaining = periodRemainingMs ?? (periodEndsAt ? Math.max(0, periodEndsAt - now) : 0);
+  const remaining = periodRemainingMs ?? (periodEndsAt ? Math.max(0, periodEndsAt - serverClockNow()) : 0);
   periodExpiredRef.current = stopAtPeriodEnd && periodEndsAt !== undefined && remaining <= 0;
-  const scoreboardRemaining = scoreboardEndsAt ? Math.max(0, scoreboardEndsAt - now) : remaining;
+  const scoreboardRemaining = scoreboardEndsAt ? Math.max(0, scoreboardEndsAt - serverClockNow()) : remaining;
 
   useLayoutEffect(() => {
     const root = playRootRef.current;
