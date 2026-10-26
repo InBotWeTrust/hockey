@@ -29,6 +29,7 @@ import {
 const designSystemCss = readFileSync(resolve(process.cwd(), 'src/app/design-system.css'), 'utf8');
 import {
   DailyScreen,
+  AmateurDuelPlayView,
   GameHub,
   DEMO_SPEED_OVERRIDES,
   DemoCompletionModal,
@@ -616,6 +617,47 @@ describe('arena level presentation', () => {
 });
 
 describe('DailyScreen', () => {
+  it('keeps both Marathon clocks advancing when a delayed snapshot reaches the rendered rink', async () => {
+    const now = Date.now();
+    let elapsed = 0;
+    vi.spyOn(performance, 'now').mockImplementation(() => elapsed);
+    const activeMatch: AmateurDuelMatchState = {
+      ...settledDuelMatch, status: 'active', settled_at: null, outcome: null,
+      winner_user_id: null, settled_reason: null, state_revision: 1,
+      server_now: new Date(now).toISOString(), received_at_performance_ms: 0,
+      starts_at: new Date(now - 2000).toISOString(), ends_at: new Date(now + 3600000).toISOString(),
+      period_started_at: new Date(now - 2000).toISOString(), period_ends_at: new Date(now + 238000).toISOString(),
+      current_period_shots: 0, current_period_goals: 0,
+      rules: {...settledDuelMatch.rules, duelKind: 'marathon', marathonWindowMs: 4000,
+        scoredClockVersion: 2, shotResultPauseMs: 1000, periodDurationMs: 240000,
+        periodRules: [{periodNumber: 1, mode: 'time_attack', durationMs: 240000, shotsLimit: null}]},
+      me: {...settledDuelMatch.me, state: 'period_active', shots_taken: 0, goals: 0, active_duration_ms: 0,
+        clock: {periodElapsedMs: 2000, totalActiveMs: 2000, remainingMs: 238000, running: true},
+        marathon_window_started_at: new Date(now - 2000).toISOString(),
+        marathon_window_ends_at: new Date(now + 2000).toISOString()},
+      opponent: {...settledDuelMatch.opponent, state: 'period_active'},
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/matches/') ? {match: activeMatch} :
+        {sticks: [], skates: [], nutrition: [], inventory: [], items: []}),
+        {status: 200, headers: {'content-type': 'application/json'}});
+    });
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+    render(<QueryClientProvider client={client}><MemoryRouter>
+      <AmateurDuelPlayView matchId={activeMatch.id} tournamentId={null} tournamentFixtureId={null} onBack={() => {}} />
+    </MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByRole('timer', {name: 'До обязательного гола'})).toHaveTextContent('2,0');
+    expect(screen.getByText('03:58')).toBeInTheDocument();
+    elapsed = 1000;
+    act(() => useAmateurDuelStore.getState().applyState({...activeMatch,
+      server_now: new Date(now + 200).toISOString(), received_at_performance_ms: 1000,
+      me: {...activeMatch.me, clock: {periodElapsedMs: 2200, totalActiveMs: 2200, remainingMs: 237800, running: true}},
+    }));
+    expect(screen.getByRole('timer', {name: 'До обязательного гола'})).toHaveTextContent('1,0');
+    expect(screen.getByText('03:57')).toBeInTheDocument();
+  });
+
   it('disables persisted training debug settings on production', () => {
     const savedSpeeds = {
       goalFreq: 1.1,
