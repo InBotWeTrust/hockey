@@ -152,10 +152,24 @@ function globalTimingFor(fallback?: DuelInventoryTiming): DuelInventoryTiming {
   return fallback ?? DEFAULT_DUEL_INVENTORY_TIMING;
 }
 
+// The 10ms Rhythm integral revisits the same historical stumble events thousands
+// of times. Cache their immutable seeded values, not mutable RNG instances.
+// Include bounds because inventory timing can differ between match snapshots.
+const deterministicRanges = new Map<string, number>();
+const MAX_DETERMINISTIC_RANGES = 2048;
+
 function deterministicRange(seed: string, min: number, max: number): number {
   if (max <= min) return min;
+  const key = `${seed}:${min}:${max}`;
+  const cached = deterministicRanges.get(key);
+  if (cached !== undefined) return cached;
   const rng = createRng(seed);
-  return Math.round(min + rng.next() * (max - min));
+  const value = Math.round(min + rng.next() * (max - min));
+  if (deterministicRanges.size >= MAX_DETERMINISTIC_RANGES) {
+    deterministicRanges.delete(deterministicRanges.keys().next().value!);
+  }
+  deterministicRanges.set(key, value);
+  return value;
 }
 
 function defaultSkateStumbleWindow(
