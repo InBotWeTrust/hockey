@@ -1,3 +1,4 @@
+import { arenaDuelCtaLabel } from '../city/GameHub.js';
 import {GameEntryRoute} from '../app/GameEntryRoute.js';
 import {VenuePanorama} from '../components/VenuePanorama.js';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -59,6 +60,7 @@ import {
   trainingProgressLabel,
   trainingDebugSettingsForHost,
 } from './DailyScreen.js';
+import * as PlayViewModule from '../game/PlayView.js';
 import { PlayView, duelFatigueNoticeLabel, duelPrimaryButtonLabel } from '../game/PlayView.js';
 import { useAuthStore } from '../auth/authStore.js';
 import { useDailyStore } from '../stores/dailyStore.js';
@@ -617,6 +619,48 @@ describe('arena level presentation', () => {
 });
 
 describe('DailyScreen', () => {
+  it('samples continuous duel time at the tap, without waiting for another React render', async () => {
+    const now = Date.now();
+    let monotonic = 1000;
+    vi.spyOn(performance, 'now').mockImplementation(() => monotonic);
+    let sample: (() => number) | undefined;
+    vi.spyOn(PlayViewModule, 'PlayView').mockImplementation(props => {
+      sample = props.getPeriodElapsedMs;
+      return <div data-testid="clock-probe" />;
+    });
+    const snapshot: AmateurDuelMatchState = {...settledDuelMatch, status: 'active',
+      server_now: new Date(now).toISOString(), received_at_performance_ms: 1000,
+      ends_at: new Date(now + 600000).toISOString(), period_ends_at: new Date(now + 149000).toISOString(),
+      rules: {...settledDuelMatch.rules, duelKind: 'sniper', scoredClockVersion: 2, shotResultPauseMs: 1000},
+      me: {...settledDuelMatch.me, state: 'period_active', clock: {periodElapsedMs: 1000, totalActiveMs: 1000, remainingMs: 149000, running: true}},
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/matches/') ? {match: snapshot} :
+        {sticks: [], skates: [], nutrition: [], inventory: [], items: []}),
+        {status: 200, headers: {'content-type': 'application/json'}});
+    });
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+    render(<QueryClientProvider client={client}><MemoryRouter>
+      <AmateurDuelPlayView matchId={snapshot.id} tournamentId={null} tournamentFixtureId={null} onBack={() => {}} />
+    </MemoryRouter></QueryClientProvider>);
+    await waitFor(() => expect(sample).toBeTypeOf('function'));
+    const before = sample!();
+    monotonic += 750;
+    expect(sample!() - before).toBe(750);
+  });
+
+  it('keeps my next-period countdown ahead of the opponent timer after my break', () => {
+    const now = Date.now();
+    const match = {...settledDuelMatch, status: 'active' as const,
+      starts_at: new Date(now - 1000).toISOString(), ends_at: new Date(now + 600000).toISOString(),
+      server_now: new Date(now).toISOString(),
+      me: {...settledDuelMatch.me, state: 'accepted' as const, current_period: 1, ready_at: new Date(now).toISOString()},
+      opponent: {...settledDuelMatch.opponent, state: 'period_active' as const, current_period: 1, period_ends_at: new Date(now + 120000).toISOString()}};
+    expect(duelEventTiming(match, now).label).toBe('До технического поражения');
+    expect(duelRinkPrimaryLabel(match, now)).toBe('Начать');
+  });
+
   it('keeps both Marathon clocks advancing when a delayed snapshot reaches the rendered rink', async () => {
     const now = Date.now();
     let elapsed = 0;
@@ -8779,6 +8823,7 @@ describe('DailyScreen', () => {
       },
     };
 
+    expect(arenaDuelCtaLabel(activeMatch, now)).toBe('Перерыв');
     expect(duelRinkPrimaryLabel(activeMatch, now)).toBe('Перерыв');
     expect(duelEventTiming(activeMatch, now)).toMatchObject({
       label: 'Перерыв',
@@ -9533,7 +9578,8 @@ describe('DailyScreen', () => {
     renderWith(['/?view=amateur&match=match-1']);
 
     try {
-      expect(await screen.findByText('Ждём соперника')).toBeInTheDocument();
+      expect((await screen.findAllByText('Ждём завершения игры соперника')).length).toBeGreaterThan(0);
+      await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
       await waitFor(() => {
         expect(matchFetches).toBeGreaterThanOrEqual(2);
       });

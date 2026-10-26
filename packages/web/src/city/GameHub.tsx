@@ -1534,9 +1534,9 @@ export function arenaDuelCtaLabel(match: AmateurDuelMatch, fallbackNow: number):
   if (isDuelInviteForMe(match)) return 'Принять вызов';
   if (match.status === 'ready_check' && match.me.state !== 'ready') return 'К дуэли';
   if (match.status === 'ready_check' && match.me.state === 'ready') return 'Ждём готовность';
+  if (match.me.state === 'break_active') return 'Перерыв';
   if (match.status === 'active' && match.opponent.state === 'period_active')
     return 'Соперник играет';
-  if (match.me.state === 'break_active') return 'Перерыв';
   if (match.me.state === 'completed' || match.me.state === 'forfeit') return 'Вы сыграли';
   return 'К дуэли';
 }
@@ -1656,6 +1656,19 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
     };
   }
 
+  if (match.status === 'active') {
+    const myContinueDeadline = intermissionContinueDeadlineMs(match.me);
+    if (myContinueDeadline > now) {
+      const value = formatMs(myContinueDeadline - now);
+      return {
+        activePeriod: duelNextPeriod(match),
+        ariaLabel: `До технического поражения ${value}. Счёт ${score}`,
+        label: 'До технического поражения',
+        value,
+      };
+    }
+  }
+
   if (match.status === 'active' && match.opponent.state === 'period_active') {
     const opponentRule = duelParticipantPeriodRule(match, match.opponent);
     if (opponentRule.mode === 'quota' && opponentRule.shotsLimit !== null) {
@@ -1681,16 +1694,6 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
   }
 
   if (match.status === 'active') {
-    const myContinueDeadline = intermissionContinueDeadlineMs(match.me);
-    if (myContinueDeadline > now) {
-      const value = formatMs(myContinueDeadline - now);
-      return {
-        activePeriod: duelNextPeriod(match),
-        ariaLabel: `До технического поражения ${value}. Счёт ${score}`,
-        label: 'До технического поражения',
-        value,
-      };
-    }
     const opponentContinueDeadline = intermissionContinueDeadlineMs(match.opponent);
     if (
       opponentContinueDeadline > now &&

@@ -3551,16 +3551,17 @@ export function AmateurDuelPlayView({
 
   useEffect(() => {
     if (!match || match.id !== matchId || !amateurAccess.hasFullAccess) return;
+    const matchNow = duelMatchNowMs(match, now);
     const endsAtMs = new Date(match.ends_at).getTime();
     const breakEndsAtMs = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
-    if (match.me.state === 'break_active' && breakEndsAtMs > 0 && now >= breakEndsAtMs) {
+    if (match.me.state === 'break_active' && breakEndsAtMs > 0 && matchNow >= breakEndsAtMs) {
       void refresh();
     }
     if (
       match.status !== 'settled' &&
       match.status !== 'cancelled' &&
       match.status !== 'expired' &&
-      now >= endsAtMs
+      matchNow >= endsAtMs
     ) {
       void settleAmateurDuel(match.id)
         .then(({ match: next }) => applyState(next))
@@ -3631,6 +3632,7 @@ export function AmateurDuelPlayView({
     );
   }
 
+  const matchNow = duelMatchNowMs(match, now);
   const startsAt = new Date(match.starts_at).getTime();
   const endsAt = new Date(match.ends_at).getTime();
   const breakEndsAt = match.break_ends_at ? new Date(match.break_ends_at).getTime() : 0;
@@ -3639,8 +3641,8 @@ export function AmateurDuelPlayView({
     !duelBlocked &&
     match.status === 'active' &&
     match.me.state === 'accepted' &&
-    now >= startsAt &&
-    now < endsAt &&
+    matchNow >= startsAt &&
+    matchNow < endsAt &&
     match.me.current_period < match.rules.totalPeriods;
   const usesTournamentPeriodLoadout =
     match.source === 'tournament' && match.rules.tournamentLoadoutLifecycleVersion === 1;
@@ -3727,7 +3729,7 @@ export function AmateurDuelPlayView({
     pauseStartsAt, pauseEndsAt, fightClockPaused);
   const pausedScoredClock = match.rules.shotResultPauseMs !== undefined;
   const continuousScoredPeriod = match.rules.scoredClockVersion === 2;
-  const wallClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now), fightNow, null, null, fightClockPaused);
+  const wallClockDelta = () => scoredActiveDeltaMs(Date.parse(match.server_now), duelMatchNowMs(match, Date.now()), null, null, fightClockPaused);
   const periodClockDelta = () => continuousScoredPeriod ? wallClockDelta() : scoredClockDelta();
   const scoredRemainingMs = Math.max(0, (match.me.clock?.remainingMs ?? 0) - periodClockDelta());
   const authoritativeMarathonRemainingMs = Math.max(0,
@@ -3944,7 +3946,7 @@ export function AmateurDuelPlayView({
 
   if (match.status === 'ready_check') {
     const readyEndsAt = match.ready_expires_at ? new Date(match.ready_expires_at).getTime() : 0;
-    const readyText = readyEndsAt > now ? formatMs(readyEndsAt - now) : '00:00';
+    const readyText = readyEndsAt > matchNow ? formatMs(readyEndsAt - matchNow) : '00:00';
     const meReady = match.me.state === 'ready';
     const opponentReady = match.opponent.state === 'ready';
     const readyTimerLabel = meReady ? 'ЖДЁМ' : opponentReady ? 'ДО ПОРАЖЕНИЯ' : 'ГОТОВ';
@@ -4212,7 +4214,7 @@ export function AmateurDuelPlayView({
         : match.me.state === 'completed'
           ? 'Вы завершили игру, ждём соперника'
           : match.me.state === 'break_active'
-            ? `Перерыв ${formatMs(Math.max(0, breakEndsAt - now))}`
+            ? `Перерыв ${formatMs(Math.max(0, breakEndsAt - matchNow))}`
             : match.status === 'expired' || match.status === 'cancelled'
               ? match.settled_reason === 'declined'
                 ? 'Вызов отклонён'

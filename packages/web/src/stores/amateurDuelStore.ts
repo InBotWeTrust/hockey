@@ -14,6 +14,7 @@ import {
 import {
   isDefinitiveGameRequestError,
   withGameRequestReconciliation,
+  withGameRequestTimeout,
 } from '../api/requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from '../api/duel.js';
 
@@ -216,6 +217,8 @@ function reconcilePolledMatch(
   return polled;
 }
 
+const pendingMatchRefreshes = new Map<string, Promise<void>>();
+
 export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) => ({
   match: null,
   loading: false,
@@ -226,7 +229,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     const startedFromMatch = get().match;
     set({ loading: true, error: null });
     try {
-      const { match } = await fetchAmateurMatch(matchId);
+      const { match } = await withGameRequestTimeout((signal) => fetchAmateurMatch(matchId, { signal }));
       const current = get().match;
       if (current !== startedFromMatch && !options.reconcilePolling) return match;
       if (current !== startedFromMatch && current?.id !== match.id) return match;
@@ -252,7 +255,12 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
   refresh: async () => {
     const current = get().match;
     if (!current) return;
-    await get().load(current.id, { reconcilePolling: true });
+    const existing = pendingMatchRefreshes.get(current.id);
+    if (existing) return existing;
+    const pending = get().load(current.id, { reconcilePolling: true }).then(() => undefined)
+      .finally(() => pendingMatchRefreshes.delete(current.id));
+    pendingMatchRefreshes.set(current.id, pending);
+    return pending;
   },
 
   ready: async (loadout = {}) => {
@@ -307,7 +315,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
           (match.me.state !== 'accepted' || match.me.current_period > current.me.current_period),
         isRequestErrorDefinitive: isDefinitiveGameRequestError,
       });
-      if (get().match !== current) {
+      if (get().match?.id !== current.id) {
         set({ inFlight: false });
         return null;
       }
@@ -318,7 +326,8 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
         return null;
       }
       const match = outcome.kind === 'request' ? outcome.value.match : outcome.value;
-      set({ match:retainNewerMatch(get().match,match), inFlight: false, error: null });
+      const live = get().match;
+      set({ match: live ? retainDuelClock(live, reconcilePolledMatch(live, match)) : match, inFlight: false, error: null });
       return match;
     } catch (err) {
       set({
