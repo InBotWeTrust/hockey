@@ -3,6 +3,21 @@ import Fastify from 'fastify';
 import { errorsPlugin, AppError } from '../../src/plugins/errors.js';
 
 describe('errorsPlugin', () => {
+  it('records duel shot rejection reasons without request payload or credentials', async () => {
+    const logs: string[] = [];
+    const app = Fastify({ logger: { stream: { write: (line: string) => { logs.push(line); } } } });
+    await app.register(errorsPlugin);
+    app.post('/duel/amateur/matches/:matchId/shot', async () => {
+      throw new AppError('conflict', 'previous duel shot result is still showing', 409);
+    });
+    await app.inject({ method: 'POST', url: '/duel/amateur/matches/example/shot',
+      headers: { authorization: 'Bearer private-token' }, payload: { private: 'private-input' } });
+    const rejection = logs.map(line => JSON.parse(line)).find(row => row.msg === 'duel shot rejected');
+    expect(rejection).toMatchObject({ code: 'conflict', reason: 'previous duel shot result is still showing', matchId: 'example' });
+    expect(JSON.stringify(rejection)).not.toMatch(/private-token|private-input/);
+    await app.close();
+  });
+
   it('returns uniform 4xx JSON for AppError', async () => {
     const app = Fastify();
     await app.register(errorsPlugin);
