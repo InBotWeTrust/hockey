@@ -1,3 +1,4 @@
+import { withGameRequestTimeout } from '../../api/requestTimeout.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { DurakTable } from './DurakScreen.js';
@@ -36,7 +37,7 @@ export function OnlineDurakScreen() {
       if (reading || document.hidden) return;
       reading = true;
       try {
-        const next = await snapshot(id!);
+        const next = await withGameRequestTimeout(signal => snapshot(id!, signal));
         if (generation.current === ticket) receive(next);
       } catch {
         if (generation.current === ticket) setError('Связь потеряна. Восстанавливаем…');
@@ -61,12 +62,12 @@ export function OnlineDurakScreen() {
     setPending(true);
     const ticket = generation.current;
     try {
-      const next = await move(id!, current.current.revision, action);
+      const next = await withGameRequestTimeout(signal => move(id!, current.current!.revision, action, signal));
       if (generation.current === ticket) receive(next);
     } catch {
       if (generation.current === ticket) setError('Ход не подтверждён. Обновляем состояние…');
       try {
-        const next = await snapshot(id!);
+        const next = await withGameRequestTimeout(signal => snapshot(id!, signal));
         if (generation.current === ticket) receive(next);
       } catch {
         /* Polling retries. */

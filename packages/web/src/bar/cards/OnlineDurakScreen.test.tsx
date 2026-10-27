@@ -98,7 +98,7 @@ it('waits for explicit readiness and hides the hand before starting', async () =
   expect(document.querySelector('.durak-controls')).toBeNull();
   expect(screen.getAllByText('Подтвердите готовность')).toHaveLength(1);
   await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Готов' })); });
-  expect(api.move).toHaveBeenCalledWith('match', 0, 'ready');
+  expect(api.move).toHaveBeenCalledWith('match', 0, 'ready', expect.any(AbortSignal));
   expect(screen.getByRole('button', { name: 'Вы готовы' })).toBeDisabled();
 });
 
@@ -131,4 +131,15 @@ it('shows only the upper notice while the game is starting',async()=>{
  expect(document.querySelector('.durak-ready-actions')).toBeNull();
  expect(document.querySelector('.durak-controls')).toBeNull();
  expect(screen.queryByRole('button',{name:'Готов'})).not.toBeInTheDocument();
+});
+
+it('a stalled readiness request releases the online card control',async()=>{
+ vi.useFakeTimers();
+ vi.mocked(api.snapshot).mockResolvedValue({...view,hand:[],readiness:{selfReady:false,opponentReady:false,expiresAt:Date.now()+600000,startsAt:null,cancelled:false}});
+ vi.mocked(api.move).mockImplementation(()=>new Promise(()=>{}));
+ mount();await act(async()=>{});
+ fireEvent.click(screen.getByRole('button',{name:'Готов'}));
+ await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});
+ expect(api.move).toHaveBeenCalledTimes(1);
+ expect(screen.getByRole('button',{name:'Готов'})).toBeEnabled();
 });

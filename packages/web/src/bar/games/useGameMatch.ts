@@ -1,3 +1,4 @@
+import { withGameRequestTimeout } from '../../api/requestTimeout.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BarGameAction, BarGameCommand, BarGameSnapshot } from '@hockey/game-core';
 import { ApiError } from '../../api/apiFetch.js';
@@ -65,7 +66,7 @@ export function useGameMatch(id: string | undefined) {
       if (!id || reading || document.hidden) return;
       reading = true;
       try {
-        const next = await gameApi.read(id);
+        const next = await withGameRequestTimeout(signal => gameApi.read(id, signal));
         if (token === generation.current) {
           apply(next);
           setReadError(null);
@@ -103,7 +104,7 @@ export function useGameMatch(id: string | undefined) {
     setBusy(input.action.type !== 'aim');
     setError(null);
     try {
-      const next = await gameApi.command(id, input);
+      const next = await withGameRequestTimeout(signal => gameApi.command(id, input, signal));
       if (token !== generation.current) return;
       apply(next);
       pending.current = null;
@@ -114,7 +115,7 @@ export function useGameMatch(id: string | undefined) {
         recovering.current = e.status === 409;
         setError(e.status === 409 ? 'Ход уже изменился. Обновляем поле.' : e.message);
         try {
-          const next = await gameApi.read(id);
+          const next = await withGameRequestTimeout(signal => gameApi.read(id, signal));
           if (token !== generation.current) return;
           apply(next);
           setReadError(null);

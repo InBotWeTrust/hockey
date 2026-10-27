@@ -73,9 +73,10 @@ export const respond = async (id: string, action: 'accept' | 'decline' | 'cancel
   if (action === 'accept') useCardInvites.getState().setIncoming([]);
   return result;
 };
-export const snapshot = (id: string) => apiFetch<OnlineSnapshot>(`/bar/cards/matches/${id}`);
-export const move = (id: string, revision: number, action: Action | 'surrender' | 'ready') =>
+export const snapshot = (id: string, signal?: AbortSignal) => apiFetch<OnlineSnapshot>(`/bar/cards/matches/${id}`, { ...(signal ? { signal } : {}) });
+export const move = (id: string, revision: number, action: Action | 'surrender' | 'ready', signal?: AbortSignal) =>
   apiFetch<OnlineSnapshot>(`/bar/cards/matches/${id}`, {
+    ...(signal ? { signal } : {}),
     method: 'POST',
     body: JSON.stringify({ revision, action }),
   });

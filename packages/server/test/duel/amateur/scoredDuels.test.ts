@@ -117,6 +117,27 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     if (kind === 'rhythm') expect(later.json().match.me.rhythm_travel).toBe(frozen.json().match.me.rhythm_travel);
 
   });
+  it('keeps participant clocks at the DTO timestamp when serialization takes time', async () => {
+    const invited = await challenge('marathon');
+    const id = invited.json().match.id;
+    const post = (path: string, side: number, payload?: object) => app.inject({
+      method: 'POST', url: `/duel/amateur/matches/${id}/${path}`,
+      headers: players[side]!.headers, ...(payload ? {payload} : {}),
+    });
+    expect((await post('accept', 1)).statusCode).toBe(200);
+    for (const side of [0, 1]) expect((await post('ready', side, {loadout: {}})).statusCode).toBe(200);
+    for (const side of [0, 1]) expect((await post('period/start', side)).statusCode).toBe(200);
+    const realNow = Date.now.bind(Date);
+    const laterClock = vi.spyOn(Date, 'now').mockImplementation(() => realNow() + 2000);
+    try {
+      const response = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
+      expect(response.statusCode).toBe(200);
+      const match = response.json().match;
+      expect(match.me.clock.periodElapsedMs).toBe(Date.parse(match.server_now) - Date.parse(match.period_started_at));
+      expect(match.me.clock.remainingMs).toBe(Date.parse(match.period_ends_at) - Date.parse(match.server_now));
+    } finally { laterClock.mockRestore(); }
+  });
+
   it('exposes both formats with independent first-period Classic speeds and unlimited shots', async () => {
     const response = await app.inject({
       url: '/duel/amateur/templates',

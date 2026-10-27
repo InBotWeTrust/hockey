@@ -1,3 +1,4 @@
+import { withGameRequestTimeout } from '../../api/requestTimeout.js';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, X } from 'lucide-react';
@@ -52,7 +53,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
       reading = true;
       const version = actionVersion.current;
       try {
-        const next = await readRoom(id!);
+        const next = await withGameRequestTimeout(signal => readRoom(id!, signal));
         if (ticket === generation.current && version === actionVersion.current) receive(next);
       } catch {
         if (ticket === generation.current) setError('Связь потеряна. Восстанавливаем…');
@@ -98,7 +99,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
     setBusy(true);
     const ticket = generation.current;
     try {
-      const next = await roomCommand(id!, current.current.revision, command);
+      const next = await withGameRequestTimeout(signal => roomCommand(id!, current.current!.revision, command, signal));
       if (ticket !== generation.current) return;
       if (next.left) {
         navigate('/bar', { replace: true });
@@ -206,7 +207,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
     const ticket = generation.current;
     void respond(invitationId, 'cancel')
       .then(async () => {
-        const next = await readRoom(view.id);
+        const next = await withGameRequestTimeout(signal => readRoom(view.id, signal));
         if (ticket === generation.current) receive(next);
       })
       .catch((err) => {
@@ -405,7 +406,7 @@ export function DurakRoomScreen({ previewUserId }: { previewUserId?: string } = 
                     const ticket = generation.current;
                     void roomInvite(view.id, p.userId)
                       .then(async () => {
-                        const next = await readRoom(view.id);
+                        const next = await withGameRequestTimeout(signal => readRoom(view.id, signal));
                         if (ticket === generation.current) {
                           receive(next);
                           setInviteOpen(false);

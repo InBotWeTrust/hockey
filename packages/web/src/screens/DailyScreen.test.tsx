@@ -653,6 +653,38 @@ describe('DailyScreen', () => {
     expect(sample!() - before).toBe(750);
   });
 
+  it('keeps Express playable after an older shot acknowledgement arrives behind a newer poll', async () => {
+    const epoch = Date.now();
+    const iso = (ms: number) => new Date(epoch + ms).toISOString();
+    let monotonic = 178500;
+    vi.spyOn(performance, 'now').mockImplementation(() => monotonic);
+    vi.spyOn(PlayViewModule, 'PlayView').mockImplementation(props =>
+      <div data-testid="express-play-state">{props.active ? 'playing' : 'waiting'}</div>);
+    const snapshot: AmateurDuelMatchState = {...settledDuelMatch, status: 'active', state_revision: 1,
+      server_now: iso(178500), received_at_performance_ms: 178500,
+      starts_at: iso(0), ends_at: iso(600000), period_started_at: iso(0), period_ends_at: iso(180000),
+      rules: {...settledDuelMatch.rules, duelKind: 'express', totalPeriods: 1,
+        periodRules: [{periodNumber: 1, mode: 'time_attack', durationMs: 180000, shotsLimit: null}]},
+      me: {...settledDuelMatch.me, state: 'period_active', current_period: 1},
+      opponent: {...settledDuelMatch.opponent, state: 'completed'},
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/matches/') ? {match: snapshot} :
+        {sticks: [], skates: [], nutrition: [], inventory: [], items: []}),
+        {status: 200, headers: {'content-type': 'application/json'}});
+    });
+    const client = new QueryClient({defaultOptions: {queries: {retry: false}}});
+    render(<QueryClientProvider client={client}><MemoryRouter>
+      <AmateurDuelPlayView matchId={snapshot.id} tournamentId={null} tournamentFixtureId={null} onBack={() => {}} />
+    </MemoryRouter></QueryClientProvider>);
+    expect(await screen.findByTestId('express-play-state')).toHaveTextContent('playing');
+    monotonic = 179000;
+    act(() => useAmateurDuelStore.getState().applyState({...snapshot,
+      state_revision: 2, server_now: iso(176000), received_at_performance_ms: 176000}));
+    expect(screen.getByTestId('express-play-state')).toHaveTextContent('playing');
+  });
+
   it('keeps my next-period countdown ahead of the opponent timer after my break', () => {
     const now = Date.now();
     const match = {...settledDuelMatch, status: 'active' as const,

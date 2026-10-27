@@ -50,10 +50,10 @@ it('isolates queued commands and errors when the fight ID changes', async () => 
   fireEvent.click(await screen.findByText('Attack fixture'));
   await waitFor(() => expect(commandOlegFight).toHaveBeenCalledTimes(1));
   view.rerender(<OlegFightPanel id="new" onDone={() => {}} />);
-  await waitFor(() => expect(fetchOlegFight).toHaveBeenCalledWith('new'));
+  await waitFor(() => expect(fetchOlegFight).toHaveBeenCalledWith('new', expect.any(AbortSignal)));
   await act(async () => {});
   fireEvent.click(screen.getByText('Attack fixture'));
-  await waitFor(() => expect(commandOlegFight).toHaveBeenCalledWith('new', expect.anything()));
+  await waitFor(() => expect(commandOlegFight).toHaveBeenCalledWith('new', expect.anything(), expect.any(AbortSignal)));
   await act(async () => {
     fail(new Error('old connection failed'));
   });
@@ -69,8 +69,8 @@ it('retries a command with the same action ID and sequence after a network failu
   render(<OlegFightPanel id="one" onDone={() => {}} />);
   fireEvent.click(await screen.findByText('Attack fixture'));
   await waitFor(() => expect(commandOlegFight).toHaveBeenCalledTimes(2));
-  expect(vi.mocked(commandOlegFight).mock.calls[1]).toEqual(
-    vi.mocked(commandOlegFight).mock.calls[0],
+  expect(vi.mocked(commandOlegFight).mock.calls[1]?.slice(0, 2)).toEqual(
+    vi.mocked(commandOlegFight).mock.calls[0]?.slice(0, 2),
   );
 });
 
@@ -104,4 +104,18 @@ it('keeps the live scene briefly for the final contact before showing the result
   await act(async()=>{await vi.advanceTimersByTimeAsync(650);});
   expect(screen.getByRole('dialog',{name:'Результат драки'})).toBeInTheDocument();
  }finally{view.unmount();vi.useRealTimers();}
+});
+
+it('a stalled Oleg command releases the action queue',async()=>{
+ vi.useFakeTimers();vi.mocked(commandOlegFight).mockImplementation(()=>new Promise(()=>{}));
+ const mounted=render(<OlegFightPanel id="audit" onDone={()=>{}}/>);
+ try {
+  await act(async()=>{});fireEvent.click(screen.getByRole('button',{name:'Attack fixture'}));
+  await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});
+  fireEvent.click(screen.getByRole('button',{name:'Attack fixture'}));
+  await act(async()=>{});expect(vi.mocked(commandOlegFight).mock.calls.length).toBeGreaterThan(1);
+  const calls=vi.mocked(commandOlegFight).mock.calls;
+  expect(calls[1]?.[1]).toEqual(calls[0]?.[1]);
+  expect(calls[0]?.[2]?.aborted).toBe(true);
+ } finally {mounted.unmount();vi.useRealTimers();}
 });
