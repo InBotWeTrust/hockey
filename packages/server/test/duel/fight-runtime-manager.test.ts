@@ -1,3 +1,4 @@
+import { performance } from 'node:perf_hooks';
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { advanceFight, createFightState, DEFAULT_FIGHT_RULES } from '@hockey/game-core';
 import type { FastifyInstance } from 'fastify';
@@ -18,9 +19,13 @@ beforeEach(() => {
 afterEach(async () => {
   await runtime?.close();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
-function fixture(commit: () => Promise<void> = async () => {}, recovery = true) {
-  let state = createFightState({ ...DEFAULT_FIGHT_RULES, version: 6, deliveryGraceMs: 0 }, 9900);
+function fixture(commit: () => Promise<void> = async () => {}, recovery = true, phaseStart = 9900) {
+  let state = createFightState(
+    { ...DEFAULT_FIGHT_RULES, version: 6, deliveryGraceMs: 0 },
+    phaseStart,
+  );
   state.hp = [5, 1];
   state = advanceFight(state, [], 9999).state;
   const fight = {
@@ -149,7 +154,48 @@ it('rejects a nonparticipant even when the room is already loaded', async () => 
 });
 
 it('can disable background recovery scans in unrelated test applications', async () => {
- const {query}=fixture(undefined,false);
- await vi.advanceTimersByTimeAsync(1100);
- expect(query).not.toHaveBeenCalled();
+  const { query } = fixture(undefined, false);
+  await vi.advanceTimersByTimeAsync(1100);
+  expect(query).not.toHaveBeenCalled();
+});
+
+it('keeps ownership alive throughout the four-second entrance countdown', async () => {
+  vi.spyOn(performance, 'now').mockImplementation(() => Date.now());
+  const { query } = fixture(undefined, true, 15000);
+  // The first scan acquires at 11000, exactly four seconds before combat.
+  await vi.advanceTimersByTimeAsync(1000);
+  expect(runtime.view('match', 'a')).not.toBeNull();
+  await vi.advanceTimersByTimeAsync(3900);
+  expect(runtime.view('match', 'a')).toMatchObject({ fight: { status: 'starting' } });
+  expect(mocks.persist).not.toHaveBeenCalled();
+  expect(
+    query.mock.calls.some(([sql]) => sql.includes('runtime_lease_until=clock_timestamp()')),
+  ).toBe(true);
+  await vi.advanceTimersByTimeAsync(150);
+  const receipt = runtime.command('match', 'a', {
+    type: 'fight:action',
+    fightId: 'fight',
+    phaseId: 0,
+    seq: 1,
+    actionId: 'first-input',
+    kind: 'input',
+    input: { direction: 0, crouch: false, guard: false },
+  });
+  await vi.advanceTimersByTimeAsync(10);
+  expect(await receipt).toMatchObject({ accepted: true, seq: 1 });
+});
+
+it('drops a countdown room when its ownership renewal is fenced out', async () => {
+  vi.spyOn(performance, 'now').mockImplementation(() => Date.now());
+  const { query } = fixture(undefined, true, 15000);
+  await vi.advanceTimersByTimeAsync(1000);
+  const original = query.getMockImplementation()!;
+  query.mockImplementation(async (sql) =>
+    sql.includes('runtime_lease_until=clock_timestamp()')
+      ? { rows: [], rowCount: 0 }
+      : original(sql),
+  );
+  await vi.advanceTimersByTimeAsync(50);
+  expect(runtime.view('match', 'a')).toBeNull();
+  expect(mocks.persist).not.toHaveBeenCalled();
 });
