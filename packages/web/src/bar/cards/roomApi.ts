@@ -49,9 +49,10 @@ export const joinRoom = (capacity: number | number[], searching = true) =>
     method: 'POST',
     body: JSON.stringify({ capacity, searching }),
   });
-export const readRoom = (id: string) => apiFetch<RoomView>(`/bar/cards/rooms/${id}`);
-export const roomCommand = (id: string, revision: number, command: RoomCommand) =>
+export const readRoom = (id: string, signal?: AbortSignal) => apiFetch<RoomView>(`/bar/cards/rooms/${id}`, { ...(signal ? { signal } : {}) });
+export const roomCommand = (id: string, revision: number, command: RoomCommand, signal?: AbortSignal) =>
   apiFetch<RoomView>(`/bar/cards/rooms/${id}`, {
+    ...(signal ? { signal } : {}),
     method: 'POST',
     body: JSON.stringify({ revision, command }),
   });

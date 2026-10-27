@@ -471,9 +471,11 @@ export const startBonusAttempt = (gameId: string, level?: 1 | 2 | 3): Promise<Bo
 export const startBonusPeriod = (
   attemptId: string,
   loadout?: BonusPeriodLoadoutSelection,
+  options?: BonusRequestOptions,
 ): Promise<BonusAttemptResponse> =>
   bonusMutation(
     apiFetch<BonusAttemptResponse>(`/bonus-games/attempts/${attemptId}/period/start`, {
+      ...(options?.signal ? { signal: options.signal } : {}),
       method: 'POST',
       body: JSON.stringify(loadout === undefined ? {} : { loadout }),
     }).then(normalizeAttemptResponse),

@@ -1147,3 +1147,26 @@ it('blocks shots and polls until panel tap is accepted and retains accepted even
   expect(useBonusGameStore.getState().attempt?.current_period_panel_events).toEqual(accepted.current_period_panel_events);
   expect(useBonusGameStore.getState().inFlight).toBe(false);
 });
+
+it.each(['speed','accuracy','marksmanship','endurance','rhythm'] as const)('%s start releases the start lock and requires reconciliation on timeout',async skill=>{
+ vi.useFakeTimers();
+ let lateStart!: (value: BonusAttemptResponse) => void;
+ vi.mocked(startBonusPeriod).mockImplementation(()=>new Promise(resolve=>{lateStart=resolve;}));
+ const state={...initialAttempt,state:'idle' as const,game_slug:'audit-'+skill,rules:{...initialAttempt.rules,skill_code:skill}};
+ useBonusGameStore.setState({attempt:state,inFlight:false,needsReconcile:false,pendingShot:null});
+ let settled=false;
+ void useBonusGameStore.getState().startPeriod().then(()=>{settled=true;});
+ await vi.advanceTimersByTimeAsync(60000);
+ expect(settled).toBe(true);expect(useBonusGameStore.getState().inFlight).toBe(false);
+ expect(useBonusGameStore.getState().canSubmitShot()).toBe(false);
+ expect(useBonusGameStore.getState().needsReconcile).toBe(true);
+ vi.mocked(fetchCurrentBonusAttempt).mockResolvedValueOnce(response({...state, state:'period_active'}));
+ await useBonusGameStore.getState().refresh();
+ expect(useBonusGameStore.getState().needsReconcile).toBe(false);
+ expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+ const recovered=useBonusGameStore.getState().attempt;
+ lateStart(response(state));
+ await Promise.resolve();await Promise.resolve();
+ expect(useBonusGameStore.getState().attempt).toBe(recovered);
+ vi.useRealTimers();
+});

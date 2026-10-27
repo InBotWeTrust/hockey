@@ -27,7 +27,7 @@ export const gameApi = {
       '/bar/games/computer',
       post({ character, requestId, ...(previousId ? { previousId } : {}) }),
     ),
-  read: (id: string) => apiFetch<BarGameSnapshot>(`/bar/games/matches/${id}`),
+  read: (id: string, signal?: AbortSignal) => apiFetch<BarGameSnapshot>(`/bar/games/matches/${id}`, { ...(signal ? { signal } : {}) }),
   command: (id: string, input: BarGameCommand, signal?: AbortSignal) =>
     apiFetch<BarGameSnapshot>(`/bar/games/matches/${id}`, {
       ...post(input),
