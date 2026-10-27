@@ -36,6 +36,10 @@ interface ClassicTournamentStoreState {
   } | null>;
 }
 
+// Background reads cannot replace the snapshot that owns a pending shot.
+const pendingShots = new WeakSet<ClassicTournamentState>();
+let refreshVersion = 0;
+
 export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((set, get) => ({
   tournamentId: null,
   data: null,
@@ -44,6 +48,13 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
   error: null,
 
   refresh: async (tournamentId) => {
+    const before = get().data;
+    if (
+      get().tournamentId === tournamentId &&
+      (get().inFlight || (before !== null && pendingShots.has(before)))
+    )
+      return;
+    const version = ++refreshVersion;
     set((current) => ({
       tournamentId,
       data: current.tournamentId === tournamentId ? current.data : null,
@@ -51,10 +62,29 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
       loading: true,
       error: null,
     }));
+    const requestedState = get().data;
     try {
       const data = await fetchClassicTournamentState(tournamentId);
+      if (version !== refreshVersion) return;
+      if (
+        get().data !== requestedState ||
+        get().inFlight ||
+        (requestedState !== null && pendingShots.has(requestedState))
+      ) {
+        set({ loading: false });
+        return;
+      }
       if (get().tournamentId === tournamentId) set({ data, loading: false, error: null });
     } catch (error) {
+      if (version !== refreshVersion) return;
+      if (
+        get().data !== requestedState ||
+        get().inFlight ||
+        (requestedState !== null && pendingShots.has(requestedState))
+      ) {
+        set({ loading: false });
+        return;
+      }
       if (get().tournamentId === tournamentId) {
         set({
           loading: false,
@@ -113,6 +143,8 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
     const tournamentId = get().tournamentId;
     const submittedState = get().data;
     if (tournamentId === null || submittedState === null) return null;
+    if (submittedState !== null && pendingShots.has(submittedState)) return null;
+    if (submittedState !== null) pendingShots.add(submittedState);
     try {
       const outcome = await withGameRequestReconciliation({
         request: (signal) =>
@@ -168,6 +200,8 @@ export const useClassicTournamentStore = create<ClassicTournamentStoreState>()((
         });
       }
       return null;
+    } finally {
+      if (submittedState !== null) pendingShots.delete(submittedState);
     }
   },
 }));
