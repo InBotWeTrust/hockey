@@ -3796,6 +3796,7 @@ function participantDto(
   participant: DuelParticipantRow,
   match: DuelMatchRow,
   rules: DuelRulesSnapshot,
+  nowMs: number,
   inventoryAvailable: InventoryAvailabilityItem[] = [],
   liveStats: { shots: number; goals: number } | null = null,
 ): DuelParticipantDTO {
@@ -3814,7 +3815,7 @@ function participantDto(
   const periodEndsAt =
     participant.state === 'period_active' && participant.period_started_at !== null
       ? new Date(
-          getEffectivePeriodStart(participant,Date.now())!.getTime() +
+          getEffectivePeriodStart(participant,nowMs)!.getTime() +
             getDuelPeriodRule(rules, participant.current_period).durationMs,
         ).toISOString()
       : null;
@@ -3823,7 +3824,7 @@ function participantDto(
       ? new Date(participant.break_started_at.getTime() + rules.breakDurationMs).toISOString()
       : null;
   return {
-    clock: getParticipantClock(participant, getDuelPeriodRule(rules, Math.max(1, participant.current_period)).durationMs, Date.now()),
+    clock: getParticipantClock(participant, getDuelPeriodRule(rules, Math.max(1, participant.current_period)).durationMs, nowMs),
     recovery_until: participant.state === 'period_active' ? participant.recovery_until?.toISOString() ?? null : null,
     fight_aid_until: participant.state === 'period_active' ? participant.fight_aid_until?.toISOString() ?? null : null,
     user_id: participant.user_id,
@@ -3842,7 +3843,7 @@ function participantDto(
     current_period_shots: liveStats?.shots ?? 0,
     current_period_goals: liveStats?.goals ?? 0,
     ready_at: participant.ready_at?.toISOString() ?? null,
-    period_started_at: getEffectivePeriodStart(participant,Date.now())?.toISOString() ?? null,
+    period_started_at: getEffectivePeriodStart(participant,nowMs)?.toISOString() ?? null,
     period_ends_at: periodEndsAt,
     break_ends_at: breakEndsAt,
     loadout: loadoutFromUnknown(participant.loadout_snapshot),
@@ -4147,12 +4148,13 @@ async function buildMatchDto(
         meForDto,
         match,
         rules,
+        now.getTime(),
         await fetchAvailableInventory(client, currentUserId),
         meCurrentStats,
       ),
     },
     opponent: {
-      ...participantDto(opponent, match, rules, [], opponentCurrentStats),
+      ...participantDto(opponent, match, rules, now.getTime(), [], opponentCurrentStats),
       ...(await scoredParticipantFields(client, match, opponent, rules, now)),
     },
   };
@@ -4252,12 +4254,13 @@ async function buildMatchStateDto(
         meForDto,
         match,
         rules,
+        now.getTime(),
         await fetchAvailableInventory(client, currentUserId),
         me.state === 'period_active' ? currentStats : null,
       ),
     },
     opponent: {
-      ...participantDto(opponent, match, rules, [], opponentCurrentStats),
+      ...participantDto(opponent, match, rules, now.getTime(), [], opponentCurrentStats),
       ...(await scoredParticipantFields(client, match, opponent, rules, now)),
     },
     server_now: now.toISOString(),

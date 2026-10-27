@@ -984,14 +984,13 @@ export function BonusGamePlayScreen(): JSX.Element {
   const clockBasis = isPeriodActive
     ? deriveBonusGameClockBasis(attempt)
     : { sceneElapsedMs: 0, shooterElapsedMs: 0 };
-  const localPeriodEndsAt = isPeriodActive
-    ? Date.now() +
-      authoritativeRemainingMs(attempt.period_ends_at, attempt.server_now, receivedAtPerformanceMs)
+  const periodEndsAt = isPeriodActive && attempt.period_ends_at
+    ? Date.parse(attempt.period_ends_at)
     : undefined;
   const scoreboardEndsAt =
-    localPeriodEndsAt === undefined
+    periodEndsAt === undefined
       ? undefined
-      : localPeriodEndsAt + futureBonusPeriodDurationMs(attempt);
+      : periodEndsAt + futureBonusPeriodDurationMs(attempt);
   const idleTimerMs =
     attempt.rules.skill_code === 'speed' ? futureBonusPeriodDurationMs(attempt) : rule.duration_ms;
   const goalieConfig = goalieConfigFor(attempt, rule);
@@ -1266,7 +1265,7 @@ export function BonusGamePlayScreen(): JSX.Element {
         initialSceneElapsedMs={clockBasis.sceneElapsedMs}
         initialShooterElapsedMs={clockBasis.shooterElapsedMs}
         clockRebaseKey={clockRebaseKey}
-        periodEndsAt={localPeriodEndsAt}
+        periodEndsAt={periodEndsAt}
         scoreboardEndsAt={scoreboardEndsAt}
         onSceneClock={rhythmRules ? (_scene, shooter) => {
           const travel = shooter * rule.shooter_frequency * 2 / 1000;

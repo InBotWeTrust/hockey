@@ -73,7 +73,9 @@ function retainDuelClock(
   const receivedAt = incoming.received_at_performance_ms ?? performance.now();
   if (!Number.isFinite(currentServerMs) || !Number.isFinite(incomingServerMs) ||
       !Number.isFinite(receivedAt) || !Number.isFinite(current.received_at_performance_ms)) return incoming;
-  const projectedNow = currentServerMs + Math.max(0, receivedAt - current.received_at_performance_ms);
+  // Project both samples at the incoming anchor, even when it predates the current one.
+  // Clamping this delta counts a deferred acknowledgement's age twice.
+  const projectedNow = currentServerMs + receivedAt - current.received_at_performance_ms;
   if (incomingServerMs >= projectedNow) return incoming;
   return {...incoming, received_at_performance_ms: receivedAt - (projectedNow - incomingServerMs)};
 }
