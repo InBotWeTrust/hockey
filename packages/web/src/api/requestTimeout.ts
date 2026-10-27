@@ -149,3 +149,15 @@ export function withGameRequestReconciliation<TRequest, TReconciled>({
     );
   });
 }
+
+/** Only for endpoints that persist and replay a receipt for the same request payload. */
+export async function withIdempotentGameRequest<T>(
+  request: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const outcome = await withGameRequestReconciliation({
+    request,
+    reconcile: request,
+    isReconciled: () => true,
+  });
+  return outcome.value;
+}

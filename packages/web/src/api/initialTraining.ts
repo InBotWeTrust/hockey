@@ -1,3 +1,4 @@
+import { withIdempotentGameRequest } from './requestTimeout.js';
 import type { AdvancedTrainingV2Technique, GoalieConfig } from '@hockey/game-core';
 import type { ShotInputPayload, ShotResultType } from './duel.js';
 import type { GameplayLockDTO } from './gameplayLock.js';
@@ -135,8 +136,9 @@ export function submitInitialTrainingShot(
   exerciseKey: InitialTrainingExerciseKey,
   body: SubmitInitialTrainingShotRequest,
 ): Promise<SubmitInitialTrainingShotResponse> {
-  return apiFetch<SubmitInitialTrainingShotResponse>(
+  const payload = JSON.stringify(body);
+  return withIdempotentGameRequest(signal => apiFetch<SubmitInitialTrainingShotResponse>(
     `/duel/training/course/${exerciseKey}/shot`,
-    { method: 'POST', body: JSON.stringify(body) },
-  );
+    { signal, method: 'POST', body: payload },
+  ));
 }

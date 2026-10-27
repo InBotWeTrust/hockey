@@ -1,3 +1,4 @@
+import { withIdempotentGameRequest } from './requestTimeout.js';
 import type {
   AdvancedTrainingV2Scenario,
   AdvancedTrainingContinuousContext,
@@ -74,10 +75,11 @@ export function submitAdvancedTrainingShot(
     claimed_result: ShotResult['type'];
   },
 ): Promise<AdvancedTrainingShotResponse> {
-  return apiFetch(`/duel/training/advanced/${exerciseKey}/shot`, {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+  const payload = JSON.stringify(body);
+  return withIdempotentGameRequest(signal => apiFetch(`/duel/training/advanced/${exerciseKey}/shot`, {
+    signal, method: 'POST',
+    body: payload,
+  }));
 }
 
 export function startAdvancedTrainingAssessment(
@@ -154,9 +156,10 @@ export function submitAdvancedTrainingV2Shot(exerciseKey: AdvancedTrainingV2Tech
   input: Pick<ShotInput, 'tapTime' | 'shooterTapTime'>;
   claimed_result: ShotResult['type'];
 }): Promise<AdvancedTrainingV2ShotResponse> {
-  return apiFetch(`/duel/training/advanced/v2/${exerciseKey}/shot`, {
-    method: 'POST', body: JSON.stringify(body),
-  });
+  const payload = JSON.stringify(body);
+  return withIdempotentGameRequest(signal => apiFetch(`/duel/training/advanced/v2/${exerciseKey}/shot`, {
+    signal, method: 'POST', body: payload,
+  }));
 }
 
 export function startAdvancedTrainingV2Assessment(exerciseKey: AdvancedTrainingV2Technique,

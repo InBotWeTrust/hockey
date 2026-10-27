@@ -410,6 +410,17 @@ describe('BonusGamePlayScreen', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Загружаем бонусную игру…');
   });
 
+  it.each([-300000, 300000])('passes server-clock deadlines despite a %i ms device offset', (offset) => {
+    const active = enduranceAttempt();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.parse(active.server_now) + offset);
+    vi.spyOn(performance, 'now').mockReturnValue(1500);
+    setStore({attempt: active, receivedAtPerformanceMs: 1000});
+    renderScreen();
+    const props = playViewProbe.mock.lastCall?.[0] as Record<string, unknown>;
+    expect(props.periodEndsAt).toBe(Date.parse(active.period_ends_at!));
+    expect(props.scoreboardEndsAt).toBe(Date.parse(active.period_ends_at!));
+  });
+
   it('renders the endurance timer below the scoreboard and removes the in-rink notice', () => {
     vi.spyOn(performance, 'now').mockReturnValue(1_000);
     setStore({ attempt: enduranceAttempt(), receivedAtPerformanceMs: 1_000 });

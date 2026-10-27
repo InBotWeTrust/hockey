@@ -219,7 +219,21 @@ export class FightRuntime {
         this.drop(matchId, entry);
         continue;
       }
-      if (now < entry.room.state.phaseStartedAtMs) continue;
+      if (now < entry.room.state.phaseStartedAtMs) {
+        // The presentation countdown can outlast the ownership lease. Keep the
+        // lease alive without advancing combat or persisting a fighting status.
+        if (!entry.saving && now >= entry.retryAt && monotonic - entry.savedAt >= 1000) {
+          entry.saving = true;
+          this.track(
+            this.renewStartingLease(matchId, entry)
+              .catch((error) => this.saveFailed(matchId, entry, error))
+              .finally(() => {
+                entry.saving = false;
+              }),
+          );
+        }
+        continue;
+      }
       const before = entry.room.state;
       entry.room.tick(now);
       const state = entry.room.state;
@@ -268,6 +282,19 @@ export class FightRuntime {
       }
     }
   }
+  private async renewStartingLease(matchId: string, entry: Entry): Promise<void> {
+    const started = performance.now();
+    const renewed = await this.adapter.transact((client) =>
+      renewRuntimeLease(client, entry.fight.id, this.owner, entry.generation),
+    );
+    if (!renewed) {
+      this.drop(matchId, entry);
+      return;
+    }
+    entry.savedAt = started;
+    entry.expires = started + RUNTIME_LEASE_MS - 200;
+  }
+
   private saveFailed(matchId: string, entry: Entry, error: unknown): never {
     entry.retryAt = Date.now() + 250;
     if (error instanceof AppError && error.code === 'not_found') this.drop(matchId, entry);

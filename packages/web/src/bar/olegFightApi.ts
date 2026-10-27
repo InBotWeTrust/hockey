@@ -16,9 +16,10 @@ export type OlegCommand = { actionId: string; seq: number; phaseId: number } & (
   | { kind: 'input'; input: FightHeldInput }
 );
 export const fetchBarAccess = () => apiFetch<BarAccess>('/bar/access');
-export const fetchOlegFight = (id: string) => apiFetch<OlegSnapshot>(`/bar/fights/${id}`);
-export const commandOlegFight = (id: string, command: OlegCommand) =>
+export const fetchOlegFight = (id: string, signal?: AbortSignal) => apiFetch<OlegSnapshot>(`/bar/fights/${id}`, { ...(signal ? { signal } : {}) });
+export const commandOlegFight = (id: string, command: OlegCommand, signal?: AbortSignal) =>
   apiFetch<OlegSnapshot>(`/bar/fights/${id}/commands`, {
+    ...(signal ? { signal } : {}),
     method: 'POST',
     body: JSON.stringify(command),
   });
