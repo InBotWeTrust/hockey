@@ -31,6 +31,10 @@ interface TrainingSessionStoreState {
   } | null>;
 }
 
+// Background reads cannot replace the snapshot that owns a pending shot.
+const pendingShots = new WeakSet<TrainingStateResponse>();
+let refreshVersion = 0;
+
 export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set, get) => ({
   data: null,
   loading: false,
@@ -38,11 +42,33 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
   inFlight: false,
 
   refresh: async () => {
+    const before = get().data;
+    if (get().inFlight || (before !== null && pendingShots.has(before))) return;
+    const version = ++refreshVersion;
     set({ loading: true, error: null });
+    const requestedState = get().data;
     try {
       const data = await fetchTrainingState();
+      if (version !== refreshVersion) return;
+      if (
+        get().data !== requestedState ||
+        get().inFlight ||
+        (requestedState !== null && pendingShots.has(requestedState))
+      ) {
+        set({ loading: false });
+        return;
+      }
       set({ data, loading: false, error: null });
     } catch (err) {
+      if (version !== refreshVersion) return;
+      if (
+        get().data !== requestedState ||
+        get().inFlight ||
+        (requestedState !== null && pendingShots.has(requestedState))
+      ) {
+        set({ loading: false });
+        return;
+      }
       set({
         loading: false,
         error: err instanceof Error ? err.message : 'failed to load training',
@@ -91,17 +117,19 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
 
   submitShot: async ({ shotIndex, input, claimedResult }) => {
     const submittedState = get().data;
+    if (submittedState !== null && pendingShots.has(submittedState)) return null;
+    if (submittedState !== null) pendingShots.add(submittedState);
     try {
       const outcome = await withGameRequestReconciliation({
         request: (signal) =>
           submitTrainingShot(
-          {
-            shot_index: shotIndex,
-            input,
-            claimed_result: claimedResult,
-          },
-          { signal },
-        ),
+            {
+              shot_index: shotIndex,
+              input,
+              claimed_result: claimedResult,
+            },
+            { signal },
+          ),
         reconcile: (signal) => fetchTrainingState({ signal }),
         isReconciled: (state) => state.state !== 'active' || state.shots_taken >= shotIndex,
         isRequestErrorDefinitive: isDefinitiveGameRequestError,
@@ -110,10 +138,7 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
         if (get().data === submittedState) {
           set({
             data: outcome.value,
-            error:
-              outcome.error instanceof Error
-                ? outcome.error.message
-                : 'training shot failed',
+            error: outcome.error instanceof Error ? outcome.error.message : 'training shot failed',
           });
         }
         return null;
@@ -148,6 +173,8 @@ export const useTrainingSessionStore = create<TrainingSessionStoreState>()((set,
         set({ error: err instanceof Error ? err.message : 'training shot failed' });
       }
       return null;
+    } finally {
+      if (submittedState !== null) pendingShots.delete(submittedState);
     }
   },
 }));
