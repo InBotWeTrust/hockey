@@ -1,3 +1,4 @@
+import { withGameRequestTimeout } from '../api/requestTimeout.js';
 import { FightModal } from '../components/duel/fight/FightModal.js';
 import { AccessibleModal } from '../components/AccessibleModal.js';
 import { X } from 'lucide-react';
@@ -73,7 +74,7 @@ export function OlegFightPanel({
       if (pending) return;
       pending = true;
       try {
-        apply(await fetchOlegFight(id), version);
+        apply(await withGameRequestTimeout(signal => fetchOlegFight(id, signal)), version);
       } catch {
         if (alive.current && version === generation.current)
           setError('Связь прервалась. Восстанавливаем драку…');
@@ -110,17 +111,17 @@ export function OlegFightPanel({
         }
         const payload: OlegCommand = { ...item, seq: state.nextSeq, phaseId: state.state.phaseId };
         try {
-          apply(await commandOlegFight(id, payload), version);
+          apply(await withGameRequestTimeout(signal => commandOlegFight(id, payload, signal)), version);
         } catch {
           if (!valid()) break;
           try {
-            apply(await commandOlegFight(id, payload), version);
+            apply(await withGameRequestTimeout(signal => commandOlegFight(id, payload, signal)), version);
           } catch {
             if (!valid()) break;
             queue.current = [];
             setError('Связь прервалась. Восстанавливаем драку…');
             try {
-              apply(await fetchOlegFight(id), version);
+              apply(await withGameRequestTimeout(signal => fetchOlegFight(id, signal)), version);
             } catch {
               /* Polling resumes authoritative state. */
             }

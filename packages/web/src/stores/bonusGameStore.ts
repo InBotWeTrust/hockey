@@ -20,6 +20,7 @@ import type {
 import { ApiError } from '../api/apiFetch.js';
 import {
   isDefinitiveGameRequestError,
+  withGameRequestTimeout,
   withGameRequestReconciliation,
 } from '../api/requestTimeout.js';
 import type { ShotResultType } from '../api/duel.js';
@@ -333,7 +334,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     if (!attempt || get().inFlight || get().needsReconcile) return null;
     beginMutation(set, get);
     try {
-      const response = await startBonusPeriod(attempt.id, loadout);
+      const response = await withGameRequestTimeout(signal => startBonusPeriod(attempt.id, loadout, { signal }));
       applyServerAttempt(set, get, response.attempt);
       set({ inFlight: false });
       return response.attempt;

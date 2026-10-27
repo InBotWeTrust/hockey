@@ -62,7 +62,7 @@ it('offers renewal and explicit consent after expiry', async () => {
   await act(async () => {});
   fireEvent.click(screen.getByRole('button', { name: 'Начать текущим составом' }));
   await act(async () => {});
-  expect(api.roomCommand).toHaveBeenCalledWith('table', 1, { type: 'propose' });
+  expect(api.roomCommand).toHaveBeenCalledWith('table', 1, { type: 'propose' }, expect.any(AbortSignal));
   expect(screen.getByText('Готовы: 1 из 2')).toBeInTheDocument();
   expect(screen.getByRole('button', { name: 'Готов' })).toBeDisabled();
 });
@@ -115,4 +115,15 @@ it('returns to the bar without leaving the table or cancelling invitations', asy
  fireEvent.click(screen.getByRole('button',{name:'Назад'}));
  expect(screen.getByText('Bar map')).toBeVisible();
  expect(api.roomCommand).not.toHaveBeenCalled();
+});
+
+it('a stalled room command allows background recovery',async()=>{
+ vi.useFakeTimers();vi.mocked(api.readRoom).mockResolvedValue({...room,searchUntil:0});
+ vi.mocked(api.roomCommand).mockImplementation(()=>new Promise(()=>{}));
+ renderRoom();await act(async()=>{});
+ fireEvent.click(screen.getByRole('button',{name:'Начать текущим составом'}));
+ await act(async()=>{await vi.advanceTimersByTimeAsync(60000);});
+ expect(api.roomCommand).toHaveBeenCalledTimes(1);
+ expect(vi.mocked(api.readRoom).mock.calls.length).toBeGreaterThan(1);
+ expect(screen.getByRole('button',{name:'Начать текущим составом'})).toBeEnabled();
 });
