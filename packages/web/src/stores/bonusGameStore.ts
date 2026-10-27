@@ -169,7 +169,8 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   receivedAtPerformanceMs: null,
 
   loadCurrent: async () => {
-    if (get().pendingShot !== null || (get().inFlight && (get().attempt?.rules.challenge_environment?.beach?.interactive || get().attempt?.rules.challenge_environment?.cyberpunk))) return get().attempt;
+    // A background read must not replace the attempt that owns the pending shot unlock.
+    if (shotInFlight || get().pendingShot !== null || (get().inFlight && (get().attempt?.rules.challenge_environment?.beach?.interactive || get().attempt?.rules.challenge_environment?.cyberpunk))) return get().attempt;
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {
@@ -196,7 +197,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
   },
 
   loadAttempt: async (attemptId) => {
-    if (get().pendingShot !== null || (get().inFlight && (get().attempt?.rules.challenge_environment?.beach?.interactive || get().attempt?.rules.challenge_environment?.cyberpunk))) return get().attempt;
+    if (shotInFlight || get().pendingShot !== null || (get().inFlight && (get().attempt?.rules.challenge_environment?.beach?.interactive || get().attempt?.rules.challenge_environment?.cyberpunk))) return get().attempt;
     const requestEpoch = get().requestEpoch + 1;
     set({ loading: true, requestEpoch });
     try {

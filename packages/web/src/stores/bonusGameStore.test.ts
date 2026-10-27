@@ -425,51 +425,24 @@ describe('bonusGameStore', () => {
     });
   });
 
-  it('invalidates a refresh begun during a rejected shot until a fresh refresh succeeds', async () => {
-    // This catches the during-shot read clearing a new ambiguity lock after the shot rejects.
+  it('ignores refresh during a shot and permits fresh reconciliation after rejection', async () => {
     const shotRequest = deferred<BonusShotResponse>();
-    const duringShotRead = deferred<BonusAttemptResponse>();
-    const staleError = new ApiError(
-      409,
-      'bonus_shot_index_mismatch',
-      'Бросок уже обработан. Обновляем состояние попытки.',
-    );
+    const staleError = new ApiError(409, 'bonus_shot_index_mismatch', 'Бросок уже обработан.');
     vi.mocked(submitBonusShot).mockReturnValueOnce(shotRequest.promise);
-    vi.mocked(fetchCurrentBonusAttempt)
-      .mockReturnValueOnce(duringShotRead.promise)
-      .mockResolvedValueOnce(response(initialAttempt));
+    vi.mocked(fetchCurrentBonusAttempt).mockResolvedValueOnce(response(initialAttempt));
     useBonusGameStore.getState().applyState(initialAttempt);
-
     const submit = useBonusGameStore.getState().submitShot(shot);
-    const staleRead = useBonusGameStore.getState().refresh();
+    await useBonusGameStore.getState().refresh();
+    expect(fetchCurrentBonusAttempt).not.toHaveBeenCalled();
     shotRequest.reject(staleError);
     await submit;
-
     expect(useBonusGameStore.getState()).toMatchObject({
-      attempt: initialAttempt,
-      loading: false,
-      error: staleError.message,
-      errorCode: staleError.code,
-      needsReconcile: true,
+      attempt: initialAttempt, inFlight: false, error: staleError.message, needsReconcile: true,
     });
-
-    duringShotRead.resolve(response({ ...initialAttempt, shots_taken: 1, goals: 0 }));
-    await staleRead;
-
-    expect(useBonusGameStore.getState()).toMatchObject({
-      attempt: initialAttempt,
-      error: staleError.message,
-      errorCode: staleError.code,
-      needsReconcile: true,
-    });
-
     await useBonusGameStore.getState().refresh();
-
+    expect(fetchCurrentBonusAttempt).toHaveBeenCalledTimes(1);
     expect(useBonusGameStore.getState()).toMatchObject({
-      attempt: initialAttempt,
-      error: null,
-      errorCode: null,
-      needsReconcile: false,
+      attempt: initialAttempt, error: null, errorCode: null, needsReconcile: false,
     });
   });
 
@@ -893,12 +866,32 @@ describe('bonusGameStore', () => {
     expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
   });
 
-  it('invalidates a read started during a deferred shot before applying the pending result', async () => {
-    // This catches an in-flight GET replacing either the optimistic frame or the saved terminal DTO.
+  it.each(['current', 'attempt'])('keeps the shot unlock when a %s refresh finishes before the shot', async (read) => {
+    const shotRequest = deferred<BonusShotResponse>();
+    const accepted = {...initialAttempt, shots_taken: 3, current_period_shots_taken: 3, goals: 2};
+    vi.mocked(submitBonusShot).mockReturnValueOnce(shotRequest.promise);
+    vi.mocked(fetchCurrentBonusAttempt).mockResolvedValue(response({...initialAttempt}));
+    vi.mocked(fetchBonusAttempt).mockResolvedValue(response({...initialAttempt}));
+    useBonusGameStore.getState().applyState(initialAttempt);
+    useBonusGameStore.getState().optimisticAddShot('goal');
+    const submit = useBonusGameStore.getState().submitShot(shot, {deferApply: true});
+    if (read === 'current') await useBonusGameStore.getState().refresh();
+    else await useBonusGameStore.getState().loadAttempt(initialAttempt.id);
+    shotRequest.resolve({server_result: 'goal', awarded_points: 0, total_points: 300,
+      difficulty_code: null, counter_direction: false, attempt: accepted,
+      reward_granted: false, balances: {coins: 0, stars: 0, experience: 0}});
+    const result = await submit;
+    expect(result?.attempt).toEqual(accepted);
+    useBonusGameStore.getState().applyPendingShot();
+    expect(useBonusGameStore.getState().inFlight).toBe(false);
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+  });
+
+  it('ignores background refresh while preserving the deferred terminal shot result', async () => {
+    // Refresh must not replace the optimistic frame or the deferred terminal DTO.
     let performanceNow = 500;
     vi.spyOn(performance, 'now').mockImplementation(() => performanceNow);
     const shotRequest = deferred<BonusShotResponse>();
-    const duringShotRead = deferred<BonusAttemptResponse>();
     const completedAttempt = {
       ...initialAttempt,
       status: 'completed' as const,
@@ -912,7 +905,6 @@ describe('bonusGameStore', () => {
       reward_granted: true,
     };
     vi.mocked(submitBonusShot).mockReturnValueOnce(shotRequest.promise);
-    vi.mocked(fetchCurrentBonusAttempt).mockReturnValueOnce(duringShotRead.promise);
     useBonusGameStore.getState().applyState(initialAttempt);
     useBonusGameStore.getState().optimisticAddShot('goal');
     const optimisticAttempt = useBonusGameStore.getState().attempt;
@@ -931,8 +923,8 @@ describe('bonusGameStore', () => {
       balances: { coins: 110, stars: 3, experience: 57 },
     });
     await submit;
-    duringShotRead.resolve(response(initialAttempt));
     await staleRead;
+    expect(fetchCurrentBonusAttempt).not.toHaveBeenCalled();
 
     expect(useBonusGameStore.getState()).toMatchObject({
       attempt: optimisticAttempt,

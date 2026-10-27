@@ -112,6 +112,22 @@ describe('delayed duel clock snapshots', () => {
     expect(Date.parse(current.server_now) + 4000 - current.received_at_performance_ms!).toBe(epoch + 4000);
   });
 
+  it.each(['classic', 'express', 'express_plus', 'sniper', 'marathon', 'rhythm'])(
+    'does not advance %s time twice when a deferred acknowledgement follows a newer poll', (kind) => {
+      vi.spyOn(performance, 'now').mockReturnValue(5000);
+      const original = match();
+      original.rules.duelKind = kind as api.AmateurDuelMatchState['rules']['duelKind'];
+      const polled = {...original, server_now: iso(4000), received_at_performance_ms: 4000};
+      useAmateurDuelStore.setState({match: polled});
+      // Prepared at t=2000, applied after the result animation and a poll at t=4000.
+      const acknowledged = {...original, state_revision: 2,
+        me: {...original.me, current_period_shots: 1, shots_taken: 1}};
+      useAmateurDuelStore.getState().applyState(acknowledged);
+      const current = useAmateurDuelStore.getState().match!;
+      expect(Date.parse(current.server_now) + 5000 - current.received_at_performance_ms!).toBe(epoch + 5000);
+    },
+  );
+
   it('starts a new clock estimate for another match or period', () => {
     vi.spyOn(performance, 'now').mockReturnValue(4000);
     const original = match();
