@@ -11,8 +11,9 @@ import {
   PUCK_START,
   GOAL_OPENING,
 } from '@hockey/game-core';
-import { describe, it, expect, beforeAll, beforeEach, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { resolve } from 'node:path';
+import { Client } from 'pg';
 import type { FastifyInstance } from 'fastify';
 import { buildApp } from '../../../src/app.js';
 import { createJwt } from '../../../src/auth/jwt.js';
@@ -111,6 +112,80 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     for (const side of [0, 1]) expect((await post('period/start', side)).statusCode).toBe(200);
     return { id, post, rules: response.json().match.rules };
   }
+  it.each([false, true])('keeps simultaneous shots and polling indexed with fight offer=%s', async (fightOffered) => {
+    const { id, post } = await start();
+    if (fightOffered) {
+      await app.pg.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fights','Test') on conflict(key) do update set value=excluded.value");
+      for (const player of players.slice(0, 2)) {
+        await app.pg.query("insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at) values($1,$2,gen_random_uuid(),now()+interval '1 minute')", [id, player.id]);
+      }
+      const offer = await post('fight/challenge', 0, { requestId: '00000000-0000-4000-8000-000000000099' });
+      expect(offer.statusCode, offer.body).toBe(200);
+      expect(offer.json().fight.status).toBe('offered');
+    }
+    const queries = vi.spyOn(Client.prototype, 'query');
+    let lookups: Array<{ text: string; values: unknown[] }> = [];
+    try {
+      for (const shotIndex of [1, 2]) {
+        if (shotIndex > 1) await new Promise((resolve) => setTimeout(resolve, 1800));
+        const participants = await app.pg.query(
+          'select user_id,period_started_at,result_paused_ms from amateur_duel_participant where match_id=$1',
+          [id],
+        );
+        const responses = await Promise.all(players.slice(0, 2).flatMap((player, side) => {
+          const participant = participants.rows.find((row) => row.user_id === player.id)!;
+          const periodTapTime = Date.now() - participant.period_started_at.getTime();
+          return [
+            post('shot', side, {
+              shot_index: shotIndex,
+              input: { tapTime: periodTapTime - Number(participant.result_paused_ms), periodTapTime },
+              claimed_result: 'goal',
+            }),
+            app.inject({ url: `/duel/amateur/matches/${id}`, headers: player.headers }),
+          ];
+        }));
+        for (const response of responses) expect(response.statusCode, response.body).toBe(200);
+        for (const response of [responses[0]!, responses[2]!]) {
+          expect(response.json().confirmed_shot_index).toBe(shotIndex);
+        }
+      }
+      lookups = queries.mock.calls.flatMap((args) => {
+        const text = args[0];
+        const values = args[1];
+        return typeof text === 'string' && /^\s*select/i.test(text) &&
+          /from shot_session/i.test(text) && /amateur_duel_match_id/.test(text) && Array.isArray(values)
+          ? [{ text, values }] : [];
+      });
+    } finally {
+      queries.mockRestore();
+    }
+    expect(lookups.length).toBeGreaterThan(5);
+    const client = await app.pg.connect();
+    try {
+      // A small test database otherwise legitimately prefers a sequential scan.
+      // Disabling that preference tests index eligibility, without timing flakiness.
+      await client.query('begin');
+      await client.query('set local enable_seqscan=off');
+      for (const { text, values } of lookups) {
+        const plan = await client.query(`explain (format json) ${text}`, values);
+        const scans: string[] = [];
+        const indexConditions: string[] = [];
+        type PlanNode = { 'Relation Name'?: string; 'Node Type': string; 'Index Cond'?: string; Plans?: PlanNode[] };
+        const visit = (node: PlanNode) => {
+          if (node['Relation Name'] === 'shot_session') scans.push(node['Node Type']);
+          if (node['Index Cond']) indexConditions.push(node['Index Cond']);
+          for (const child of node.Plans ?? []) visit(child);
+        };
+        visit(plan.rows[0]['QUERY PLAN'][0].Plan);
+        expect(scans.length, text).toBeGreaterThan(0);
+        expect(scans, text).not.toContain('Seq Scan');
+        expect(indexConditions.some(condition => condition.includes('amateur_duel_match_id')), text).toBe(true);
+      }
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
+  });
   it('freezes copied speeds, duration, scoring version and boundary', async () => {
     const { id, rules } = await start();
     expect(rules).toMatchObject({
