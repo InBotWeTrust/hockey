@@ -3003,7 +3003,7 @@ async function settleMatchIfReady(
   const windowEnded = now >= match.ends_at;
   if (windowEnded) {
     const shotCount = await client.query<{ total: number }>(
-      `select count(*)::int as total from shot_session where amateur_duel_match_id = $1`,
+      `select count(*)::int as total from shot_session where mode='amateur_duel' and amateur_duel_match_id = $1`,
       [match.id],
     );
     const noParticipantStarted =
@@ -6070,7 +6070,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const rules = parseRulesSnapshot(match.rules_snapshot);
         if (match.status === 'active') {
           const shots = await client.query<{ total: number }>(
-            'select count(*)::int as total from shot_session where amateur_duel_match_id = $1',
+            "select count(*)::int as total from shot_session where mode='amateur_duel' and amateur_duel_match_id = $1",
             [match.id],
           );
           if (shots.rows[0]?.total !== 0) {
@@ -7032,7 +7032,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           const previous = await client.query<{
             input_payload: { tapTime: number; periodTapTime?: number; resultPauseMs?: number; shooterTapTime?: number; puckSpeedPerMs: number };
           }>(
-            `select input_payload from shot_session where amateur_duel_match_id=$1 and user_id=$2
+            `select input_payload from shot_session where mode='amateur_duel' and amateur_duel_match_id=$1 and user_id=$2
                and period_number=$3 order by shot_index desc limit 1`,
             [match.id, req.user.id, participant.current_period],
           );
@@ -7090,7 +7090,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         }
         const rhythmSampler = rules.duelKind === 'rhythm' ? rhythmMovementForParticipant(match, participant, rules) : null;
         const rhythmHistory = rhythmSampler ? (await client.query<{input_payload:{tapTime:number;puckSpeedPerMs:number}}>(
-          'select input_payload from shot_session where amateur_duel_match_id=$1 and user_id=$2 order by period_number,shot_index',
+          "select input_payload from shot_session where mode='amateur_duel' and amateur_duel_match_id=$1 and user_id=$2 order by period_number,shot_index",
           [match.id,req.user.id])).rows.map(row=>({tapTime:row.input_payload.tapTime,flightMs:(PUCK_START.y-GOAL_OPENING.y)/row.input_payload.puckSpeedPerMs})) : [];
         if (rhythmSampler && !rhythmSampler.conditionAt(body.input.tapTime,rhythmHistory).canShoot)
           throw new AppError('conflict','player is still recovering from a stumble',409);
