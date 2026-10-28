@@ -5995,10 +5995,9 @@ function DuelRinkLoadoutHud({
       {DUEL_INVENTORY_SLOTS.map((slot) => {
         const selectedId = selectedLoadout[slot.kind] ?? null;
         const item = selectedDuelAvailabilityItem(match, slot.kind, selectedId);
-        const availableItems = availableDuelItemsForKind(match, slot.kind);
         const hasBase = isDuelRequiredEquipment(slot.kind);
         const hasVisibleEquipment = item !== null || hasBase;
-        const canOpen = !locked && availableItems.length > 0;
+        const canOpen = !locked;
         const inventoryBadge = item
           ? duelInventoryBadgeLabel(item.kind, item.chargesAvailable, item.resourceUnit)
           : null;
@@ -6062,6 +6061,30 @@ function DuelRinkLoadoutHud({
   );
 }
 
+function EmptyRinkInventoryShopAction({
+  kind,
+  onClose,
+}: {
+  kind: InventoryEquipmentKind;
+  onClose: () => void;
+}): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <div className="modal-actions">
+      <button
+        type="button"
+        className="modal-primary btn btn--cta"
+        onClick={() => {
+          onClose();
+          navigate(`/inventory?category=${kind}`);
+        }}
+      >
+        Перейти в магазин
+      </button>
+    </div>
+  );
+}
+
 function DuelRinkLoadoutModal({
   kind,
   match,
@@ -6090,7 +6113,7 @@ function DuelRinkLoadoutModal({
           width: 'min(430px, calc(100vw - 28px))',
           maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: items.length === 0 ? 'auto minmax(0, 1fr) auto' : 'auto minmax(0, 1fr)',
           gap: 10,
           overflow: 'hidden',
         }}
@@ -6247,6 +6270,7 @@ function DuelRinkLoadoutModal({
             );
           })}
         </div>
+        {items.length === 0 && <EmptyRinkInventoryShopAction kind={kind} onClose={onClose} />}
       </section>
     </div>
   );
@@ -7193,6 +7217,7 @@ function ClassicRinkLoadoutModal({
             </button>
           ))}
         </div>
+        {items.length === 0 && <EmptyRinkInventoryShopAction kind={kind} onClose={onClose} />}
       </section>
     </div>
   );
