@@ -274,9 +274,21 @@ export async function listBonusRecords(pool: Pool, userId: string, gameId: strin
     ).rows;
     const currentUser =
       (await client.query(sql + ' where r.user_id=$3', [gameId, v, userId])).rows[0] ?? null;
+    const previousRecords = (
+      await client.query(
+        `select elapsed_ms::float8 as "elapsedMs", shots, goals, points,
+              greatest(0,-secondary_score)::int as "bestSeries", achieved_at as "achievedAt"
+         from bonus_game_record
+        where game_id=$1 and user_id=$2 and rules_version<>$3
+        order by achieved_at desc, rules_version
+        limit 20`,
+        [gameId, userId, v],
+      )
+    ).rows.map((row) => ({ ...row, achievedAt: row.achievedAt.toISOString() as string }));
     return {
       rows,
       currentUser,
+      previousRecords,
       skillCode: definition.skill_code,
       nextOffset: rows.length === 20 && offset + 20 < 100 ? offset + 20 : null,
     };

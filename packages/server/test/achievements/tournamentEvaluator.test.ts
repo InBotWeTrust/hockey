@@ -306,5 +306,10 @@ describe.skipIf(!hasIntegrationEnv)('tournament achievement evaluator', () => {
       .map((candidate) => candidate.achievementId);
 
     expect(ids).toEqual(expect.arrayContaining(['dark-horse', 'series-comeback', 'no-shake']));
+    expect(
+      result.candidates.filter(
+        (candidate) => candidate.userId === winnerUserId && candidate.achievementId === 'no-shake',
+      ),
+    ).toHaveLength(5);
   });
 });

@@ -15834,6 +15834,10 @@ button.daily-calendar__day:active {
 
 .bonus-records-modal__explanation { flex: none; margin: 0 0 12px; font-size: 12px; line-height: 1.4; }
 
+.bonus-records-previous { margin-bottom: 16px; }
+.bonus-records-previous .modal-title { margin: 0 0 8px; font-size: 14px; }
+.bonus-records-previous .modal-copy { margin: 0 0 8px; font-size: 12px; font-weight: 400; line-height: 1.45; }
+
 .bonus-records-result__secondary { display: block; margin-top: 3px; color: var(--liquid-muted); font-size: 11px; font-weight: 500; line-height: 1.35; }
 
 .bonus-game-record-result { margin: 12px 0; padding-top: 12px; border-top: 1px solid rgba(100,116,139,.18); display: grid; gap: 8px; font-size: 13px; }

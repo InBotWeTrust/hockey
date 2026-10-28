@@ -12,9 +12,11 @@ import {
 
 describe('mergeAchievementStageProgress', () => {
   it('keeps the best numeric result when a later attempt is weaker', () => {
-    expect(mergeAchievementStageProgress({ endingGoalStreak: 8 }, { endingGoalStreak: 5 })).toEqual({
-      endingGoalStreak: 8,
-    });
+    expect(mergeAchievementStageProgress({ endingGoalStreak: 8 }, { endingGoalStreak: 5 })).toEqual(
+      {
+        endingGoalStreak: 8,
+      },
+    );
   });
 
   it('adds new progress fields while preserving stage qualifiers', () => {
@@ -52,6 +54,40 @@ describe.skipIf(!hasIntegrationEnv)('tiered achievement stage progress', () => {
 
   afterAll(async () => {
     await pool.end();
+  });
+
+  it('accepts a perfect duel after an earlier duel exceeded the miss limit', async () => {
+    const userId = await createUser(pool);
+    const occurredAt = new Date();
+    await observeAchievementStage(pool, userId, 'no-error-classic', {
+      eventKey: 'duel:many-misses',
+      occurredAt,
+      progress: { format: 'classic', maximumNonGoals: 20 },
+    });
+    await expect(
+      observeAchievementStage(pool, userId, 'no-error-classic', {
+        eventKey: 'duel:perfect',
+        occurredAt,
+        progress: { format: 'classic', maximumNonGoals: 0 },
+      }),
+    ).resolves.toMatchObject({ completed: true });
+  });
+
+  it('does not combine the goals of one day with the winning third period of another', async () => {
+    const userId = await createUser(pool);
+    const occurredAt = new Date();
+    await observeAchievementStage(pool, userId, 'third-period-decides', {
+      eventKey: 'daily:high-but-tied',
+      occurredAt,
+      progress: { minimumFirstTwoGoals: 28, thirdPeriodStrictlyBetter: false },
+    });
+    await expect(
+      observeAchievementStage(pool, userId, 'third-period-decides', {
+        eventKey: 'daily:low-but-better',
+        occurredAt,
+        progress: { minimumFirstTwoGoals: 10, thirdPeriodStrictlyBetter: true },
+      }),
+    ).resolves.toMatchObject({ completed: false });
   });
 
   it('opens only stage one for a newly created user', async () => {
