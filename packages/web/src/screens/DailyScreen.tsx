@@ -15,7 +15,7 @@ import { duelDisplayScore, duelFormatLabel, duelScorePairText } from "../compone
 import { duelTemplateChoices } from "../components/duel/duelTemplateChoices.js";
 import { classifyMarksmanshipShot } from "@hockey/game-core";
 import { DuelKindPreferenceButton } from "../components/DuelKindPreferenceButton.js";
-import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from "../game/matchCourt.js";
+import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_DUEL_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from "../game/matchCourt.js";
 import { useDuelFightSocket } from "../hooks/useDuelFightSocket.js";
 import { FightControls } from "../components/duel/fight/FightControls.js";
 import { FightView } from "../game/fight/FightView.js";
@@ -161,7 +161,7 @@ const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
 ]);
 
 function amateurDuelCourtBackground(match: AmateurDuelMatchState): string {
-  if (match.source !== 'tournament') return AMATEUR_DAILY_COURT_BACKGROUND;
+  if (match.source !== 'tournament') return AMATEUR_DUEL_COURT_BACKGROUND;
   return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
     ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
     : match.arena.artwork_url;
@@ -7471,7 +7471,7 @@ function ClassicTournamentPlayView({
         applyState={applyState}
         applyResolvedState={applyClassicResolvedState}
         duelCondition={duelCondition}
-        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        longCourtBackground={AMATEUR_TOURNAMENT_COURT_BACKGROUND}
         hudAddon={
           <ClassicRinkLoadoutHud
             state={data}

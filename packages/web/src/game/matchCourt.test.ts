@@ -5,11 +5,16 @@ import sharp from 'sharp';
 import { describe, expect, it } from 'vitest';
 import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from './matchCourt.js';
 
-const expectedUrl = '/sprites/amateur-central-indoor-dc575ddb17a8.webp';
+const expectedUrl = '/sprites/amateur-central-empty-2ef71ce6f102.webp';
+const courts = [
+  expectedUrl,
+  '/sprites/amateur-central-half-c950229b0ea9.webp',
+  '/sprites/amateur-central-full-6b9cc1c314c7.webp',
+];
 
 describe('Central indoor amateur match artwork', () => {
-  it('continues textured ice to the bottom instead of repeating the resize letterbox', async () => {
-    const { data, info } = await sharp(path.join('public', expectedUrl)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  it.each(courts)('continues textured ice to the bottom without letterboxing: %s', async (url) => {
+    const { data, info } = await sharp(path.join('public', url)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
     for (let y = info.height - 11; y < info.height; y++) {
       const values = Array.from({ length: info.width - 40 }, (_, x) => {
         const i = (y * info.width + x + 20) * info.channels;
@@ -21,22 +26,24 @@ describe('Central indoor amateur match artwork', () => {
       expect(mean, `ice brightness at row ${y}`).toBeLessThan(225);
     }
   });
-  it('uses one content-versioned background for ordinary daily, duel and tournament courts', () => {
+  it('uses an empty daily court and a full standard tournament court', () => {
     expect(AMATEUR_DAILY_COURT_BACKGROUND).toBe(expectedUrl);
-    expect(AMATEUR_TOURNAMENT_COURT_BACKGROUND).toBe(expectedUrl);
+    expect(AMATEUR_TOURNAMENT_COURT_BACKGROUND).toBe('/sprites/amateur-central-full-6b9cc1c314c7.webp');
   });
 
-  it('ships the aligned WebP with a content-matching filename and mobile byte budget', async () => {
-    const bytes = await readFile(path.join('public', expectedUrl));
+  it.each(courts)('ships opaque WebP with a content-matching filename and mobile byte budget: %s', async (url) => {
+    const bytes = await readFile(path.join('public', url));
     const metadata = await sharp(bytes).metadata();
     expect(metadata.format).toBe('webp');
+    expect(metadata.hasAlpha).toBe(false);
     expect([metadata.width, metadata.height]).toEqual([1212, 2000]);
     expect(bytes.length).toBeLessThanOrEqual(350 * 1024);
-    expect(createHash('sha256').update(bytes).digest('hex').slice(0, 12)).toBe('dc575ddb17a8');
+    const hash = createHash('sha256').update(bytes).digest('hex').slice(0, 12);
+    expect(url.endsWith(`-${hash}.webp`)).toBe(true);
   });
 
-  it('bakes the agreed nine-source-pixel lift into the end line without actor offsets', async () => {
-    const { data, info } = await sharp(path.join('public', expectedUrl)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+  it.each(courts)('aligns the end line without actor offsets: %s', async (url) => {
+    const { data, info } = await sharp(path.join('public', url)).removeAlpha().raw().toBuffer({ resolveWithObject: true });
     const signal = (x: number, y: number): number => {
       let sum = 0;
       for (let dx = -4; dx <= 4; dx++) {
