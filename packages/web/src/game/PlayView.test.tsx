@@ -2071,3 +2071,55 @@ it('keeps shots available with a separate right-side fight challenge', async () 
   expect(screen.getByRole('button', { name: 'Fight' }).parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
   expect(screen.getByRole('button', { name: /БРОСОК/ })).not.toBeDisabled();
 });
+
+it('buffers the next duel shot after presentation without overlapping requests or reusing indices', async () => {
+  vi.useFakeTimers();
+  const confirmations: Array<(value: {serverResult: 'miss'; state: object}) => void> = [];
+  const submit = vi.fn(() => new Promise<{serverResult: 'miss'; state: object}>(resolve => confirmations.push(resolve)));
+  function PipelineHarness() {
+    const [shots, setShots] = useState(0);
+    return <PlayView suppressedByModal={false} showIceCar={false} onBack={() => undefined}
+      active seed="buffered-duel" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+      goals={0} shots={shots} maxPendingShots={2}
+      shotResolver={() => ({type:'miss',reason:'wide'})}
+      optimisticAddShot={() => setShots(count => count + 1)} submitShot={submit} applyState={() => undefined}/>;
+  }
+  render(<PipelineHarness/>);
+  fireEvent.click(screen.getByRole('button', {name:'БРОСОК'}));
+  await act(async () => vi.advanceTimersByTimeAsync(1500));
+  expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  expect(screen.getByRole('button', {name:'БРОСОК'})).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', {name:'БРОСОК'}));
+  expect(submit).toHaveBeenCalledTimes(1);
+  await act(async () => vi.advanceTimersByTimeAsync(1500));
+  expect(screen.getByRole('button', {name:/СИНХРОНИЗАЦИЯ/})).toBeDisabled();
+  await act(async () => { confirmations[0]!({serverResult:'miss',state:{}}); });
+  expect(submit).toHaveBeenCalledTimes(2);
+  expect((submit.mock.calls as unknown as Array<[{shotIndex:number}]>).map(call => call[0].shotIndex)).toEqual([1,2]);
+  expect(screen.getByRole('button', {name:'БРОСОК'})).toBeEnabled();
+  await act(async () => { confirmations[1]!({serverResult:'miss',state:{}}); });
+});
+
+it('does not replace the current buffered shot presentation with an older acknowledgement', async () => {
+  vi.useFakeTimers();
+  const replies: Array<(value:{serverResult:'goal'|'miss';state:object})=>void>=[];
+  const submit=vi.fn(()=>new Promise<{serverResult:'goal'|'miss';state:object}>(resolve=>replies.push(resolve)));
+  function Harness() {
+    const [shots,setShots]=useState(0);
+    return <PlayView suppressedByModal={false} showIceCar={false} onBack={()=>undefined}
+      active seed="buffered-result-owner" goalieId={null} goalieConfig={beachGoalie} periodNumber={1}
+      goals={0} shots={shots} maxPendingShots={2} resultCopy={{goal:'OLD_ACK_GOAL',save:'SAVE',miss:'CURRENT_MISS'}}
+      shotResolver={()=>({type:'miss',reason:'wide'})} optimisticAddShot={()=>setShots(n=>n+1)}
+      submitShot={submit} applyState={()=>undefined}/>;
+  }
+  render(<Harness/>);
+  fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+  await act(async()=>vi.advanceTimersByTimeAsync(1500));
+  fireEvent.click(screen.getByRole('button',{name:'БРОСОК'}));
+  await act(async()=>vi.advanceTimersByTimeAsync(500));
+  expect(screen.getByText('CURRENT_MISS')).toBeInTheDocument();
+  await act(async()=>{replies[0]!({serverResult:'goal',state:{}});});
+  expect(screen.getByText('CURRENT_MISS')).toBeInTheDocument();
+  expect(screen.queryByText('OLD_ACK_GOAL')).not.toBeInTheDocument();
+  await act(async()=>{replies[1]!({serverResult:'miss',state:{}});});
+});

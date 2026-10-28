@@ -18,8 +18,40 @@ import {
 } from '../api/requestTimeout.js';
 import type { ShotInputPayload, ShotResultType } from '../api/duel.js';
 
+interface PendingDuelShot {
+  matchId: string;
+  period: number;
+  shotIndex: number;
+  claimed: ShotResultType;
+}
+
+function pendingFor(match: AmateurDuelMatchState, pending: readonly PendingDuelShot[]) {
+  if (!pending.length) return [];
+  return match.me.state === 'period_active'
+    ? pending.filter(shot => shot.matchId === match.id && shot.period === match.me.current_period &&
+      shot.shotIndex > (match.me.current_period_shots ?? match.current_period_shots)) : [];
+}
+
+/** me.current_period_* is confirmed; top-level counters include local predictions. */
+function projectPendingShots(match: AmateurDuelMatchState, pending: readonly PendingDuelShot[], strip = false): AmateurDuelMatchState {
+  if (!pending.length && !strip) return match;
+  if (match.me.state !== 'period_active') return match;
+  const shots = match.me.current_period_shots ?? match.current_period_shots;
+  const goals = match.me.current_period_goals ?? match.current_period_goals;
+  const remaining = pendingFor(match, pending);
+  const predictedGoals = remaining.filter(shot => shot.claimed === 'goal').length;
+  return {...match, current_period_shots: shots + remaining.length,
+    current_period_goals: goals + predictedGoals,
+    me: {...match.me,
+      shots_taken: match.me.shots_taken - Math.max(0, match.current_period_shots - shots) + remaining.length,
+      goals: match.me.goals - Math.max(0, match.current_period_goals - goals) + predictedGoals,
+    },
+  };
+}
+
 interface AmateurDuelStoreState {
   match: AmateurDuelMatchState | null;
+  pendingShots: PendingDuelShot[];
   loading: boolean;
   error: string | null;
   inFlight: boolean;
@@ -38,6 +70,7 @@ interface AmateurDuelStoreState {
   ) => Promise<AmateurDuelMatchState | null>;
   applyState: (next: AmateurDuelMatchState) => void;
   optimisticAddShot: (claimed: ShotResultType) => void;
+  discardPendingShots: (matchId: string, period: number, fromIndex: number) => void;
   submitShot: (args: {
     shotIndex: number;
     input: ShotInputPayload;
@@ -161,10 +194,10 @@ function compareParticipantProgress(
   }
   const stateDelta = PARTICIPANT_STATE_ORDER[left.state] - PARTICIPANT_STATE_ORDER[right.state];
   if (stateDelta !== 0) return stateDelta;
-  if (left.shots_taken !== right.shots_taken) return left.shots_taken - right.shots_taken;
   if (left.current_period_shots !== right.current_period_shots) {
     return left.current_period_shots - right.current_period_shots;
   }
+  if (left.shots_taken !== right.shots_taken) return left.shots_taken - right.shots_taken;
   return 0;
 }
 
@@ -223,6 +256,7 @@ const pendingMatchRefreshes = new Map<string, Promise<void>>();
 
 export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) => ({
   match: null,
+  pendingShots: [],
   loading: false,
   error: null,
   inFlight: false,
@@ -235,14 +269,12 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       const current = get().match;
       if (current !== startedFromMatch && !options.reconcilePolling) return match;
       if (current !== startedFromMatch && current?.id !== match.id) return match;
-      set({
-        match:
-          options.reconcilePolling && current?.id === match.id
-            ? retainDuelClock(current, reconcilePolledMatch(current, match))
-            : retainDuelClock(current, match),
-        loading: false,
-        error: null,
-      });
+      const incoming = options.reconcilePolling && current?.id === match.id
+        ? retainDuelClock(current, reconcilePolledMatch(current, match))
+        : retainDuelClock(current, match);
+      const pending = get().pendingShots;
+      set({match: projectPendingShots(incoming, pending), pendingShots: pendingFor(incoming, pending),
+        loading: false, error: null});
       return match;
     } catch (err) {
       if (get().match !== startedFromMatch) return null;
@@ -383,13 +415,24 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
           opponent_recent_periods: current.opponent_recent_periods,
         };
     }
-    set({match:retainDuelClock(current,incoming),loading:false,error:null});
+    const pending = get().pendingShots;
+    set({match:projectPendingShots(retainDuelClock(current,incoming),pending),
+      pendingShots:pendingFor(incoming,pending),loading:false,error:null});
+  },
+
+  discardPendingShots: (matchId, period, fromIndex) => {
+    const current=get().match;
+    if (!current || current.id!==matchId || current.me.current_period!==period) return;
+    const remaining=get().pendingShots.filter(shot=>shot.matchId!==matchId || shot.period!==period || shot.shotIndex<fromIndex);
+    set({pendingShots:remaining,match:projectPendingShots(current,remaining,true)});
   },
 
   optimisticAddShot: (claimed) => {
     const cur = get().match;
     if (!cur || cur.me.state !== 'period_active') return;
     set({
+      pendingShots: [...get().pendingShots, {matchId:cur.id,period:cur.me.current_period,
+        shotIndex:cur.current_period_shots+1,claimed}],
       match: {
         ...cur,
         current_period_shots: cur.current_period_shots + 1,
@@ -427,9 +470,15 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
       if (outcome.kind === 'unreconciled') {
         const latest = get().match;
         if (latest?.id === current.id && latest.me.current_period === current.me.current_period) {
-          const rolledBack = withoutRejectedOptimisticShot(latest, current, shotIndex, claimedResult);
+          const pending = get().pendingShots.filter(shot => shot.matchId !== current.id ||
+            shot.period !== current.me.current_period || shot.shotIndex < shotIndex);
+          const rolledBack = get().pendingShots.length
+            ? projectPendingShots(latest, pending, true)
+            : withoutRejectedOptimisticShot(latest, current, shotIndex, claimedResult);
+          const incoming = reconcilePolledMatch(rolledBack, outcome.value);
           set({
-            match: retainDuelClock(latest, reconcilePolledMatch(rolledBack, outcome.value)),
+            pendingShots: pendingFor(incoming, pending),
+            match: projectPendingShots(retainDuelClock(latest, incoming), pending),
             error: outcome.error instanceof Error ? outcome.error.message : 'duel shot failed',
           });
         }
@@ -475,7 +524,11 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     } catch (err) {
       const latest = get().match;
       if (latest?.id === current.id && latest.me.current_period === current.me.current_period) {
-        set({match: withoutRejectedOptimisticShot(latest, current, shotIndex, claimedResult),
+        const pending = get().pendingShots.filter(shot => shot.matchId !== current.id ||
+          shot.period !== current.me.current_period || shot.shotIndex < shotIndex);
+        set({pendingShots:pending, match:get().pendingShots.length
+          ? projectPendingShots(latest,pending,true)
+          : withoutRejectedOptimisticShot(latest, current, shotIndex, claimedResult),
           error: err instanceof Error ? err.message : 'duel shot failed'});
         // Refresh inventory/clock restrictions as well as counters, without holding
         // the shot button on a second network request. Poll merging protects retries.
@@ -485,3 +538,10 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
     }
   },
 }));
+
+// Route exits/test resets and period transitions must not retain another session's predictions.
+useAmateurDuelStore.subscribe((state, previous) => {
+  if (state.pendingShots.length && (!state.match || state.match.id !== previous.match?.id ||
+      state.match.me.current_period !== previous.match?.me.current_period || state.match.me.state !== 'period_active'))
+    useAmateurDuelStore.setState({pendingShots:[]});
+});
