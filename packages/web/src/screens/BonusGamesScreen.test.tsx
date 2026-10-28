@@ -264,7 +264,7 @@ function renderCatalog(): QueryClient {
 }
 
 describe('BonusGamesScreen', () => {
-  it('explains a saved previous record in the completed location preview', async () => {
+  it('shows the all-time personal record in the completed location preview', async () => {
     mockCatalog([card({ is_completed: true, state: 'completed' })]);
     const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
     vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
@@ -273,7 +273,7 @@ describe('BonusGamesScreen', () => {
           new Response(
             JSON.stringify({
               rows: [],
-              currentUser: null,
+              currentUser: {userId:'me',displayName:'Me',avatarUrl:null,place:1,elapsedMs:61500,shots:23,goals:18,points:0},
               skillCode: 'speed',
               nextOffset: null,
               previousRecords: [
@@ -295,7 +295,7 @@ describe('BonusGamesScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Повторить' }));
     const dialog = await screen.findByRole('dialog');
     await waitFor(() =>
-      expect(within(dialog).getByText(/Прежний рекорд сохранён/)).toBeInTheDocument(),
+      expect(within(dialog).getByText(/1 мин 1,50 сек/)).toBeInTheDocument(),
     );
     expect(within(dialog).getByText(/1 мин 1,50 сек/)).toBeInTheDocument();
   });

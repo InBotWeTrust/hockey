@@ -1173,6 +1173,129 @@ describe('DailyScreen', () => {
     ).toBe(false);
   });
 
+  it.each(
+    (['challenge', 'tournament'] as const).flatMap(source =>
+      (['loadout_pending', 'break_active'] as const).flatMap(state =>
+        (['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'] as const).flatMap(duelKind =>
+          (['empty', 'exhausted', 'stocked'] as const).map(stock => ({ source, state, duelKind, stock })),
+        ),
+      ),
+    ),
+  )('opens all rink inventory slots in $source $duelKind during $state with $stock stock', async ({source, state, duelKind, stock}) => {
+    const now = Date.now();
+    const items = (['skates', 'stick', 'nutrition'] as const).map((kind, index) => ({
+      id: `item-${kind}`, itemId: `item-${kind}`, instanceId: null, kind,
+      title: `Запасной предмет ${index}`, description: '', imageUrl: null, rarity: 'rare' as const,
+      powerScore: 10, duelPeriodCost: 0, resourceUnit: 'shot' as const, lowStockThreshold: 0,
+      chargesAvailable: stock === 'stocked' ? 20 : 0, chargesReserved: 0,
+    }));
+    const match: AmateurDuelMatchState = {
+      ...settledDuelMatch,
+      source, status: state === 'loadout_pending' ? 'ready_check' : 'active',
+      rules: {...settledDuelMatch.rules, duelKind, totalPeriods: 3},
+      outcome: null, winner_user_id: null, settled_at: null, settled_reason: null,
+      starts_at: new Date(now - 1000).toISOString(), ends_at: new Date(now + 3600000).toISOString(),
+      ready_expires_at: new Date(now + 600000).toISOString(), server_now: new Date(now).toISOString(),
+      break_ends_at: state === 'break_active' ? new Date(now + 60000).toISOString() : null,
+      me: {...settledDuelMatch.me, state, current_period: state === 'break_active' ? 1 : 0,
+        inventory_available: stock === 'empty' ? [] : items, loadout: {items: [], powerScore: 0, powerCap: 100}},
+      opponent: {...settledDuelMatch.opponent, state: 'loadout_pending', current_period: 0},
+    };
+    const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/matches/') ? {match} :
+        {sticks: [], skates: [], nutrition: [], inventory: [], items: []}),
+        {status: 200, headers: {'content-type': 'application/json'}});
+    });
+    renderWith(['/?view=amateur&match=match-1&play=1']);
+    const slots = await screen.findByLabelText('Выбор инвентаря');
+    if (source === 'tournament' && state === 'loadout_pending') {
+      const hint = await screen.findByRole('dialog', {name: 'Подтвердите участие'});
+      fireEvent.click(within(hint).getByRole('button', {name: 'Понятно'}));
+      await waitFor(() => expect(screen.queryByRole('dialog', {name: 'Подтвердите участие'})).not.toBeInTheDocument());
+    }
+    for (const [label, title, base] of [
+      [/^Коньки:/, 'Коньки', 'Обычные коньки'],
+      [/^Клюшка:/, 'Клюшка', 'Обычная клюшка'],
+      [/^Энергия:/, 'Питание', 'Без питания'],
+    ] as const) {
+      const button = await within(slots).findByRole('button', {name: label});
+      expect(button).toBeEnabled();
+      fireEvent.click(button);
+      const dialog = await screen.findByRole('dialog', {name: title});
+      const shop = within(dialog).queryByRole('button', {name: 'Перейти в магазин'});
+      if (stock === 'stocked') expect(shop).not.toBeInTheDocument();
+      else expect(shop).toBeEnabled();
+      const selectedTitle = stock === 'stocked'
+        ? items.find(item => item.kind === (title === 'Клюшка' ? 'stick' : title === 'Коньки' ? 'skates' : 'nutrition'))!.title
+        : base;
+      fireEvent.click(within(dialog).getByRole('button', {name: new RegExp(selectedTitle)}));
+      await waitFor(() => expect(screen.queryByRole('dialog', {name: title})).not.toBeInTheDocument());
+      expect(within(slots).getByRole('button', {name: new RegExp(selectedTitle)})).toBeEnabled();
+    }
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === 'POST')).toBe(false);
+  });
+
+  it.each(['challenge', 'tournament'] as const)(
+    'locks rink inventory after readiness and during an active period in %s', async source => {
+      const now = Date.now();
+      const match: AmateurDuelMatchState = {
+        ...settledDuelMatch, source, status: 'ready_check',
+        outcome: null, winner_user_id: null, settled_at: null, settled_reason: null,
+        starts_at: new Date(now - 1000).toISOString(), ends_at: new Date(now + 3600000).toISOString(),
+        ready_expires_at: new Date(now + 600000).toISOString(), server_now: new Date(now).toISOString(),
+        me: {...settledDuelMatch.me, state: 'ready', current_period: 0},
+        opponent: {...settledDuelMatch.opponent, state: 'loadout_pending', current_period: 0},
+      };
+      vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+        const url = input instanceof Request ? input.url : String(input);
+        return new Response(JSON.stringify(url.includes('/matches/') ? {match} :
+          {sticks: [], skates: [], nutrition: [], inventory: [], items: []}),
+          {status: 200, headers: {'content-type': 'application/json'}});
+      });
+      renderWith(['/?view=amateur&match=match-1&play=1']);
+      const slots = await screen.findByLabelText('Выбор инвентаря');
+      for (const button of within(slots).getAllByRole('button')) expect(button).toBeDisabled();
+      act(() => useAmateurDuelStore.getState().applyState({
+        ...match, status: 'active', period_started_at: new Date(now).toISOString(),
+        period_ends_at: new Date(now + 180000).toISOString(),
+        me: {...match.me, state: 'period_active', current_period: 1},
+      }));
+      const activeSlots = await screen.findByLabelText('Инвентарь дуэли');
+      for (const button of within(activeSlots).getAllByRole('button')) expect(button).toBeDisabled();
+    },
+  );
+
+  it.each(
+    (['duel', 'classic'] as const).flatMap(mode =>
+      (['stick', 'skates', 'nutrition'] as const).map(kind => ({mode, kind})),
+    ),
+  )('opens the $kind shop from an empty $mode rink inventory slot', async ({mode, kind}) => {
+    const now = Date.now();
+    const match: AmateurDuelMatchState = {
+      ...settledDuelMatch, status: 'active', outcome: null, settled_at: null,
+      winner_user_id: null, settled_reason: null,
+      starts_at: new Date(now - 1000).toISOString(), ends_at: new Date(now + 3600000).toISOString(),
+      server_now: new Date(now).toISOString(),
+      me: {...settledDuelMatch.me, state: 'accepted', current_period: 0, inventory_available: []},
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => {
+      const url = input instanceof Request ? input.url : String(input);
+      return new Response(JSON.stringify(url.includes('/matches/') ? {match} :
+        url.includes('/classic/') ? classicIdleState :
+        {sticks: [], skates: [], nutrition: [], inventory: [], items: []}),
+        {status: 200, headers: {'content-type': 'application/json'}});
+    });
+    renderWith([mode === 'duel' ? '/?view=amateur&match=match-1&play=1' : '/?view=classic&tournament=classic-1']);
+    const label = kind === 'stick' ? /^Клюшка:/ : kind === 'skates' ? /^Коньки:/ : /^Энергия:/;
+    fireEvent.click(await screen.findByRole('button', {name: label}));
+    const title = kind === 'stick' ? 'Клюшка' : kind === 'skates' ? 'Коньки' : 'Питание';
+    const dialog = await screen.findByRole('dialog', {name: title});
+    fireEvent.click(within(dialog).getByRole('button', {name: 'Перейти в магазин'}));
+    await waitFor(() => expect(screen.getByLabelText('location')).toHaveTextContent(`/inventory?category=${kind}`));
+    expect(screen.queryByRole('dialog', {name: title})).not.toBeInTheDocument();
+  });
+
   it('shows classic inventory circles and leaves untouched slots to the server at period start', async () => {
     const stick = {
       id: '00000000-0000-4000-8000-000000000901',
@@ -2170,7 +2293,9 @@ describe('DailyScreen', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Начать' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'К турниру' }));
+    const tournamentBackButton = await screen.findByRole('button', { name: 'К турниру' });
+    expect(document.querySelector('img[src="/sprites/amateur-central-full-6b9cc1c314c7.webp"]')).toBeTruthy();
+    fireEvent.click(tournamentBackButton);
 
     expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
       'view=amateur&section=tournaments&tournament=classic-1&tab=schedule',
@@ -3313,7 +3438,7 @@ describe('DailyScreen', () => {
     );
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-half-c950229b0ea9.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
   });
@@ -3365,7 +3490,7 @@ describe('DailyScreen', () => {
     expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeFalsy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-empty-2ef71ce6f102.webp"]')).toBeFalsy();
     const calls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
     expect(screen.queryByTestId('arena-rink-backdrop')).not.toBeInTheDocument();
@@ -3400,7 +3525,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeTruthy();
+      expect(document.querySelector('img[src="/sprites/amateur-central-empty-2ef71ce6f102.webp"]')).toBeTruthy();
     });
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
   });
@@ -4410,7 +4535,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeFalsy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-empty-2ef71ce6f102.webp"]')).toBeFalsy();
   });
 
   it('groups period, score, shots and time in one row on a one-period duel scoreboard', async () => {
@@ -7724,7 +7849,7 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-half-c950229b0ea9.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
     expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
@@ -7981,7 +8106,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
     expect(
-      document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]'),
+      document.querySelector('img[src="/sprites/amateur-central-full-6b9cc1c314c7.webp"]'),
     ).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/arena-ice-court-v2.webp"]')).toBeFalsy();
   });

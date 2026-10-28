@@ -29,27 +29,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe('bonus records modal', () => {
-  it('shows the player their saved records under previous conditions without a current rank', async () => {
-    fetch.mockResolvedValue({
-      rows: [],
-      currentUser: null,
-      skillCode: 'accuracy',
-      nextOffset: null,
-      previousRecords: [
-        {
-          elapsedMs: 61500,
-          shots: 23,
-          goals: 18,
-          points: 0,
-          achievedAt: '2026-09-11T10:31:42.487Z',
-        },
-      ],
-    });
+  it('shows historical best results in the current all-time table', async () => {
+    const record = { userId: 'lost-star', displayName: 'Lost Star', avatarUrl: null,
+      place: 1, elapsedMs: 61500, shots: 23, goals: 18, points: 0 };
+    fetch.mockResolvedValue({ rows: [record], currentUser: null, skillCode: 'accuracy', nextOffset: null });
     show();
-    await screen.findByText('Твои прежние рекорды');
-    expect(screen.getByText(/Условия локации изменились/)).toBeInTheDocument();
-    expect(screen.getByText(/18 из 23/)).toBeInTheDocument();
-    expect(screen.queryByTestId('stat-rating-pinned-current')).not.toBeInTheDocument();
+    await screen.findByText('Lost Star');
+    expect(screen.getByText(/лучшие результаты за всё время/)).toBeInTheDocument();
+    expect(screen.queryByText('Твои прежние рекорды')).not.toBeInTheDocument();
   });
   it.each([
     [1, '1 бросок'],
