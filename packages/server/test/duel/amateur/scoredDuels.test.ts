@@ -1,3 +1,4 @@
+import { FIGHT_RESULT_HOLD_MS } from '../../../src/duel/amateur/fight/service.js';
 import {STICK_NEUTRAL,classifyMarksmanshipShot,getGoalie,getSessionPhaseOffsets,DEFAULT_MARKSMANSHIP_V6_SCORING_RULES} from '@hockey/game-core';
 import { describe, it, expect, beforeAll, beforeEach, afterAll, vi } from 'vitest';
 import { resolve } from 'node:path';
@@ -81,7 +82,7 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
         ...(kind === 'marathon' ? { marathon_window_ms: window } : {}),
       },
     });
-  it.each(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])('supports existing fight offers in %s', async (kind) => {
+  it.each(['express', 'express_plus', 'classic', 'sniper', 'marathon', 'rhythm'])('supports fight offers, pauses and resumed shots in %s', async (kind) => {
     await app.pg.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fights','Test') on conflict(key) do update set value=excluded.value");
     const invited = await challenge(kind);
     expect(invited.statusCode).toBe(200);
@@ -115,6 +116,27 @@ describe.skipIf(!hasIntegrationEnv)('Sniper and Marathon duel API', () => {
     const later = await app.inject({url: `/duel/amateur/matches/${id}`, headers: players[0]!.headers});
     expect(later.json().match.me.clock).toEqual(frozen.json().match.me.clock);
     if (kind === 'rhythm') expect(later.json().match.me.rhythm_travel).toBe(frozen.json().match.me.rhythm_travel);
+
+    // Simulate a runtime interruption after acceptance, then exercise the public
+    // recovery endpoint and real shots instead of only checking pause flags.
+    await app.pg.query(
+      "update amateur_duel_fight set status='cancelled',reason='runtime_interrupted',resolved_at=now() where id=$1",
+      [offer.json().fight.id],
+    );
+    await new Promise(resolve => setTimeout(resolve, FIGHT_RESULT_HOLD_MS + 20));
+    const resumed = await app.inject({ url: `/duel/amateur/matches/${id}/fight/state`, headers: players[0]!.headers });
+    expect(resumed.statusCode, resumed.body).toBe(200);
+    expect(resumed.json().match.fight_paused_at).toBeNull();
+    const participants = await app.pg.query(
+      'select user_id,period_started_at,period_paused_at,period_paused_ms from amateur_duel_participant where match_id=$1', [id],
+    );
+    expect(participants.rows.every(row => row.period_paused_at === null)).toBe(true);
+    const shots = await Promise.all(players.slice(0, 2).map((player, side) => {
+      const participant = participants.rows.find(row => row.user_id === player.id)!;
+      const elapsed = Date.now() - participant.period_started_at.getTime() - Number(participant.period_paused_ms);
+      return post('shot', side, { shot_index: 1, input: { tapTime: elapsed, periodTapTime: elapsed }, claimed_result: 'goal' });
+    }));
+    for (const shot of shots) expect(shot.statusCode, shot.body).toBe(200);
 
   });
   it('keeps participant clocks at the DTO timestamp when serialization takes time', async () => {
