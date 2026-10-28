@@ -16,7 +16,9 @@ export function formatBonusPreviewRecord(
   skill: string,
   result: { elapsedMs: number; shots: number; goals: number; bestSeries?: number },
 ): string {
-  return skill === 'rhythm' ? formatBonusDuration(result.elapsedMs) : formatBonusRecord(skill, result);
+  return skill === 'rhythm'
+    ? formatBonusDuration(result.elapsedMs)
+    : formatBonusRecord(skill, result);
 }
 
 export function formatBonusRecord(
@@ -24,13 +26,16 @@ export function formatBonusRecord(
   result: { elapsedMs: number; shots: number; goals: number; bestSeries?: number },
 ): string {
   const shots = formatRussianCount(result.shots, 'бросок', 'броска', 'бросков');
-  if (skill === 'rhythm') return `${formatBonusDuration(result.elapsedMs)} · серия ${result.bestSeries ?? 0} · ${result.shots ? new Intl.NumberFormat('ru-RU',{maximumFractionDigits:1}).format(result.goals/result.shots*100) : 0}% · ${shots}`;
+  if (skill === 'rhythm')
+    return `${formatBonusDuration(result.elapsedMs)} · серия ${result.bestSeries ?? 0} · ${result.shots ? new Intl.NumberFormat('ru-RU', { maximumFractionDigits: 1 }).format((result.goals / result.shots) * 100) : 0}% · ${shots}`;
   if (skill === 'accuracy') {
-    const accuracy = result.shots > 0 ? Math.round(result.goals / result.shots * 100) : 0;
+    const accuracy = result.shots > 0 ? Math.round((result.goals / result.shots) * 100) : 0;
     return `${result.goals} из ${result.shots} (${accuracy}%) · ${formatBonusDuration(result.elapsedMs)}`;
   }
   if (skill === 'endurance')
-    return result.goals > 0 ? `${formatBonusDuration(result.elapsedMs / result.goals)}/гол · ${formatRussianCount(result.goals, 'шайба', 'шайбы', 'шайб')}` : '—';
+    return result.goals > 0
+      ? `${formatBonusDuration(result.elapsedMs / result.goals)}/гол · ${formatRussianCount(result.goals, 'шайба', 'шайбы', 'шайб')}`
+      : '—';
   return `${formatBonusDuration(result.elapsedMs)}${skill === 'marksmanship' ? ` · ${shots}` : ''}`;
 }
 
@@ -81,10 +86,12 @@ export function BonusRecordsModal({
   }[skill];
   const explanation = {
     speed: 'Время до прохождения. Чем быстрее, тем выше место.',
-    accuracy: 'Выше тот, у кого выше процент попадания. При равном проценте выше тот, кто справился быстрее',
+    accuracy:
+      'Выше тот, у кого выше процент попадания. При равном проценте выше тот, кто справился быстрее',
     marksmanship: 'Время до набора нужных очков. При равенстве сравниваем число бросков.',
     endurance: 'Среднее время на один гол. Чем меньше, тем выше место.',
-    rhythm: 'Быстрее набери нужный счёт. При равном времени: длиннее серия, выше точность, меньше бросков.',
+    rhythm:
+      'Быстрее набери нужный счёт. При равном времени: длиннее серия, выше точность, меньше бросков.',
     challenge: '',
   }[skill];
 
@@ -145,8 +152,20 @@ export function BonusRecordsModal({
         variant="experience-rating"
         resultHeading={skill === 'endurance' ? 'На гол' : 'Результат'}
         resultValue={(row) => {
-          const [primary,secondary] = formatBonusRecord(skill,row as unknown as BonusRecordPlayer).split(' · ');
-          return <><span>{primary}</span>{secondary && <span className="bonus-records-result__secondary">{skill==='accuracy' ? `за ${secondary}` : secondary}</span>}</>;
+          const [primary, secondary] = formatBonusRecord(
+            skill,
+            row as unknown as BonusRecordPlayer,
+          ).split(' · ');
+          return (
+            <>
+              <span>{primary}</span>
+              {secondary && (
+                <span className="bonus-records-result__secondary">
+                  {skill === 'accuracy' ? `за ${secondary}` : secondary}
+                </span>
+              )}
+            </>
+          );
         }}
         regularSource="head_to_head"
         dailyMetric={null}
@@ -186,12 +205,71 @@ export function BonusRecordsModal({
         {skillName} · {title}
       </p>
       <div className="bonus-records-modal__rewards">
-        <p>Улучшить личный рекорд – <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-star)' }} aria-label="10 звёзд"><Star size={14} fill="currentColor" aria-hidden="true" />10</span> и <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-experience)' }} aria-label="10 опыта"><TrendingUp size={14} aria-hidden="true" />10</span>.</p>
-        <p>Улучшить общий рекорд локации – <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-star)' }} aria-label="30 звёзд"><Star size={14} fill="currentColor" aria-hidden="true" />30</span> и <span className="bonus-records-modal__reward" style={{ color: 'var(--reward-experience)' }} aria-label="30 опыта"><TrendingUp size={14} aria-hidden="true" />30</span>.</p>
-        <p>Награда начисляется за каждое улучшение. Первый личный результат и повтор рекорда награды не дают. Первый результат в пустом рейтинге тоже без бонуса.</p>
+        <p>
+          Улучшить личный рекорд –{' '}
+          <span
+            className="bonus-records-modal__reward"
+            style={{ color: 'var(--reward-star)' }}
+            aria-label="10 звёзд"
+          >
+            <Star size={14} fill="currentColor" aria-hidden="true" />
+            10
+          </span>{' '}
+          и{' '}
+          <span
+            className="bonus-records-modal__reward"
+            style={{ color: 'var(--reward-experience)' }}
+            aria-label="10 опыта"
+          >
+            <TrendingUp size={14} aria-hidden="true" />
+            10
+          </span>
+          .
+        </p>
+        <p>
+          Улучшить общий рекорд локации –{' '}
+          <span
+            className="bonus-records-modal__reward"
+            style={{ color: 'var(--reward-star)' }}
+            aria-label="30 звёзд"
+          >
+            <Star size={14} fill="currentColor" aria-hidden="true" />
+            30
+          </span>{' '}
+          и{' '}
+          <span
+            className="bonus-records-modal__reward"
+            style={{ color: 'var(--reward-experience)' }}
+            aria-label="30 опыта"
+          >
+            <TrendingUp size={14} aria-hidden="true" />
+            30
+          </span>
+          .
+        </p>
+        <p>
+          Награда начисляется за каждое улучшение. Первый личный результат и повтор рекорда награды
+          не дают. Первый результат в пустом рейтинге тоже без бонуса.
+        </p>
       </div>
       <p className="modal-copy bonus-records-modal__explanation">{explanation}</p>
       <div className="experience-rating__viewport" ref={scrollRef}>
+        {(firstPage?.previousRecords?.length ?? 0) > 0 && (
+          <section aria-label="Твои прежние рекорды" className="bonus-records-previous">
+            <h3 className="modal-title">Твои прежние рекорды</h3>
+            <p className="modal-copy">
+              Условия локации изменились. Твои прежние рекорды сохранены. В текущем рейтинге
+              участвуют результаты по новым условиям.
+            </p>
+            {firstPage!.previousRecords!.map((record, index) => (
+              <p className="modal-copy" key={`${record.achievedAt}:${index}`}>
+                {formatBonusRecord(skill, record)}
+                {' · '}
+                {new Date(record.achievedAt).toLocaleDateString('ru-RU')}
+              </p>
+            ))}
+          </section>
+        )}
         {query.isLoading ? (
           <p className="experience-rating__state" role="status">
             Загружаем рейтинг…

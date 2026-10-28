@@ -4,10 +4,17 @@ import { observeCareerExperience } from './service.js';
 import { satisfiesTarget } from './stageProgress.js';
 
 const CUMULATIVE_STAGE_IDS = new Set([
-  'fans-support', 'career-goals', 'career-experience', 'career-streak',
-  'monthly-top-1', 'monthly-top-3',
-  'regular-season-champion', 'regular-season-medalist',
-  'playoff-semifinal', 'playoff-final', 'tournament-cup',
+  'fans-support',
+  'career-goals',
+  'career-experience',
+  'career-streak',
+  'monthly-top-1',
+  'monthly-top-3',
+  'regular-season-champion',
+  'regular-season-medalist',
+  'playoff-semifinal',
+  'playoff-final',
+  'tournament-cup',
 ]);
 
 interface ClaimableStageRow {
@@ -181,11 +188,33 @@ export async function claimCurrentAchievementStage(
     [userId, achievementId, stage.stage_number, now, CUMULATIVE_STAGE_IDS.has(achievementId)],
   );
   const openedStage = opened.rows[0];
+  const seriesKey = {
+    'hunter-streak': 'duel_win_streak',
+    'dangerous-host': 'duel_host_win_streak',
+    'dangerous-guest': 'duel_guest_win_streak',
+    'stable-student': 'training_40_of_50_streak',
+  }[achievementId];
+  if (openedStage !== undefined && seriesKey !== undefined) {
+    // Keep replay markers: a delayed delivery of the last result must not
+    // become the first win/training of the new stage.
+    await client.query(
+      `update achievement_progress
+      set state=jsonb_set(state,'{count}','0'::jsonb),updated_at=$3
+      where user_id=$1 and key=$2`,
+      [userId, seriesKey, now],
+    );
+  }
   if (openedStage !== undefined && satisfiesTarget(openedStage.progress, openedStage.target)) {
     await client.query(
       `update user_achievement_stages set completed_at = $4, completion_context = $5::jsonb
         where user_id = $1 and achievement_id = $2 and stage_number = $3`,
-      [userId, achievementId, openedStage.stage_number, now, JSON.stringify({ source: 'cumulative_carry' })],
+      [
+        userId,
+        achievementId,
+        openedStage.stage_number,
+        now,
+        JSON.stringify({ source: 'cumulative_carry' }),
+      ],
     );
   }
 

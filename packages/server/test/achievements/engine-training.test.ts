@@ -111,6 +111,76 @@ describe.skipIf(!hasIntegrationEnv)('training achievement evaluator', () => {
 
     await expect(completedIds(pool, userId)).resolves.toContain('ideal-day');
   });
+
+  it('does not count trainings separated by a missed day as consecutive days', async () => {
+    const userId = await createUser(pool);
+    for (const day of [1, 3, 5, 7, 9]) {
+      const dayDate = `2026-05-${String(day).padStart(2, '0')}`;
+      const trainingSessionId = await seedClosedTraining(pool, {
+        userId,
+        dayDate,
+        results: makeResults(100, 80),
+      });
+      await evaluateTrainingClosedAchievements(pool, {
+        userId,
+        trainingSessionId,
+        dayDate,
+        shotsLimit: 100,
+      });
+    }
+    await expect(completedStageIds(pool, userId)).resolves.not.toContain('stable-student');
+    await expect(trainingStreakProgress(pool, userId)).resolves.toMatchObject({ count: 1 });
+  });
+
+  it('does not grant first-training or prepare a duel bonus from an unfinished training', async () => {
+    const userId = await createUser(pool);
+    const trainingSessionId = await seedClosedTraining(pool, {
+      userId,
+      dayDate: '2026-05-31',
+      results: makeResults(1, 1),
+    });
+    await evaluateTrainingClosedAchievements(pool, {
+      userId,
+      trainingSessionId,
+      dayDate: '2026-05-31',
+      shotsLimit: 100,
+    });
+    await expect(completedIds(pool, userId)).resolves.not.toContain('first-training');
+    expect(
+      (
+        await pool.query(
+          "select 1 from achievement_progress where user_id=$1 and key='training_before_duel_pending'",
+          [userId],
+        )
+      ).rowCount,
+    ).toBe(0);
+  });
+
+  it('rebuilds an existing training counter using only the current stage days', async () => {
+    const userId = await createUser(pool);
+    await pool.query(
+      `insert into user_achievement_stages(user_id,achievement_id,stage_number,opened_at)
+      values($1,'stable-student',2,now()-interval '1 minute')`,
+      [userId],
+    );
+    await pool.query(
+      `insert into achievement_progress(user_id,key,state) values($1,'training_40_of_50_streak','{"count":9,"lastDayDate":"2026-05-30"}')`,
+      [userId],
+    );
+    const trainingSessionId = await seedClosedTraining(pool, {
+      userId,
+      dayDate: '2026-05-31',
+      results: makeResults(100, 80),
+    });
+    await evaluateTrainingClosedAchievements(pool, {
+      userId,
+      trainingSessionId,
+      dayDate: '2026-05-31',
+      shotsLimit: 100,
+    });
+    await expect(trainingStreakProgress(pool, userId)).resolves.toMatchObject({ count: 1 });
+    await expect(completedStageIds(pool, userId)).resolves.not.toContain('stable-student');
+  });
 });
 
 function makeResults(total: number, goals: number): ShotResult[] {

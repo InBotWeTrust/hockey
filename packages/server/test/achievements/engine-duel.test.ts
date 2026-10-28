@@ -160,6 +160,116 @@ describe.skipIf(!hasIntegrationEnv)('duel achievement evaluator', () => {
     await expect(completedStageIds(pool, winnerUserId)).resolves.toEqual([]);
     await expect(completedIds(pool, winnerUserId)).resolves.toEqual([]);
   });
+
+  it("counts a losing player's personal scoring achievement", async () => {
+    const winnerUserId = await createUser(pool, 100);
+    const loserUserId = await createUser(pool, 100);
+    const matchId = await seedSettledDuel(pool, {
+      winnerUserId,
+      loserUserId,
+      winnerSide: 'challenger',
+      goalsByPeriod: [[60, 55]],
+      completedAt: ['2026-05-31T12:01Z', '2026-05-31T12:02Z'],
+      loadoutKinds: [],
+      duelKind: 'express',
+      winnerNonGoals: 0,
+    });
+    await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
+    await expect(completedStageIds(pool, loserUserId)).resolves.toContain('express-sniper');
+    await expect(completedStageIds(pool, loserUserId)).resolves.not.toContain('no-error-express');
+  });
+
+  it('does not increment a win series when an earlier settled match is replayed', async () => {
+    const winnerUserId = await createUser(pool, 100);
+    const loserUserId = await createUser(pool, 100);
+    const matches = [];
+    for (let i = 0; i < 2; i++) {
+      const matchId = await seedSettledDuel(pool, {
+        winnerUserId,
+        loserUserId,
+        winnerSide: 'challenger',
+        goalsByPeriod: [[10, 9]],
+        completedAt: ['2026-05-31T12:01Z', '2026-05-31T12:02Z'],
+        loadoutKinds: [],
+      });
+      matches.push(matchId);
+      await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
+    }
+    await evaluateDuelSettledAchievements(pool, { matchId: matches[0]!, winnerUserId });
+    await expect(progress(pool, winnerUserId, 'duel_win_streak')).resolves.toMatchObject({
+      count: 2,
+    });
+  });
+
+  it('evaluates concurrent deliveries of one match only once', async () => {
+    const winnerUserId = await createUser(pool, 100);
+    const loserUserId = await createUser(pool, 100);
+    const matchId = await seedSettledDuel(pool, {
+      winnerUserId,
+      loserUserId,
+      winnerSide: 'challenger',
+      goalsByPeriod: [[10, 9]],
+      completedAt: ['2026-05-31T12:01Z', '2026-05-31T12:02Z'],
+      loadoutKinds: [],
+    });
+    await Promise.all([
+      evaluateDuelSettledAchievements(pool, { matchId, winnerUserId }),
+      evaluateDuelSettledAchievements(pool, { matchId, winnerUserId }),
+    ]);
+    await expect(progress(pool, winnerUserId, 'duel_win_streak')).resolves.toMatchObject({
+      count: 1,
+    });
+    expect(
+      (
+        await pool.query(
+          "select count(*)::int as n from event_log where type='duel_achievements_evaluated' and payload->>'match_id'=$1",
+          [matchId],
+        )
+      ).rows[0].n,
+    ).toBe(1);
+  });
+
+  it('does not carry an existing old win counter into an already opened second stage', async () => {
+    const winnerUserId = await createUser(pool, 100);
+    const loserUserId = await createUser(pool, 100);
+    await pool.query(
+      `insert into user_achievement_stages(user_id,achievement_id,stage_number,opened_at)
+      values($1,'hunter-streak',2,now()-interval '1 minute')`,
+      [winnerUserId],
+    );
+    await pool.query(
+      `insert into achievement_progress(user_id,key,state) values($1,'duel_win_streak','{"count":5,"lastMatchId":"old-match"}')`,
+      [winnerUserId],
+    );
+    const matchId = await seedSettledDuel(pool, {
+      winnerUserId,
+      loserUserId,
+      winnerSide: 'challenger',
+      goalsByPeriod: [[10, 9]],
+      completedAt: ['2026-05-31T12:01Z', '2026-05-31T12:02Z'],
+      loadoutKinds: [],
+    });
+    await evaluateDuelSettledAchievements(pool, { matchId, winnerUserId });
+    await expect(progress(pool, winnerUserId, 'duel_win_streak')).resolves.toMatchObject({
+      count: 1,
+    });
+    await expect(completedStageIds(pool, winnerUserId)).resolves.not.toContain('hunter-streak');
+  });
+
+  it('does not grant revenge when another drawn duel happened after the loss', async () => {
+    const player=await createUser(pool,100);
+    const rival=await createUser(pool,100);
+    const third=await createUser(pool,100);
+    const fixture={winnerSide:'challenger' as const,goalsByPeriod:[[10,9]] as Array<[number,number]>,completedAt:['2026-05-31T12:01Z','2026-05-31T12:02Z'] as [string,string],loadoutKinds:[]};
+    const loss=await seedSettledDuel(pool,{...fixture,winnerUserId:rival,loserUserId:player});
+    await evaluateDuelSettledAchievements(pool,{matchId:loss,winnerUserId:rival});
+    const draw=await seedSettledDuel(pool,{...fixture,winnerUserId:third,loserUserId:player});
+    await pool.query("update amateur_duel_match set winner_user_id=null,outcome='draw' where id=$1",[draw]);
+    await evaluateDuelSettledAchievements(pool,{matchId:draw,winnerUserId:null});
+    const win=await seedSettledDuel(pool,{...fixture,winnerUserId:player,loserUserId:rival});
+    await evaluateDuelSettledAchievements(pool,{matchId:win,winnerUserId:player});
+    await expect(completedIds(pool,player)).resolves.not.toContain('revenge');
+  });
 });
 
 async function createUser(pool: Pool, experience: number): Promise<string> {

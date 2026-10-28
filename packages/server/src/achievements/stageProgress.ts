@@ -25,9 +25,12 @@ export function mergeAchievementStageProgress(
   const merged = { ...stored };
   for (const [key, value] of Object.entries(observed)) {
     const previous = merged[key];
-    merged[key] = typeof value === 'number' && typeof previous === 'number'
-      ? Math.max(previous, value)
-      : value;
+    merged[key] =
+      typeof value === 'number' && typeof previous === 'number'
+        ? key.startsWith('maximum')
+          ? Math.min(previous, value)
+          : Math.max(previous, value)
+        : value;
   }
   return merged;
 }
@@ -39,9 +42,10 @@ function incrementAchievementStageProgress(
   const merged = { ...stored };
   for (const [key, value] of Object.entries(observed)) {
     const previous = merged[key];
-    merged[key] = typeof value === 'number'
-      ? Number(typeof previous === 'number' ? previous : 0) + value
-      : value;
+    merged[key] =
+      typeof value === 'number'
+        ? Number(typeof previous === 'number' ? previous : 0) + value
+        : value;
   }
   return merged;
 }
@@ -143,10 +147,16 @@ export async function observeAchievementStage(
     );
     if (event.rowCount === 0) return { completed: false, stageNumber: active.stage_number };
 
-    const displayProgress = observation.progressMode === 'increment'
-      ? incrementAchievementStageProgress(active.progress ?? {}, observation.progress)
-      : mergeAchievementStageProgress(active.progress ?? {}, observation.progress);
-    const completed = satisfiesTarget(displayProgress, active.target);
+    const displayProgress =
+      observation.progressMode === 'increment'
+        ? incrementAchievementStageProgress(active.progress ?? {}, observation.progress)
+        : mergeAchievementStageProgress(active.progress ?? {}, observation.progress);
+    // A single game must satisfy all of its qualifiers. Independent maxima
+    // from different games are useful for display, but are not a valid result.
+    const completed = satisfiesTarget(
+      observation.progressMode === 'increment' ? displayProgress : observation.progress,
+      active.target,
+    );
     await client.query(
       `update user_achievement_stages
           set progress = $4::jsonb,
