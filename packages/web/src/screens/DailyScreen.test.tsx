@@ -650,6 +650,85 @@ describe('DailyScreen', () => {
     expect(sample!() - before).toBe(750);
   });
 
+  it('waits for all queued shots before leaving or explicitly finishing an expired period', async () => {
+    let props: PlayViewModule.PlayViewProps<AmateurDuelMatchState> | undefined;
+    vi.spyOn(PlayViewModule,'PlayView').mockImplementation(value=>{
+      props=value as PlayViewModule.PlayViewProps<AmateurDuelMatchState>;
+      return <div data-testid="queued-period-end"/>;
+    });
+    const now=Date.now();
+    const snapshot: AmateurDuelMatchState={...settledDuelMatch,status:'active',outcome:null,settled_at:null,state_revision:0,
+      rules:{...settledDuelMatch.rules,duelKind:'marathon',scoredClockVersion:2,shotResultPauseMs:1000},
+      server_now:new Date(now).toISOString(),starts_at:new Date(now-1000).toISOString(),ends_at:new Date(now+600000).toISOString(),
+      period_started_at:new Date(now-1000).toISOString(),period_ends_at:new Date(now+239000).toISOString(),
+      current_period_shots:0,current_period_goals:0,
+      me:{...settledDuelMatch.me,state:'period_active',current_period:1,current_period_shots:0,current_period_goals:0,
+        clock:{periodElapsedMs:1000,totalActiveMs:1000,remainingMs:239000,running:true}}};
+    const fetch=vi.spyOn(globalThis,'fetch').mockImplementation(async input=>{
+      if(String(input).endsWith('/period/finish'))return new Promise<Response>(()=>{});
+      return new Response(JSON.stringify(String(input).includes('/matches/')?{match:snapshot}:
+        {sticks:[],skates:[],nutrition:[],inventory:[],items:[]}),{status:200,headers:{'content-type':'application/json'}});
+    });
+    renderWith(['/?view=amateur&match=match-1&play=1']);await screen.findByTestId('queued-period-end');
+    act(()=>props!.onShotSubmissionCountChange?.(2));
+    act(()=>useAmateurDuelStore.getState().applyState({...snapshot,state_revision:1,
+      period_ends_at:new Date(now-1).toISOString(),
+      me:{...snapshot.me,clock:{periodElapsedMs:240000,totalActiveMs:240000,remainingMs:0,running:false}}}));
+    expect(props!.active).toBe(true);
+    expect(fetch.mock.calls.some(([input])=>String(input).endsWith('/period/finish'))).toBe(false);
+  });
+
+  it('keeps the second Marathon pause when the first queued shot is acknowledged', async () => {
+    let props: PlayViewModule.PlayViewProps<AmateurDuelMatchState> | undefined;
+    vi.spyOn(PlayViewModule,'PlayView').mockImplementation(value=>{
+      props=value as PlayViewModule.PlayViewProps<AmateurDuelMatchState>;
+      return <div data-testid="queued-marathon"/>;
+    });
+    let monotonic=1000;vi.spyOn(performance,'now').mockImplementation(()=>monotonic);
+    const now=Date.now();
+    const snapshot: AmateurDuelMatchState={...settledDuelMatch,status:'active',outcome:null,settled_at:null,state_revision:0,
+      rules:{...settledDuelMatch.rules,duelKind:'marathon',scoredClockVersion:2,shotResultPauseMs:1000,marathonWindowMs:4000},
+      server_now:new Date(now).toISOString(),starts_at:new Date(now-1000).toISOString(),ends_at:new Date(now+600000).toISOString(),
+      period_started_at:new Date(now-2000).toISOString(),period_ends_at:new Date(now+238000).toISOString(),
+      current_period_shots:0,current_period_goals:0,
+      me:{...settledDuelMatch.me,state:'period_active',current_period:1,current_period_shots:0,current_period_goals:0,
+        shots_taken:0,goals:0,result_pause_ends_at:null,
+        clock:{periodElapsedMs:2000,totalActiveMs:2000,remainingMs:238000,running:true}}};
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(
+      String(input).includes('/matches/')?{match:snapshot}:{sticks:[],skates:[],nutrition:[],inventory:[],items:[]}),
+      {status:200,headers:{'content-type':'application/json'}}));
+    renderWith(['/?view=amateur&match=match-1&play=1']);await screen.findByTestId('queued-marathon');
+    const context=(index:number)=>({shotIndex:index,input:{tapTime:index*2000},flightMs:416,result:{type:'goal'}} as
+      Parameters<NonNullable<PlayViewModule.PlayViewProps<AmateurDuelMatchState>['onShotResolved']>>[0]);
+    act(()=>{props!.onShotResolved!(context(1));props!.optimisticAddShot('goal');});
+    const firstStart=props!.resultPauseStartsAt!;
+    monotonic+=2000;
+    act(()=>{props!.onShotResolved!(context(2));props!.optimisticAddShot('goal');});
+    const secondStart=props!.resultPauseStartsAt!;expect(secondStart).not.toBe(firstStart);
+    act(()=>useAmateurDuelStore.getState().applyState({...snapshot,state_revision:1,current_period_shots:1,current_period_goals:1,
+      me:{...snapshot.me,current_period_shots:1,current_period_goals:1,shots_taken:1,goals:1,
+        result_pause_starts_at:firstStart,result_pause_ends_at:new Date(Date.parse(firstStart)+1000).toISOString()}}));
+    expect(props!.resultPauseStartsAt).toBe(secondStart);
+  });
+
+  it.each(['express','express_plus','classic','sniper','marathon','rhythm'] as const)(
+    'enables the bounded shot pipeline for %s duels', async duelKind => {
+      vi.spyOn(PlayViewModule, 'PlayView').mockImplementation(props =>
+        <div data-testid="duel-pipeline-capacity">{props.maxPendingShots}</div>);
+      const now=Date.now();
+      const snapshot: AmateurDuelMatchState={...settledDuelMatch,status:'active',outcome:null,settled_at:null,
+        rules:{...settledDuelMatch.rules,duelKind},server_now:new Date(now).toISOString(),
+        starts_at:new Date(now-1000).toISOString(),ends_at:new Date(now+600000).toISOString(),
+        period_started_at:new Date(now-1000).toISOString(),period_ends_at:new Date(now+179000).toISOString(),
+        me:{...settledDuelMatch.me,state:'period_active',current_period:1}};
+      vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(
+        String(input).includes('/matches/')?{match:snapshot}:{sticks:[],skates:[],nutrition:[],inventory:[],items:[]}),
+        {status:200,headers:{'content-type':'application/json'}}));
+      renderWith(['/?view=amateur&match=match-1&play=1']);
+      expect(await screen.findByTestId('duel-pipeline-capacity')).toHaveTextContent('2');
+    },
+  );
+
   it('keeps Express playable after an older shot acknowledgement arrives behind a newer poll', async () => {
     const epoch = Date.now();
     const iso = (ms: number) => new Date(epoch + ms).toISOString();

@@ -1,3 +1,4 @@
+import { mergePendingRhythmShots } from '../components/duel/pendingRhythmShots.js';
 import { useAmateurAccess } from "../amateur/useAmateurAccess.js";
 import { SectionLoading } from "../components/SectionLoading.js";
 import { SniperBreakdown } from "../components/duel/SniperBreakdown.js";
@@ -3366,6 +3367,7 @@ export function AmateurDuelPlayView({
   const [shotRequestActive, setShotRequestActive] = useState(false);
   const [shotAnimationActive, setShotAnimationActive] = useState(false);
   const rhythmPendingShotRef=useRef<{index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
+  const rhythmLocalShotsRef = useRef<Array<NonNullable<AmateurDuelMatchState['me']['rhythm_shots']>[number] & {index:number}>>([]);
   const [rhythmNoticeExpiry,setRhythmNoticeExpiry]=useState<{matchId:string;index:number;goalTravel:number;travel:number;boardContacts?:number}|null>(null);
   const [rhythmVisibleShot,setRhythmVisibleShot]=useState<{index:number;travel:number;boardContacts?:number;goal:boolean}|null>(null);
   const marathonFrozenMsRef = useRef<number | null>(null);
@@ -3385,6 +3387,7 @@ export function AmateurDuelPlayView({
   useEffect(() => {
     setLocalShotClock(null);
     rhythmPendingShotRef.current=null;
+    rhythmLocalShotsRef.current=[];
     setRhythmVisibleShot(null);
     setSniperScoreParts(null);
     sniperPendingPartsRef.current = null;
@@ -3720,7 +3723,7 @@ export function AmateurDuelPlayView({
 
   const fightNow=Date.parse(match.server_now)+Math.max(0,performance.now()-(match.received_at_performance_ms??performance.now()));
   const localPausePending = localShotClock !== null &&
-    (match.me.result_pause_ends_at ?? null) === localShotClock.previousEndsAt;
+    match.me.current_period_shots < localShotClock.shotIndex;
   const pauseStartsAt = localPausePending ? localShotClock.startsAt : match.me.result_pause_starts_at;
   const pauseEndsAt = localPausePending ? localShotClock.endsAt : match.me.result_pause_ends_at;
   const fightClockPaused = !!match.me.fight_aid_until || (!!match.fight_paused_at && match.fight?.status !== 'offered');
@@ -3757,11 +3760,13 @@ export function AmateurDuelPlayView({
     : Math.min(windowMs, Math.max(0, localPausePending && localShotClock.goal && fightNow >= resultPauseStart
       ? localShotClock.goalAtMs + windowMs - ((match.me.clock?.periodElapsedMs ?? 0) + scoredClockDelta())
       : authoritativeMarathonRemainingMs));
-  const rhythmPauses = mergeRhythmFlightPauses(match.me.rhythm_shots ?? [], localShotClock ? [{tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs}] : []);
-  const rhythmNoticeShots=(match.me.rhythm_shots??[]).slice(0,rhythmVisibleShot?.index);
-  if(rhythmVisibleShot && rhythmNoticeShots.length<rhythmVisibleShot.index)
-    rhythmNoticeShots.push({tapTime:0,flightMs:0,travel:rhythmVisibleShot.travel,boardContacts:rhythmVisibleShot.boardContacts??0,goal:rhythmVisibleShot.goal});
-  const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive &&
+  const rhythmLocalShots = rhythmLocalShotsRef.current.filter(shot =>
+    shot.index > (match.me.rhythm_shots?.length ?? 0) && shot.index <= match.current_period_shots);
+  const rhythmPauses = mergeRhythmFlightPauses(match.me.rhythm_shots ?? [], rhythmLocalShots,
+    localShotClock ? [{tapTime:localShotClock.sceneTapTime,flightMs:localShotClock.flightMs}] : []);
+  const rhythmNoticeShots=mergePendingRhythmShots(match.me.rhythm_shots??[],rhythmLocalShots,
+    Math.min(match.current_period_shots,rhythmVisibleShot?.index ?? (match.me.rhythm_shots?.length??0)));
+  const periodLocallyExpired = match.me.state === 'period_active' && !shotAnimationActive && !shotRequestActive &&
     (pausedScoredClock ? scoredRemainingMs <= 0 : periodEndsAt !== undefined && fightNow >= periodEndsAt);
   const visibleMatch = periodLocallyExpired
     ? duelExpiredPeriodPresentation(match, periodEndsAt ?? fightNow)
@@ -4049,6 +4054,9 @@ export function AmateurDuelPlayView({
                     periodEndsAt)
               : undefined
           }
+          maxPendingShots={2}
+          onShotSubmissionAbandoned={index => useAmateurDuelStore.getState().discardPendingShots(match.id, match.me.current_period, index)}
+          onShotSubmissionCountChange={count => setShotRequestActive(count > 0)}
           shotResolver={
             match.rules.duelKind === 'sniper' && match.rules.sniperScoring
               ? (context) => {
@@ -4112,6 +4120,10 @@ export function AmateurDuelPlayView({
               previousWindowEndsAt,
               frozenWindowMs: Math.min(windowMs, Math.max(0, frozenWindowEndsAt - startsAt))});
             if (rhythmSampler) {
+              const local = {index:context.shotIndex,tapTime:context.input.tapTime,flightMs,
+                travel:rhythmSampler.travelAt(context.input.tapTime,rhythmPauses),
+                boardContacts:rhythmSampler.boardContactsAt(context.input.tapTime,rhythmPauses),goal:context.result.type==='goal'};
+              rhythmLocalShotsRef.current = [...rhythmLocalShots.filter(shot=>shot.index!==context.shotIndex),local];
               rhythmPendingShotRef.current={index:context.shotIndex,
                 travel:rhythmSampler.travelAt(context.input.tapTime,rhythmPauses),boardContacts:rhythmSampler.boardContactsAt(context.input.tapTime,rhythmPauses),
                 goal:context.result.type==='goal'};
@@ -4120,16 +4132,16 @@ export function AmateurDuelPlayView({
             return null;
           }}
           submitShot={async (args) => {
-            setShotRequestActive(true);
             const requestArgs = match.rules.duelKind === 'rhythm'
               ? {...args, input:{...args.input, periodTapTime:args.input.tapTime + (args.shotIndex - 1) * (match.rules.shotResultPauseMs ?? 1000)}}
               : args;
-            const result = await submitShot(requestArgs).finally(() => setShotRequestActive(false));
+            const result = await submitShot(requestArgs);
             if (pausedScoredClock) {
-              if (result === null) setLocalShotClock(null);
-              else setLocalShotClock((previous) => previous ? {...previous, goal: result.serverResult === 'goal'} : null);
+              setLocalShotClock(previous => previous?.shotIndex !== args.shotIndex ? previous
+                : result === null ? null : {...previous,goal:result.serverResult === 'goal'});
             }
-            if (match.rules.duelKind === 'sniper' && result?.isCurrent()) {
+            if (match.rules.duelKind === 'sniper' && result?.isCurrent() &&
+                useAmateurDuelStore.getState().match?.current_period_shots === args.shotIndex) {
               const points = result.awardedPoints;
               sniperPendingPartsRef.current = result.serverResult === 'goal' && (points ?? 0) > 0
                 ? [{ points: points!, label: sniperPendingPartsRef.current?.[0]?.label ?? 'Гол' }] : null;

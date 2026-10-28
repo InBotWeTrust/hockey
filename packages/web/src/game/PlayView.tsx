@@ -1,3 +1,4 @@
+import { ShotSubmissionQueue } from './shotSubmissionQueue.js';
 import { formatMs } from './formatTime.js';
 export { formatMs } from './formatTime.js';
 import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
@@ -296,6 +297,9 @@ export interface PlayViewProps<TState> {
   scoreboardShotsTotal?: number | undefined;
   shots: number;
   shotIndexBase?: number | undefined;
+  maxPendingShots?: 1 | 2;
+  onShotSubmissionCountChange?: ((pending: number) => void) | undefined;
+  onShotSubmissionAbandoned?: ((shotIndex: number) => void) | undefined;
   sceneShotIndex?: number | undefined;
   shotsTotal?: number | undefined;
   timer?: string | undefined;
@@ -616,6 +620,9 @@ export function PlayView<TState>({
   scoreboardShotsTotal,
   shots,
   shotIndexBase,
+  maxPendingShots = 1,
+  onShotSubmissionCountChange,
+  onShotSubmissionAbandoned,
   sceneShotIndex,
   shotsTotal,
   timer,
@@ -845,7 +852,6 @@ export function PlayView<TState>({
   const initializedRef = useRef(false);
   const [isShowingResult, setIsShowingResult] = useState(false);
   const [isShotInProgress, setIsShotInProgress] = useState(false);
-  const [isShotSubmitPending, setIsShotSubmitPending] = useState(false);
   const [isInactiveActionPending, setIsInactiveActionPending] = useState(false);
   const [soundToastVisible, setSoundToastVisible] = useState(false);
   const soundToastTimerRef = useRef<number | null>(null);
@@ -908,6 +914,33 @@ export function PlayView<TState>({
   const shotAnimationInProgressRef = useRef(false);
   const shotContactSceneTimeRef = useRef<number | null>(null);
   const shotSubmitPendingRef = useRef(false);
+  const [pendingShotCount, setPendingShotCount] = useState(0);
+  const submissionCountChangedRef = useRef(onShotSubmissionCountChange);
+  submissionCountChangedRef.current = onShotSubmissionCountChange;
+  const lastSubmittedIndexRef = useRef<number | null>(null);
+  const visualShotOwnerRef = useRef(0);
+  const submissionQueueRef = useRef<ShotSubmissionQueue | null>(null);
+  if (!submissionQueueRef.current) submissionQueueRef.current = new ShotSubmissionQueue(count => {
+    shotSubmitPendingRef.current = count > 0;
+    if (count === 0) lastSubmittedIndexRef.current = null;
+    if (mountedRef.current) {
+      setPendingShotCount(count);
+      submissionCountChangedRef.current?.(count);
+    }
+  });
+  const submissionSessionKey = `${seed ?? ''}:${periodNumber}`;
+  const submissionSessionRef = useRef(submissionSessionKey);
+  useLayoutEffect(() => {
+    submissionSessionRef.current = submissionSessionKey;
+    visualShotOwnerRef.current++;
+    submissionQueueRef.current!.cancel();
+    return () => {
+      visualShotOwnerRef.current++;
+      if (submissionQueueRef.current!.pending) onShotSubmissionAbandoned?.(0);
+      submissionQueueRef.current!.cancel();
+    };
+  }, [submissionSessionKey]);
+
   const resultVisualCompleteRef = useRef(false);
   const heldResultRef = useRef(false);
   const pendingResultCloseRef = useRef<(() => void) | null>(null);
@@ -1835,12 +1868,16 @@ export function PlayView<TState>({
     const cur = sessionRef.current;
     if (!loop || !puck || !goalie) return;
     if (puck.isFlying() || puck.isHeld()) return;
-    if (shotSubmitPendingRef.current) return;
+    if (submissionQueueRef.current!.pending >= maxPendingShots) return;
     if (!cur.active || expiryCheckRef.current()) return;
     if (!cur.seed) return;
     if (typeof cur.shotsTotal === 'number' && cur.shots >= cur.shotsTotal) return;
 
-    const shotIndex = cur.shotIndexBase + 1;
+    const shotIndex = Math.max(cur.shotIndexBase, lastSubmittedIndexRef.current ?? 0) + 1;
+    const owner = ++visualShotOwnerRef.current;
+    const submissionSession = submissionSessionRef.current;
+    const ownsSession = () => mountedRef.current && submissionSessionRef.current === submissionSession;
+    const ownsVisual = () => ownsSession() && visualShotOwnerRef.current === owner;
     const goalieCfg = cur.goalieConfig ?? (cur.goalieId ? getGoalie(cur.goalieId) : null);
     if (!goalieCfg) return;
     const overrides = speedsRef.current;
@@ -1980,12 +2017,11 @@ export function PlayView<TState>({
     optimisticAddShot(result.type);
     authoritativeResultRef.current = null;
     authoritativePresentationRef.current = undefined;
-    shotSubmitPendingRef.current = true;
+    lastSubmittedIndexRef.current = shotIndex;
     shotAnimationInProgressRef.current = true;
     resultVisualCompleteRef.current = false;
     pendingResultCloseRef.current = null;
     setIsShotInProgress(true);
-    setIsShotSubmitPending(true);
     pendingMidShotApplyRef.current = null;
 
     // The scene reaches contact even if the outcome timer is delayed by a slow frame.
@@ -2120,14 +2156,13 @@ export function PlayView<TState>({
       }
     }, visualFlightMs + visualPauseMs);
 
-    void submitShot({
-      shotIndex,
-      input,
-      claimedResult: result.type,
-    })
+    void submissionQueueRef.current!.enqueue(() => ownsSession() && sessionRef.current.active
+      ? submitShot({shotIndex, input, claimedResult: result.type})
+      : Promise.resolve(null))
       .then((res) => {
-        if (!mountedRef.current) return;
+        if (!ownsSession()) return;
         if (res === null) {
+          onShotSubmissionAbandoned?.(shotIndex);
           if (shotAnimationInProgressRef.current) {
             pendingClockRebaseRef.current = true;
           } else {
@@ -2135,7 +2170,7 @@ export function PlayView<TState>({
           }
           return;
         }
-        if (resultCopy) {
+        if (ownsVisual() && resultCopy) {
           const authoritativeDisplayKind = reconcilePuckResultDisplayKind(
             displayKind,
             res.serverResult,
@@ -2143,7 +2178,7 @@ export function PlayView<TState>({
           authoritativeResultRef.current = authoritativeDisplayKind;
           setResultDisplayKind(authoritativeDisplayKind);
         }
-        if (res.resultPresentation !== undefined) {
+        if (ownsVisual() && res.resultPresentation !== undefined) {
           authoritativePresentationRef.current = res.resultPresentation;
           setResultPresentation(res.resultPresentation);
         }
@@ -2158,16 +2193,16 @@ export function PlayView<TState>({
         applyNextState();
       })
       .catch((error: unknown) => {
-        if (!mountedRef.current) return;
+        if (!ownsSession()) return;
         onSubmitError?.(error);
       })
       .finally(() => {
-        if (!mountedRef.current) return;
-        shotSubmitPendingRef.current = false;
-        setIsShotSubmitPending(false);
-        pendingResultCloseRef.current?.();
+        if (!ownsSession()) return;
+        if (!shotSubmitPendingRef.current) pendingResultCloseRef.current?.();
       });
   }, [
+    onShotSubmissionAbandoned,
+    maxPendingShots,
     separatePeriodClock,
     getPeriodElapsedMs,
     applyShotStateAtContact,
@@ -2358,7 +2393,7 @@ export function PlayView<TState>({
     (suppressedByModal && !inactiveAction) ||
     isInactiveActionPending ||
     isShotInProgress ||
-    isShotSubmitPending ||
+    (pendingShotCount >= maxPendingShots) ||
     isShowingResult ||
     periodExpiredRef.current || (!active && !inactiveAction) ||
     isDuelShotBlocked ||
@@ -2625,7 +2660,8 @@ export function PlayView<TState>({
             fontSize: 16,
           }}
         >
-          {effectiveShotButtonLabel}
+          {maxPendingShots > 1 && pendingShotCount >= maxPendingShots && !isShotInProgress && !isShowingResult
+            ? 'СИНХРОНИЗАЦИЯ…' : effectiveShotButtonLabel}
         </button>}
         {hideSoundAction ? (
           <span aria-hidden="true" />
