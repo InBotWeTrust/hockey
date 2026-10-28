@@ -100,7 +100,8 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
     });
     const tie = await attempt(uid);
     expect(await settle(tie, 10000)).toMatchObject({ stars: 0 });
-    const balancesBefore = (await pool.query('select xp,experience from users where id=$1', [uid])).rows[0];
+    const balancesBefore = (await pool.query('select xp,experience from users where id=$1', [uid]))
+      .rows[0];
     const better = await attempt(uid);
     expect(await settle(better, 9000)).toMatchObject({
       stars: 40,
@@ -108,7 +109,8 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
       personalImproved: true,
       globalImproved: true,
     });
-    const balancesAfter = (await pool.query('select xp,experience from users where id=$1', [uid])).rows[0];
+    const balancesAfter = (await pool.query('select xp,experience from users where id=$1', [uid]))
+      .rows[0];
     expect(Number(balancesAfter.xp) - Number(balancesBefore.xp)).toBe(40);
     expect(Number(balancesAfter.experience) - Number(balancesBefore.experience)).toBe(40);
     const again = await attempt(uid);
@@ -182,6 +184,38 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
       client.release();
     }
   });
+  it('returns the player their previous records separately after a rules change', async () => {
+    const uid = await user('previous-rules');
+    const old = await attempt(uid);
+    await settle(old, 12345);
+    const original = (await pool.query('select period_rules from bonus_game where id=$1', [gameId]))
+      .rows[0].period_rules;
+    await pool.query(
+      `update bonus_game set period_rules=jsonb_set(period_rules,'{0,durationMs}',to_jsonb((period_rules->0->>'durationMs')::int+1000)) where id=$1`,
+      [gameId],
+    );
+    try {
+      const rating = await listBonusRecords(pool, uid, gameId, 0);
+      expect(rating.currentUser).toBeNull();
+      expect(rating.rows.some((row) => row.userId === uid)).toBe(false);
+      expect(rating).toMatchObject({
+        previousRecords: [
+          { elapsedMs: 12345, shots: 10, goals: 5, points: 0, achievedAt: now.toISOString() },
+        ],
+      });
+      const other = await user('other-previous-rules');
+      await pool.query(
+        `insert into user_bonus_game_completion(user_id,bonus_game_id,attempt_id,reward_snapshot) values($1,$2,$3,'{}')`,
+        [other, gameId, old.id],
+      );
+      expect(await listBonusRecords(pool, other, gameId, 0)).toMatchObject({ previousRecords: [] });
+    } finally {
+      await pool.query('update bonus_game set period_rules=$2::jsonb where id=$1', [
+        gameId,
+        JSON.stringify(original),
+      ]);
+    }
+  });
   it('pages only the top 100 and returns the user below the cutoff separately', async () => {
     for (let i = 0; i < 105; i++) {
       const uid = await user(`page-${i}`);
@@ -202,23 +236,37 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
     expect((await listBonusRecords(pool, uid, gameId, 99)).rows).toHaveLength(1);
   });
   it('settles and ranks accuracy by percentage before time, including equal fractions', async () => {
-    const previousGame=gameId;
-    gameId=(await pool.query("select id from bonus_game where skill_code='accuracy' and status='active' order by sort_order limit 1")).rows[0].id;
-    async function counted(uid:string,goals:number,shots:number) {
-      const a=await attempt(uid);
-      return (await pool.query<BonusGameAttemptRow>('update bonus_game_attempt set goals=$2,shots_taken=$3 where id=$1 returning *',[a.id,goals,shots])).rows[0]!;
+    const previousGame = gameId;
+    gameId = (
+      await pool.query(
+        "select id from bonus_game where skill_code='accuracy' and status='active' order by sort_order limit 1",
+      )
+    ).rows[0].id;
+    async function counted(uid: string, goals: number, shots: number) {
+      const a = await attempt(uid);
+      return (
+        await pool.query<BonusGameAttemptRow>(
+          'update bonus_game_attempt set goals=$2,shots_taken=$3 where id=$1 returning *',
+          [a.id, goals, shots],
+        )
+      ).rows[0]!;
     }
     try {
-      const a=await user('percent-a');const b=await user('percent-b');const c=await user('percent-c');const d=await user('percent-d');
-      expect(await settle(await counted(a,20,20),20000)).toMatchObject({stars:0,place:1});
-      expect(await settle(await counted(b,10,10),30000)).toMatchObject({stars:0,place:2});
-      expect(await settle(await counted(c,9,10),10000)).toMatchObject({stars:0,place:3});
-      expect(await settle(await counted(b,10,10),10000)).toMatchObject({stars:40,place:1});
-      expect(await settle(await counted(d,1,1),10000)).toMatchObject({stars:0,place:1});
-      const rating=await listBonusRecords(pool,c,gameId,0);
-      expect(rating.rows.map(row=>row.place)).toEqual([1,1,3,4]);
-      expect(rating.rows[2].userId).toBe(a);expect(rating.rows[3].userId).toBe(c);
-    } finally {gameId=previousGame;}
+      const a = await user('percent-a');
+      const b = await user('percent-b');
+      const c = await user('percent-c');
+      const d = await user('percent-d');
+      expect(await settle(await counted(a, 20, 20), 20000)).toMatchObject({ stars: 0, place: 1 });
+      expect(await settle(await counted(b, 10, 10), 30000)).toMatchObject({ stars: 0, place: 2 });
+      expect(await settle(await counted(c, 9, 10), 10000)).toMatchObject({ stars: 0, place: 3 });
+      expect(await settle(await counted(b, 10, 10), 10000)).toMatchObject({ stars: 40, place: 1 });
+      expect(await settle(await counted(d, 1, 1), 10000)).toMatchObject({ stars: 0, place: 1 });
+      const rating = await listBonusRecords(pool, c, gameId, 0);
+      expect(rating.rows.map((row) => row.place)).toEqual([1, 1, 3, 4]);
+      expect(rating.rows[2].userId).toBe(a);
+      expect(rating.rows[3].userId).toBe(c);
+    } finally {
+      gameId = previousGame;
+    }
   });
-
 });

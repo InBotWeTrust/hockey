@@ -1,7 +1,11 @@
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { BonusRecordsModal, formatBonusRecord, formatBonusPreviewRecord } from './BonusRecordsModal.js';
+import {
+  BonusRecordsModal,
+  formatBonusRecord,
+  formatBonusPreviewRecord,
+} from './BonusRecordsModal.js';
 import { fetchBonusRecords } from '../api/bonusGames.js';
 vi.mock('../api/bonusGames.js', () => ({ fetchBonusRecords: vi.fn() }));
 const fetch = vi.mocked(fetchBonusRecords);
@@ -25,6 +29,28 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 describe('bonus records modal', () => {
+  it('shows the player their saved records under previous conditions without a current rank', async () => {
+    fetch.mockResolvedValue({
+      rows: [],
+      currentUser: null,
+      skillCode: 'accuracy',
+      nextOffset: null,
+      previousRecords: [
+        {
+          elapsedMs: 61500,
+          shots: 23,
+          goals: 18,
+          points: 0,
+          achievedAt: '2026-09-11T10:31:42.487Z',
+        },
+      ],
+    });
+    show();
+    await screen.findByText('Твои прежние рекорды');
+    expect(screen.getByText(/Условия локации изменились/)).toBeInTheDocument();
+    expect(screen.getByText(/18 из 23/)).toBeInTheDocument();
+    expect(screen.queryByTestId('stat-rating-pinned-current')).not.toBeInTheDocument();
+  });
   it.each([
     [1, '1 бросок'],
     [2, '2 броска'],
@@ -50,7 +76,9 @@ describe('bonus records modal', () => {
   });
   it('preserves hundredths and carries rounded seconds into minutes', () => {
     expect(formatBonusRecord('speed', { elapsedMs: 2174, shots: 1, goals: 1 })).toBe('2,17 сек');
-    expect(formatBonusRecord('speed', { elapsedMs: 59999, shots: 1, goals: 1 })).toBe('1 мин 0,00 сек');
+    expect(formatBonusRecord('speed', { elapsedMs: 59999, shots: 1, goals: 1 })).toBe(
+      '1 мин 0,00 сек',
+    );
   });
   it('formats time per goal with a decimal and no zero division', () => {
     expect(formatBonusRecord('endurance', { elapsedMs: 180000, shots: 18, goals: 12 })).toBe(
@@ -119,9 +147,9 @@ describe('bonus records modal', () => {
   });
 });
 
-it('shows only centisecond time for Rhythm preview records while retaining ranking details',()=>{
- const record={elapsedMs:73120,shots:32,goals:20,bestSeries:6};
- expect(formatBonusPreviewRecord('rhythm',record)).toBe('1 мин 13,12 сек');
- expect(formatBonusRecord('rhythm',record)).toContain('серия 6');
- expect(formatBonusPreviewRecord('speed',record)).toBe(formatBonusRecord('speed',record));
+it('shows only centisecond time for Rhythm preview records while retaining ranking details', () => {
+  const record = { elapsedMs: 73120, shots: 32, goals: 20, bestSeries: 6 };
+  expect(formatBonusPreviewRecord('rhythm', record)).toBe('1 мин 13,12 сек');
+  expect(formatBonusRecord('rhythm', record)).toContain('серия 6');
+  expect(formatBonusPreviewRecord('speed', record)).toBe(formatBonusRecord('speed', record));
 });

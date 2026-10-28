@@ -368,9 +368,18 @@ export function BonusGamesScreen(): JSX.Element {
           ) : null}
           {previewGame.skill_code !== 'challenge' && <div className="bonus-records-entry">
             <dl className="bonus-records-entry__summary">
-              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Не установлен' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.currentUser) : 'Не установлен'}</dd></div>
-              <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.rows[0]) : 'Ещё не установлен'}</dd></div>
+              <div><dt>Личный рекорд</dt><dd>{!previewGame.is_completed ? 'Не установлен' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.currentUser ? formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.currentUser,)
+                                : previewRecords.data?.previousRecords?.[0]
+                                  ? `${formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.previousRecords[0])} · прежние условия` : 'Не установлен'}</dd></div>
+              <div><dt>Рекорд локации</dt><dd>{!previewGame.is_completed ? 'Откроется после прохождения' : previewRecords.isPending ? 'Загрузка…' : previewRecords.isError ? 'Не удалось загрузить' : previewRecords.data?.rows[0] ? formatBonusPreviewRecord(previewGame.skill_code, previewRecords.data.rows[0],) : 'Ещё не установлен'}</dd></div>
             </dl>
+                  {!previewRecords.data?.currentUser &&
+                    (previewRecords.data?.previousRecords?.length ?? 0) > 0 && (
+                      <p className="modal-copy bonus-records-entry__note">
+                        Прежний рекорд сохранён. Условия локации изменились — посмотреть результат
+                        можно в рекордах.
+                      </p>
+                    )}
             <div className="bonus-records-entry__action-row">
             <p className="modal-copy bonus-records-entry__note bonus-records-entry__description">{previewGame.is_completed ? <>За новый рекорд – звёзды и&nbsp;опыт</> : <>За новый рекорд – звёзды и&nbsp;опыт. Рекорды откроются после&nbsp;прохождения.</>}</p>
             {previewGame.is_completed ? (

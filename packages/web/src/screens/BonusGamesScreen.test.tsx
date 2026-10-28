@@ -264,6 +264,41 @@ function renderCatalog(): QueryClient {
 }
 
 describe('BonusGamesScreen', () => {
+  it('explains a saved previous record in the completed location preview', async () => {
+    mockCatalog([card({ is_completed: true, state: 'completed' })]);
+    const original = vi.mocked(globalThis.fetch).getMockImplementation()!;
+    vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => {
+      if (String(input).includes('/records'))
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              rows: [],
+              currentUser: null,
+              skillCode: 'speed',
+              nextOffset: null,
+              previousRecords: [
+                {
+                  elapsedMs: 61500,
+                  shots: 23,
+                  goals: 18,
+                  points: 0,
+                  achievedAt: '2026-09-11T10:31:42Z',
+                },
+              ],
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
+        );
+      return original(input, init);
+    });
+    renderCatalog();
+    fireEvent.click(await screen.findByRole('button', { name: 'Повторить' }));
+    const dialog = await screen.findByRole('dialog');
+    await waitFor(() =>
+      expect(within(dialog).getByText(/Прежний рекорд сохранён/)).toBeInTheDocument(),
+    );
+    expect(within(dialog).getByText(/1 мин 1,50 сек/)).toBeInTheDocument();
+  });
   it('does not reserve an empty progress block when the catalog has no allowance data', async () => {
     mockCatalog([card({ title: 'No allowance preview' })]);
     const fetchWithAllowances = vi.mocked(globalThis.fetch).getMockImplementation()!;
