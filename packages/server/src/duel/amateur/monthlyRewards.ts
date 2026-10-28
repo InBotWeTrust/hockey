@@ -51,7 +51,7 @@ export async function reconcileCompletedMonthlyRating(pool: Pool, now: Date): Pr
       const client = await pool.connect();
       try {
         await client.query('begin');
-        await lockRatingLifecycle(client);
+        await lockRatingLifecycle(client, 'exclusive');
         // Recheck after acquiring the season lock: another request may have just paid it.
         const closed = await client.query(
           'select 1 from monthly_duel_rating_season where season_key = $1',
