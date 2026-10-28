@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ru">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Любительская арена — проверка трёх залов</title>
+<style>
+  body { margin: 0; padding: 16px; background: #17202b; color: #eef4fa; font: 16px system-ui; }
+  h1 { font-size: 20px; } p { max-width: 760px; }
+  nav { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  button { padding: 10px 14px; cursor: pointer; }
+  button[aria-pressed="true"] { background: #75b8ec; }
+  figure { margin: 0; width: min(430px, 100%); position: relative; }
+  img { display: block; width: 100%; height: auto; }
+  figcaption { margin: 8px 0; overflow-wrap: anywhere; }
+</style>
+<h1>Любительская арена: пустой, средний и полный зал</h1>
+<p>Локальная проверка WebP и выбора фона из рабочего каталога. Это не авторизованный игровой матч.</p>
+<nav aria-label="Режим игры"></nav>
+<figure><img id="court" alt=""><figcaption></figcaption></figure>
+<script type="module">
+  import {
+    AMATEUR_DAILY_COURT_BACKGROUND,
+    AMATEUR_DUEL_COURT_BACKGROUND,
+    AMATEUR_TOURNAMENT_COURT_BACKGROUND,
+  } from '/src/game/matchCourt.ts';
+  const variants = [
+    ['Ежедневная — пустой', AMATEUR_DAILY_COURT_BACKGROUND],
+    ['Дуэль — половина', AMATEUR_DUEL_COURT_BACKGROUND],
+    ['Турнир — полный', AMATEUR_TOURNAMENT_COURT_BACKGROUND],
+  ];
+  const buttons = variants.map(([label, url]) => {
+    const button = document.createElement('button');
+    button.textContent = label;
+    button.addEventListener('click', () => {
+      for (const other of buttons) other.setAttribute('aria-pressed', String(other === button));
+      document.querySelector('#court').src = url;
+      document.querySelector('#court').alt = label;
+      document.querySelector('figcaption').textContent = url;
+    });
+    document.querySelector('nav').append(button);
+    return button;
+  });
+  buttons[0].click();
+</script>
+</html>

@@ -178,12 +178,12 @@ describe('preloadArtwork', () => {
       '/backgrounds/arena-amateur-reference-v6.webp',
       '/sprites/app-arena-cube-amateur.webp',
       '/sprites/app-arena-ice.webp',
-      '/sprites/amateur-central-indoor-dc575ddb17a8.webp',
+      '/sprites/amateur-central-empty-2ef71ce6f102.webp',
     ]);
     expect(startupArtworkUrls('professional')).toEqual([
       '/sprites/app-arena-ice.webp',
       '/sprites/app-arena-cube.webp',
-      '/sprites/amateur-central-indoor-dc575ddb17a8.webp',
+      '/sprites/amateur-central-empty-2ef71ce6f102.webp',
     ]);
   });
 

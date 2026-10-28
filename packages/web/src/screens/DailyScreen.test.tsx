@@ -2296,7 +2296,9 @@ describe('DailyScreen', () => {
     );
 
     fireEvent.click(await screen.findByRole('button', { name: 'Начать' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'К турниру' }));
+    const tournamentBackButton = await screen.findByRole('button', { name: 'К турниру' });
+    expect(document.querySelector('img[src="/sprites/amateur-central-full-6b9cc1c314c7.webp"]')).toBeTruthy();
+    fireEvent.click(tournamentBackButton);
 
     expect(screen.getByLabelText('Текущий адрес')).toHaveTextContent(
       'view=amateur&section=tournaments&tournament=classic-1&tab=schedule',
@@ -3439,7 +3441,7 @@ describe('DailyScreen', () => {
     );
     expect(screen.queryByRole('heading', { name: 'Дуэль' })).not.toBeInTheDocument();
     expect(screen.queryByText(/Эта дуэль сейчас не на площадке/)).not.toBeInTheDocument();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-half-c950229b0ea9.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
   });
@@ -3491,7 +3493,7 @@ describe('DailyScreen', () => {
     expect(document.querySelector('img[src="/sprites/wide-tableau-led-dark-v2.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/street-tableau.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeFalsy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-empty-2ef71ce6f102.webp"]')).toBeFalsy();
     const calls = fetchMock.mock.calls.map((c) => String(c[0]));
     expect(calls.some((u) => u.includes('/duel/daily/period/start'))).toBe(false);
     expect(screen.queryByTestId('arena-rink-backdrop')).not.toBeInTheDocument();
@@ -3526,7 +3528,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeInTheDocument();
     await waitFor(() => {
-      expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeTruthy();
+      expect(document.querySelector('img[src="/sprites/amateur-central-empty-2ef71ce6f102.webp"]')).toBeTruthy();
     });
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
   });
@@ -4536,7 +4538,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'БРОСОК' })).toBeInTheDocument();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeTruthy();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeFalsy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-empty-2ef71ce6f102.webp"]')).toBeFalsy();
   });
 
   it('groups period, score, shots and time in one row on a one-period duel scoreboard', async () => {
@@ -7874,7 +7876,7 @@ describe('DailyScreen', () => {
 
     const startButton = await screen.findByRole('button', { name: 'НАЧАТЬ' });
     expect(startButton).toBeEnabled();
-    expect(document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]')).toBeTruthy();
+    expect(document.querySelector('img[src="/sprites/amateur-central-half-c950229b0ea9.webp"]')).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/training-court.webp"]')).toBeFalsy();
     expect(document.querySelector('img[src="/bonus-games/arenas/beach.webp"]')).toBeFalsy();
     expect(screen.getByLabelText('Игровое табло')).toBeInTheDocument();
@@ -8131,7 +8133,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByRole('button', { name: 'НАЧАТЬ' })).toBeEnabled();
     expect(
-      document.querySelector('img[src="/sprites/amateur-central-indoor-dc575ddb17a8.webp"]'),
+      document.querySelector('img[src="/sprites/amateur-central-full-6b9cc1c314c7.webp"]'),
     ).toBeTruthy();
     expect(document.querySelector('img[src="/sprites/arena-ice-court-v2.webp"]')).toBeFalsy();
   });
