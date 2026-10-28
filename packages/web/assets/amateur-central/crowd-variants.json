@@ -1,0 +1,55 @@
+{
+  "generatedAt": "2026-10-28",
+  "tool": "built-in image_gen",
+  "referenceGeneration": "exec-6e8a4852-5d9d-4849-b979-9f7d48345aba.png",
+  "request": "Approved rebuilt indoor amateur arena; empty for daily games, half occupancy for duels, full occupancy for standard amateur tournaments.",
+  "normalization": {
+    "width": 1212,
+    "height": 2000,
+    "resize": "lanczos3, fill exact canvas without letterboxing",
+    "alignment": "Translate upward; extend actual bottom ice pixels by edge copy. No actor offsets.",
+    "goalLineY": 770,
+    "goalLineTolerancePx": 1,
+    "format": "webp",
+    "quality": 88,
+    "effort": 6,
+    "alpha": false,
+    "cache": "SHA-256 prefix in filename; existing 30-day browser/PWA image cache",
+    "sourcePolicy": "Generated PNGs retained outside public runtime; existing variants preserved."
+  },
+  "variants": [
+    {
+      "mode": "daily",
+      "occupancy": 0,
+      "source": "exec-6e8a4852-5d9d-4849-b979-9f7d48345aba.png",
+      "sourceSha256": "0e05dff6d7ba77b971425c959c55005a6977dd2af53a91f8d253dc7ce7983177",
+      "sourceDimensions": [977, 1610],
+      "shiftPx": -9,
+      "url": "/sprites/amateur-central-empty-2ef71ce6f102.webp",
+      "bytes": 290934,
+      "sha256": "2ef71ce6f1026d8be83b856bbfc513998a06afbafaba215e9f8c67427c4212d5"
+    },
+    {
+      "mode": "duel",
+      "occupancy": 0.5,
+      "source": "exec-6d80b019-54c6-4a6d-9880-3f5065a09f63.png",
+      "sourceSha256": "8ca75c95f27e2f194347b6a58db0d9772659a49e4aee8169001a2bdd16b6c9de",
+      "sourceDimensions": [977, 1609],
+      "shiftPx": -10,
+      "url": "/sprites/amateur-central-half-c950229b0ea9.webp",
+      "bytes": 234252,
+      "sha256": "c950229b0ea9fd346cfbcd5ed47bc8e465240e3608f287bb53441a7cf6a678c4"
+    },
+    {
+      "mode": "tournament",
+      "occupancy": 1,
+      "source": "exec-5dc96f81-e83b-402e-9128-bc697a5c0484.png",
+      "sourceSha256": "b827517ece25f376b3a8d420f74ac864e266b672b7e08433f244abff3afe93e0",
+      "sourceDimensions": [977, 1609],
+      "shiftPx": -10,
+      "url": "/sprites/amateur-central-full-6b9cc1c314c7.webp",
+      "bytes": 243780,
+      "sha256": "6b9cc1c314c7ca4ebc49aebe2ac5476b83a1f7f2c1af21e4a3fd80dfbe203817"
+    }
+  ]
+}

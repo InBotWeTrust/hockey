@@ -15,7 +15,7 @@ import { duelDisplayScore, duelFormatLabel, duelScorePairText } from "../compone
 import { duelTemplateChoices } from "../components/duel/duelTemplateChoices.js";
 import { classifyMarksmanshipShot } from "@hockey/game-core";
 import { DuelKindPreferenceButton } from "../components/DuelKindPreferenceButton.js";
-import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from "../game/matchCourt.js";
+import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_DUEL_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from "../game/matchCourt.js";
 import { useDuelFightSocket } from "../hooks/useDuelFightSocket.js";
 import { FightControls } from "../components/duel/fight/FightControls.js";
 import { FightView } from "../game/fight/FightView.js";
@@ -162,7 +162,7 @@ const LEGACY_STANDARD_ARENA_BACKGROUNDS = new Set([
 ]);
 
 function amateurDuelCourtBackground(match: AmateurDuelMatchState): string {
-  if (match.source !== 'tournament') return AMATEUR_DAILY_COURT_BACKGROUND;
+  if (match.source !== 'tournament') return AMATEUR_DUEL_COURT_BACKGROUND;
   return LEGACY_STANDARD_ARENA_BACKGROUNDS.has(match.arena.artwork_url)
     ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
     : match.arena.artwork_url;
@@ -6036,10 +6036,9 @@ function DuelRinkLoadoutHud({
       {DUEL_INVENTORY_SLOTS.map((slot) => {
         const selectedId = selectedLoadout[slot.kind] ?? null;
         const item = selectedDuelAvailabilityItem(match, slot.kind, selectedId);
-        const availableItems = availableDuelItemsForKind(match, slot.kind);
         const hasBase = isDuelRequiredEquipment(slot.kind);
         const hasVisibleEquipment = item !== null || hasBase;
-        const canOpen = !locked && availableItems.length > 0;
+        const canOpen = !locked;
         const inventoryBadge = item
           ? duelInventoryBadgeLabel(item.kind, item.chargesAvailable, item.resourceUnit)
           : null;
@@ -6103,6 +6102,30 @@ function DuelRinkLoadoutHud({
   );
 }
 
+function EmptyRinkInventoryShopAction({
+  kind,
+  onClose,
+}: {
+  kind: InventoryEquipmentKind;
+  onClose: () => void;
+}): JSX.Element {
+  const navigate = useNavigate();
+  return (
+    <div className="modal-actions">
+      <button
+        type="button"
+        className="modal-primary btn btn--cta"
+        onClick={() => {
+          onClose();
+          navigate(`/inventory?category=${kind}`);
+        }}
+      >
+        Перейти в магазин
+      </button>
+    </div>
+  );
+}
+
 function DuelRinkLoadoutModal({
   kind,
   match,
@@ -6131,7 +6154,7 @@ function DuelRinkLoadoutModal({
           width: 'min(430px, calc(100vw - 28px))',
           maxHeight: 'calc(100dvh - 112px - var(--app-safe-top) - var(--app-safe-bottom))',
           display: 'grid',
-          gridTemplateRows: 'auto minmax(0, 1fr)',
+          gridTemplateRows: items.length === 0 ? 'auto minmax(0, 1fr) auto' : 'auto minmax(0, 1fr)',
           gap: 10,
           overflow: 'hidden',
         }}
@@ -6288,6 +6311,7 @@ function DuelRinkLoadoutModal({
             );
           })}
         </div>
+        {items.length === 0 && <EmptyRinkInventoryShopAction kind={kind} onClose={onClose} />}
       </section>
     </div>
   );
@@ -7233,6 +7257,7 @@ function ClassicRinkLoadoutModal({
             </button>
           ))}
         </div>
+        {items.length === 0 && <EmptyRinkInventoryShopAction kind={kind} onClose={onClose} />}
       </section>
     </div>
   );
@@ -7486,7 +7511,7 @@ function ClassicTournamentPlayView({
         applyState={applyState}
         applyResolvedState={applyClassicResolvedState}
         duelCondition={duelCondition}
-        longCourtBackground={AMATEUR_DAILY_COURT_BACKGROUND}
+        longCourtBackground={AMATEUR_TOURNAMENT_COURT_BACKGROUND}
         hudAddon={
           <ClassicRinkLoadoutHud
             state={data}

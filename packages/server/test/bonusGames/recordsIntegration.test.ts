@@ -153,7 +153,7 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
     expect(rating.rows.slice(0, 3).map((r) => r.place)).toEqual([1, 1, 3]);
     expect(rating.currentUser).toMatchObject({ userId: u1, place: 1 });
   });
-  it('separates changed conditions, ignores cosmetics and never records failed attempts', async () => {
+  it('compares improvements across changed conditions, ignores cosmetics and never records failed attempts', async () => {
     const uid = await user('versions');
     const a = await attempt(uid);
     const cosmetic = {
@@ -170,9 +170,9 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
       })),
     };
     expect(await settle(next, 5000)).toMatchObject({
-      stars: 0,
-      personalImproved: false,
-      globalImproved: false,
+      stars: 40,
+      personalImproved: true,
+      globalImproved: true,
     });
     const failed = await attempt(uid);
     failed.status = 'failed';
@@ -184,7 +184,7 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
       client.release();
     }
   });
-  it('returns the player their previous records separately after a rules change', async () => {
+  it('keeps an old record in the current table for every viewer after a rules change', async () => {
     const uid = await user('previous-rules');
     const old = await attempt(uid);
     await settle(old, 12345);
@@ -196,24 +196,73 @@ describe.skipIf(!hasIntegrationEnv)('persistent bonus records', () => {
     );
     try {
       const rating = await listBonusRecords(pool, uid, gameId, 0);
-      expect(rating.currentUser).toBeNull();
-      expect(rating.rows.some((row) => row.userId === uid)).toBe(false);
-      expect(rating).toMatchObject({
-        previousRecords: [
-          { elapsedMs: 12345, shots: 10, goals: 5, points: 0, achievedAt: now.toISOString() },
-        ],
-      });
+      expect(rating.currentUser).toMatchObject({ userId: uid, elapsedMs: 12345 });
+      expect(rating.rows.some((row) => row.userId === uid)).toBe(true);
       const other = await user('other-previous-rules');
       await pool.query(
         `insert into user_bonus_game_completion(user_id,bonus_game_id,attempt_id,reward_snapshot) values($1,$2,$3,'{}')`,
         [other, gameId, old.id],
       );
-      expect(await listBonusRecords(pool, other, gameId, 0)).toMatchObject({ previousRecords: [] });
+      expect((await listBonusRecords(pool, other, gameId, 0)).rows.some(row => row.userId === uid)).toBe(true);
     } finally {
       await pool.query('update bonus_game set period_rules=$2::jsonb where id=$1', [
         gameId,
         JSON.stringify(original),
       ]);
+    }
+  });
+
+  it.each(['speed','accuracy','marksmanship','endurance','rhythm'] as const)(
+    '%s uses one all-time best per player for standings, result snapshots and rewards', async skill => {
+      const previousGame=gameId;
+      gameId=(await pool.query("select id from bonus_game where skill_code=$1 and status='active' order by sort_order limit 1",[skill])).rows[0].id;
+      await pool.query('delete from bonus_game_record where game_id=$1',[gameId]);
+      const original=(await pool.query('select period_rules from bonus_game where id=$1',[gameId])).rows[0].period_rules;
+      try {
+        const a=await user(`all-time-${skill}-a`);
+        const b=await user(`all-time-${skill}-b`);
+        const old=await attempt(a);
+        await settle(old,10000);
+        await pool.query("update bonus_game set period_rules=jsonb_set(period_rules,'{0,durationMs}',to_jsonb((period_rules->0->>'durationMs')::int+1000)) where id=$1",[gameId]);
+        const worse=await settle(await attempt(a),12000);
+        expect(worse).toMatchObject({ stars:0,personalImproved:false,globalImproved:false,place:1,personalBest:{elapsedMs:10000} });
+        const other=await settle(await attempt(b),11000);
+        expect(other).toMatchObject({stars:0,place:2});
+        const before=await listBonusRecords(pool,b,gameId,0);
+        expect(before.rows.map(row=>row.userId)).toEqual([a,b]);
+        expect(before.currentUser).toMatchObject({userId:b,place:2});
+        const improved=await attempt(a);
+        expect(await settle(improved,9000)).toMatchObject({stars:40,personalImproved:true,globalImproved:true,place:1,personalBest:{elapsedMs:9000}});
+        const balances=(await pool.query('select xp,experience from users where id=$1',[a])).rows[0];
+        await settle(improved,9000);
+        const after=await listBonusRecords(pool,a,gameId,0);
+        expect(after.rows).toHaveLength(2);
+        expect(after.rows.map(row=>row.place)).toEqual([1,2]);
+        expect(after.currentUser).toMatchObject({place:1,elapsedMs:9000});
+        expect((await pool.query('select xp,experience from users where id=$1',[a])).rows[0]).toEqual(balances);
+      } finally {
+        await pool.query('delete from bonus_game_record where game_id=$1',[gameId]);
+        await pool.query('update bonus_game set period_rules=$2::jsonb where id=$1',[gameId,JSON.stringify(original)]);
+        gameId=previousGame;
+      }
+    },
+  );
+
+  it('compares endurance by time per goal across different attempt durations',async()=>{
+    const previousGame=gameId;
+    gameId=(await pool.query("select id from bonus_game where skill_code='endurance' and status='active' order by sort_order limit 1")).rows[0].id;
+    try {
+      const a=await user('endurance-average-a');const b=await user('endurance-average-b');
+      const old=await attempt(a);old.goals=10;old.shots_taken=20;
+      await settle(old,60000);
+      const newer=await attempt(b);newer.goals=15;newer.shots_taken=20;
+      newer.rules_snapshot={...newer.rules_snapshot,periods:newer.rules_snapshot.periods.map(p=>({...p,durationMs:p.durationMs+60000}))};
+      expect(await settle(newer,120000)).toMatchObject({place:2,stars:0});
+      const rating=await listBonusRecords(pool,b,gameId,0);
+      expect(rating.rows.map(row=>row.userId)).toEqual([a,b]);
+    } finally {
+      await pool.query('delete from bonus_game_record where game_id=$1',[gameId]);
+      gameId=previousGame;
     }
   });
   it('pages only the top 100 and returns the user below the cutoff separately', async () => {

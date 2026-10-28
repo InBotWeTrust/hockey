@@ -21,7 +21,7 @@ import {
   PERSPECTIVE_PUCK_OPTIONS,
 } from '../game/perspectiveActors.js';
 import {
-  AMATEUR_DAILY_COURT_BACKGROUND,
+  AMATEUR_DUEL_COURT_BACKGROUND,
   AMATEUR_TOURNAMENT_COURT_BACKGROUND,
   LONG_COURT_RINK_ASPECT_RATIO,
   LONG_COURT_GAME_LAYER_STYLE,
@@ -241,7 +241,7 @@ export function SpectatorRink({
             src={
               kind === 'tournament'
                 ? AMATEUR_TOURNAMENT_COURT_BACKGROUND
-                : AMATEUR_DAILY_COURT_BACKGROUND
+                : AMATEUR_DUEL_COURT_BACKGROUND
             }
             alt=""
             style={{ height: '100%' }}
