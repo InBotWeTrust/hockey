@@ -117,7 +117,15 @@ export async function collectTournamentAchievementCandidates(
     achievedAt: Date,
     context: Record<string, unknown>,
   ) => {
-    const key = `${userId}\u0000${achievementId}`;
+    // Performance stages need every played result, including later results
+    // after the player claims a previous stage within this tournament.
+    const resultId =
+      achievementId === 'no-shake'
+        ? context.fixtureId
+        : achievementId === 'series-comeback'
+          ? context.seriesId
+          : '';
+    const key = `${userId}\u0000${achievementId}\u0000${String(resultId ?? '')}`;
     const next: AchievementCompletionCandidate = {
       userId,
       achievementId,
@@ -234,10 +242,10 @@ export async function collectTournamentAchievementCandidates(
           }
           const fixtures = await loadSeriesFixtures(db, series.series_id);
           const comebackDeficit = seriesComebackDeficit({
-              winsRequired: Number(series.wins_required),
-              eventualWinnerParticipantId: series.participant_id,
-              fixtures,
-            });
+            winsRequired: Number(series.wins_required),
+            eventualWinnerParticipantId: series.participant_id,
+            fixtures,
+          });
           if (comebackDeficit >= 2) {
             add(userId, 'series-comeback', series.completed_at, {
               seriesId: series.series_id,
@@ -551,20 +559,26 @@ export async function reconcileTournamentAchievements(
 }> {
   const collected = await collectTournamentAchievementCandidates(db, input);
   const stagedIds = new Set([
-    'regular-season-champion', 'regular-season-medalist', 'playoff-semifinal',
-    'playoff-final', 'tournament-cup', 'series-comeback', 'no-shake',
+    'regular-season-champion',
+    'regular-season-medalist',
+    'playoff-semifinal',
+    'playoff-final',
+    'tournament-cup',
+    'series-comeback',
+    'no-shake',
   ]);
   let stagedCompleted = 0;
-  for (const candidate of collected.candidates.filter((item) => stagedIds.has(item.achievementId))) {
+  for (const candidate of collected.candidates.filter((item) =>
+    stagedIds.has(item.achievementId),
+  )) {
     const context = candidate.context;
     let progress: Record<string, number>;
     let progressMode: 'max' | 'increment' = 'increment';
     if (candidate.achievementId === 'no-shake') {
       progressMode = 'max';
       progress = {
-        accuracyPercent: Number(context.shots) > 0
-          ? (Number(context.goals) * 100) / Number(context.shots)
-          : 0,
+        accuracyPercent:
+          Number(context.shots) > 0 ? (Number(context.goals) * 100) / Number(context.shots) : 0,
       };
     } else if (candidate.achievementId === 'series-comeback') {
       progressMode = 'max';

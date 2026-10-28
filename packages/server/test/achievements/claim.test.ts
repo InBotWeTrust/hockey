@@ -76,6 +76,43 @@ describe.skipIf(!hasIntegrationEnv)('achievement claim routes', () => {
     await app?.close();
   });
 
+  it.each([
+    ['hunter-streak', 'duel_win_streak'],
+    ['dangerous-host', 'duel_host_win_streak'],
+    ['dangerous-guest', 'duel_guest_win_streak'],
+    ['stable-student', 'training_40_of_50_streak'],
+  ])('starts a fresh internal series after claiming %s', async (achievementId, key) => {
+    const userId = await createUser(app);
+    await openFirstAchievementStages(app.pg, userId, new Date('2026-09-13T10:00Z'));
+    await app.pg.query(
+      `update user_achievement_stages set completed_at=now(),progress='{"wins":9,"days":9}'
+      where user_id=$1 and achievement_id=$2`,
+      [userId, achievementId],
+    );
+    await app.pg.query(
+      `insert into achievement_progress(user_id,key,state) values($1,$2,'{"count":9,"lastMatchId":"last","lastTrainingSessionId":"last-training"}')`,
+      [userId, key],
+    );
+    const token = await issueAccessToken(userId);
+    const response = await app.inject({
+      method: 'POST',
+      url: `/achievements/${achievementId}/claim`,
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.statusCode).toBe(200);
+    const progress = (
+      await app.pg.query('select state from achievement_progress where user_id=$1 and key=$2', [
+        userId,
+        key,
+      ])
+    ).rows[0].state;
+    expect(progress).toMatchObject({
+      count: 0,
+      lastMatchId: 'last',
+      lastTrainingSessionId: 'last-training',
+    });
+  });
+
   it('claims a completed achievement once and grants configured rewards', async () => {
     const userId = await createUser(app);
     const token = await issueAccessToken(userId);

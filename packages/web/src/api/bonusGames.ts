@@ -193,7 +193,10 @@ export interface BonusAttemptRules {
 export interface BonusRecordMetrics { bestSeries?: number; elapsedMs: number; shots: number; goals: number; points: number }
 export interface BonusRecordResult extends BonusRecordMetrics { personalImproved: boolean; globalImproved: boolean; personalBest: BonusRecordMetrics; place: number; stars: number; experience: number }
 export interface BonusRecordPlayer extends BonusRecordMetrics { place: number; userId: string; displayName: string; avatarUrl: string | null }
-export interface BonusRecordPage { rows: BonusRecordPlayer[]; currentUser: BonusRecordPlayer | null; skillCode: BonusSkillCode; nextOffset: number | null }
+export interface BonusPreviousRecord extends BonusRecordMetrics {
+  achievedAt: string; }
+export interface BonusRecordPage { rows: BonusRecordPlayer[]; currentUser: BonusRecordPlayer | null;
+  previousRecords?: BonusPreviousRecord[]; skillCode: BonusSkillCode; nextOffset: number | null; }
 export const fetchBonusRecords = (gameId: string, offset = 0): Promise<BonusRecordPage> => apiFetch(`/bonus-games/${gameId}/records?offset=${offset}`);
 
 export interface BonusGameAttempt {

@@ -48,11 +48,8 @@ export async function evaluateMonthlyRatingSettledAchievements(
   );
   if (placement.rowCount !== 1) return;
 
-  const achievementId = event.place === 1
-    ? 'monthly-top-1'
-    : event.place <= 3
-      ? 'monthly-top-3'
-      : null;
+  const achievementId =
+    event.place === 1 ? 'monthly-top-1' : event.place <= 3 ? 'monthly-top-3' : null;
   if (achievementId === null) return;
   const count = await db.query<{ total: number | string }>(
     `select count(*)::int as total
@@ -112,6 +109,7 @@ export interface TrainingClosedAchievementEvent {
 interface TrainingStreakProgress {
   count: number;
   lastTrainingSessionId?: string;
+  lastDayDate?: string;
 }
 
 interface CountProgress {
@@ -261,18 +259,29 @@ export async function evaluateDailyShotAchievements(
   const completed = new Set<string>();
   if (event.result === 'goal') completed.add('first-goal');
 
-  const results = await fetchDailyResults(db, event.dayPoolId);
+  const results = await fetchDailyStageResults(
+    db,
+    event.dayPoolId,
+    event.userId,
+    'daily-sniper-streak',
+  );
+  const recoveryResults = await fetchDailyStageResults(
+    db,
+    event.dayPoolId,
+    event.userId,
+    'no-panic',
+  );
   const occurredAt = new Date();
   await observeAchievementStage(db, event.userId, 'daily-sniper-streak', {
-    eventKey: `daily:${event.dayPoolId}:shot:${event.shotIndex}`,
+    eventKey: `daily:${event.dayPoolId}:period:${event.periodNumber}:shot:${event.shotIndex}`,
     occurredAt,
     progress: { goalStreak: longestGoalStreak(results) },
     context: { source: 'daily_shot', ...event },
   });
   await observeAchievementStage(db, event.userId, 'no-panic', {
-    eventKey: `daily:${event.dayPoolId}:shot:${event.shotIndex}`,
+    eventKey: `daily:${event.dayPoolId}:period:${event.periodNumber}:shot:${event.shotIndex}`,
     occurredAt,
-    progress: { recoveryGoalStreak: longestNoPanicRecovery(results), precedingNonGoals: 3 },
+    progress: { recoveryGoalStreak: longestNoPanicRecovery(recoveryResults), precedingNonGoals: 3 },
     context: { source: 'daily_shot', ...event },
   });
 
@@ -336,9 +345,13 @@ export async function evaluateDailyClosedAchievements(
   db: Queryable,
   event: DailyClosedAchievementEvent,
 ): Promise<void> {
-  const completed = new Set<string>(['first-daily-game']);
   const periods = await fetchDailyPeriods(db, event.dayPoolId);
   const results = await fetchDailyResults(db, event.dayPoolId);
+  const finishedQuota =
+    results.length === event.totalPeriods * event.shotsPerPeriod &&
+    periods.length === event.totalPeriods &&
+    periods.every((period) => period.shotsTaken === event.shotsPerPeriod);
+  const completed = new Set<string>(finishedQuota ? ['first-daily-game'] : []);
   const goals = results.filter((result) => result === 'goal').length;
   const accuracy = results.length > 0 ? goals / results.length : 0;
   const occurredAt = new Date();
@@ -346,10 +359,10 @@ export async function evaluateDailyClosedAchievements(
   await observeAchievementStage(db, event.userId, 'ice-hand', {
     eventKey: `daily:${event.dayPoolId}:closed`,
     occurredAt,
-    progress: { accuracyPercent: accuracy * 100 },
+    progress: { accuracyPercent: finishedQuota ? accuracy * 100 : 0 },
     context: { source: 'daily_closed', ...event },
   });
-  if (event.totalPeriods === 3 && periods.length >= 3) {
+  if (finishedQuota && event.totalPeriods === 3 && periods.length >= 3) {
     const [p1, p2, p3] = periods;
     if (p1 !== undefined && p2 !== undefined && p3 !== undefined) {
       await observeAchievementStage(db, event.userId, 'third-period-decides', {
@@ -366,15 +379,19 @@ export async function evaluateDailyClosedAchievements(
   await observeAchievementStage(db, event.userId, 'dry-finish', {
     eventKey: `daily:${event.dayPoolId}:closed`,
     occurredAt,
-    progress: { endingGoalStreak: endingGoalStreak(results) },
+    progress: { endingGoalStreak: finishedQuota ? endingGoalStreak(results) : 0 },
     context: { source: 'daily_closed', ...event },
   });
-  const week = await fetchCompletedDailyAccuracyWindow(db, event, 7);
-  const month = await fetchCompletedDailyAccuracyWindow(db, event, 30);
+  const fitness = await fetchCompletedDailyAccuracyWindow(db, event, 7, 'keeping-fit');
+  const week = await fetchCompletedDailyAccuracyWindow(db, event, 7, 'sniper-week');
+  const month = await fetchCompletedDailyAccuracyWindow(db, event, 30, 'sniper-month');
   await observeAchievementStage(db, event.userId, 'keeping-fit', {
     eventKey: `daily:${event.dayPoolId}:keeping-fit`,
     occurredAt,
-    progress: { days: week.complete ? 7 : 0, minimumAccuracyPercent: week.minimumAccuracyPercent },
+    progress: {
+      days: fitness.qualifyingDays,
+      minimumAccuracyPercent: fitness.qualifyingMinimumAccuracyPercent,
+    },
   });
   await observeAchievementStage(db, event.userId, 'sniper-week', {
     eventKey: `daily:${event.dayPoolId}:sniper-week`,
@@ -410,8 +427,8 @@ export async function evaluateTrainingClosedAchievements(
 ): Promise<void> {
   const results = await fetchTrainingResults(db, event.trainingSessionId);
   const goals = results.filter((result) => result === 'goal').length;
-  const completed = new Set<string>(['first-training']);
   const finishedQuota = results.length >= event.shotsLimit;
+  const completed = new Set<string>(finishedQuota ? ['first-training'] : []);
   const occurredAt = new Date();
   const accuracyPercent = results.length > 0 ? (goals / event.shotsLimit) * 100 : 0;
 
@@ -443,6 +460,7 @@ export async function evaluateTrainingClosedAchievements(
       db,
       event.userId,
       event.trainingSessionId,
+      event.dayDate,
     );
   } else {
     await resetTraining40Of50Streak(db, event.userId, event.trainingSessionId);
@@ -468,10 +486,12 @@ export async function evaluateTrainingClosedAchievements(
     completed.add('ideal-day');
   }
 
-  await setAchievementProgress(db, event.userId, 'training_before_duel_pending', {
-    trainingSessionId: event.trainingSessionId,
-    dayDate: event.dayDate,
-  });
+  if (finishedQuota) {
+    await setAchievementProgress(db, event.userId, 'training_before_duel_pending', {
+      trainingSessionId: event.trainingSessionId,
+      dayDate: event.dayDate,
+    });
+  }
 
   await completeAchievements(db, event.userId, [...completed], {
     source: 'training_closed',
@@ -485,25 +505,61 @@ export async function evaluateDuelSettledAchievements(
   db: Queryable,
   event: { matchId: string; winnerUserId: string | null },
 ): Promise<void> {
-  const participants = await fetchDuelParticipants(db, event.matchId);
-  if (participants.length === 0) return;
-
-  if (event.winnerUserId === null) {
-    await updateDuelNonWinProgress(db, event.matchId, participants);
+  if (!('release' in db)) {
+    const client = await db.connect();
+    try {
+      await client.query('begin');
+      await evaluateDuelSettledAchievements(client, event);
+      await client.query('commit');
+    } catch (error) {
+      await client.query('rollback');
+      throw error;
+    } finally {
+      client.release();
+    }
     return;
   }
+  await db.query('select pg_advisory_xact_lock(hashtextextended($1,0))', [
+    `duel-achievements:${event.matchId}`,
+  ]);
+  if (
+    (
+      await db.query(
+        `select 1 from event_log where type='duel_achievements_evaluated' and payload->>'match_id'=$1 limit 1`,
+        [event.matchId],
+      )
+    ).rowCount
+  )
+    return;
+  const participants = await fetchDuelParticipants(db, event.matchId);
+  if (participants.length === 0) return;
+  const markEvaluated = () =>
+    appendEvent(db, participants[0]!.userId, 'duel_achievements_evaluated', {
+      match_id: event.matchId,
+    });
 
-  const ctx = await fetchDuelAchievementContext(db, event.matchId, event.winnerUserId);
+  const ctx = await fetchDuelAchievementContext(
+    db,
+    event.matchId,
+    event.winnerUserId ?? participants[0]!.userId,
+  );
   if (!ctx) return;
   if (ctx.match.settled_reason !== 'completed') {
     await updateDuelNonWinProgress(db, event.matchId, participants);
+    await markEvaluated();
     return;
   }
 
-  const completed = new Set<string>();
-  const margin = ctx.winner.goals - ctx.loser.goals;
   const occurredAt = ctx.match.settled_at ?? new Date();
   const eventKey = `duel:${event.matchId}:settled`;
+  await evaluateDuelPerformanceAchievements(db, ctx, occurredAt, eventKey);
+  if (event.winnerUserId === null) {
+    await updateDuelNonWinProgress(db, event.matchId, participants);
+    await markEvaluated();
+    return;
+  }
+  const completed = new Set<string>();
+  const margin = ctx.winner.goals - ctx.loser.goals;
   const format = ctx.match.duel_kind === 'express_plus' ? 'mix' : ctx.match.duel_kind;
   const nonGoals = Math.max(0, ctx.winner.shots - ctx.winner.goals);
 
@@ -524,51 +580,7 @@ export async function evaluateDuelSettledAchievements(
       ),
     },
   });
-  await observeAchievementStage(db, ctx.winner.userId, 'cold-start', {
-    eventKey,
-    occurredAt,
-    progress: { openingGoalStreak: openingGoalStreak(ctx.winnerResults) },
-  });
-  await observeAchievementStage(db, ctx.winner.userId, 'no-panic', {
-    eventKey,
-    occurredAt,
-    progress: {
-      recoveryGoalStreak: longestNoPanicRecovery(ctx.winnerResults),
-      precedingNonGoals: 3,
-    },
-  });
-  await observeAchievementStage(db, ctx.winner.userId, 'final-push', {
-    eventKey,
-    occurredAt,
-    progress: {
-      endingGoalStreak: Math.max(...ctx.winnerPeriodResults.map(endingGoalStreak), 0),
-    },
-  });
   if (isClassicDuel(ctx.match) && hasCleanPeriodWin(ctx)) completed.add('clean-win');
-  const fastestClassicPeriod = bestClassicSpeedPeriod(ctx.periods, ctx.winner.userId);
-  await observeAchievementStage(db, ctx.winner.userId, 'classic-speed', {
-    eventKey,
-    occurredAt,
-    progress: {
-      format,
-      maximumDurationSeconds: fastestClassicPeriod?.durationSeconds ?? 999_999,
-      accuracyPercent: fastestClassicPeriod?.accuracyPercent ?? 0,
-    },
-  });
-  if (format === 'express') {
-    await observeAchievementStage(db, ctx.winner.userId, 'express-sniper', {
-      eventKey,
-      occurredAt,
-      progress: { format, goals: ctx.winner.goals },
-    });
-  }
-  if (format === 'mix') {
-    await observeAchievementStage(db, ctx.winner.userId, 'mix-sniper', {
-      eventKey,
-      occurredAt,
-      progress: { format, goals: ctx.winner.goals },
-    });
-  }
   const noErrorAchievement =
     format === 'express'
       ? 'no-error-express'
@@ -679,6 +691,70 @@ export async function evaluateDuelSettledAchievements(
   });
 
   await updateDuelPostSettleProgress(db, event.matchId, ctx);
+  await markEvaluated();
+}
+
+async function evaluateDuelPerformanceAchievements(
+  db: Queryable,
+  ctx: DuelAchievementContext,
+  occurredAt: Date,
+  eventKey: string,
+): Promise<void> {
+  const format = ctx.match.duel_kind === 'express_plus' ? 'mix' : ctx.match.duel_kind;
+  for (const participant of ctx.participants) {
+    const results =
+      participant.userId === ctx.winner.userId
+        ? ctx.winnerResults
+        : await fetchDuelResults(db, ctx.match.id, participant.userId);
+    const periodResults =
+      participant.userId === ctx.winner.userId
+        ? ctx.winnerPeriodResults
+        : await fetchDuelResultsByPeriod(db, ctx.match.id, participant.userId);
+    await observeAchievementStage(db, participant.userId, 'cold-start', {
+      eventKey,
+      occurredAt,
+      progress: { openingGoalStreak: openingGoalStreak(results) },
+    });
+    await observeAchievementStage(db, participant.userId, 'no-panic', {
+      eventKey,
+      occurredAt,
+      progress: {
+        recoveryGoalStreak: longestNoPanicRecovery(results),
+        precedingNonGoals: 3,
+      },
+    });
+    await observeAchievementStage(db, participant.userId, 'final-push', {
+      eventKey,
+      occurredAt,
+      progress: {
+        endingGoalStreak: Math.max(...periodResults.map(endingGoalStreak), 0),
+      },
+    });
+    const fastestClassicPeriod = bestClassicSpeedPeriod(ctx.periods, participant.userId);
+    await observeAchievementStage(db, participant.userId, 'classic-speed', {
+      eventKey,
+      occurredAt,
+      progress: {
+        format,
+        maximumDurationSeconds: fastestClassicPeriod?.durationSeconds ?? 999_999,
+        accuracyPercent: fastestClassicPeriod?.accuracyPercent ?? 0,
+      },
+    });
+    if (format === 'express') {
+      await observeAchievementStage(db, participant.userId, 'express-sniper', {
+        eventKey,
+        occurredAt,
+        progress: { format, goals: participant.goals },
+      });
+    }
+    if (format === 'mix') {
+      await observeAchievementStage(db, participant.userId, 'mix-sniper', {
+        eventKey,
+        occurredAt,
+        progress: { format, goals: participant.goals },
+      });
+    }
+  }
 }
 
 export async function reconcileTournamentDuelAchievements(
@@ -728,6 +804,24 @@ async function fetchDailyResults(db: Queryable, dayPoolId: string): Promise<Shot
         and day_pool_id = $1
       order by period_number asc, shot_index asc`,
     [dayPoolId],
+  );
+  return rows.map((row) => row.server_result);
+}
+
+async function fetchDailyStageResults(
+  db: Queryable,
+  dayPoolId: string,
+  userId: string,
+  achievementId: string,
+): Promise<ShotResult[]> {
+  const { rows } = await db.query<{ server_result: ShotResult }>(
+    `select server_result from shot_session
+      where mode='daily' and day_pool_id=$1
+        and created_at >= coalesce((select opened_at from user_achievement_stages
+          where user_id=$2 and achievement_id=$3 and stage_number>1 and claimed_at is null
+          order by stage_number desc limit 1), '-infinity'::timestamptz)
+      order by period_number,shot_index`,
+    [dayPoolId, userId, achievementId],
   );
   return rows.map((row) => row.server_result);
 }
@@ -935,7 +1029,39 @@ async function updateCountProgress(
 ): Promise<boolean> {
   const progress = await getAchievementProgress<CountProgress>(db, userId, key);
   if (progress?.lastMatchId === matchId) return false;
-  const count = increment ? (progress?.count ?? 0) + 1 : 0;
+  let count = 0;
+  if (increment) {
+    const achievementId = (
+      {
+        duel_win_streak: 'hunter-streak',
+        duel_host_win_streak: 'dangerous-host',
+        duel_guest_win_streak: 'dangerous-guest',
+        training_before_duel_wins: 'training-before-battle',
+      } as Record<string, string>
+    )[key];
+    const history = await db.query<{ won: boolean }>(
+      `select m.winner_user_id=$1 and m.settled_reason='completed' as won
+         from amateur_duel_match m join amateur_duel_participant p on p.match_id=m.id and p.user_id=$1
+        where m.status='settled'
+          and m.settled_at <= (select settled_at from amateur_duel_match where id=$2)
+          and m.settled_at >= coalesce((select opened_at from user_achievement_stages
+            where user_id=$1 and achievement_id=$3 and stage_number>1 and claimed_at is null
+            order by stage_number desc limit 1),'-infinity'::timestamptz)
+          and ($4<>'duel_host_win_streak' or p.side='challenger')
+          and ($4<>'duel_guest_win_streak' or p.side='opponent')
+          and ($4<>'training_before_duel_wins' or m.settled_at >= coalesce((
+            select t.closed_at from training_session t join achievement_progress a
+              on a.user_id=t.user_id and a.key='training_before_duel_pending'
+              and a.state->>'trainingSessionId'=t.id::text
+            where t.user_id=$1 order by t.closed_at desc limit 1),'infinity'::timestamptz))
+        order by m.settled_at desc,m.id desc`,
+      [userId, matchId, achievementId, key],
+    );
+    for (const row of history.rows) {
+      if (!row.won) break;
+      count += 1;
+    }
+  }
   await setAchievementProgress(db, userId, key, { count, lastMatchId: matchId });
   return true;
 }
@@ -946,6 +1072,7 @@ async function updateDuelNonWinProgress(
   participants: DuelParticipantAchievement[],
 ): Promise<void> {
   for (const participant of participants) {
+    await deleteAchievementProgress(db, participant.userId, 'duel_last_loss');
     await updateCountProgress(db, participant.userId, 'duel_win_streak', matchId, false);
     await updateCountProgress(
       db,
@@ -985,6 +1112,7 @@ async function incrementTraining40Of50Streak(
   db: Queryable,
   userId: string,
   trainingSessionId: string,
+  dayDate: string,
 ): Promise<number> {
   const progress = await getAchievementProgress<TrainingStreakProgress>(
     db,
@@ -994,10 +1122,39 @@ async function incrementTraining40Of50Streak(
   if (progress?.lastTrainingSessionId === trainingSessionId) {
     return progress.count;
   }
-  const count = (progress?.count ?? 0) + 1;
+  if (progress?.lastDayDate !== undefined && progress.lastDayDate >= dayDate) return progress.count;
+  const history = await db.query<{
+    day: string;
+    shots_limit: number;
+    shots: number;
+    goals: number;
+  }>(
+    `select to_char(t.day_date,'YYYY-MM-DD') as day,t.shots_limit,
+            count(s.id)::int as shots,count(s.id) filter(where s.server_result='goal')::int as goals
+       from training_session t left join shot_session s on s.training_session_id=t.id and s.mode='training'
+      where t.user_id=$1 and t.state='closed' and t.day_date<=$2::date
+        and t.closed_at>=coalesce((select opened_at from user_achievement_stages
+          where user_id=$1 and achievement_id='stable-student' and stage_number>1 and claimed_at is null
+          order by stage_number desc limit 1),'-infinity'::timestamptz)
+      group by t.id order by t.day_date desc`,
+    [userId, dayDate],
+  );
+  let count = 0;
+  let expectedDay = Date.parse(dayDate);
+  for (const row of history.rows) {
+    if (
+      Date.parse(row.day) !== expectedDay ||
+      row.shots < row.shots_limit ||
+      row.goals * 100 < row.shots_limit * 80
+    )
+      break;
+    count += 1;
+    expectedDay -= 86_400_000;
+  }
   await setAchievementProgress(db, userId, 'training_40_of_50_streak', {
     count,
     lastTrainingSessionId: trainingSessionId,
+    lastDayDate: dayDate,
   });
   return count;
 }
@@ -1042,7 +1199,28 @@ async function fetchCompletedDailyAccuracyWindow(
   db: Queryable,
   event: DailyClosedAchievementEvent,
   days: number,
-): Promise<{ complete: boolean; minimumAccuracyPercent: number; combinedAccuracyPercent: number }> {
+  achievementId: string,
+): Promise<{
+  complete: boolean;
+  qualifyingDays: number;
+  qualifyingMinimumAccuracyPercent: number;
+  combinedAccuracyPercent: number;
+}> {
+  const active = (
+    await db.query<{
+      stage_number: number;
+      opened_at: Date;
+      target: { minimumAccuracyPercent?: number };
+    }>(
+      `select u.stage_number,u.opened_at,s.target from user_achievement_stages u
+      join achievement_stages s using(achievement_id,stage_number)
+      where u.user_id=$1 and u.achievement_id=$2 and u.claimed_at is null
+      order by u.stage_number desc limit 1`,
+      [event.userId, achievementId],
+    )
+  ).rows[0];
+  const openedAt = active !== undefined && active.stage_number > 1 ? active.opened_at : null;
+  const minimumAccuracy = active?.target.minimumAccuracyPercent ?? 50;
   const { rows } = await db.query<{
     day_date: string;
     pool_id: string | null;
@@ -1050,7 +1228,18 @@ async function fetchCompletedDailyAccuracyWindow(
     shots: number | string | null;
     goals: number | string | null;
   }>(
-    `with days as (
+    achievementId !== 'keeping-fit'
+      ? `select to_char(p.day_date,'YYYY-MM-DD') as day_date,
+       p.id as pool_id,periods.closed_periods,shots.shots,shots.goals
+      from day_pool p
+      cross join lateral(select count(*)::int as closed_periods from period_log where day_pool_id=p.id) periods
+      cross join lateral(select count(*)::int as shots,count(*) filter(where server_result='goal')::int as goals
+        from shot_session where mode='daily' and day_pool_id=p.id) shots
+     where p.user_id=$1 and p.state='closed' and p.day_date<=$2::date
+       and ($4::timestamptz is null or p.closed_at >= $4)
+       and periods.closed_periods=${event.totalPeriods} and shots.shots=${event.totalPeriods * event.shotsPerPeriod}
+     order by p.day_date desc,p.closed_at desc limit $3`
+      : `with days as (
        select generate_series(
                 $2::date - (($3::int - 1) * interval '1 day'),
                 $2::date,
@@ -1064,14 +1253,15 @@ async function fetchCompletedDailyAccuracyWindow(
          from day_pool
         where user_id = $1
           and state = 'closed'
+          and ($4::timestamptz is null or closed_at >= $4)
           and day_date between $2::date - (($3::int - 1) * interval '1 day') and $2::date
         order by day_date asc, closed_at desc nulls last, created_at desc
      ),
      stats as (
        select p.id as pool_id,
               count(distinct pl.period_number)::int as closed_periods,
-              count(ss.id)::int as shots,
-              count(ss.id) filter (where ss.server_result = 'goal')::int as goals
+              count(distinct ss.id)::int as shots,
+              count(distinct ss.id) filter (where ss.server_result = 'goal')::int as goals
          from pools p
          left join period_log pl on pl.day_pool_id = p.id
          left join shot_session ss
@@ -1088,11 +1278,16 @@ async function fetchCompletedDailyAccuracyWindow(
        left join pools p on p.day_date = d.day_date
        left join stats on stats.pool_id = p.id
       order by d.day_date asc`,
-    [event.userId, event.dayDate, days],
+    [event.userId, event.dayDate, days, openedAt],
   );
 
   if (rows.length !== days) {
-    return { complete: false, minimumAccuracyPercent: 0, combinedAccuracyPercent: 0 };
+    return {
+      complete: false,
+      qualifyingDays: 0,
+      qualifyingMinimumAccuracyPercent: 0,
+      combinedAccuracyPercent: 0,
+    };
   }
 
   const dailyStats = rows.map((row) => ({
@@ -1103,20 +1298,27 @@ async function fetchCompletedDailyAccuracyWindow(
     goals: Number(row.goals ?? 0),
   }));
 
-  if (
-    dailyStats.some(
-      (row) => row.poolId === null || row.closedPeriods < event.totalPeriods || row.shots <= 0,
-    )
-  ) {
-    return { complete: false, minimumAccuracyPercent: 0, combinedAccuracyPercent: 0 };
+  const valid = (row: (typeof dailyStats)[number]) =>
+    row.poolId !== null &&
+    row.closedPeriods === event.totalPeriods &&
+    row.shots === event.totalPeriods * event.shotsPerPeriod;
+  let qualifyingDays = 0;
+  let qualifyingMinimumAccuracyPercent = 100;
+  for (const row of [...dailyStats].reverse()) {
+    const accuracy = row.shots > 0 ? (row.goals / row.shots) * 100 : 0;
+    if (!valid(row) || accuracy < minimumAccuracy) break;
+    qualifyingDays += 1;
+    qualifyingMinimumAccuracyPercent = Math.min(qualifyingMinimumAccuracyPercent, accuracy);
   }
+  const complete = dailyStats.every(valid);
 
   const totalShots = dailyStats.reduce((sum, row) => sum + row.shots, 0);
   const totalGoals = dailyStats.reduce((sum, row) => sum + row.goals, 0);
   return {
-    complete: true,
-    minimumAccuracyPercent: Math.min(...dailyStats.map((row) => (row.goals / row.shots) * 100)),
-    combinedAccuracyPercent: totalShots > 0 ? (totalGoals / totalShots) * 100 : 0,
+    complete,
+    qualifyingDays,
+    qualifyingMinimumAccuracyPercent: qualifyingDays > 0 ? qualifyingMinimumAccuracyPercent : 0,
+    combinedAccuracyPercent: complete && totalShots > 0 ? (totalGoals / totalShots) * 100 : 0,
   };
 }
 
