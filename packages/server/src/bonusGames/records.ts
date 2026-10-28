@@ -2,7 +2,6 @@ import type { Pool, PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { observeCareerExperience } from '../achievements/service.js';
 import { listBonusGameCards } from './catalog.js';
-import { normalizeBonusQualificationRules } from './qualification.js';
 import type { BonusGameAttemptRow, BonusSkillCode } from './types.js';
 
 export function recordScore(
@@ -65,6 +64,23 @@ interface StoredRecord {
   goals: number;
   points: number;
 }
+// Keep versioned history, but rank only each player's best result across all rules.
+const allTimeRecords = `with scored as (
+  select r.*, case when skill_code='endurance' then elapsed_ms::numeric / nullif(goals,0)
+    else primary_score::numeric end as ranking_primary
+  from bonus_game_record r where game_id=$1 and skill_code=$2
+), personal as (
+  select *, row_number() over(partition by user_id order by ranking_primary,
+    secondary_score,tertiary_score,quaternary_score,achieved_at,attempt_id) as personal_position
+  from scored
+), ranked as (
+  select *, rank() over(order by ranking_primary,secondary_score,tertiary_score,quaternary_score)::int as place
+  from personal where personal_position=1
+)`;
+function comparableScore(skill: BonusSkillCode, record: StoredRecord): number[] {
+  return [skill === 'endurance' ? Number(record.elapsed_ms) / record.goals : Number(record.primary_score),
+    Number(record.secondary_score), Number(record.tertiary_score), Number(record.quaternary_score)];
+}
 async function version(
   client: PoolClient,
   skill: string,
@@ -111,18 +127,20 @@ export async function settleBonusRecord(
   )
     return;
   const args = [attempt.bonus_game_id, v];
-  const old = (
+  const versionOld = (
     await client.query<StoredRecord>(
       'select * from bonus_game_record where game_id=$1 and rules_version=$2 and user_id=$3',
       [...args, attempt.user_id],
     )
   ).rows[0];
-  const leader = (
-    await client.query<StoredRecord>(
-      'select * from bonus_game_record where game_id=$1 and rules_version=$2 order by primary_score,secondary_score,tertiary_score,quaternary_score limit 1',
-      args,
-    )
-  ).rows[0];
+  const rankingArgs = [attempt.bonus_game_id, rules.skillCode];
+  const old = (await client.query<StoredRecord>(
+    allTimeRecords + ' select * from ranked where user_id=$3',
+    [...rankingArgs, attempt.user_id],
+  )).rows[0];
+  const leader = (await client.query<StoredRecord>(
+    allTimeRecords + ' select * from ranked order by place limit 1', rankingArgs,
+  )).rows[0];
   const score = recordScore(
     rules.skillCode,
     elapsedMs,
@@ -130,11 +148,13 @@ export async function settleBonusRecord(
     Number(attempt.goals),
     Number(attempt.best_goal_streak),
   );
+  const rankingScore = rules.skillCode === 'endurance'
+    ? [elapsedMs / Number(attempt.goals), 0] : score;
   const better = (r: StoredRecord) =>
-    compareRecordScores(score, [Number(r.primary_score), Number(r.secondary_score),Number(r.tertiary_score??0),Number(r.quaternary_score??0)]) < 0;
+    compareRecordScores(rankingScore, comparableScore(rules.skillCode, r)) < 0;
   const personal = old !== undefined && better(old);
   const global = leader !== undefined && better(leader);
-  if (old === undefined || personal)
+  if (versionOld === undefined || better(versionOld))
     await client.query(
       `insert into bonus_game_record
     (game_id,rules_version,user_id,attempt_id,skill_code,primary_score,secondary_score,elapsed_ms,shots,goals,points,achieved_at,tertiary_score,quaternary_score)
@@ -155,21 +175,11 @@ export async function settleBonusRecord(
         now,score[2]??0,score[3]??0,
       ],
     );
-  const best = (
-    await client.query<StoredRecord>(
-      'select * from bonus_game_record where game_id=$1 and rules_version=$2 and user_id=$3',
-      [...args, attempt.user_id],
-    )
-  ).rows[0]!;
-  const place = Number(
-    (
-      await client.query<{ place: string }>(
-        `select 1+count(*) as place from bonus_game_record
-    where game_id=$1 and rules_version=$2 and (primary_score,secondary_score,tertiary_score,quaternary_score)<($3,$4,$5,$6)`,
-        [...args, best.primary_score, best.secondary_score,best.tertiary_score,best.quaternary_score],
-      )
-    ).rows[0]!.place,
-  );
+  const best = (await client.query<StoredRecord & { place: number }>(
+    allTimeRecords + ' select * from ranked where user_id=$3',
+    [...rankingArgs, attempt.user_id],
+  )).rows[0]!;
+  const place = Number(best.place);
   const reward = recordReward(personal, global);
   const result: BonusRecordResult = {
     elapsedMs,
@@ -240,56 +250,25 @@ export async function listBonusRecords(pool: Pool, userId: string, gameId: strin
     throw new AppError('bonus_records_locked', 'Сначала пройди эту локацию', 403);
   const client = await pool.connect();
   try {
-    const definition = (
-      await client.query(
-        'select skill_code,qualification_rules,period_rules,use_inventory,target_goals from bonus_game where id=$1',
-        [gameId],
-      )
-    ).rows[0]!;
-    const qualification = normalizeBonusQualificationRules(definition.qualification_rules, {
-      targetGoals: Number(definition.target_goals),
-      shotsLimit: definition.period_rules.reduce(
-        (sum: number, period: { shotsLimit: number | null }) => sum + (period.shotsLimit ?? 0),
-        0,
-      ),
-    });
-    const v = await version(
-      client,
-      definition.skill_code,
-      qualification,
-      definition.period_rules,
-      definition.use_inventory,
-    );
-    const sql = `with ranked as(select r.*,rank() over(order by primary_score,secondary_score,tertiary_score,quaternary_score)::int as place
-      from bonus_game_record r where game_id=$1 and rules_version=$2)
+    const sql = allTimeRecords + `
       select r.place,r.user_id as "userId",u.display_name as "displayName",u.avatar_url as "avatarUrl",
-      r.elapsed_ms::float8 as "elapsedMs",greatest(0,-r.secondary_score)::int as "bestSeries",r.shots,r.goals,r.points from ranked r join users u on u.id=r.user_id`;
+      r.elapsed_ms::float8 as "elapsedMs",greatest(0,-r.secondary_score)::int as "bestSeries",r.shots,r.goals,r.points
+      from ranked r join users u on u.id=r.user_id`;
     const rows = (
       await client.query(sql + ' order by r.place,r.achieved_at,r.user_id limit $3 offset $4', [
         gameId,
-        v,
+        game.skill_code,
         Math.min(20, 100 - offset),
         offset,
       ])
     ).rows;
     const currentUser =
-      (await client.query(sql + ' where r.user_id=$3', [gameId, v, userId])).rows[0] ?? null;
-    const previousRecords = (
-      await client.query(
-        `select elapsed_ms::float8 as "elapsedMs", shots, goals, points,
-              greatest(0,-secondary_score)::int as "bestSeries", achieved_at as "achievedAt"
-         from bonus_game_record
-        where game_id=$1 and user_id=$2 and rules_version<>$3
-        order by achieved_at desc, rules_version
-        limit 20`,
-        [gameId, userId, v],
-      )
-    ).rows.map((row) => ({ ...row, achievedAt: row.achievedAt.toISOString() as string }));
+      (await client.query(sql + ' where r.user_id=$3', [gameId, game.skill_code, userId])).rows[0] ?? null;
     return {
       rows,
       currentUser,
-      previousRecords,
-      skillCode: definition.skill_code,
+      previousRecords: [],
+      skillCode: game.skill_code,
       nextOffset: rows.length === 20 && offset + 20 < 100 ? offset + 20 : null,
     };
   } finally {

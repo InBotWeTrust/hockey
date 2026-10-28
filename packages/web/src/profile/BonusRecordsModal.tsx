@@ -252,24 +252,9 @@ export function BonusRecordsModal({
           не дают. Первый результат в пустом рейтинге тоже без бонуса.
         </p>
       </div>
+      <p className="modal-copy">В рейтинге — лучшие результаты за всё время, включая игры по прежним условиям. Каждый игрок занимает одно место.</p>
       <p className="modal-copy bonus-records-modal__explanation">{explanation}</p>
       <div className="experience-rating__viewport" ref={scrollRef}>
-        {(firstPage?.previousRecords?.length ?? 0) > 0 && (
-          <section aria-label="Твои прежние рекорды" className="bonus-records-previous">
-            <h3 className="modal-title">Твои прежние рекорды</h3>
-            <p className="modal-copy">
-              Условия локации изменились. Твои прежние рекорды сохранены. В текущем рейтинге
-              участвуют результаты по новым условиям.
-            </p>
-            {firstPage!.previousRecords!.map((record, index) => (
-              <p className="modal-copy" key={`${record.achievedAt}:${index}`}>
-                {formatBonusRecord(skill, record)}
-                {' · '}
-                {new Date(record.achievedAt).toLocaleDateString('ru-RU')}
-              </p>
-            ))}
-          </section>
-        )}
         {query.isLoading ? (
           <p className="experience-rating__state" role="status">
             Загружаем рейтинг…
