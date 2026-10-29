@@ -461,6 +461,7 @@ export const useAmateurDuelStore = create<AmateurDuelStoreState>()((set, get) =>
             },
             { signal },
           ),
+        retryOnceOnUnchanged: ['rhythm', 'sniper', 'marathon'].includes(current.rules?.duelKind ?? ''),
         reconcile: async (signal) => (await fetchAmateurMatch(current.id, { signal })).match,
         isReconciled: (match) =>
           match.id === current.id &&

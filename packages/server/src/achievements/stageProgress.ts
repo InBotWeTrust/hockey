@@ -5,7 +5,9 @@ type Queryable = Pool | PoolClient;
 export interface StageObservation {
   eventKey: string;
   occurredAt: Date;
-  progress: Record<string, number | string | boolean>;
+  /** Expensive observations run only for a new event on an unfinished stage. */
+  progress: Record<string, number | string | boolean> |
+    ((client: PoolClient) => Promise<Record<string, number | string | boolean>>);
   context?: Record<string, unknown>;
   progressMode?: 'max' | 'increment';
 }
@@ -147,14 +149,17 @@ export async function observeAchievementStage(
     );
     if (event.rowCount === 0) return { completed: false, stageNumber: active.stage_number };
 
+    const observedProgress = typeof observation.progress === 'function'
+      ? await observation.progress(client) : observation.progress;
+
     const displayProgress =
       observation.progressMode === 'increment'
-        ? incrementAchievementStageProgress(active.progress ?? {}, observation.progress)
-        : mergeAchievementStageProgress(active.progress ?? {}, observation.progress);
+        ? incrementAchievementStageProgress(active.progress ?? {}, observedProgress)
+        : mergeAchievementStageProgress(active.progress ?? {}, observedProgress);
     // A single game must satisfy all of its qualifiers. Independent maxima
     // from different games are useful for display, but are not a valid result.
     const completed = satisfiesTarget(
-      observation.progressMode === 'increment' ? displayProgress : observation.progress,
+      observation.progressMode === 'increment' ? displayProgress : observedProgress,
       active.target,
     );
     await client.query(

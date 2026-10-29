@@ -50,6 +50,8 @@ interface GameRequestReconciliationOptions<TRequest, TReconciled> {
   reconcile: (signal: AbortSignal) => Promise<TReconciled>;
   isReconciled: (value: TReconciled) => boolean;
   isRequestErrorDefinitive?: (error: unknown) => boolean;
+  /** Opt in only when the endpoint replays the same persisted operation safely. */
+  retryOnceOnUnchanged?: boolean;
 }
 
 export function withGameRequestReconciliation<TRequest, TReconciled>({
@@ -57,11 +59,12 @@ export function withGameRequestReconciliation<TRequest, TReconciled>({
   reconcile,
   isReconciled,
   isRequestErrorDefinitive = () => false,
+  retryOnceOnUnchanged = false,
 }: GameRequestReconciliationOptions<
   TRequest,
   TReconciled
 >): Promise<GameRequestReconciliationResult<TRequest, TReconciled>> {
-  const requestController = new AbortController();
+  let requestController = new AbortController();
   const reconcileController = new AbortController();
 
   return new Promise((resolve, reject) => {
@@ -69,6 +72,8 @@ export function withGameRequestReconciliation<TRequest, TReconciled>({
     let requestError: unknown;
     let requestRejected = false;
     let reconciliationStarted = false;
+    let requestGeneration = 0;
+    let retried = false;
     let reconciliationTimer: ReturnType<typeof setTimeout> | undefined;
 
     const timeoutError = (): DOMException =>
@@ -109,12 +114,16 @@ export function withGameRequestReconciliation<TRequest, TReconciled>({
           finish({ kind: 'reconciled', value });
           return;
         }
-        // A completed error response plus an unchanged authoritative snapshot
-        // proves that the shot was not accepted. A merely slow request stays
-        // pending and is checked again without blocking on a second timeout.
-        if (requestRejected && isRequestErrorDefinitive(requestError)) {
-          finish({ kind: 'unreconciled', value, error: requestError });
-          return;
+        if (retryOnceOnUnchanged && !retried) {
+          retried = true;
+          // Retire the old transport before resending the identical operation.
+          // A late abort/error from it must not reject the replacement request.
+          requestGeneration++;
+          requestController.abort();
+          requestController = new AbortController();
+          requestRejected = false;
+          requestError = undefined;
+          sendRequest(requestGeneration);
         }
       } catch (error) {
         if (settled) return;
@@ -138,15 +147,20 @@ export function withGameRequestReconciliation<TRequest, TReconciled>({
 
     reconciliationTimer = setTimeout(startReconciliation, GAME_RECONCILIATION_DELAY_MS);
 
-    void request(requestController.signal).then(
-      (value) => finish({ kind: 'request', value }),
-      (error: unknown) => {
-        if (settled) return;
-        requestError = error;
-        requestRejected = true;
-        startReconciliation();
-      },
-    );
+    function sendRequest(generation: number): void {
+      void request(requestController.signal).then(
+        (value) => {
+          if (!settled && generation === requestGeneration) finish({ kind: 'request', value });
+        },
+        (error: unknown) => {
+          if (settled || generation !== requestGeneration) return;
+          requestError = error;
+          requestRejected = true;
+          startReconciliation();
+        },
+      );
+    }
+    sendRequest(requestGeneration);
   });
 }
 
