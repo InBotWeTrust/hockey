@@ -232,6 +232,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     try {
       const outcome = await withGameRequestReconciliation({
         request: signal => cleanupBonusBeachPuddle(attempt.id, body, {signal}),
+        retryOnceOnUnchanged: true,
         reconcile: async signal => (await fetchBonusAttempt(attempt.id, {signal})).attempt,
         isReconciled: candidate => candidate.id === attempt.id &&
           (candidate.current_period_cleanup_events?.some(event => event.id === body.eventId) ?? false),
@@ -362,6 +363,7 @@ export const useBonusGameStore = create<BonusGameStoreState>()((set, get) => ({
     try {
       const outcome = await withGameRequestReconciliation({
         request: (signal) => submitBonusShot(attempt.id, body, { signal }),
+        retryOnceOnUnchanged: Boolean(attempt.rules.challenge_environment?.beach?.interactive),
         reconcile: async (signal) => (await fetchBonusAttempt(attempt.id, { signal })).attempt,
         isReconciled: (candidate) =>
           candidate.id === attempt.id &&

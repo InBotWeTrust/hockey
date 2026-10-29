@@ -122,6 +122,80 @@ describe('withGameRequestReconciliation', () => {
     });
   });
 
+  it('retries an opted-in lost request once after a responsive unchanged snapshot', async () => {
+    vi.useFakeTimers();
+    const signals: AbortSignal[] = [];
+    const request = vi.fn((signal: AbortSignal) => {
+      signals.push(signal);
+      return signals.length === 1 ? neverSettles<{ shots: number }>() : Promise.resolve({ shots: 18 });
+    });
+    const reconcile = vi.fn(async () => ({ shots: 17 }));
+    const result = withGameRequestReconciliation({
+      request, reconcile, isReconciled: state => state.shots >= 18,
+      retryOnceOnUnchanged: true,
+    });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(request).toHaveBeenCalledTimes(2);
+    await expect(result).resolves.toEqual({ kind: 'request', value: { shots: 18 } });
+    expect(reconcile).toHaveBeenCalledTimes(1);
+    expect(signals[0]!.aborted).toBe(true);
+  });
+
+  it('ignores the retired request abort while the replacement is still pending', async () => {
+    vi.useFakeTimers();
+    let finishRetry!: (value: { shots: number }) => void;
+    let calls = 0;
+    const request = vi.fn((signal: AbortSignal) => {
+      if (calls++ === 0) return new Promise<{ shots: number }>((_resolve, reject) => {
+        signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+      });
+      return new Promise<{ shots: number }>(resolve => { finishRetry = resolve; });
+    });
+    const result = withGameRequestReconciliation({ request,
+      reconcile: async () => ({ shots: 17 }), isReconciled: state => state.shots >= 18,
+      retryOnceOnUnchanged: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(request).toHaveBeenCalledTimes(2);
+    finishRetry({ shots: 18 });
+    await expect(result).resolves.toEqual({ kind: 'request', value: { shots: 18 } });
+  });
+
+  it('never resends an operation already confirmed by the server', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(() => neverSettles<{ shots: number }>());
+    const result = withGameRequestReconciliation({ request,
+      reconcile: async () => ({ shots: 18 }), isReconciled: state => state.shots >= 18,
+      retryOnceOnUnchanged: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(result).resolves.toEqual({ kind: 'reconciled', value: { shots: 18 } });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('never resends a definitively rejected operation', async () => {
+    vi.useFakeTimers();
+    const error = { status: 409 };
+    const request = vi.fn(async () => { throw error; });
+    const result = withGameRequestReconciliation({ request,
+      reconcile: async () => ({ shots: 17 }), isReconciled: state => state.shots >= 18,
+      isRequestErrorDefinitive: isDefinitiveGameRequestError, retryOnceOnUnchanged: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    await expect(result).resolves.toEqual({ kind: 'unreconciled', value: { shots: 17 }, error });
+    expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds a safe retry and retains one overall deadline if neither request arrives', async () => {
+    vi.useFakeTimers();
+    const request = vi.fn(() => neverSettles<{ shots: number }>());
+    const result = withGameRequestReconciliation({
+      request, reconcile: async () => ({ shots: 17 }), isReconciled: state => state.shots >= 18,
+      retryOnceOnUnchanged: true,
+    });
+    const rejected = expect(result).rejects.toMatchObject({ name: 'TimeoutError' });
+    await vi.advanceTimersByTimeAsync(12000);
+    await rejected;
+    expect(request).toHaveBeenCalledTimes(2);
+  });
+
   it('uses one overall deadline when both submission and reconciliation stall', async () => {
     vi.useFakeTimers();
     const resultPromise = withGameRequestReconciliation({

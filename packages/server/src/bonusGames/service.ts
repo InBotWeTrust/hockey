@@ -1236,13 +1236,11 @@ export async function submitBonusShot(
     const isEndurance = ownedQualification.type === 'survive_goal_windows';
     const isRhythm = ownedQualification.type === 'rhythm_in_time';
     const acceptsLateSettlement = isMarksmanship || isEndurance || isRhythm;
-    const acceptedBeforeReconcile = acceptsLateSettlement
-      ? await fetchAcceptedBonusShot(
-          client,
-          attempt.id,
-          attempt.current_period,
-          input.claimedShotIndex,
-        )
+    // Interactive Beach can retry a lost delivery while the period is active.
+    // The account/attempt lock makes concurrent copies replay one receipt.
+    const canReplayActiveShot = acceptsLateSettlement || Boolean(owned.rules_snapshot.challengeEnvironment?.beach?.interactive);
+    const acceptedBeforeReconcile = canReplayActiveShot
+      ? await fetchAcceptedBonusShot(client, attempt.id, attempt.current_period, input.claimedShotIndex)
       : null;
     if (acceptedBeforeReconcile !== null) {
       response = {
