@@ -24,6 +24,32 @@ function match(): api.AmateurDuelMatchState {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); useAmateurDuelStore.setState({match: null}); });
 
 describe('delayed duel clock snapshots', () => {
+  it.each(['rhythm', 'sniper', 'marathon'] as const)('retries a lost %s delivery without duplicating the optimistic shot', async (kind) => {
+    vi.useFakeTimers();
+    const original = match();
+    original.rules.duelKind = kind;
+    useAmateurDuelStore.setState({ match: original, pendingShots: [] });
+    useAmateurDuelStore.getState().optimisticAddShot('goal');
+    const submit = vi.spyOn(api, 'submitAmateurDuelShot')
+      .mockImplementationOnce(() => new Promise(() => {}))
+      .mockResolvedValueOnce({ match_id: original.id, server_now: iso(3000), state_revision: 2,
+        server_result: 'goal', confirmed_shot_index: 1, settled: false,
+        current_period_inventory: { periodNumber: 1, consumed: [] },
+        participant: { ...original.me, shots_taken: 1, goals: 1, current_period_shots: 1, current_period_goals: 1 } });
+    vi.spyOn(api, 'fetchAmateurMatch').mockResolvedValue({ match: original });
+    const result = useAmateurDuelStore.getState().submitShot({ shotIndex: 1, claimedResult: 'goal',
+      input: { tapTime: 2000, periodTapTime: 2000, puckSpeedPerMs: 1,
+        shooterFrequency: .75, goalieFrequency: .6, goalFrequency: .5 } });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(submit).toHaveBeenCalledTimes(2);
+    const accepted = await result;
+    expect(accepted).not.toBeNull();
+    expect(submit.mock.calls[0]!.slice(0, 2)).toEqual(submit.mock.calls[1]!.slice(0, 2));
+    useAmateurDuelStore.getState().applyState(accepted!.state);
+    expect(useAmateurDuelStore.getState().match?.current_period_shots).toBe(1);
+    expect(useAmateurDuelStore.getState().match?.me.shots_taken).toBe(1);
+  });
+
   it('shares an in-flight poll instead of queuing duplicate match requests', async () => {
     const original = match();
     useAmateurDuelStore.setState({match: original});
