@@ -149,6 +149,8 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
           expect(response.json().confirmed_shot_index).toBe(shotIndex);
         }
       }
+      expect(queries.mock.calls.filter(([sql]) => String(sql).includes('historical_streaks.best_days')))
+        .toHaveLength(2); // One new day per player; subsequent shots reuse the day receipt.
       lookups = queries.mock.calls.flatMap((args) => {
         const text = args[0];
         const values = args[1];

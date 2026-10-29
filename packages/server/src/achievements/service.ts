@@ -396,21 +396,28 @@ export async function observeCareerStreak(
 }
 
 export async function observeCareerActivityStreak(db: Queryable, userId: string, occurredAt: Date) {
-  const { rows } = await db.query<{ activity_day: string; best_days: number }>(
-    `with ${USER_ACTIVITY_STREAK_CTES}
-     select (date_trunc('day', $2::timestamptz at time zone users.timezone))::date::text as activity_day,
-            coalesce(historical_streaks.best_days, 0)::int as best_days
-       from users
-       left join historical_streaks on historical_streaks.user_id = users.id
-      where users.id = $1`,
+  const day = await db.query<{ activity_day: string }>(
+    `select ($2::timestamptz at time zone timezone)::date::text as activity_day from users where id=$1`,
     [userId, occurredAt],
   );
-  const row = rows[0];
-  if (!row) return { completed: false, stageNumber: null };
-  return observeCareerStreak(db, userId, {
-    eventKey: `activity-day:${row.activity_day}`,
+  if (!day.rows[0]) return { completed: false, stageNumber: null };
+  return observeAchievementStage(db, userId, 'career-streak', {
+    eventKey: `activity-day:${day.rows[0].activity_day}`,
     occurredAt,
-    recordDays: Number(row.best_days),
+    // Deduplication and the stage lock precede this history scan. Later shots
+    // that day, or an already completed stage, do not need to recompute it.
+    progress: async client => {
+      const { rows } = await client.query<{ activity_day: string; best_days: number }>(
+        `with ${USER_ACTIVITY_STREAK_CTES}
+         select (date_trunc('day', $2::timestamptz at time zone users.timezone))::date::text as activity_day,
+                coalesce(historical_streaks.best_days, 0)::int as best_days
+           from users
+           left join historical_streaks on historical_streaks.user_id = users.id
+          where users.id = $1`,
+        [userId, occurredAt],
+      );
+      return { days: Number(rows[0]?.best_days ?? 0) };
+    },
   });
 }
 
