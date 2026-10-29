@@ -1,3 +1,4 @@
+import { withGameRequestReconciliation } from '../../../web/src/api/requestTimeout.js';
 import { GAME_CORE_VERSION, beachWindMotion, getBonusChallengeCondition, getBeachPuckSpeed, getSessionPhaseOffsets } from '@hockey/game-core';
 import { deriveShotSeed } from '../../src/duel/seed.js';
 import { buildBonusGoalieConfig } from '../../src/bonusGames/types.js';
@@ -33,6 +34,55 @@ describe.skipIf(!hasIntegrationEnv)('server-authoritative beach interactions', (
   });
   const request = (changes = {}) => ({userId, attemptId, eventId: randomUUID(), period: 1, puddleId: 'left', tapTime: 4000,
     expectedShots: 0, expectedCleanups: 0, now: new Date(NOW.getTime()+4000), ...changes});
+  async function firstShot() {
+    const tapTime = 854;
+    const attempt = await reconcileOwnedBonusAttempt(pool, { userId, attemptId, now: NOW });
+    const environment = attempt.rules.challengeEnvironment!;
+    const rule = attempt.rules.periods[0]!;
+    const condition = getBonusChallengeCondition(environment, tapTime);
+    const input = { tapTime, shooterTapTime: tapTime,
+      shooterMotionTime: beachWindMotion(environment, tapTime, rule.shooterFrequency, [], environment.beach!.interactive!.wind),
+      shooterFrequency: rule.shooterFrequency, goalieFrequency: rule.goalieFrequency, goalFrequency: rule.goalFrequency,
+      puckSpeedPerMs: getBeachPuckSpeed(rule.puckSpeedPerMs, condition.puckSpeedMultiplier) };
+    const predicted = resolveVersionedBeachShot({ input,
+      goalie: buildBonusGoalieConfig(attempt.rules.slug, attempt.rules.title, rule),
+      seed: deriveShotSeed(attempt.attemptSeed, 1, 1), shotIndex: 1, environment,
+      slug: attempt.rules.slug, coreVersion: attempt.gameCoreVersion,
+      phaseOffsets: getSessionPhaseOffsets(attempt.attemptSeed), cleanupEvents: [] })!;
+    return { userId, attemptId, claimedShotIndex: 1, input, claimedResult: predicted.result.type,
+      now: new Date(NOW.getTime() + tapTime) };
+  }
+
+  it('recovers a dropped Beach delivery through the real client coordinator and database', async () => {
+    let deliveries = 0;
+    const body = await firstShot();
+    const result = await withGameRequestReconciliation({
+      request: async () => {
+        if (++deliveries === 1) return new Promise<Awaited<ReturnType<typeof submitBonusShot>>>(() => {});
+        return submitBonusShot(pool, { ...body, now: new Date(NOW.getTime() + 2854) });
+      },
+      reconcile: () => reconcileOwnedBonusAttempt(pool, { userId, attemptId, now: new Date(NOW.getTime() + 2854) }),
+      isReconciled: attempt => attempt.shotsTaken >= 1,
+      retryOnceOnUnchanged: true,
+    });
+    expect(result.kind).toBe('request');
+    expect(deliveries).toBe(2);
+    expect((await pool.query('select count(*)::int n from shot_session where bonus_game_attempt_id=$1', [attemptId])).rows[0].n).toBe(1);
+  });
+
+  it('replays concurrent active Beach shots without changing the receipt or rewards', async () => {
+    const body = await firstShot();
+    const responses = await Promise.all([submitBonusShot(pool, body), submitBonusShot(pool, body)]);
+    expect(responses[0]!.serverResult).toBe(responses[1]!.serverResult);
+    expect(responses.every(result => result.attempt.shotsTaken === 1 && result.attempt.status === 'active')).toBe(true);
+    const before = await pool.query('select to_jsonb(a) receipt from bonus_game_attempt a where id=$1', [attemptId]);
+    const retry = await submitBonusShot(pool, { ...body, now: new Date(NOW.getTime() + 10000) });
+    expect(retry.serverResult).toBe(responses[0]!.serverResult);
+    expect((await pool.query('select to_jsonb(a) receipt from bonus_game_attempt a where id=$1', [attemptId])).rows).toEqual(before.rows);
+    expect((await pool.query('select count(*)::int n from shot_session where bonus_game_attempt_id=$1', [attemptId])).rows[0].n).toBe(1);
+    expect((await pool.query('select count(*)::int n from bonus_game_economy_event where attempt_id=$1', [attemptId])).rows[0].n).toBe(0);
+  });
+
   it('stores a seeded immutable 10-gust snapshot and seven zones', async () => {
     const attempt = await reconcileOwnedBonusAttempt(pool, {userId, attemptId, now: NOW});
     expect(attempt.rules.challengeEnvironment!.beach!.interactive!.wind).toHaveLength(10);

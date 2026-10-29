@@ -56,6 +56,45 @@ describe.skipIf(!hasIntegrationEnv)('tiered achievement stage progress', () => {
     await pool.end();
   });
 
+  it('computes expensive progress once for concurrent copies and skips completed stages', async () => {
+    const userId = await createUser(pool);
+    const occurredAt = new Date();
+    let computations = 0;
+    const progress = async () => { computations++; return { days: 1 }; };
+    await Promise.all([1, 2].map(() => observeAchievementStage(pool, userId, 'career-streak', {
+      eventKey: 'activity-day:one', occurredAt, progress,
+    })));
+    expect(computations).toBe(1);
+    await observeAchievementStage(pool, userId, 'career-streak', {
+      eventKey: 'activity-day:two', occurredAt, progress,
+    });
+    expect(computations).toBe(2);
+    await observeAchievementStage(pool, userId, 'career-streak', {
+      eventKey: 'activity-day:complete', occurredAt, progress: async () => ({ days: 5 }),
+    });
+    await observeAchievementStage(pool, userId, 'career-streak', {
+      eventKey: 'activity-day:later', occurredAt,
+      progress: async () => { throw new Error('completed stage must not scan history'); },
+    });
+    const rows = await pool.query("select progress from user_achievement_stages where user_id=$1 and achievement_id='career-streak'", [userId]);
+    expect(rows.rows[0].progress).toEqual({ days: 5 });
+  });
+
+  it('rolls back the event receipt when progress computation fails and permits retry', async () => {
+    const userId = await createUser(pool);
+    const occurredAt = new Date();
+    await expect(observeAchievementStage(pool, userId, 'career-streak', {
+      eventKey: 'activity-day:retry', occurredAt,
+      progress: async () => { throw new Error('history unavailable'); },
+    })).rejects.toThrow('history unavailable');
+    const retry = await observeAchievementStage(pool, userId, 'career-streak', {
+      eventKey: 'activity-day:retry', occurredAt, progress: async () => ({ days: 2 }),
+    });
+    expect(retry).toEqual({ completed: false, stageNumber: 1 });
+    const rows = await pool.query("select count(*)::int count from achievement_stage_events where user_id=$1 and event_key='activity-day:retry'", [userId]);
+    expect(rows.rows[0].count).toBe(1);
+  });
+
   it('accepts a perfect duel after an earlier duel exceeded the miss limit', async () => {
     const userId = await createUser(pool);
     const occurredAt = new Date();

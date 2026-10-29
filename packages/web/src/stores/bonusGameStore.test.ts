@@ -666,6 +666,50 @@ describe('bonusGameStore', () => {
     });
   });
 
+  it('recovers a Beach shot that never reached the server without waiting twelve seconds', async () => {
+    vi.useFakeTimers();
+    const attempt: BonusGameAttempt = { ...initialAttempt, rules: { ...initialAttempt.rules,
+      challenge_environment: { beach: { version: 1, meltDurationMs: 150000,
+        finalSpeedMultiplier: .8, puddles: [], interactive: { version: 1, wind: [] } } } } };
+    const accepted = { ...attempt, shots_taken: 3, current_period_shots_taken: 3, goals: 2 };
+    vi.mocked(submitBonusShot).mockImplementationOnce(() => neverSettles<BonusShotResponse>())
+      .mockResolvedValueOnce({ server_result: 'goal', awarded_points: 0, total_points: accepted.total_points,
+        difficulty_code: null, counter_direction: false, attempt: accepted, reward_granted: false,
+        balances: { coins: 0, stars: 0, experience: 0 } });
+    vi.mocked(fetchBonusAttempt).mockResolvedValue(response(attempt));
+    useBonusGameStore.getState().applyState(attempt);
+    const pending = useBonusGameStore.getState().submitShot(shot, { deferApply: true });
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(submitBonusShot).toHaveBeenCalledTimes(2);
+    await pending;
+    expect(vi.mocked(submitBonusShot).mock.calls[0]!.slice(0, 2))
+      .toEqual(vi.mocked(submitBonusShot).mock.calls[1]!.slice(0, 2));
+    expect(useBonusGameStore.getState().pendingShot?.attempt).toEqual(accepted);
+    useBonusGameStore.getState().applyPendingShot();
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+  });
+
+  it('retries a lost Beach cleanup with its original event ID and releases the shot lock', async () => {
+    vi.useFakeTimers();
+    const attempt = { ...initialAttempt, current_period_cleanup_events: [] };
+    const body = { eventId: 'cleanup-lost', period: 1, puddleId: 'left', tapTime: 4000,
+      expectedShots: 2, expectedCleanups: 0 };
+    const accepted = { ...attempt, current_period_cleanup_events: [
+      { id: body.eventId, puddleId: body.puddleId, tapTime: body.tapTime } ] };
+    vi.mocked(cleanupBonusBeachPuddle).mockImplementationOnce(() => neverSettles<BonusAttemptResponse>())
+      .mockResolvedValueOnce(response(accepted));
+    vi.mocked(fetchBonusAttempt).mockResolvedValue(response(attempt));
+    useBonusGameStore.getState().applyState(attempt);
+    const result = useBonusGameStore.getState().cleanupPuddle(body);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(cleanupBonusBeachPuddle).toHaveBeenCalledTimes(2);
+    await expect(result).resolves.toBe(true);
+    expect(vi.mocked(cleanupBonusBeachPuddle).mock.calls[0]!.slice(0, 2))
+      .toEqual(vi.mocked(cleanupBonusBeachPuddle).mock.calls[1]!.slice(0, 2));
+    expect(useBonusGameStore.getState().canSubmitShot()).toBe(true);
+    expect(useBonusGameStore.getState().attempt?.current_period_cleanup_events).toEqual(accepted.current_period_cleanup_events);
+  });
+
   it('recovers a completed attempt when the final-shot response stalls', async () => {
     vi.useFakeTimers();
     const completedAttempt: BonusGameAttempt = {

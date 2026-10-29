@@ -1581,7 +1581,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
               '2026-09-28T21:30:00Z'::timestamptz + n * interval '1 day'
          from generate_series(0,8) n`, [userA,userB,matchId],
     );
-    const queries = vi.spyOn(pool, 'query');
+    const queries = vi.spyOn(Client.prototype, 'query');
     let streakQuery: string;
     let streakParams: unknown[];
     try {
@@ -1603,7 +1603,14 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(scans.length).toBeGreaterThan(0);
     expect(scans.reduce((total,node) => total + (node['Actual Rows'] ?? 0) * (node['Actual Loops'] ?? 1),0))
       .toBeLessThanOrEqual(8);
-    await observeCareerActivityStreak(pool,userA,new Date('2026-10-07T11:00:00Z'));
+    const repeatQueries = vi.spyOn(Client.prototype, 'query');
+    try {
+      await observeCareerActivityStreak(pool,userA,new Date('2026-10-07T11:00:00Z'));
+      expect(repeatQueries.mock.calls.filter(([sql]) => String(sql).includes('historical_streaks.best_days')))
+        .toHaveLength(0);
+    } finally {
+      repeatQueries.mockRestore();
+    }
     const events = await pool.query(
       `select 1 from achievement_stage_events where user_id=$1 and achievement_id='career-streak'
         and event_key='activity-day:2026-10-07'`,[userA],
