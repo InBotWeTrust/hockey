@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
+import { grantAmateurStarterSet } from './starterGrant.js';
 import { AppError } from '../plugins/errors.js';
 import {
   getRequiredOnboarding,
@@ -185,6 +186,9 @@ async function completeRun(
 
   await requireApplicableChain(client, run, mediaAccessSecret);
   await requireCompletionEvidence(client, run);
+  if (run.chain_key === 'amateur') {
+    await grantAmateurStarterSet(client, run.user_id, run.id);
+  }
   await client.query(
     `update users
         set beginner_onboarding_completed = case

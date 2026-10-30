@@ -52,6 +52,7 @@ export interface ProfileData {
   competitionLevel: CompetitionLevel;
   beginnerOnboardingCompleted: boolean;
   amateurOnboardingCompleted?: boolean;
+  amateurTransitionStatus?: 'qualifying' | 'onboarding_pending' | 'complete';
   amateurUnlockGoalsRequired: number;
   stats: ProfileStats;
   achievements: ProfileAchievement[];

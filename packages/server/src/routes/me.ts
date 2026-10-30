@@ -7,6 +7,7 @@ import { getGameSettings, type GameSettings } from '../duel/gameSettings.js';
 import { AppError } from '../plugins/errors.js';
 import {
   buildProfileProgress,
+  resolveCompetitionLevel,
   readPublicProfileProgress,
   fetchTrophyDetails,
   fetchTrophySummary,
@@ -52,13 +53,18 @@ interface MeRow {
 }
 
 export function buildStoryProfileFields(
-  row: Pick<MeRow, 'beginner_onboarding_completed' | 'amateur_onboarding_completed'>,
+  row: Pick<MeRow, 'beginner_onboarding_completed' | 'amateur_onboarding_completed' | 'level' | 'lifetime_goals_total'>,
   settings: Pick<GameSettings, 'amateur'>,
 ) {
   return {
     beginnerOnboardingCompleted: row.beginner_onboarding_completed,
     amateurOnboardingCompleted: row.amateur_onboarding_completed,
     amateurUnlockGoalsRequired: settings.amateur.unlockGoalsRequired,
+    amateurTransitionStatus: resolveCompetitionLevel(
+      row.level, row.lifetime_goals_total, settings.amateur.unlockGoalsRequired,
+    ) === 'beginner'
+      ? 'qualifying'
+      : row.amateur_onboarding_completed ? 'complete' : 'onboarding_pending',
   };
 }
 

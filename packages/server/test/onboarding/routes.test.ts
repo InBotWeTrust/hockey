@@ -1,5 +1,6 @@
 import { createHmac, randomUUID } from 'node:crypto';
 import path from 'node:path';
+import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import {
   GAME_CORE_VERSION,
@@ -686,6 +687,76 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
       [user.userId],
     );
     expect(state.rows[0]?.beginner_onboarding_completed).toBe(false);
+  });
+
+  it('grants one medium-tier starter set atomically and never repeats it after retries or reset', async () => {
+    const published = await publishChain('amateur');
+    const user = await createUser(2);
+    await pool.query('update users set beginner_onboarding_completed = true where id = $1', [user.userId]);
+    const started = await start(user.authorization, randomUUID());
+    const runId = started.json().runId as string;
+    expect((await complete(user.authorization, runId)).statusCode).toBe(409);
+    expect((await pool.query('select id from user_inventory_instance where user_id = $1', [user.userId])).rows).toHaveLength(0);
+    await view(user.authorization, runId, published.stepIds[0]!);
+    const results = await Promise.all([complete(user.authorization, runId), complete(user.authorization, runId)]);
+    expect(results.map(result => result.statusCode)).toEqual([200, 200]);
+    const inventory = await pool.query(`select item.item_kind, item.rarity,
+      instance.charges_available = item.charges_per_purchase as full_resource
+      from user_inventory_instance instance join admin_inventory_items item on item.id = instance.inventory_item_id
+      where instance.user_id = $1 order by item.item_kind`, [user.userId]);
+    expect(inventory.rows).toEqual([
+      { item_kind: 'nutrition', rarity: 'rare', full_resource: true },
+      { item_kind: 'skates', rarity: 'rare', full_resource: true },
+      { item_kind: 'stick', rarity: 'rare', full_resource: true },
+    ]);
+    const aggregates = await pool.query(`select aggregate.charges_available = instance.charges_available as in_sync
+      from user_inventory_item aggregate join user_inventory_instance instance
+      on instance.user_id = aggregate.user_id and instance.inventory_item_id = aggregate.inventory_item_id
+      where aggregate.user_id = $1`, [user.userId]);
+    expect(aggregates.rows).toEqual([{ in_sync: true }, { in_sync: true }, { in_sync: true }]);
+    await pool.query(`update users set amateur_onboarding_completed = false,
+      amateur_onboarding_reset_at = now() where id = $1`, [user.userId]);
+    const reset = await start(user.authorization, randomUUID());
+    await view(user.authorization, reset.json().runId, published.stepIds[0]!);
+    expect((await complete(user.authorization, reset.json().runId)).statusCode).toBe(200);
+    expect((await pool.query('select id from user_inventory_instance where user_id = $1', [user.userId])).rows).toHaveLength(3);
+  });
+
+  it('rolls back completion and the grant receipt if a starter item is unavailable', async () => {
+    const published = await publishChain('amateur');
+    const user = await createUser(2);
+    await pool.query('update users set beginner_onboarding_completed = true where id = $1', [user.userId]);
+    const runId = (await start(user.authorization, randomUUID())).json().runId as string;
+    await view(user.authorization, runId, published.stepIds[0]!);
+    const removed = await pool.query(`update admin_inventory_items set deleted_at = now()
+      where item_kind = 'nutrition' and rarity = 'rare' and deleted_at is null returning id`);
+    try {
+      const result = await complete(user.authorization, runId);
+      expect(result.statusCode).toBe(409);
+      expect((await pool.query('select amateur_onboarding_completed from users where id = $1', [user.userId])).rows[0]).toEqual({ amateur_onboarding_completed: false });
+      expect((await pool.query('select user_id from amateur_onboarding_starter_grant where user_id = $1', [user.userId])).rows).toHaveLength(0);
+      expect((await pool.query('select id from user_inventory_instance where user_id = $1', [user.userId])).rows).toHaveLength(0);
+    } finally {
+      await pool.query('update admin_inventory_items set deleted_at = null where id = any($1::uuid[])', [removed.rows.map(row => row.id)]);
+    }
+    expect((await complete(user.authorization, runId)).statusCode).toBe(200);
+    expect((await pool.query('select id from user_inventory_instance where user_id = $1', [user.userId])).rows).toHaveLength(3);
+  });
+
+  it('migration excludes previously completed players without awarding retroactive inventory', async () => {
+    const user = await createUser(2);
+    await pool.query('update users set amateur_onboarding_completed = true where id = $1', [user.userId]);
+    const client = await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('drop table amateur_onboarding_starter_grant');
+      await client.query(await readFile(path.join(MIGRATIONS_DIR, '245_amateur_onboarding_starter_grant.sql'), 'utf8'));
+      expect((await client.query('select granted_at, items from amateur_onboarding_starter_grant where user_id = $1', [user.userId])).rows).toEqual([{ granted_at: null, items: [] }]);
+      expect((await client.query('select id from user_inventory_instance where user_id = $1', [user.userId])).rows).toHaveLength(0);
+    } finally {
+      await client.query('rollback');
+      client.release();
+    }
   });
 
   it('rejects malformed lifecycle identifiers and start bodies', async () => {

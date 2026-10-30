@@ -1,4 +1,4 @@
-vi.mock('./AmateurStoryFlow.js', () => ({ AmateurStoryFlow: ({ onCompleted }: { onCompleted: () => void }) => <div>Всё начинается здесь<button onClick={onCompleted}>Далее</button></div> }));
+vi.mock('./AmateurStoryFlow.js', () => ({ AmateurStoryFlow: ({ onCompleted, unlockGoalsRequired }: { onCompleted: () => void; unlockGoalsRequired: number }) => <div>Всё начинается здесь<span>Порог любителей: {unlockGoalsRequired}</span><button onClick={onCompleted}>Далее</button></div> }));
 import { StrictMode, useContext } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -59,10 +59,33 @@ function renderGate(
 
 describe('OnboardingGate', () => {
   beforeEach(() => {
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async () => new Response(
+      JSON.stringify({ beginnerOnboardingCompleted: true, amateurUnlockGoalsRequired: 100 }),
+      { status: 200 },
+    ));
     vi.mocked(fetchRequiredOnboarding).mockReset();
     vi.mocked(startOnboarding).mockReset();
     vi.mocked(completeOnboarding).mockReset();
     vi.mocked(recordStepView).mockReset().mockResolvedValue({ viewed: true });
+  });
+
+  it('loads the configured threshold for the amateur story instead of using its fallback', async () => {
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    renderGate();
+    expect(await screen.findByText('Порог любителей: 100', {}, { timeout: 5000 })).toBeInTheDocument();
+  });
+
+  it('keeps the amateur story behind a retry screen when its profile cannot be loaded', async () => {
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
+    vi.mocked(globalThis.fetch).mockRejectedValueOnce(new Error('offline'));
+    renderGate();
+    expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось загрузить сюжет');
+    expect(screen.queryByText('Всё начинается здесь')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(await screen.findByText('Порог любителей: 100', {}, { timeout: 5000 })).toBeInTheDocument();
   });
 
   it('refreshes the beginner threshold after returning from changed admin settings', async () => {
@@ -124,17 +147,19 @@ describe('OnboardingGate', () => {
     expect(screen.queryByText('Профиль')).not.toBeInTheDocument();
   });
 
-  it('invalidates the cached profile after completing onboarding', async () => {
+  it('invalidates the cached profile and inventory after completing onboarding', async () => {
     vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
     vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
     vi.mocked(completeOnboarding).mockResolvedValue({ required: null });
     const { client } = renderGate();
     client.setQueryData(['profile'], { beginnerOnboardingCompleted: false });
+    client.setQueryData(['inventory', 'me'], { items: [] });
 
     fireEvent.click(await screen.findByRole('button', { name: 'Далее' }));
 
     await waitFor(() => {
       expect(client.getQueryState(['profile'])?.isInvalidated).toBe(true);
+      expect(client.getQueryState(['inventory', 'me'])?.isInvalidated).toBe(true);
     });
   });
 
