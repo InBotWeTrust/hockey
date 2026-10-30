@@ -1,4 +1,5 @@
-import { Target } from 'lucide-react';
+import { NovicePushPrompt } from './NovicePushPrompt.js';
+import { NoviceResultProgress } from './NoviceResultProgress.js';
 import { useQuery } from '@tanstack/react-query';
 import type { DailyStateResponse } from '../api/duel.js';
 import { claimInitialTrainingInvitation, type InitialTrainingExerciseKey } from '../api/initialTraining.js';
@@ -26,16 +27,14 @@ export function DailyResultFollowUp({ state, userId, novice, now, onOpenCourse }
   const seconds = Math.ceil(breakRemaining / 1000);
   const exercise = invitation.data?.exercise;
   return <section className="daily-result-follow-up" aria-label="Что дальше">
-    {novice && goals !== undefined && target !== undefined && <div>
-      <strong className="daily-result-follow-up__heading"><Target aria-hidden="true" />Путь в Любители</strong>
-      <div className="daily-result-follow-up__numbers"><span>{Math.min(goals, target)}/{target}</span><span>осталось шайб: {Math.max(0, target - goals)}</span></div>
-      <div className="daily-result-follow-up__progress" role="progressbar" aria-label="Путь в Любители" aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.max(0, Math.min(goals, target))}>
-        <div style={{ width: `${target > 0 ? Math.max(0, Math.min(100, goals / target * 100)) : 0}%` }} />
-      </div>
-    </div>}
+    {novice && goals !== undefined && target !== undefined && <NoviceResultProgress
+      key={state.recent_periods.at(-1)?.ended_at ?? 'result'}
+      goals={goals} target={target} periodGoals={state.recent_periods.at(-1)?.goals ?? 0}
+    />}
     {state.state === 'break_active' && <p>{seconds > 0
       ? <>Следующий период через: <strong className="daily-result-follow-up__timer">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</strong></>
       : 'Перерыв завершён'}</p>}
+    {novice && state.state === 'break_active' && breakRemaining > 0 && state.recent_periods.at(-1)?.period_number === 1 && <NovicePushPrompt userId={userId}/>}
     {state.state === 'closed' && <p>На сегодня игра завершена.</p>}
     {novice && exercise && breakRemaining > 0 && state.state === 'break_active' && <div className="daily-result-follow-up__invitation">
       <p>Используй перерыв для тренировки: пройди упражнение «{exercise.title}» и отработай броски перед следующим периодом.</p>

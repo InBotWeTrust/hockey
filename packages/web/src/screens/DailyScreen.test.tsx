@@ -4129,7 +4129,7 @@ describe('DailyScreen', () => {
       await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Путь в Любители')).toBeInTheDocument();
-    expect(screen.getByText('осталось шайб: 58')).toBeInTheDocument();
+    expect(await screen.findByText('осталось шайб: 58')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();

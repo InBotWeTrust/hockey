@@ -81,3 +81,10 @@ export function deleteAndroidPushInstallation(installationId: string): Promise<{
 export function sendTestPush(): Promise<TestPushResult> {
   return apiFetch<TestPushResult>('/push/test', { method: 'POST' });
 }
+
+export function fetchNovicePushPrompt(): Promise<{eligible:boolean}> {
+  return apiFetch('/push/novice-prompt');
+}
+export function recordNovicePushPrompt(action:'snooze'|'handled'): Promise<{ok:true}> {
+  return apiFetch('/push/novice-prompt',{method:'POST',body:JSON.stringify({action})});
+}

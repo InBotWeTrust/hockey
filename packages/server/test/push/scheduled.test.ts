@@ -1,3 +1,4 @@
+import { processPushDeliveryQueue } from '../../src/push/queue.js';
 import { createECDH, randomBytes } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -977,6 +978,23 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
       status: 'sent',
     });
     expect(deliveries.rows[0]?.event_key).toMatch(/^daily-training-unlock:2026-05-04:/);
+  });
+
+  it.each(['period_active','closed','idle','unsubscribed','muted'])('skips a queued break reminder after state changes to %s',async state=>{
+    const id=await createUser(pool,'Queued break');
+    await pool.query(`insert into user_push_preferences(user_id,training_available) values($1,false)`,[id]);
+    await addSubscription(pool,id,'https://push.example.test/send/stale-break');
+    await pool.query(`insert into day_pool(user_id,day_date,state,current_period,break_started_at,game_core_version,daily_seed)
+      values($1,'2026-05-04','break_active',1,'2026-05-04T05:00:00Z',1,'break')`,[id]);
+    const queued=await runScheduledPushes(pool,{...vapid,now:new Date('2026-05-04T05:15:00Z'),processQueue:false});
+    expect(queued.events.find(e=>e.eventType==='daily.break_finished')?.claimed).toBe(1);
+    if(state==='unsubscribed') await pool.query('delete from push_subscriptions where user_id=$1',[id]);
+    else if(state==='muted') await pool.query('update user_push_preferences set daily_game=false where user_id=$1',[id]);
+    else await pool.query('update day_pool set state=$2 where user_id=$1',[id,state]);
+    const send=vi.fn(async()=>new Response('',{status:201}));vi.stubGlobal('fetch',send);
+    const result=await processPushDeliveryQueue(pool,{...vapid,now:new Date('2026-05-04T05:15:00Z')});
+    expect(send).not.toHaveBeenCalled();
+    expect(result.skipped).toBe(1);
   });
 
   it('sends active-period warning and break-finished pushes', async () => {

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { X } from 'lucide-react';
@@ -40,11 +41,26 @@ export function AchievementMapNotice({userId, enabled, onHighlight}: {
     document.addEventListener('visibilitychange', confirm);
     return () => { cancelAnimationFrame(frame); document.removeEventListener('visibilitychange',confirm); onHighlight(false); };
   }, [enabled,batch,dismissed,onHighlight,client,userId]);
+  useEffect(() => {
+    if (!enabled || !batch || dismissed) return;
+    let timer = 0;
+    const schedule = () => {
+      window.clearTimeout(timer);
+      if (document.visibilityState === 'visible') timer = window.setTimeout(() => setDismissed(true), 5000);
+    };
+    schedule();
+    document.addEventListener('visibilitychange', schedule);
+    return () => { window.clearTimeout(timer); document.removeEventListener('visibilitychange', schedule); };
+  }, [enabled, batch, dismissed]);
   if (!enabled || !batch || dismissed) return null;
-  return <div role="status" className="achievement-map-notice">
-    <button className="btn btn--ghost" onClick={() => {setDismissed(true);navigate('/achievements?filter=claimable');}}>
-      Новые достижения — {batch.notifications.length}
+  return createPortal(<AchievementMapToast count={batch.notifications.length} onOpen={() => {setDismissed(true);navigate('/achievements?filter=claimable');}} onDismiss={() => setDismissed(true)}/>, document.body);
+}
+
+export function AchievementMapToast({count,onOpen,onDismiss}: {count:number;onOpen:()=>void;onDismiss:()=>void}) {
+  return <div role="status" className="duel-challenge-toast achievement-map-notice">
+    <button type="button" className="achievement-map-notice__action" onClick={onOpen}>
+      Новые достижения – {count}
     </button>
-    <button className="icon-btn" aria-label="Скрыть уведомление о достижениях" onClick={() => setDismissed(true)}><X aria-hidden="true" size={16}/></button>
+    <button type="button" className="icon-btn" aria-label="Скрыть уведомление о достижениях" onClick={onDismiss}><X aria-hidden="true" size={18}/></button>
   </div>;
 }

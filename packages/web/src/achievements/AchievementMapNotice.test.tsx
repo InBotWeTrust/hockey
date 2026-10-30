@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { expect, it, vi, beforeEach } from 'vitest';
 import { MemoryRouter, useLocation } from 'react-router-dom';
 import { AchievementMapNotice } from './AchievementMapNotice.js';
@@ -16,7 +16,7 @@ function Location(){return <span>{useLocation().search}</span>;}
 function setup(enabled=true){return render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter><AchievementMapNotice userId="player" enabled={enabled} onHighlight={vi.fn()}/><Location/></MemoryRouter></QueryClientProvider>);}
 it('groups completions, acknowledges the displayed ids and opens the claimable tab',async()=>{
  setup();
- const notice=await screen.findByRole('button',{name:'Новые достижения — 2'});
+ const notice=await screen.findByRole('button',{name:'Новые достижения – 2'});
  await waitFor(()=>expect(seen).toEqual(ids));
  fireEvent.click(notice);
  expect(screen.getByText('?filter=claimable')).toBeInTheDocument();
@@ -46,4 +46,17 @@ it('leaves a background-tab notification pending until the tab becomes visible',
  fireEvent(document,new Event('visibilitychange'));
  await waitFor(()=>expect(seen).toEqual(ids));
  visibility.mockRestore();
+});
+
+it('automatically dismisses after five visible seconds',async()=>{
+ setup();
+ await screen.findByRole('status');
+ vi.useFakeTimers();
+ try {
+   fireEvent(document,new Event('visibilitychange'));
+   act(()=>vi.advanceTimersByTime(4999));
+   expect(screen.getByRole('status')).toBeInTheDocument();
+   act(()=>vi.advanceTimersByTime(1));
+   expect(screen.queryByRole('status')).not.toBeInTheDocument();
+ } finally {vi.useRealTimers();}
 });
