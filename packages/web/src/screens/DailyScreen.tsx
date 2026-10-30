@@ -6928,7 +6928,7 @@ function DailyPlayView({
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
-          closeLabel="Понятно"
+          closeLabel="Остаться на льду"
           supplemental={<DailyResultFollowUp
             state={statsModal.snapshot}
             userId={userId}

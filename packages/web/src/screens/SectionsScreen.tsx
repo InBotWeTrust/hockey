@@ -1,3 +1,4 @@
+import { AchievementMapNotice } from '../achievements/AchievementMapNotice.js';
 import { useOwnProfileSummary } from '../profile/useOwnProfileSummary.js';
 import {useGameMenu} from '../city/GameMenuContext.js';
 import {useCardInvites} from '../bar/cards/cardInvites.js';
@@ -90,6 +91,7 @@ export function SectionsScreen(): JSX.Element {
   const trainingData = useTrainingSessionStore((s) => s.data);
   const {status:gameStatus}=useGameMenu();
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
+  const [highlightTasks, setHighlightTasks] = useState(false);
   const [podiumAckError, setPodiumAckError] = useState<string | null>(null);
   const [monthlyRatingAckError, setMonthlyRatingAckError] = useState<string | null>(null);
   const [failureAckError, setFailureAckError] = useState<string | null>(null);
@@ -304,7 +306,8 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap {...(profileQuery.data.amateurQualifyingGoals !== undefined && profileQuery.data.amateurTransitionStatus !== undefined ? {noviceProgress: {goals: profileQuery.data.amateurQualifyingGoals, target: profileQuery.data.amateurUnlockGoalsRequired, status: profileQuery.data.amateurTransitionStatus}} : {})} weatherLoading={cityWeatherQuery.isPending} city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={stadiumActivityCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
+      <AchievementMapNotice key={userId} userId={userId ?? ''} enabled={monthlyRatingQueueReady && activeMonthlyRatingCongratulation === null && failureQuery.isSuccess && failureQuery.data?.challenge == null} onHighlight={setHighlightTasks}/>
+      <CityMap highlightTasks={highlightTasks} {...(profileQuery.data.amateurQualifyingGoals !== undefined && profileQuery.data.amateurTransitionStatus !== undefined ? {noviceProgress: {goals: profileQuery.data.amateurQualifyingGoals, target: profileQuery.data.amateurUnlockGoalsRequired, status: profileQuery.data.amateurTransitionStatus}} : {})} weatherLoading={cityWeatherQuery.isPending} city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={stadiumActivityCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (

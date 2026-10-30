@@ -73,3 +73,21 @@ The result card scrolls within the viewport on small screens. In the local Playw
 Validation: 48 server tests and 410 client tests passed; typecheck, lint, build and diff check passed. The no-return-to-map and qualification-summary regressions were observed failing before fixes, as were the new invitation endpoint tests. Previously reported full-root game-core failures remain outside this stage. The agreed map polish is included: target icon, separate left/right numbers and the shared `--blue-accent` fill from duel limits.
 
 Activation still requires a reviewed release and both exercise flags. No environment has been deployed or activated.
+
+## Novice achievements and grouped map notice
+
+Migration 248 adds two manual-claim catalogue entries: `first-period` (2 stars / 2 experience) and `hockey-school` (10 / 10). The production catalogue was checked with read-only SQL on 2026-10-30: existing `first-daily-game` and `first-training` have different conditions; neither proposed achievement was present. Existing artwork is reused from those catalogue families.
+
+Transactional INSERT triggers complete the first achievement only for period 1 archived as `quota` or `timeout`, and the second only after all seven named initial-course exercises have completion records. A day-end interruption does not qualify. Completion does not credit balances: existing claim transactions and their duplicate-claim protection remain the sole reward path. Per-exercise rewards remain unchanged.
+
+The user approved historical eligibility. Migration 249 backfills retained first-period archives and seven-exercise completions, using `ON CONFLICT DO NOTHING`; existing claims and balances are preserved. Missing historical records cannot be reconstructed. Newly backfilled achievements enter the same notification inbox as new gameplay completions.
+
+The inbox in migration 248 records ordinary and tiered completion events once per achievement/stage. Pre-existing unrelated achievements are not copied into it. Authenticated GET `/achievements/notifications` is read-only; POST `/achievements/notifications/seen` acknowledges only the supplied IDs belonging to the caller. Acknowledgement neither claims rewards nor clears newer events. A per-user timestamp makes the tasks hint one-time.
+
+`AchievementMapNotice` is mounted only on the map and waits for existing reward/failure overlays to clear. It groups the pending batch into one nonblocking notice, links to `/achievements?filter=claimable`, and highlights the tasks icon/building. It acknowledges after visible rendering, never while the tab is hidden. If acknowledgement fails, the inbox permits retry on the next map visit; delivery is not claimed to be exactly once across concurrent devices or network failures. Unclaimed rewards keep their existing red counter. The claimable filter now survives initial catalogue loading.
+
+Result-card polish from user review is included: target icon, separate left/right progress numbers with stronger contrast, shared blue progress fill, monospace countdown, equally sized buttons, explicit stay-on-ice action, and a fuller course invitation.
+
+Validation: 60 distinct server tests passed across novice rewards/backfill/inbox, claim, daily evaluator, catalogue, course routes and summary counters. 434 distinct client tests passed across the notice, achievements, map, sections, result supplement and daily screen. New reward/backfill/notice scenarios and the deep-link loading regression were observed failing before implementation/fix. Typecheck, lint and build passed (existing build warnings remain). Playwright checked the local notification fixture at 390x844 and 320x568; at 320px its horizontal bounds were 22.1–297.9px. Fixtures use local data without account creation or authenticated gameplay. Local preview files remain untracked for user review.
+
+Remaining P1 work: contextual voluntary push, novice bar character visibility and server-side spoiler filtering, funnel events, optional first yard hint, authenticated/mobile acceptance and an explicitly authorized release. Exercises and amateur story publication remain release-time activation steps. No deployment or production mutation was performed.

@@ -4051,7 +4051,7 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
     await waitFor(() => {
       expect(
@@ -4128,9 +4128,9 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
     ).toBeInTheDocument();
-    expect(screen.getByText('Путь в Любители – 42/100')).toBeInTheDocument();
-    expect(screen.getByText('Осталось шайб: 58')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.getByText('Путь в Любители')).toBeInTheDocument();
+    expect(screen.getByText('осталось шайб: 58')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=daily');
@@ -4191,7 +4191,7 @@ describe('DailyScreen', () => {
     act(() => useDailyStore.getState().setDeferredState(closedState));
     const dialog = await screen.findByRole('dialog', { name: 'Игра завершена' });
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Остаться на льду' }));
 
     expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=daily');
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
@@ -4256,7 +4256,7 @@ describe('DailyScreen', () => {
       screen.getByLabelText('3-й период: 15 голов из 30 бросков за 20:00'),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
     expect(await screen.findByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
     expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();

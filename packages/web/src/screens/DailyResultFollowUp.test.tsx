@@ -20,8 +20,8 @@ beforeEach(() => { vi.mocked(claimInitialTrainingInvitation).mockReset().mockRes
 it('shows confirmed qualification, a break timer and a voluntary link to the offered exercise', async () => {
   vi.mocked(claimInitialTrainingInvitation).mockResolvedValue({ exercise: { key: 'three-positions', title: 'Три позиции' } });
   const open = renderFollowUp();
-  expect(screen.getByText('Путь в Любители – 42/100')).toBeVisible();
-  expect(screen.getByText('Следующий период через 15:00')).toBeVisible();
+  expect(screen.getByText('Путь в Любители')).toBeVisible();
+  expect(screen.getByText('15:00')).toBeVisible();
   const button = await screen.findByRole('button', { name: 'Перейти к упражнению' });
   expect(open).not.toHaveBeenCalled();
   fireEvent.click(button);
@@ -41,6 +41,6 @@ it('keeps results usable when the optional invitation request fails', async () =
   vi.mocked(claimInitialTrainingInvitation).mockRejectedValue(new Error('offline'));
   renderFollowUp();
   await waitFor(() => expect(claimInitialTrainingInvitation).toHaveBeenCalledTimes(1));
-  expect(screen.getByText('Осталось шайб: 58')).toBeVisible();
+  expect(screen.getByText('осталось шайб: 58')).toBeVisible();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
 });

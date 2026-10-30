@@ -70,3 +70,14 @@ export function claimAchievement(achievementId: string): Promise<ClaimAchievemen
     method: 'POST',
   });
 }
+
+export interface AchievementNotificationsResponse {
+  notifications: Array<{id: string}>;
+  highlightTasks: boolean;
+}
+export function fetchAchievementNotifications(): Promise<AchievementNotificationsResponse> {
+  return apiFetch('/achievements/notifications');
+}
+export function acknowledgeAchievementNotifications(ids: string[]): Promise<{ok: boolean}> {
+  return apiFetch('/achievements/notifications/seen', {method: 'POST', body: JSON.stringify({ids})});
+}

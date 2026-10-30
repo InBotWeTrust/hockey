@@ -1,3 +1,4 @@
+import { Target } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import type { DailyStateResponse } from '../api/duel.js';
 import { claimInitialTrainingInvitation, type InitialTrainingExerciseKey } from '../api/initialTraining.js';
@@ -26,16 +27,19 @@ export function DailyResultFollowUp({ state, userId, novice, now, onOpenCourse }
   const exercise = invitation.data?.exercise;
   return <section className="daily-result-follow-up" aria-label="Что дальше">
     {novice && goals !== undefined && target !== undefined && <div>
-      <strong>Путь в Любители – {Math.min(goals, target)}/{target}</strong>
-      <p>Осталось шайб: {Math.max(0, target - goals)}</p>
+      <strong className="daily-result-follow-up__heading"><Target aria-hidden="true" />Путь в Любители</strong>
+      <div className="daily-result-follow-up__numbers"><span>{Math.min(goals, target)}/{target}</span><span>осталось шайб: {Math.max(0, target - goals)}</span></div>
+      <div className="daily-result-follow-up__progress" role="progressbar" aria-label="Путь в Любители" aria-valuemin={0} aria-valuemax={target} aria-valuenow={Math.max(0, Math.min(goals, target))}>
+        <div style={{ width: `${target > 0 ? Math.max(0, Math.min(100, goals / target * 100)) : 0}%` }} />
+      </div>
     </div>}
     {state.state === 'break_active' && <p>{seconds > 0
-      ? `Следующий период через ${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`
+      ? <>Следующий период через: <strong className="daily-result-follow-up__timer">{Math.floor(seconds / 60)}:{String(seconds % 60).padStart(2, '0')}</strong></>
       : 'Перерыв завершён'}</p>}
     {state.state === 'closed' && <p>На сегодня игра завершена.</p>}
     {novice && exercise && breakRemaining > 0 && state.state === 'break_active' && <div className="daily-result-follow-up__invitation">
-      <p>В перерыве можно пройти упражнение «{exercise.title}».</p>
-      <button type="button" className="btn btn--cta" onClick={() => onOpenCourse(exercise.key)}>Перейти к упражнению</button>
+      <p>Используй перерыв для тренировки: пройди упражнение «{exercise.title}» и отработай броски перед следующим периодом.</p>
+      <button type="button" className="btn btn--cta" style={{ width: '100%', padding: '12px 0', fontSize: 14 }} onClick={() => onOpenCourse(exercise.key)}>Перейти к упражнению</button>
     </div>}
   </section>;
 }

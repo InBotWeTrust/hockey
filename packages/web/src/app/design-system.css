@@ -15910,3 +15910,59 @@ button.daily-calendar__day:active {
 .daily-result-follow-up p {margin:4px 0 0;color:var(--liquid-muted);}
 .daily-result-follow-up__invitation {display:grid;gap:10px;}
 .daily-result-follow-up__invitation .btn {width:100%;}
+
+.daily-result-follow-up__progress {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--liquid-border);
+}
+.daily-result-follow-up__progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue-accent);
+}
+.daily-result-follow-up__timer {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--liquid-ink);
+}
+
+.daily-result-follow-up__heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.daily-result-follow-up__heading svg { width: 16px; height: 16px; flex-shrink: 0; }
+.daily-result-follow-up__numbers {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--liquid-ink);
+}
+
+.achievement-map-notice {
+  position: fixed;
+  z-index: 140;
+  top: calc(var(--app-safe-top, 0px) + 16px);
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  max-width: calc(100vw - 24px);
+  width: max-content;
+  border-radius: 20px;
+  background: var(--liquid-solid-bg);
+  border: 1px solid var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+}
+.achievement-map-notice .btn { font-size: 13px; }
+.district-dock button.district-task-hint > span { box-shadow: 0 0 0 2px var(--blue-accent); filter: none; }
+
+.district-hit.district-task-hint { outline: 2px solid var(--blue-accent); outline-offset: 3px; border-radius: 12px; }

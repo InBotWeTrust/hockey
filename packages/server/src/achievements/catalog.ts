@@ -79,6 +79,8 @@ function approvedReward(
 const APPROVED_REWARDS: Record<string, AchievementReward> = {
   'ideal-day': approvedReward(0, 25),
   'first-goal': approvedReward(0, 1),
+  'first-period': approvedReward(0, 2),
+  'hockey-school': approvedReward(0, 10),
   'first-daily-game': approvedReward(0, 2),
   'first-training': approvedReward(0, 2),
   'amateur-ticket': approvedReward(25_000, 250, 5),
@@ -891,7 +893,9 @@ const FAN_ACHIEVEMENT_SEEDS:AchievementSeed[] = [
   [100,'Трибуна за тебя',50],[500,'Любимец трибун',140],[1000,'Целая арена',250],
 ].map(([threshold,title,reward],index)=>({id:`fans-${threshold}`,photoUrl:`/achievements/fans-${threshold}.webp`,title:String(title),description:'Трибуны поддерживают тебя.',requirement:`Набрать ${threshold} ${Number(threshold)===1?'болельщика':'болельщиков'}.`,category:'career',availability:'hidden',futureTag:null,rewardCurrency:0,rewardStars:Number(reward),rewardExperience:Number(reward),rewardTokens:0,sortOrder:30001+index}));
 
-export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [...ACHIEVEMENT_SEED_DEFINITIONS,...FAN_ACHIEVEMENT_SEEDS,{id:'fans-support',photoUrl:'/achievements/fans-1.webp',title:'Болельщики',description:'Трибуны поддерживают тебя.',requirement:'Набрать 1 болельщика.',category:'career' as const,availability:'active' as const,futureTag:null,rewardCurrency:0,rewardStars:0,rewardExperience:0,rewardTokens:0,sortOrder:30000}].map(
+export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [...ACHIEVEMENT_SEED_DEFINITIONS,...FAN_ACHIEVEMENT_SEEDS,
+{id:'first-period',photoUrl:'/achievements/first-daily-game.webp',title:'Первый период',description:'Первый шаг на игровом льду сделан.',requirement:'Штатно завершить первый период ежедневной игры: по броскам или по времени.',category:'daily' as const,availability:'active' as const,futureTag:null,...approvedReward(0,2),sortOrder:30020},
+{id:'hockey-school',photoUrl:'/achievements/first-training.webp',title:'Школа хоккея',description:'Все упражнения начального курса позади.',requirement:'Пройти все 7 упражнений начального курса.',category:'training' as const,availability:'active' as const,futureTag:null,...approvedReward(0,10),sortOrder:30030},{id:'fans-support',photoUrl:'/achievements/fans-1.webp',title:'Болельщики',description:'Трибуны поддерживают тебя.',requirement:'Набрать 1 болельщика.',category:'career' as const,availability:'active' as const,futureTag:null,rewardCurrency:0,rewardStars:0,rewardExperience:0,rewardTokens:0,sortOrder:30000}].map(
   (achievement) => ({
     ...achievement,
     ...(APPROVED_REWARDS[achievement.id] ?? {}),
