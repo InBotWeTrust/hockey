@@ -175,7 +175,7 @@ export const referralAdminRoutes: FastifyPluginAsync = async (app) => {
                 relationship.joined_at,
                 relationship.qualified_at,
                 case when invited.level >= 3 then 'professional'
-                     when invited.level >= 2 or invited.lifetime_goals_total >= coalesce(
+                     when invited.level >= 2 or invited.amateur_access_preserved or invited.daily_goals_total >= coalesce(
                        (select (value #>> '{}')::int from game_settings
                          where key = 'amateur.unlock_goals_required'), 300) then 'amateur'
                      else 'beginner' end as competition_level,

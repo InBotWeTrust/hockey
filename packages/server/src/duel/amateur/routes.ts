@@ -5251,7 +5251,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           `select id, display_name, avatar_url, last_seen_at, lifetime_goals_total, level
            from users
           where id <> $1
-            and (level >= 2 or lifetime_goals_total >= $4)
+            and (level >= 2 or amateur_access_preserved or daily_goals_total >= $4)
             and ($2 = '' or display_name ilike '%' || $2 || '%')
           order by last_seen_at desc nulls last, display_name asc, id asc
           limit 50 offset $3`,

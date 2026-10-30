@@ -16,7 +16,7 @@ import type {WeatherKind} from './weather.js';
 import type {SelectedCity,CityWeather} from './cityLocation.js';
 import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
-type Props={city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
+type Props={noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
 const basePlaces=[
  {id:'profile',name:'Моя квартира',x:5.8,y:35,w:4,h:9},
  {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
@@ -120,6 +120,11 @@ export function CityMap(props:Props){
   </div>
     {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
   <WeatherOverlay key={props.weatherOverride??weather} weather={props.weatherOverride??weather}/>
+  {props.noviceProgress&&props.noviceProgress.status!=='complete'&&<button type="button" className="district-novice-progress" onClick={()=>onNavigate('/daily')}>
+   <strong>Путь в Любители — {Math.min(props.noviceProgress.goals,props.noviceProgress.target)}/{props.noviceProgress.target}</strong>
+   <span>{props.noviceProgress.status==='onboarding_pending'?'Цель достигнута · впереди знакомство с Любителями':`Осталось голов: ${Math.max(0,props.noviceProgress.target-props.noviceProgress.goals)} · «Центральный», дуэли и турниры`}</span>
+   <progress aria-label="Квалификационные голы" value={Math.min(props.noviceProgress.goals,props.noviceProgress.target)} max={Math.max(1,props.noviceProgress.target)}/>
+  </button>}
   <section ref={panel} className={`district-panel${navigationCollapsed?' district-panel--collapsed navigation-collapsed-surface':''}`} aria-label="Выбранное место">
    <button type="button" className="icon-btn district-navigation-toggle" aria-label={navigationCollapsed?'Показать навигацию':'Свернуть навигацию'} title={navigationCollapsed?'Показать навигацию':'Свернуть навигацию'} aria-expanded={!navigationCollapsed} onClick={toggleNavigation}>{navigationCollapsed?<MapIcon aria-hidden="true"/>:<span className="district-navigation-handle" aria-hidden="true"/>}{navigationCollapsed&&navigationCount>0&&<small className="district-badge" aria-label={`Уведомления: ${navigationCount}`}>{navigationCount>99?'99+':navigationCount}</small>}{navigationCollapsed&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>
    {!navigationCollapsed&&<><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>onNavigate(entryRoute(selected,a.path))}>{<ChevronRight/>}</button>)}</div></div>

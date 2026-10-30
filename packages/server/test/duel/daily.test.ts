@@ -231,7 +231,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     await pool.query(`insert into game_settings (key, value, label, description)
       values ('amateur.unlock_goals_required', '100'::jsonb, 'Qualification', 'Test')
       on conflict (key) do update set value = excluded.value`);
-    await pool.query('update users set lifetime_goals_total = 99 where id = $1', [userId]);
+    await pool.query('update users set daily_goals_total = 99 where id = $1', [userId]);
     expect((await startTraining(1)).statusCode).toBe(200);
     expect((await submitTrainingShot(1)).statusCode).toBe(200);
     const state = await getState();
@@ -246,7 +246,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
       on conflict (key) do update set value = excluded.value`);
     expect((await startTraining(1)).statusCode).toBe(200);
     expect((await submitTrainingShot(1)).statusCode).toBe(200);
-    await pool.query('update users set lifetime_goals_total = 100 where id = $1', [userId]);
+    await pool.query('update users set daily_goals_total = 100 where id = $1', [userId]);
     expect((await getState()).gameplay_lock).toMatchObject({ reason: 'recent_gameplay' });
     expect((await startPeriod()).statusCode).toBe(409);
   });
@@ -898,12 +898,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(s.lifetime_total_goals).toBe(0);
 
     await startPeriod();
+    let confirmedGoals = 0;
     for (let i = 1; i <= 30; i += 1) {
       const r = await submitShot(i);
       expect(r.statusCode).toBe(200);
+      confirmedGoals += r.json().server_result === 'goal' ? 1 : 0;
+      expect(r.json().state.amateur_qualifying_goals).toBe(confirmedGoals);
+      expect((await pool.query('select daily_goals_total from users where id=$1', [userId])).rows[0].daily_goals_total).toBe(confirmedGoals);
     }
 
+    expect((await submitShot(30)).statusCode).toBe(409);
     s = await getState();
+    expect((await pool.query('select daily_goals_total from users where id=$1', [userId])).rows[0].daily_goals_total).toBe(confirmedGoals);
     expect(s.lifetime_total_shots).toBe(30);
     // Goals depend on RNG but daily_total_goals must equal lifetime_total_goals
     // because we only have one closed period.

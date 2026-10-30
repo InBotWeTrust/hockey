@@ -244,6 +244,8 @@ interface AdminUserRow {
   blocked_by_display_name: string | null;
   lifetime_shots_total: number;
   lifetime_goals_total: number;
+  daily_goals_total: number;
+  amateur_access_preserved: boolean;
   accuracy: number;
   competition_level: 'beginner' | 'amateur' | 'professional';
   tg_id: string | null;
@@ -1914,7 +1916,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             u.timezone, u.created_at, u.last_seen_at,
             u.beginner_onboarding_completed, u.amateur_onboarding_completed,
             u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
-            u.lifetime_shots_total, u.lifetime_goals_total,
+            u.lifetime_shots_total, u.lifetime_goals_total, u.daily_goals_total, u.amateur_access_preserved,
             case
               when u.lifetime_shots_total > 0
                 then round(u.lifetime_goals_total::numeric * 100 / u.lifetime_shots_total)::int
@@ -1923,7 +1925,7 @@ async function fetchAdminUser(client: Pool | PoolClient, userId: string): Promis
             case
               when u.level >= 3 then 'professional'
               when u.level >= 2
-                or u.lifetime_goals_total >= coalesce(
+                or u.amateur_access_preserved or u.daily_goals_total >= coalesce(
                   (select (value #>> '{}')::int
                      from game_settings
                     where key = 'amateur.unlock_goals_required'),
@@ -3847,7 +3849,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       u.timezone, u.created_at, u.last_seen_at,
                       u.beginner_onboarding_completed, u.amateur_onboarding_completed,
                       u.blocked_at, u.blocked_by, blocker.display_name as blocked_by_display_name,
-                      u.lifetime_shots_total, u.lifetime_goals_total,
+                      u.lifetime_shots_total, u.lifetime_goals_total, u.daily_goals_total, u.amateur_access_preserved,
                       case
                         when u.lifetime_shots_total > 0
                           then round(u.lifetime_goals_total::numeric * 100 / u.lifetime_shots_total)::int
@@ -3856,7 +3858,7 @@ export const adminRoutes: FastifyPluginAsync<AdminRoutesOptions> = async (app, o
                       case
                         when u.level >= 3 then 'professional'
                         when u.level >= 2
-                          or u.lifetime_goals_total >= coalesce(
+                          or u.amateur_access_preserved or u.daily_goals_total >= coalesce(
                             (select (value #>> '{}')::int
                                from game_settings
                               where key = 'amateur.unlock_goals_required'),

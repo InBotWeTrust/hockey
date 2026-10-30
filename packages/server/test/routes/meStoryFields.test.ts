@@ -11,14 +11,14 @@ describe('buildStoryProfileFields', () => {
     [1, 40, true, 'qualifying'],
   ] as const)('reports transition separately from qualification (%s, %s, %s)', (level, goals, completed, status) => {
     expect(buildStoryProfileFields({
-      level, lifetime_goals_total: goals,
-      beginner_onboarding_completed: true, amateur_onboarding_completed: completed,
+      level, daily_goals_total: goals,
+      amateur_access_preserved: false, beginner_onboarding_completed: true, amateur_onboarding_completed: completed,
     }, { amateur: { unlockGoalsRequired: 100 } })).toHaveProperty('amateurTransitionStatus', status);
   });
   it('exposes completed amateur onboarding for story replay', () => {
     expect(
       buildStoryProfileFields(
-        { level: 1, lifetime_goals_total: 100, beginner_onboarding_completed: true, amateur_onboarding_completed: true },
+        { level: 1, daily_goals_total: 100, amateur_access_preserved: false, beginner_onboarding_completed: true, amateur_onboarding_completed: true },
         { amateur: { unlockGoalsRequired: 100 } },
       ),
     ).toHaveProperty('amateurOnboardingCompleted', true);
@@ -26,13 +26,14 @@ describe('buildStoryProfileFields', () => {
   it('maps onboarding completion and the live amateur threshold into the profile contract', () => {
     expect(
       buildStoryProfileFields(
-        { level: 1, lifetime_goals_total: 100, beginner_onboarding_completed: true, amateur_onboarding_completed: false },
+        { level: 1, daily_goals_total: 100, amateur_access_preserved: false, beginner_onboarding_completed: true, amateur_onboarding_completed: false },
         { amateur: { unlockGoalsRequired: 475 } },
       ),
     ).toEqual({
       beginnerOnboardingCompleted: true,
       amateurOnboardingCompleted: false,
       amateurUnlockGoalsRequired: 475,
+      amateurQualifyingGoals: 100,
       amateurTransitionStatus: 'qualifying',
     });
   });

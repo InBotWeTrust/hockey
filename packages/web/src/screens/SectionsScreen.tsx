@@ -258,7 +258,7 @@ export function SectionsScreen(): JSX.Element {
   const isAmateurUnlocked =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
-    (dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
+    (dailyData?.amateur_qualifying_goals ?? profileQuery.data?.amateurQualifyingGoals ?? dailyData?.lifetime_total_goals ?? 0) >= amateurUnlockGoalsRequired;
   const trainingMeta = trainingData
     ? `${trainingData.shots_taken}/${trainingData.shots_limit} бросков`
     : 'Загрузка тренировки…';
@@ -304,7 +304,7 @@ export function SectionsScreen(): JSX.Element {
         overflowY: 'auto',
       }}
     >
-      <CityMap weatherLoading={cityWeatherQuery.isPending} city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={stadiumActivityCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
+      <CityMap {...(profileQuery.data.amateurQualifyingGoals !== undefined && profileQuery.data.amateurTransitionStatus !== undefined ? {noviceProgress: {goals: profileQuery.data.amateurQualifyingGoals, target: profileQuery.data.amateurUnlockGoalsRequired, status: profileQuery.data.amateurTransitionStatus}} : {})} weatherLoading={cityWeatherQuery.isPending} city={cityQuery.data?.city??null} currentWeather={cityWeather} weatherStale={cityWeatherQuery.data?.status==='stale'||cityWeatherQuery.isError} gameStatus={gameStatus} maintenanceBlocked={caretakerBlocked(dailyData?.state,trainingData?.state)} isAdmin={isAdmin} adminCount={adminAttention.data?.totalCount??0} referralCount={profileQuery.data?.unclaimedReferralRewardsCount??user?.unclaimedReferralRewardsCount??0} startAtDaily={searchParams.get('home')==='1'}  key={`${userId??'anonymous'}:${profileQuery.data?.competitionLevel??'beginner'}`} owner={userId} level={profileQuery.data?.competitionLevel==='professional'?'professional':isAmateurUnlocked?'amateur':'beginner'} daily={`${numberText(dailyData?.daily_total_shots??0)}/${numberText(dailyShotsLimit)} бросков сегодня`} training={trainingMeta} tasks={achievementsMeta.join(' · ')} bonus={bonusGamesMeta} attention={sectionTasksActionCount>0} avatarUrl={profileQuery.data?.avatarUrl??user?.avatarUrl??null} chatCount={unreadMessageCount} gameCount={stadiumActivityCount} taskCount={sectionTasksActionCount} barCount={barCount} onNavigate={navigate}/>
 
 
       {activeCongratulation !== null && (

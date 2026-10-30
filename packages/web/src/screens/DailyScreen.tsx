@@ -6771,7 +6771,7 @@ function DailyPlayView({
   const usesAmateurCourt =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
-    data.lifetime_total_goals >= amateurUnlockGoalsRequired;
+    (data.amateur_qualifying_goals ?? profileQuery.data?.amateurQualifyingGoals ?? data.lifetime_total_goals) >= amateurUnlockGoalsRequired;
   const dailyCourtBackground = usesAmateurCourt ? AMATEUR_DAILY_COURT_BACKGROUND : undefined;
   const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
     ? new Date(data.gameplay_lock.ends_at).getTime()

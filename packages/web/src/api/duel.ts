@@ -51,6 +51,7 @@ export interface DailyStateResponse {
   lifetime_total_shots: number;
   lifetime_total_goals: number;
   amateur_unlock_goals_required?: number;
+  amateur_qualifying_goals?: number;
   period_started_at: string | null;
   period_ends_at: string | null; // ISO ts
   break_ends_at: string | null;

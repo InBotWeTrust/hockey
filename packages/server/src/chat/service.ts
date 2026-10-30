@@ -420,6 +420,8 @@ export async function getUserPublicProfile(
     timezone: string;
     lifetime_shots_total: number;
     lifetime_goals_total: number;
+    daily_goals_total: number;
+    amateur_access_preserved: boolean;
     created_at: Date;
     last_seen_at: Date | null;
     currency_balance: number;
@@ -427,7 +429,7 @@ export async function getUserPublicProfile(
     experience_balance: number;
   }>(
     `select u.id, u.display_name, u.bio, u.avatar_url, u.level, u.timezone,
-            lifetime_shots_total, lifetime_goals_total,
+            lifetime_shots_total, lifetime_goals_total, daily_goals_total, amateur_access_preserved,
             u.created_at, u.last_seen_at,
             coalesce(uca.balance, 0)::int as currency_balance,
             u.xp::int as star_balance,
