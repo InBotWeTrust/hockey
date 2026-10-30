@@ -15905,3 +15905,8 @@ button.daily-calendar__day:active {
 .profile-bio-field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .profile-bio-field textarea { font: inherit; font-size: 14px; font-weight: 400; line-height: 1.45; color: var(--muted); padding: 11px 12px; border: 1px solid rgba(100,116,139,.24); border-radius: 13px; background: var(--liquid-card-bg); resize: vertical; }
 .profile-bio-field small { color: var(--muted); }
+
+.daily-result-follow-up {display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--liquid-border);font-size:13px;line-height:1.45;}
+.daily-result-follow-up p {margin:4px 0 0;color:var(--liquid-muted);}
+.daily-result-follow-up__invitation {display:grid;gap:10px;}
+.daily-result-follow-up__invitation .btn {width:100%;}

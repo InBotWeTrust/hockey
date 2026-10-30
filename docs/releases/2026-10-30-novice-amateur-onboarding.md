@@ -26,7 +26,7 @@ After an authorized dev deployment:
 
 ## Remaining work from the novice-start plan
 
-One-time yard highlight; on-ice period results and course invitation; two achievements and grouped map notification; contextual push; novice NPC/AI spoiler restrictions; funnel events. Grigory mini-games remain P2. The first-stage course access and novice recovery changes are already in the branch, but the course's server/client activation flags still need release-time coordination.
+One-time yard highlight; two achievements and grouped map notification; contextual push; novice NPC/AI spoiler restrictions; funnel events. Grigory mini-games remain P2. The first-stage course access and novice recovery changes are already in the branch, but the course's server/client activation flags still need release-time coordination.
 
 ## Local validation
 
@@ -60,3 +60,16 @@ Validation for this stage:
 - Typecheck, lint, build and diff check passed. The earlier full-root game-core failures listed above remain unresolved; this stage does not modify game-core.
 - Playwright checked a temporary standalone map fixture at 390x844 and 320x568, including collapsed navigation and the `/daily` navigation callback. The narrow plaque stayed within the viewport with an 8px gap above the menu. This is component visual acceptance, not an authenticated/device or deployed-runtime test. The only browser error was the fixture's missing favicon. Temporary fixture files were removed.
 - No merge, deployment, production settings or production data changes were performed.
+
+
+## Period results and course invitation stage
+
+Closing fresh period/day results now applies the deferred server state and stays on the rink. The latest period is marked read before applying state, so the same summary does not reopen immediately. Onboarding refresh remains tied to voluntary exit. Results retain actual shots, goals, accuracy and duration; supplemental content uses a frozen server snapshot for qualification and the next-break deadline.
+
+Migration 247 adds a per-user invitation-offered timestamp. The authenticated `POST /duel/training/course/invitation` endpoint serializes with gameplay, checks course enablement/completion and gameplay locks, then atomically offers the next available exercise at most once. It only offers during a current local-day break following quota/timeout closure, while the standard break timer is still running, and excludes existing amateurs. An offer receipt is not an acknowledgement that pixels reached the player. The client makes this optional request only in novice break results when exercises are enabled; failure leaves the results usable. The exercise button is voluntary and links directly to the offered course exercise.
+
+The result card scrolls within the viewport on small screens. In the local Playwright fixture at 320x568 the initial card overflowed (top -46px); after the fix it fits between y=20 and y=548 and scrolls internally. A 390x844 fixture also showed the actual five-shot timeout example (2 goals, 40% accuracy), qualification 42/100 and the optional invitation. These fixtures use local demonstration data, not authenticated gameplay.
+
+Validation: 48 server tests and 410 client tests passed; typecheck, lint, build and diff check passed. The no-return-to-map and qualification-summary regressions were observed failing before fixes, as were the new invitation endpoint tests. Previously reported full-root game-core failures remain outside this stage. The agreed map polish is included: target icon, separate left/right numbers and the shared `--blue-accent` fill from duel limits.
+
+Activation still requires a reviewed release and both exercise flags. No environment has been deployed or activated.

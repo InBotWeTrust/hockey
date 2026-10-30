@@ -4061,7 +4061,7 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
   });
 
-  it('returns to the hub after dismissing fresh period stats and shows them again on break re-entry', async () => {
+  it('stays on the rink after fresh period stats without reopening them', async () => {
     let periodCompleted = false;
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const activeState: DailyStateResponse = {
@@ -4078,6 +4078,8 @@ describe('DailyScreen', () => {
     const breakState: DailyStateResponse = {
       ...baseState,
       state: 'break_active',
+      amateur_qualifying_goals: 42,
+      amateur_unlock_goals_required: 100,
       current_period: 1,
       current_period_shots: 0,
       current_period_goals: 0,
@@ -4126,22 +4128,20 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
     ).toBeInTheDocument();
+    expect(screen.getByText('Путь в Любители – 42/100')).toBeInTheDocument();
+    expect(screen.getByText('Осталось шайб: 58')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
 
-    expect(await findArenaCta('Ежедневная игра: Перерыв')).toBeInTheDocument();
-    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
-    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=daily');
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
-
-    fireEvent.click(await findArenaCta('Ежедневная игра: Перерыв'));
-
-    expect(
-      await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
-    ).toBeInTheDocument();
+    act(() => useDailyStore.getState().applyState({ ...breakState }));
+    expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
   });
 
-  it('refreshes onboarding after dismissing deferred finished-game stats', async () => {
+  it('stays on the rink after finished-game stats and defers onboarding until voluntary exit', async () => {
     const activeState: DailyStateResponse = {
       ...baseState,
       state: 'period_active',
@@ -4193,8 +4193,8 @@ describe('DailyScreen', () => {
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
 
-    expect(await screen.findByLabelText('location')).toHaveTextContent('/sections?home=1');
-    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=daily');
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
   });
 
   it('shows the full game stats modal after the final period instead of a period-only summary', async () => {

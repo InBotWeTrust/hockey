@@ -8,7 +8,7 @@ import {CityCaretaker,useCaretakerVisit} from './CityCaretaker.js';
 import type {CaretakerKind} from './caretakerSchedule.js';
 import type {GameDockStatus} from './gameDockStatus.js';
 import {Fragment,useEffect,useLayoutEffect,useMemo,useRef,useState,type ReactNode} from 'react';
-import {ChevronRight,User,ShieldCheck,Shirt,Newspaper,Fence,Store,ClipboardList,Landmark,Goal,Dumbbell,Beer,Trophy,Gamepad2,Shield,Map as MapIcon} from 'lucide-react';
+import {Target,ChevronRight,User,ShieldCheck,Shirt,Newspaper,Fence,Store,ClipboardList,Landmark,Goal,Dumbbell,Beer,Trophy,Gamepad2,Shield,Map as MapIcon} from 'lucide-react';
 import './city-map.css';
 import {CityWeatherWidget} from './CityWeatherWidget.js';
 import {WeatherOverlay} from './WeatherOverlay.js';
@@ -121,8 +121,8 @@ export function CityMap(props:Props){
     {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
   <WeatherOverlay key={props.weatherOverride??weather} weather={props.weatherOverride??weather}/>
   {props.noviceProgress&&props.noviceProgress.status!=='complete'&&<button type="button" className="district-novice-progress" onClick={()=>onNavigate('/daily')}>
-   <strong>Путь в Любители — {Math.min(props.noviceProgress.goals,props.noviceProgress.target)}/{props.noviceProgress.target}</strong>
-   <span>{props.noviceProgress.status==='onboarding_pending'?'Цель достигнута · впереди знакомство с Любителями':`Осталось голов: ${Math.max(0,props.noviceProgress.target-props.noviceProgress.goals)} · «Центральный», дуэли и турниры`}</span>
+   <strong><Target aria-hidden="true"/>Путь в Любители</strong>
+   <span className="district-novice-progress__numbers"><span>{Math.min(props.noviceProgress.goals,props.noviceProgress.target)}/{props.noviceProgress.target}</span><span>осталось шайб: {Math.max(0,props.noviceProgress.target-props.noviceProgress.goals)}</span></span>
    <progress aria-label="Квалификационные голы" value={Math.min(props.noviceProgress.goals,props.noviceProgress.target)} max={Math.max(1,props.noviceProgress.target)}/>
   </button>}
   <section ref={panel} className={`district-panel${navigationCollapsed?' district-panel--collapsed navigation-collapsed-surface':''}`} aria-label="Выбранное место">

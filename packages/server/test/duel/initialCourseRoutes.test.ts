@@ -100,6 +100,60 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
 
   const headers = () => ({ authorization: `Bearer ${accessToken}` });
 
+  async function prepareInvitationBreak() {
+    await app.inject({ method: 'POST', url: '/duel/daily/period/start', headers: headers() });
+    await pool.query(`insert into period_log (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
+      select id, 1, now()-interval '20 minutes', now(), 5, 2, 'timeout' from day_pool where user_id=$1`, [userId]);
+    await pool.query(`update day_pool set state='break_active', period_started_at=null, break_started_at=now() where user_id=$1`, [userId]);
+  }
+  const claimInvitation = () => app.inject({ method: 'POST', url: '/duel/training/course/invitation', headers: headers() });
+
+  it('offers the next incomplete exercise once across concurrent requests', async () => {
+    await prepareInvitationBreak();
+    await pool.query(`insert into initial_training_completion (user_id, exercise_key, reward_stars, reward_experience)
+      values ($1, 'first-shot', 1, 1)`, [userId]);
+    const responses = await Promise.all([claimInvitation(), claimInvitation()]);
+    expect(responses.map(response => response.statusCode)).toEqual([200, 200]);
+    expect(responses.map(response => response.json().exercise?.key ?? null).sort()).toEqual(['three-positions', null].sort());
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+  });
+
+  it('does not consume the invitation during shooting or when the course is disabled', async () => {
+    await app.inject({ method: 'POST', url: '/duel/daily/period/start', headers: headers() });
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    await pool.query(`update day_pool set state='closed', closed_at=now() where user_id=$1`, [userId]);
+    await pool.query('delete from day_pool where user_id=$1', [userId]);
+    await prepareInvitationBreak();
+    await pool.query(`update game_settings set value=jsonb_set(value, '{enabled}', 'false') where key='training.initial_course.config'`);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    await pool.query(`update game_settings set value=jsonb_set(value, '{enabled}', 'true') where key='training.initial_course.config'`);
+    expect((await claimInvitation()).json().exercise?.key).toBe('first-shot');
+  });
+
+  it('does not offer a completed course or an expired break', async () => {
+    await prepareInvitationBreak();
+    await pool.query(`update day_pool set break_started_at=now()-interval '1 hour' where user_id=$1`, [userId]);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    await pool.query(`update day_pool set break_started_at=now() where user_id=$1`, [userId]);
+    for (const key of INITIAL_TRAINING_EXERCISE_KEYS) await pool.query(`insert into initial_training_completion
+      (user_id, exercise_key, reward_stars, reward_experience) values ($1,$2,1,1)`, [userId,key]);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+  });
+
+  it.each(['amateur', 'day_end', 'previous_day'] as const)('does not invite during %s', async reason => {
+    await prepareInvitationBreak();
+    if (reason === 'amateur') await pool.query('update users set level=2 where id=$1', [userId]);
+    if (reason === 'day_end') await pool.query(`update period_log set closed_reason='day_end' where day_pool_id in (select id from day_pool where user_id=$1)`, [userId]);
+    if (reason === 'previous_day') await pool.query(`update day_pool set day_date=day_date-1 where user_id=$1`, [userId]);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    expect((await pool.query('select initial_training_invitation_offered_at from users where id=$1', [userId])).rows[0].initial_training_invitation_offered_at).toBeNull();
+  });
+
+  it('requires authentication for claiming an invitation', async () => {
+    const response = await app.inject({ method: 'POST', url: '/duel/training/course/invitation' });
+    expect(response.statusCode).toBe(401);
+  });
+
   it('returns seven sequential cards without requiring them for open training', async () => {
     const catalog = await app.inject({
       method: 'GET',

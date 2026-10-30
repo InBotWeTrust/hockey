@@ -334,12 +334,12 @@ it('opens the feed without a counter and remembers the map return',()=>{
 it('shows server qualification above navigation and opens the real daily state',()=>{
  sessionStorage.clear();base.onNavigate.mockClear();
  const view=render(<CityMap {...base} level="beginner" noviceProgress={{goals:42,target:100,status:'qualifying'}}/>);
- const plaque=screen.getByRole('button',{name:/Путь в Любители — 42\/100/});
- expect(plaque).toHaveTextContent('Осталось голов: 58');
+ const plaque=screen.getByRole('button',{name:/Путь в Любители.*42\/100/});
+ expect(plaque).toHaveTextContent('осталось шайб: 58');
  fireEvent.click(plaque);
  expect(base.onNavigate).toHaveBeenCalledWith('/daily');
  view.rerender(<CityMap {...base} level="amateur" noviceProgress={{goals:101,target:100,status:'onboarding_pending'}}/>);
- expect(screen.getByRole('button',{name:/Путь в Любители — 100\/100/})).toHaveTextContent('Цель достигнута');
+ expect(screen.getByRole('button',{name:/Путь в Любители.*100\/100/})).toHaveTextContent('осталось шайб: 0');
  view.rerender(<CityMap {...base} level="amateur" noviceProgress={{goals:101,target:100,status:'complete'}}/>);
  expect(screen.queryByRole('button',{name:/Путь в Любители/})).toBeNull();
 });

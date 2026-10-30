@@ -208,6 +208,35 @@ function feedbackCode(
 export const initialTrainingCourseRoutes: FastifyPluginAsync<{
   trainingSeedSecret: string;
 }> = async (app, opts) => {
+  app.post('/duel/training/course/invitation', { preHandler: [app.authenticate] }, async (req) => {
+    return withTransaction(app, async (client) => {
+      await lockUserGameplay(client, req.user.id);
+      const config = await loadInitialTrainingConfig(client);
+      if (!config.enabled) return { exercise: null };
+      const completed = await fetchInitialTrainingCompletions(client, req.user.id);
+      const exercise = buildInitialTrainingCatalog(completed, config).find(item => item.state === 'available');
+      if (!exercise) return { exercise: null };
+      const lock = await getGameplayLockState(client, { userId: req.user.id, action: 'start_initial_training', now: new Date() });
+      if (lock.blocked) return { exercise: null };
+      const settings = await getGameSettings(client);
+      const offered = await client.query(
+        `update users u set initial_training_invitation_offered_at = now()
+          where u.id = $1 and u.initial_training_invitation_offered_at is null
+            and u.level < 2 and not u.amateur_access_preserved and not u.amateur_onboarding_completed
+            and exists (
+              select 1 from day_pool dp join period_log pl
+                on pl.day_pool_id = dp.id and pl.period_number = dp.current_period
+              where dp.user_id = u.id and dp.state = 'break_active'
+                and dp.day_date = (now() at time zone u.timezone)::date
+                and dp.break_started_at + $2::double precision * interval '1 millisecond' > now()
+                and pl.closed_reason in ('quota', 'timeout')
+            ) returning u.id`,
+        [req.user.id, settings.daily.breakDurationMs],
+      );
+      return { exercise: offered.rowCount ? { key: exercise.key, title: exercise.title } : null };
+    });
+  });
+
   app.get('/duel/training/course', { preHandler: [app.authenticate] }, async (req) => {
     return withTransaction(app, async (client) => {
       const config = await loadInitialTrainingConfig(client);

@@ -316,7 +316,7 @@ describe('SectionsScreen', () => {
       amateurTransitionStatus: 'qualifying', pendingTournamentCongratulations: [],
     }), { headers: { 'Content-Type': 'application/json' } })) });
     renderSections();
-    const plaque = await screen.findByRole('button', { name: /Путь в Любители — 42\/100/ });
+    const plaque = await screen.findByRole('button', { name: /Путь в Любители.*42\/100/ });
     expect(screen.getByRole('heading', { name: 'Дворовый каток' })).toBeVisible();
     fireEvent.click(plaque);
     expect(screen.getByTestId('location')).toHaveTextContent('/daily');

@@ -143,3 +143,8 @@ export function submitInitialTrainingShot(
     { signal, method: 'POST', body: payload },
   ));
 }
+
+
+export function claimInitialTrainingInvitation(): Promise<{ exercise: { key: InitialTrainingExerciseKey; title: string } | null }> {
+  return apiFetch('/duel/training/course/invitation', { method: 'POST' });
+}
