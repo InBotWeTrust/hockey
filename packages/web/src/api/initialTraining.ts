@@ -41,6 +41,7 @@ export interface InitialTrainingCatalogResponse {
   open_training_unlocked: boolean;
   open_training_unlock_source: 'course' | 'legacy' | null;
   gameplay_lock: GameplayLockDTO | null;
+  initial_course_gameplay_lock?: GameplayLockDTO | null;
   exercises: InitialTrainingExercise[];
   advanced_training: AdvancedTrainingCatalogResponse;
 }

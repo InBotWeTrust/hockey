@@ -227,7 +227,32 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it('locks daily start for one hour after a training shot', async () => {
+  it('lets a novice at 99 of 100 goals start daily immediately after an open-training shot', async () => {
+    await pool.query(`insert into game_settings (key, value, label, description)
+      values ('amateur.unlock_goals_required', '100'::jsonb, 'Qualification', 'Test')
+      on conflict (key) do update set value = excluded.value`);
+    await pool.query('update users set lifetime_goals_total = 99 where id = $1', [userId]);
+    expect((await startTraining(1)).statusCode).toBe(200);
+    expect((await submitTrainingShot(1)).statusCode).toBe(200);
+    const state = await getState();
+    expect(state.training_cooldown_ends_at).toBeNull();
+    expect(state.gameplay_lock).toBeNull();
+    expect((await startPeriod()).statusCode).toBe(200);
+  });
+
+  it('applies recovery when a level-one player reaches the configured 100-goal threshold', async () => {
+    await pool.query(`insert into game_settings (key, value, label, description)
+      values ('amateur.unlock_goals_required', '100'::jsonb, 'Qualification', 'Test')
+      on conflict (key) do update set value = excluded.value`);
+    expect((await startTraining(1)).statusCode).toBe(200);
+    expect((await submitTrainingShot(1)).statusCode).toBe(200);
+    await pool.query('update users set lifetime_goals_total = 100 where id = $1', [userId]);
+    expect((await getState()).gameplay_lock).toMatchObject({ reason: 'recent_gameplay' });
+    expect((await startPeriod()).statusCode).toBe(409);
+  });
+
+  it('locks amateur daily start for one hour after a training shot', async () => {
+    await pool.query('update users set level = 2 where id = $1', [userId]);
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values (

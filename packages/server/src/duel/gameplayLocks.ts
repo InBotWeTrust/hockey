@@ -1,8 +1,9 @@
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
-
-export const GAMEPLAY_RECOVERY_MINUTES = 60;
-export const GAMEPLAY_RECOVERY_MS = 3_600_000;
+import { resolveAmateurAccess } from '../profile/amateurAccess.js';
+import { getGameSettings } from './gameSettings.js';
+import { GAMEPLAY_RECOVERY_MINUTES, GAMEPLAY_RECOVERY_MS } from './gameplayRecovery.js';
+export { GAMEPLAY_RECOVERY_MINUTES, GAMEPLAY_RECOVERY_MS } from './gameplayRecovery.js';
 
 export function recoveryEndsAt(activityAt: Date, recoveredMinutes: number): Date {
   const recoveredMs = Math.max(0, Math.min(GAMEPLAY_RECOVERY_MINUTES, recoveredMinutes)) * 60_000;
@@ -11,6 +12,7 @@ export function recoveryEndsAt(activityAt: Date, recoveredMinutes: number): Date
 
 export type GameplayAction =
   | 'start_training'
+  | 'start_initial_training'
   | 'start_daily_period'
   | 'start_ordinary_duel'
   | 'ordinary_duel_shot'
@@ -90,6 +92,7 @@ function throwGameplayLock(state: GameplayLockState): never {
 function recoveryModesForAction(action: GameplayAction): readonly RecoveryMode[] {
   switch (action) {
     case 'start_training':
+    case 'start_initial_training':
       return [];
     case 'start_daily_period':
       return ['training'];
@@ -341,6 +344,21 @@ export async function getGameplayLockState(
     if (dailyLock.blocked) return dailyLock;
   }
 
+  if (input.action === 'start_initial_training') {
+    const settings = await getGameSettings(client);
+    const { rows } = await client.query<{ active: boolean }>(
+      `select exists(
+         select 1 from day_pool pool join users player on player.id = pool.user_id
+          where pool.user_id = $1
+            and pool.day_date = ($2::timestamptz at time zone player.timezone)::date
+            and pool.state = 'period_active'
+            and pool.period_started_at + ($3::bigint * interval '1 millisecond') > $2
+       ) as active`,
+      [input.userId, input.now, settings.daily.periodDurationMs],
+    );
+    if (rows[0]?.active) return ACTIVE_DAILY_LOCK;
+  }
+
   const recoveryMs = input.recoveryMs ?? GAMEPLAY_RECOVERY_MS;
   const recoveryModes = recoveryModesForAction(input.action);
   if (recoveryMs <= 0 || recoveryModes.length === 0) return tournamentLock;
@@ -362,6 +380,11 @@ export async function getRecentGameplayRecovery(
   const recoveryMs = input.recoveryMs ?? GAMEPLAY_RECOVERY_MS;
   const recoveryModes = recoveryModesForAction(input.action);
   if (recoveryMs <= 0 || recoveryModes.length === 0) return null;
+  // Use the same qualification rule as arena access, including players promoted by goals.
+  if (input.action === 'start_daily_period') {
+    const access = await resolveAmateurAccess(client, input.userId);
+    if (!access.hasFullAccess) return null;
+  }
   const { rows } = await client.query<{
     shot_session_id?: string;
     last_activity_at: Date | null;

@@ -4809,6 +4809,24 @@ describe('DailyScreen', () => {
     );
   });
 
+  it('opens beginner exercises during a break while open training remains locked', async () => {
+    const course = {
+      ...initialTrainingCatalog,
+      initial_course_gameplay_lock: null,
+      gameplay_lock: { blocked: true, reason: 'active_daily', ends_at: null, tournament_starts_at: null },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.endsWith('/duel/training/course') ? course
+        : url.includes('/duel/training/state') ? trainingIdleState : baseState;
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=training&section=course']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать: Первый бросок' }));
+    expect(screen.queryByRole('dialog', { name: 'Тренировка недоступна' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('exercise=first-shot&play=1');
+  });
+
   it('explains an active daily-game lock before starting a beginner exercise', async () => {
     const lockedCatalog: InitialTrainingCatalogResponse = {
       ...initialTrainingCatalog,
@@ -4836,7 +4854,7 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Начать: Первый бросок' }));
     expect(screen.getByRole('dialog', { name: 'Тренировка недоступна' })).toBeInTheDocument();
-    expect(screen.getByText('Сначала завершите ежедневную игру.')).toBeInTheDocument();
+    expect(screen.getByText('Дождитесь окончания текущего периода.')).toBeInTheDocument();
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
     expect(
       fetchSpy.mock.calls.some(([url]) => String(url).includes('/first-shot/start')),

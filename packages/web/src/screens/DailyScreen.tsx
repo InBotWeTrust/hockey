@@ -1372,22 +1372,30 @@ function TrainingPlaceholder({
   const trainingSection = trainingParams.get('section');
   const trainingExercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
 
+  // Undefined supports older server responses; an explicit null means the course is available.
+  const initialCourseLock = courseCatalog?.initial_course_gameplay_lock === undefined
+    ? courseCatalog?.gameplay_lock ?? null
+    : courseCatalog.initial_course_gameplay_lock;
+  const trainingLock = trainingSection === 'course'
+    ? initialCourseLock
+    : courseCatalog?.gameplay_lock ?? null;
   const openTrainingExercise = (path: string): void => {
-    if (courseCatalog?.gameplay_lock?.blocked) {
+    if (trainingLock?.blocked) {
       setTrainingLockModalOpen(true);
       return;
     }
     navigate(path, { replace: true });
   };
 
-  const trainingLock = courseCatalog?.gameplay_lock ?? null;
   const trainingLockModal =
     trainingLockModalOpen && trainingLock ? (
       <AccessibleModal
         title="Тренировка недоступна"
         copy={
           trainingLock.reason === 'active_daily'
-            ? 'Сначала завершите ежедневную игру.'
+            ? trainingSection === 'course'
+              ? 'Дождитесь окончания текущего периода.'
+              : 'Сначала завершите ежедневную игру.'
             : `${gameplayLockCopy(trainingLock)}.`
         }
         onClose={() => setTrainingLockModalOpen(false)}
@@ -1465,7 +1473,7 @@ function TrainingPlaceholder({
       trainingExercisesEnabled && section === 'course' &&
       exercise &&
       exercise.state !== 'locked' &&
-      !courseCatalog.gameplay_lock?.blocked
+      !initialCourseLock?.blocked
     ) {
       const nextExercise = courseCatalog.exercises.find(
         (item) => item.position === exercise.position + 1,
