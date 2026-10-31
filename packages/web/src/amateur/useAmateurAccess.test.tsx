@@ -35,3 +35,10 @@ it('still blocks a beginner below the configured threshold',async()=>{
  await waitFor(()=>expect(result.current.goalsRemaining).toBe(184));
  expect(result.current.hasFullAccess).toBe(false);
 });
+it('prefers daily qualification over mixed lifetime totals',async()=>{
+ useDailyStore.setState({data:{lifetime_total_goals:1000,amateur_qualifying_goals:99,amateur_unlock_goals_required:100} as DailyStateResponse});
+ const {result}=show({id:'me',competitionLevel:'beginner',amateurUnlockGoalsRequired:100,amateurQualifyingGoals:99,stats:{goals:1000}});
+ await waitFor(()=>expect(result.current.competitionLevel).toBe('beginner'));
+ expect(result.current.hasFullAccess).toBe(false);
+ expect(result.current.goalsRemaining).toBe(1);
+});

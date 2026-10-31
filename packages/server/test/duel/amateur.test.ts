@@ -2458,7 +2458,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   it.each([{level:1,goals:300},{level:2,goals:40}])('lets an eligible player at level $level with $goals goals challenge, accept and get ready',async({level,goals})=>{
-    await pool.query('update users set level=$1,lifetime_goals_total=$2 where id=any($3::uuid[])',[level,goals,[userA,userB]]);
+    await pool.query('update users set level=$1,daily_goals_total=$2 where id=any($3::uuid[])',[level,goals,[userA,userB]]);
     const created=await challenge(await createTemplate());
     expect(created.statusCode).toBe(200);
     const matchId=created.json().match.id;
@@ -2472,7 +2472,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     expect(state.statusCode).toBe(200);expect(state.json().match.status).toBe('active');
   });
   it.each([{level:1,goals:300},{level:2,goals:40}])('matches eligible players at level $level with $goals goals',async({level,goals})=>{
-    await pool.query('update users set level=$1,lifetime_goals_total=$2 where id=any($3::uuid[])',[level,goals,[userA,userB]]);
+    await pool.query('update users set level=$1,daily_goals_total=$2 where id=any($3::uuid[])',[level,goals,[userA,userB]]);
     const templateId=await createTemplate();
     const first=await app.inject({method:'POST',url:'/duel/amateur/matchmaking/join',headers:auth(tokenA),payload:{template_id:templateId}});
     expect(first.statusCode).toBe(200);
@@ -2483,7 +2483,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   it('rejects duel challenges from beginners and against beginners', async () => {
     const templateId = await createTemplate();
 
-    await pool.query(`update users set level = 1, lifetime_goals_total = 116 where id = $1`, [
+    await pool.query(`update users set level = 1, daily_goals_total = 116 where id = $1`, [
       userA,
     ]);
     const fromBeginner = await challenge(templateId);
@@ -2494,7 +2494,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     });
 
     await pool.query(`update users set level = 2 where id = $1`, [userA]);
-    await pool.query(`update users set level = 1, lifetime_goals_total = 116 where id = $1`, [
+    await pool.query(`update users set level = 1, daily_goals_total = 116 where id = $1`, [
       userB,
     ]);
     const againstBeginner = await challenge(templateId);
@@ -2688,7 +2688,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     'rejects retained Amateur $label mutations for a demoted beginner without side effects',
     async ({ setup }) => {
       const request = await setup();
-      await pool.query(`update users set level = 1, lifetime_goals_total = 116 where id = $1`, [
+      await pool.query(`update users set level = 1, daily_goals_total = 116 where id = $1`, [
         userA,
       ]);
       const before = await snapshotRestrictedAmateurState();
@@ -2717,7 +2717,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   );
 
   it('lets beginners browse eligible duel opponents without listing other beginners', async () => {
-    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
+    await pool.query(`update users set level = 1, daily_goals_total = 0 where id = $1`, [userA]);
     const beginnerSearch = await app.inject({
       method: 'GET',
       url: '/duel/amateur/opponents',
@@ -2729,7 +2729,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     ]);
 
     await pool.query(`update users set level = 2 where id = $1`, [userA]);
-    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userB]);
+    await pool.query(`update users set level = 1, daily_goals_total = 0 where id = $1`, [userB]);
     const opponents = await app.inject({
       method: 'GET',
       url: '/duel/amateur/opponents',
@@ -3786,7 +3786,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
 
   it('rejects beginner Classic recovery before inventory or economy state changes', async () => {
     const recoveryItemId = '10900000-0000-4000-8000-000000000030';
-    await pool.query(`update users set level = 1, lifetime_goals_total = 0 where id = $1`, [userA]);
+    await pool.query(`update users set level = 1, daily_goals_total = 0 where id = $1`, [userA]);
     const training = await pool.query<{ id: string }>(
       `insert into training_session
          (user_id, day_date, selected_period, state, game_core_version, training_seed)

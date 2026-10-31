@@ -476,7 +476,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     }
   });
 
-  it('persists post-lock training acceptance time and a full rolling hour after a transaction wait', async () => {
+  it('persists post-lock amateur training acceptance time and a full rolling hour after a transaction wait', async () => {
+    await pool.query('update users set level = 2 where id = $1', [userId]);
     const arrivedAt = new Date();
     const acceptedAt = new Date(arrivedAt.getTime() + 2_000);
     vi.useFakeTimers({ toFake: ['Date'] });

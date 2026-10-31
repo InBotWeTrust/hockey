@@ -277,6 +277,7 @@ export const conversationRoutes: FastifyPluginAsync<Options> = async (app, optio
       let context: ConversationContext | undefined;
       try { context = await memory?.context(user,character,content,reserved.record.turns); }
       catch { app.log.warn({ code: 'bar_memory_context_failed' }, 'Conversation continues without memory'); }
+      if (request.barNovice) context = {summary:'', facts:[], relationship:[], tool:async()=>({unavailable:true}), ...context, novice:true};
       if(office&&!options.elinaOffice){
         const meeting=await readElinaMeeting(app.pg,user);
         context={summary:'',facts:[],relationship:[],tool:async()=>({unavailable:true}),...context,elinaMeeting:meeting.context};

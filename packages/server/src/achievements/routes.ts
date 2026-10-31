@@ -27,6 +27,26 @@ interface BalanceRow {
 }
 
 export const achievementRoutes: FastifyPluginAsync = async (app) => {
+  app.get('/achievements/notifications', { preHandler: [app.authenticate] }, async req => {
+    const { rows } = await app.pg.query<{ id: string }>(
+      `select n.id from achievement_notifications n
+       join achievements a on a.id=n.achievement_id
+       where n.user_id=$1 and n.shown_at is null and a.availability='active'
+       order by n.created_at,n.id limit 200`, [req.user.id]);
+    const hint = await app.pg.query<{unseen:boolean}>('select achievement_map_hint_shown_at is null as unseen from users where id=$1', [req.user.id]);
+    return { notifications: rows, highlightTasks: hint.rows[0]?.unseen === true };
+  });
+  app.post('/achievements/notifications/seen', { preHandler: [app.authenticate] }, async req => {
+    const body = z.object({ ids: z.array(z.string().uuid()).min(1).max(200) }).safeParse(req.body);
+    if (!body.success) throw new AppError('bad_request', 'invalid notification ids', 400);
+    await app.pg.query(`with marked as (
+      update achievement_notifications set shown_at=now()
+      where user_id=$1 and id=any($2::uuid[]) and shown_at is null returning id
+    ) update users set achievement_map_hint_shown_at=coalesce(achievement_map_hint_shown_at,now())
+      where id=$1 and exists(select 1 from marked)`, [req.user.id,body.data.ids]);
+    return { ok: true };
+  });
+
   app.get('/achievements', { preHandler: [app.authenticate] }, async (req) => {
     const achievements = await fetchAchievementCatalogueForUser(app.pg, req.user.id);
     return {

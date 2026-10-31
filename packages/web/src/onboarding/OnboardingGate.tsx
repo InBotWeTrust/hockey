@@ -56,7 +56,7 @@ export function OnboardingGate({
   const storyProfileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me', { cache: 'no-store' }),
-    enabled: query.data?.required?.chain === 'beginner' || run?.required.chain === 'beginner',
+    enabled: Boolean(query.data?.required || run),
     staleTime: 0,
     refetchOnWindowFocus: true,
   });
@@ -157,6 +157,7 @@ export function OnboardingGate({
 
   function acceptCompletion(result: OnboardingRequiredResponse): void {
     queryClient.setQueryData(onboardingQueryKeys.required(), result);
+    void queryClient.invalidateQueries({ queryKey: ['inventory'] });
     void queryClient.invalidateQueries({ queryKey: ['profile'], refetchType: 'none' });
     setRun(null);
     startPromiseRef.current = null;
@@ -200,11 +201,10 @@ export function OnboardingGate({
     );
   } else if (!run) {
     content = <StartupSplash />;
-  } else if (run.required.chain === 'beginner' && storyProfileQuery.isPending) {
+  } else if (storyProfileQuery.isPending) {
     content = <StartupSplash />;
   } else if (
-    run.required.chain === 'beginner' &&
-    (storyProfileQuery.isError || storyProfileQuery.data === undefined)
+    storyProfileQuery.isError || storyProfileQuery.data === undefined
   ) {
     content = (
       <StartupSplash

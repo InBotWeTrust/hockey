@@ -165,7 +165,7 @@ function ClassicBarScene({
       <div ref={track} className="bar-space__track">
         <BarInteriorBackdrop phase={lighting.phase} previous={lighting.previous}/>
         {!hideIdentity && <BarObjectGlow/>}
-        {!hideIdentity && <BarGameHotspots onAction={act} {...(!preview && onVisitorShop ? {onVisitorShop:()=>{const i=layout.slots.findIndex(s=>s.occupantId==='igor');if(i>=0&&ready(i))onVisitorShop();}} : {})}/>}
+        {!hideIdentity && <BarGameHotspots allowedOccupants={layout.slots.map(slot=>slot.occupantId)} onAction={act} {...(!preview && onVisitorShop ? {onVisitorShop:()=>{const i=layout.slots.findIndex(s=>s.occupantId==='igor');if(i>=0&&ready(i))onVisitorShop();}} : {})}/>}
         {layout.slots.map((s, i) => {
           const composition = s.occupantId ? layout.profiles[s.occupantId].composition : null;
           const shrinkCharacter = barCharacters.includes(s.occupantId as BarCharacter);

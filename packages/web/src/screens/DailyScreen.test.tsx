@@ -4051,7 +4051,7 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
     await waitFor(() => {
       expect(
@@ -4061,7 +4061,7 @@ describe('DailyScreen', () => {
     expect(screen.getByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
   });
 
-  it('returns to the hub after dismissing fresh period stats and shows them again on break re-entry', async () => {
+  it('stays on the rink after fresh period stats without reopening them', async () => {
     let periodCompleted = false;
     const future = new Date(Date.now() + 5 * 60 * 1000).toISOString();
     const activeState: DailyStateResponse = {
@@ -4078,6 +4078,8 @@ describe('DailyScreen', () => {
     const breakState: DailyStateResponse = {
       ...baseState,
       state: 'break_active',
+      amateur_qualifying_goals: 42,
+      amateur_unlock_goals_required: 100,
       current_period: 1,
       current_period_shots: 0,
       current_period_goals: 0,
@@ -4126,22 +4128,20 @@ describe('DailyScreen', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
     ).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    expect(screen.getByText('Путь в Любители')).toBeInTheDocument();
+    expect(await screen.findByText('осталось шайб: 58')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
-    expect(await findArenaCta('Ежедневная игра: Перерыв')).toBeInTheDocument();
-    expect(screen.getByLabelText('location')).toHaveTextContent('/sections?home=1');
-    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
+    expect(screen.getByLabelText('location')).toHaveTextContent('/?view=daily');
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
-
-    fireEvent.click(await findArenaCta('Ежедневная игра: Перерыв'));
-
-    expect(
-      await screen.findByRole('dialog', { name: 'Итоги ежедневной игры' }),
-    ).toBeInTheDocument();
+    act(() => useDailyStore.getState().applyState({ ...breakState }));
+    expect(screen.queryByRole('dialog', { name: 'Итоги ежедневной игры' })).not.toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
   });
 
-  it('refreshes onboarding after dismissing deferred finished-game stats', async () => {
+  it('stays on the rink after finished-game stats and defers onboarding until voluntary exit', async () => {
     const activeState: DailyStateResponse = {
       ...baseState,
       state: 'period_active',
@@ -4191,10 +4191,10 @@ describe('DailyScreen', () => {
     act(() => useDailyStore.getState().setDeferredState(closedState));
     const dialog = await screen.findByRole('dialog', { name: 'Игра завершена' });
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Понятно' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Остаться на льду' }));
 
-    expect(await screen.findByLabelText('location')).toHaveTextContent('/sections?home=1');
-    expect(refreshAfterGameExit).toHaveBeenCalledTimes(1);
+    expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=daily');
+    expect(refreshAfterGameExit).not.toHaveBeenCalled();
   });
 
   it('shows the full game stats modal after the final period instead of a period-only summary', async () => {
@@ -4256,7 +4256,7 @@ describe('DailyScreen', () => {
       screen.getByLabelText('3-й период: 15 голов из 30 бросков за 20:00'),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Понятно' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
 
     expect(await screen.findByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
     expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();
@@ -4809,6 +4809,24 @@ describe('DailyScreen', () => {
     );
   });
 
+  it('opens beginner exercises during a break while open training remains locked', async () => {
+    const course = {
+      ...initialTrainingCatalog,
+      initial_course_gameplay_lock: null,
+      gameplay_lock: { blocked: true, reason: 'active_daily', ends_at: null, tournament_starts_at: null },
+    };
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = input instanceof Request ? input.url : String(input);
+      const body = url.endsWith('/duel/training/course') ? course
+        : url.includes('/duel/training/state') ? trainingIdleState : baseState;
+      return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' } });
+    });
+    renderWith(['/?view=training&section=course']);
+    fireEvent.click(await screen.findByRole('button', { name: 'Начать: Первый бросок' }));
+    expect(screen.queryByRole('dialog', { name: 'Тренировка недоступна' })).not.toBeInTheDocument();
+    expect(screen.getByLabelText('location')).toHaveTextContent('exercise=first-shot&play=1');
+  });
+
   it('explains an active daily-game lock before starting a beginner exercise', async () => {
     const lockedCatalog: InitialTrainingCatalogResponse = {
       ...initialTrainingCatalog,
@@ -4836,7 +4854,7 @@ describe('DailyScreen', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Начать: Первый бросок' }));
     expect(screen.getByRole('dialog', { name: 'Тренировка недоступна' })).toBeInTheDocument();
-    expect(screen.getByText('Сначала завершите ежедневную игру.')).toBeInTheDocument();
+    expect(screen.getByText('Дождитесь окончания текущего периода.')).toBeInTheDocument();
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=training&section=course');
     expect(
       fetchSpy.mock.calls.some(([url]) => String(url).includes('/first-shot/start')),

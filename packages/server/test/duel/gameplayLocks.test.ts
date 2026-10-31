@@ -37,6 +37,9 @@ function at(value: string): Date {
 
 function gameplayClient(activities: Activity[]) {
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
+    if (sql.includes('from users where id'))
+      return { rows: [{ level: 2, lifetime_goals_total: 0 }] } as unknown as QueryResult;
+    if (sql.includes('from game_settings')) return { rows: [] } as unknown as QueryResult;
     if (sql.includes('tournament_fixture')) return { rows: [] } as unknown as QueryResult;
     if (sql.includes('tournament_classic_session')) {
       return { rows: [{ active: false }] } as unknown as QueryResult;

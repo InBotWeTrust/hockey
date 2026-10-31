@@ -63,6 +63,7 @@ describe.skipIf(!hasIntegrationEnv)('historical duel reward API compatibility', 
       add column result_paused_ms integer not null default 0,
       add column result_pause_starts_at timestamptz,
       add column result_pause_ends_at timestamptz`);
+    await pool.query('alter table users add column daily_goals_total integer not null default 0, add column amateur_access_preserved boolean not null default true');
     await pool.end();
     const { databaseUrl, redisUrl } = getTestUrls();
     app = await buildApp({

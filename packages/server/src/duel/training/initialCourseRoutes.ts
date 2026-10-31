@@ -208,6 +208,35 @@ function feedbackCode(
 export const initialTrainingCourseRoutes: FastifyPluginAsync<{
   trainingSeedSecret: string;
 }> = async (app, opts) => {
+  app.post('/duel/training/course/invitation', { preHandler: [app.authenticate] }, async (req) => {
+    return withTransaction(app, async (client) => {
+      await lockUserGameplay(client, req.user.id);
+      const config = await loadInitialTrainingConfig(client);
+      if (!config.enabled) return { exercise: null };
+      const completed = await fetchInitialTrainingCompletions(client, req.user.id);
+      const exercise = buildInitialTrainingCatalog(completed, config).find(item => item.state === 'available');
+      if (!exercise) return { exercise: null };
+      const lock = await getGameplayLockState(client, { userId: req.user.id, action: 'start_initial_training', now: new Date() });
+      if (lock.blocked) return { exercise: null };
+      const settings = await getGameSettings(client);
+      const offered = await client.query(
+        `update users u set initial_training_invitation_offered_at = now()
+          where u.id = $1 and u.initial_training_invitation_offered_at is null
+            and u.level < 2 and not u.amateur_access_preserved and not u.amateur_onboarding_completed
+            and exists (
+              select 1 from day_pool dp join period_log pl
+                on pl.day_pool_id = dp.id and pl.period_number = dp.current_period
+              where dp.user_id = u.id and dp.state = 'break_active'
+                and dp.day_date = (now() at time zone u.timezone)::date
+                and dp.break_started_at + $2::double precision * interval '1 millisecond' > now()
+                and pl.closed_reason in ('quota', 'timeout')
+            ) returning u.id`,
+        [req.user.id, settings.daily.breakDurationMs],
+      );
+      return { exercise: offered.rowCount ? { key: exercise.key, title: exercise.title } : null };
+    });
+  });
+
   app.get('/duel/training/course', { preHandler: [app.authenticate] }, async (req) => {
     return withTransaction(app, async (client) => {
       const config = await loadInitialTrainingConfig(client);
@@ -224,27 +253,27 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
       const openWindowCatalog = buildOpenWindowCatalog(openWindowCompleted,
         advancedConfig.enabled && advancedAccess.unlocked);
       const accessSource = await fetchInitialTrainingOpenAccess(client, req.user.id);
+      const now = new Date();
       const gameplayLock = await getGameplayLockState(client, {
         userId: req.user.id,
         action: 'start_training',
-        now: new Date(),
+        now,
       });
-      const activeTraining = await client.query<{ active: boolean }>(
-        `select exists(
-           select 1 from training_session where user_id = $1 and state = 'active'
-         ) as active`,
-        [req.user.id],
-      );
+      const initialCourseGameplayLock = await getGameplayLockState(client, {
+        userId: req.user.id,
+        action: 'start_initial_training',
+        now,
+      });
       const exercises = buildInitialTrainingCatalog(completed, config);
       return {
         enabled: config.enabled,
         completed_count: completed.size,
         beginner_training_completed: beginnerTrainingCompleted,
         total_count: INITIAL_TRAINING_EXERCISE_KEYS.length,
-        open_training_unlocked:
-          !config.enabled || accessSource !== null || activeTraining.rows[0]?.active === true,
+        open_training_unlocked: true,
         open_training_unlock_source: accessSource,
         gameplay_lock: toGameplayLockDto(gameplayLock),
+        initial_course_gameplay_lock: toGameplayLockDto(initialCourseGameplayLock),
         exercises,
         advanced_training: {
           enabled: advancedConfig.enabled,
@@ -275,7 +304,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         const now = new Date();
         await assertGameplayActionAllowed(client, {
           userId: req.user.id,
-          action: 'start_training',
+          action: 'start_initial_training',
           now,
         });
         const config = await loadInitialTrainingConfig(client, { lockRow: true });
@@ -362,7 +391,7 @@ export const initialTrainingCourseRoutes: FastifyPluginAsync<{
         const now = new Date();
         await assertGameplayActionAllowed(client, {
           userId: req.user.id,
-          action: 'start_training',
+          action: 'start_initial_training',
           now,
         });
         const { rows } = await client.query<InitialTrainingRunRow>(

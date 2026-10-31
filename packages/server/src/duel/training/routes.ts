@@ -23,9 +23,7 @@ import {
   type GameSettings,
 } from '../gameSettings.js';
 import {
-  fetchInitialTrainingOpenAccess,
   grantInitialTrainingOpenAccess,
-  loadInitialTrainingConfig,
 } from './initialCourse.js';
 import {
   assertGameplayActionAllowed,
@@ -433,18 +431,6 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         req.user.id,
         now,
       );
-      const initialCourseConfig = await loadInitialTrainingConfig(client);
-      if (
-        initialCourseConfig.enabled &&
-        session === null &&
-        (await fetchInitialTrainingOpenAccess(client, req.user.id)) === null
-      ) {
-        throw new AppError(
-          'initial_training_required',
-          'complete initial training before starting open training',
-          409,
-        );
-      }
       if (session !== null) {
         if (session.state === 'active' && session.selected_period !== selectedPeriod) {
           const { rows } = await client.query<TrainingSessionRow>(

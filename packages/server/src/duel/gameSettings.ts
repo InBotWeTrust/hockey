@@ -9,7 +9,7 @@ import {
   type MonthlyRatingSettings,
   type MonthlyRatingReward,
 } from './amateur/monthlyRatingSettings.js';
-import { GAMEPLAY_RECOVERY_MINUTES } from './gameplayLocks.js';
+import { GAMEPLAY_RECOVERY_MINUTES } from './gameplayRecovery.js';
 import {
   DAILY_PERIOD_SPEED_PRESETS,
   DEFAULT_DUEL_INVENTORY_TIMING,

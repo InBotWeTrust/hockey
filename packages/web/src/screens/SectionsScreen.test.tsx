@@ -310,6 +310,18 @@ describe('SectionsScreen', () => {
     useTrainingSessionStore.setState({ data: null, loading: false, error: null, inFlight: false });
   });
 
+  it('renders daily-only qualification even when lifetime goals already exceed the threshold', async () => {
+    mockSectionsApi({ dailyLifetimeTotalGoals: 1000, profileResponse: Promise.resolve(new Response(JSON.stringify({
+      competitionLevel: 'beginner', amateurQualifyingGoals: 42, amateurUnlockGoalsRequired: 100,
+      amateurTransitionStatus: 'qualifying', pendingTournamentCongratulations: [],
+    }), { headers: { 'Content-Type': 'application/json' } })) });
+    renderSections();
+    const plaque = await screen.findByRole('button', { name: /Путь в Любители.*42\/100/ });
+    expect(screen.getByRole('heading', { name: 'Дворовый каток' })).toBeVisible();
+    fireEvent.click(plaque);
+    expect(screen.getByTestId('location')).toHaveTextContent('/daily');
+  });
+
   it('does not render a beginner map while the player profile is pending', () => {
     mockSectionsApi({profileRequest:'loading'}); renderSections();
     expect(screen.queryByLabelText('Карта района')).toBeNull();

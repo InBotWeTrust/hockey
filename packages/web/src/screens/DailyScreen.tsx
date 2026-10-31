@@ -1,3 +1,4 @@
+import { DailyResultFollowUp } from './DailyResultFollowUp.js';
 import { mergePendingRhythmShots } from '../components/duel/pendingRhythmShots.js';
 import { useAmateurAccess } from "../amateur/useAmateurAccess.js";
 import { SectionLoading } from "../components/SectionLoading.js";
@@ -939,6 +940,8 @@ export function DailyGameStatsModal({
           padding: '18px 18px 20px',
           maxWidth: 380,
           width: '100%',
+          maxHeight: 'calc(100dvh - 40px)',
+          overflowY: 'auto',
         }}
       >
         <div
@@ -1372,22 +1375,30 @@ function TrainingPlaceholder({
   const trainingSection = trainingParams.get('section');
   const trainingExercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
 
+  // Undefined supports older server responses; an explicit null means the course is available.
+  const initialCourseLock = courseCatalog?.initial_course_gameplay_lock === undefined
+    ? courseCatalog?.gameplay_lock ?? null
+    : courseCatalog.initial_course_gameplay_lock;
+  const trainingLock = trainingSection === 'course'
+    ? initialCourseLock
+    : courseCatalog?.gameplay_lock ?? null;
   const openTrainingExercise = (path: string): void => {
-    if (courseCatalog?.gameplay_lock?.blocked) {
+    if (trainingLock?.blocked) {
       setTrainingLockModalOpen(true);
       return;
     }
     navigate(path, { replace: true });
   };
 
-  const trainingLock = courseCatalog?.gameplay_lock ?? null;
   const trainingLockModal =
     trainingLockModalOpen && trainingLock ? (
       <AccessibleModal
         title="Тренировка недоступна"
         copy={
           trainingLock.reason === 'active_daily'
-            ? 'Сначала завершите ежедневную игру.'
+            ? trainingSection === 'course'
+              ? 'Дождитесь окончания текущего периода.'
+              : 'Сначала завершите ежедневную игру.'
             : `${gameplayLockCopy(trainingLock)}.`
         }
         onClose={() => setTrainingLockModalOpen(false)}
@@ -1465,7 +1476,7 @@ function TrainingPlaceholder({
       trainingExercisesEnabled && section === 'course' &&
       exercise &&
       exercise.state !== 'locked' &&
-      !courseCatalog.gameplay_lock?.blocked
+      !initialCourseLock?.blocked
     ) {
       const nextExercise = courseCatalog.exercises.find(
         (item) => item.position === exercise.position + 1,
@@ -6657,6 +6668,7 @@ function TotalCell({ label, value }: { label: string; value: string }): JSX.Elem
 interface DailyStatsModalState {
   stats: DailyGameStats;
   source: 'deferred' | 'state';
+  snapshot: DailyStateResponse;
   state: DailyStateResponse['state'];
 }
 
@@ -6675,6 +6687,7 @@ function DailyPlayView({
   playRouteTransitionOnMount?: boolean;
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element {
+  const navigate = useNavigate();
   const data = useDailyStore((s) => s.data)!;
   const deferredState = useDailyStore((s) => s.deferredState);
   const startPeriod = useDailyStore((s) => s.startPeriod);
@@ -6716,7 +6729,7 @@ function DailyPlayView({
     if (deferredState && deferredState.state !== 'period_active') {
       const stats = dailyGameStatsFromState(deferredState);
       if (stats) {
-        setStatsModal({ stats, source: 'deferred', state: deferredState.state });
+        setStatsModal({ stats, source: 'deferred', state: deferredState.state, snapshot: deferredState });
       }
       return;
     }
@@ -6726,7 +6739,7 @@ function DailyPlayView({
 
     if (data.state === 'break_active' || data.state === 'closed') {
       const stats = dailyGameStatsFromState(data);
-      if (stats) setStatsModal({ stats, source: 'state', state: data.state });
+      if (stats) setStatsModal({ stats, source: 'state', state: data.state, snapshot: data });
     }
   }, [data, deferredState, statsModal, userId]);
 
@@ -6743,17 +6756,11 @@ function DailyPlayView({
   );
 
   const handleStatsModalClose = useCallback((): void => {
-    const source = statsModal?.source;
-    setStatsModal(null);
-    if (source === 'deferred') {
-      applyDeferredState();
-      onBack();
-      return;
-    }
-
     const latestPeriod = latestPeriodFromStats(statsModal?.stats ?? null);
     if (latestPeriod && userId) setLastSeenAt(userId, latestPeriod.ended_at);
-  }, [applyDeferredState, onBack, statsModal, userId]);
+    if (statsModal?.source === 'deferred') applyDeferredState();
+    setStatsModal(null);
+  }, [applyDeferredState, statsModal, userId]);
 
   const hasStatsModal = statsModal !== null;
   const amateurUnlockGoalsRequired = Math.max(
@@ -6763,7 +6770,7 @@ function DailyPlayView({
   const usesAmateurCourt =
     profileQuery.data?.competitionLevel === 'amateur' ||
     profileQuery.data?.competitionLevel === 'professional' ||
-    data.lifetime_total_goals >= amateurUnlockGoalsRequired;
+    (data.amateur_qualifying_goals ?? profileQuery.data?.amateurQualifyingGoals ?? data.lifetime_total_goals) >= amateurUnlockGoalsRequired;
   const dailyCourtBackground = usesAmateurCourt ? AMATEUR_DAILY_COURT_BACKGROUND : undefined;
   const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
     ? new Date(data.gameplay_lock.ends_at).getTime()
@@ -6921,7 +6928,22 @@ function DailyPlayView({
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
-          closeLabel="Понятно"
+          closeLabel="Остаться на льду"
+          supplemental={<DailyResultFollowUp
+            state={statsModal.snapshot}
+            userId={userId}
+            novice={profileQuery.data?.amateurTransitionStatus !== 'complete' &&
+              profileQuery.data?.competitionLevel !== 'professional' &&
+              (profileQuery.data?.competitionLevel === 'beginner' ||
+                profileQuery.data?.amateurTransitionStatus === 'onboarding_pending' ||
+                (profileQuery.data?.competitionLevel === undefined &&
+                  statsModal.snapshot.amateur_qualifying_goals !== undefined))}
+            now={now}
+            onOpenCourse={key => {
+              handleStatsModalClose();
+              navigate(`/?view=training&section=course&exercise=${encodeURIComponent(key)}&play=1`);
+            }}
+          />}
           onClose={handleStatsModalClose}
         />
       )}

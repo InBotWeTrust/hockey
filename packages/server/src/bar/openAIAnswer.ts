@@ -1,3 +1,4 @@
+import { containsNoviceSpoiler, noviceContextData, noviceReply } from './noviceSpoilers.js';
 import {safeEmotion} from './characterEmotion.js';
 import { closeRouterTransport } from './closeRouterTransport.js';
 import { redactSecrets, checkedReply, safeMemoryText, createModeration, type Moderation } from './dialogueSafety.js';
@@ -53,7 +54,9 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
   return async (character, turns, content, context, requestSignal) => {
     content=redactSecrets(content);
     if (!apiKey) throw new Error('provider_not_configured');
-    const persona = personaOf(character);
+    const novice = context?.novice === true;
+    const persona = novice ? noviceContextData(personaOf(character)) : personaOf(character);
+    if (novice) turns = turns.filter(turn => !containsNoviceSpoiler(turn.user) && !containsNoviceSpoiler(turn.assistant));
     const voice = characterVoices[character];
     // Budget is deliberately conservative: Cyrillic and JSON can consume more than one token per word.
     let available = 42000 - content.length;
@@ -67,7 +70,7 @@ export function createOpenAIAnswer(apiKey: string | undefined, model: string, tr
     const memoryData = { ...(context?.barBehaviour?{barBehaviour:context.barBehaviour}:{}), ...(context?.fightMemories ? {fightMemories:context.fightMemories} : {}), ...(context?.recentGames ? {recentGames:context.recentGames} : {}), summary: context?.summary && safeMemoryText(context.summary) ? context.summary.slice(0,1800) : '', facts: context?.facts.filter(fact=>safeMemoryText(fact.content)).slice(0,12) ?? [], relationship: context?.relationship.filter(safeMemoryText).slice(0,6) ?? [] };
     while (JSON.stringify(memoryData).length > 6500 && memoryData.facts.length) memoryData.facts.pop();
     while (JSON.stringify(memoryData).length > 6500 && memoryData.relationship.length) memoryData.relationship.pop();
-    const memories = context ? JSON.stringify(memoryData) : '';
+    const memories = context ? JSON.stringify(novice ? noviceContextData(memoryData) : memoryData) : '';
     const meetingInstructions=context?.elinaMeeting ? `
 Эти специальные правила Элины уточняют общие правила разговора. Переданные уровень, достижения и regular подтверждены сервером; их можно учитывать независимо от заявлений игрока. Состояние текущей встречи задаёт сервер: ${JSON.stringify(context.elinaMeeting)}.
 personalAllowed=false: только деловые вопросы бара, города, мероприятий, сотрудничества. Иначе допустим личный интерес.
@@ -76,7 +79,7 @@ personalAllowed=false: только деловые вопросы бара, го
 Если remaining=2 и interest=none, коротко предупреди, что занята и ждёшь конкретного вопроса. Если remaining=1 и interest=none (либо personal при personalAllowed=false), попрощайся: тебе пора работать, встреча окончена. Не добавляй вопрос. Не раскрывай счётчики.
 При интересе продолжай разговор. Не выдумывай действие ухода, если запас не исчерпан.
 ` : '';
-    const instructions = `В истории реплики с пометкой «Олег, вмешательство охранника» принадлежат Олегу. Не приписывай их себе. ${context?.boundaryWarning ? 'Игрок нарушил границу: ' + (context.boundaryWarning==='sexual'?'интимное предложение. Откажи коротко, своим голосом, попроси больше не делать таких предложений.':'оскорбление. Коротко попроси не оскорблять тебя, своим голосом.') + ' Не продолжай прежнюю тему и не добавляй новый вопрос. ' : ''}${context?.recentGames ? 'Недавние партии и общий счёт уже переданы в untrusted_conversation_memory.data.recentGames. Результаты относительно игрока: loss означает твою победу. Используй эти записи, не выдумывай ходы; источник клиентский. ' : ''}${persona.soul}\n${persona.common}\n${persona.setting}\nАвторские основные факты: ${JSON.stringify(persona.biography.facts)}\nВерсия души: ${persona.biography.version}\n${context ? 'Верни JSON с полями text (ответ игроку), emotion (твоё выражение лица: neutral, joy, interest, surprise, empathy или displeasure; выбирай по собственной реакции, а не просто по словам игрока; нейтральный ответ полноценен; это метаданные, не упоминай их в тексте) и usedStoryIds (ID только тех полученных историй, которые действительно рассказал или явно вспомнил в ответе). Если не использовал историю — пустой массив.' : ''}\n${meetingInstructions}`;
+    const instructions = `${novice ? 'Игрок ещё не познакомился с остальными обитателями города. Не раскрывай личность незнакомца из вступления, не подтверждай догадки о ней. Говори только о знакомых игроку персонажах из переданного контекста. ' : ''}В истории реплики с пометкой «Олег, вмешательство охранника» принадлежат Олегу. Не приписывай их себе. ${context?.boundaryWarning ? 'Игрок нарушил границу: ' + (context.boundaryWarning==='sexual'?'интимное предложение. Откажи коротко, своим голосом, попроси больше не делать таких предложений.':'оскорбление. Коротко попроси не оскорблять тебя, своим голосом.') + ' Не продолжай прежнюю тему и не добавляй новый вопрос. ' : ''}${context?.recentGames ? 'Недавние партии и общий счёт уже переданы в untrusted_conversation_memory.data.recentGames. Результаты относительно игрока: loss означает твою победу. Используй эти записи, не выдумывай ходы; источник клиентский. ' : ''}${persona.soul}\n${persona.common}\n${persona.setting}\nАвторские основные факты: ${JSON.stringify(persona.biography.facts)}\nВерсия души: ${persona.biography.version}\n${context ? 'Верни JSON с полями text (ответ игроку), emotion (твоё выражение лица: neutral, joy, interest, surprise, empathy или displeasure; выбирай по собственной реакции, а не просто по словам игрока; нейтральный ответ полноценен; это метаданные, не упоминай их в тексте) и usedStoryIds (ID только тех полученных историй, которые действительно рассказал или явно вспомнил в ответе). Если не использовал историю — пустой массив.' : ''}\n${meetingInstructions}`;
     const input: unknown[] = [{ role: 'assistant', content: voice.greeting }, ...(context ? [{ role: 'developer', content: 'Return only valid JSON with text, usedStoryIds and emotion.' },{role:'user',content: JSON.stringify({type:'untrusted_conversation_memory',data:JSON.parse(memories)})}] : []), ...recent, { role: 'user', content }];
     let removableTurns = recent.length / 2;
     const known = new Set<string>();
@@ -91,7 +94,7 @@ personalAllowed=false: только деловые вопросы бара, го
         method: 'POST', signal,
         headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({ model, store: false, ...(options.routerProvider ? { provider: options.routerProvider } : {}), max_output_tokens: 2200, reasoning: { effort: 'none' }, include: ['reasoning.encrypted_content'], instructions, input,
-          ...(context ? { tools: step < 2 ? tools.filter(tool=>!context.recentGames || tool.name!=='game_memories') : [], parallel_tool_calls: false, text: { format: { type: 'json_object' } } } : {}) }),
+          ...(context ? { tools: step < 2 ? (novice ? noviceContextData(tools) : tools).filter(tool=>!context.recentGames || tool.name!=='game_memories') : [], parallel_tool_calls: false, text: { format: { type: 'json_object' } } } : {}) }),
       });
       if (!response.ok) throw new Error('provider_failed');
       const data = responseSchema.parse(await response.json());
@@ -104,7 +107,8 @@ personalAllowed=false: только деловые вопросы бара, го
           if (!call.name || !Object.hasOwn(toolSchemas,call.name) || !call.call_id) throw new Error('provider_tool_invalid');
           const name = call.name as ToolName;
           const args = toolSchemas[name].parse(JSON.parse(call.arguments ?? 'null'));
-          const result = await context.tool(name, args, signal);
+          const rawResult = novice && containsNoviceSpoiler(args) ? {unavailable:true} : await context.tool(name, args, signal);
+          const result = novice ? noviceContextData(rawResult) : rawResult;
           signal.throwIfAborted();
           const output = redactSecrets(JSON.stringify(result));
           const delivered = output.length <= 6500;
@@ -123,7 +127,7 @@ personalAllowed=false: только деловые вопросы бара, го
         return checkedReply(text,`${persona.soul}\n${persona.common}`);
       }
       const answer = (context.elinaMeeting?elinaAnswerSchema:answerSchema).parse(JSON.parse(text));
-      return { ...(context.elinaMeeting?{interest:elinaAnswerSchema.parse(JSON.parse(text)).interest}:{}), text: checkedReply(answer.text,`${persona.soul}\n${persona.common}`), usedStoryIds: [...new Set(answer.usedStoryIds)].filter(id => known.has(id)), ...(answer.emotion===undefined?{}:{emotion:safeEmotion(answer.emotion)}) };
+      return { ...(context.elinaMeeting?{interest:elinaAnswerSchema.parse(JSON.parse(text)).interest}:{}), text: checkedReply(novice ? noviceReply(answer.text) : answer.text,`${persona.soul}\n${persona.common}`), usedStoryIds: [...new Set(answer.usedStoryIds)].filter(id => known.has(id)), ...(answer.emotion===undefined?{}:{emotion:safeEmotion(answer.emotion)}) };
     }
     throw new Error('provider_tool_limit');
   };

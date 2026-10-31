@@ -134,6 +134,7 @@ interface DailyStateResponse {
   lifetime_total_shots: number;
   lifetime_total_goals: number;
   amateur_unlock_goals_required: number;
+  amateur_qualifying_goals: number;
   period_started_at: string | null;
   period_ends_at: string | null;
   break_ends_at: string | null;
@@ -352,14 +353,14 @@ export async function fetchDailyHistoryStats(
 async function fetchLifetime(
   client: PoolClient,
   userId: string,
-): Promise<{ shots: number; goals: number }> {
-  const { rows } = await client.query<{ shots: number; goals: number }>(
-    `select lifetime_shots_total as shots, lifetime_goals_total as goals
+): Promise<{ shots: number; goals: number; qualifyingGoals: number }> {
+  const { rows } = await client.query<{ shots: number; goals: number; daily_goals_total: number }>(
+    `select lifetime_shots_total as shots, lifetime_goals_total as goals, daily_goals_total
        from users where id = $1`,
     [userId],
   );
-  if (rows.length === 0) return { shots: 0, goals: 0 };
-  return { shots: Number(rows[0]!.shots), goals: Number(rows[0]!.goals) };
+  if (rows.length === 0) return { shots: 0, goals: 0, qualifyingGoals: 0 };
+  return { shots: Number(rows[0]!.shots), goals: Number(rows[0]!.goals), qualifyingGoals: Number(rows[0]!.daily_goals_total) };
 }
 
 interface ShotSubmitResponse {
@@ -450,6 +451,7 @@ async function buildState(
       daily_total_goals: 0,
       lifetime_total_shots: lifetime.shots,
       lifetime_total_goals: lifetime.goals,
+      amateur_qualifying_goals: lifetime.qualifyingGoals,
       amateur_unlock_goals_required: settings.amateur.unlockGoalsRequired,
       period_started_at: null,
       period_ends_at: null,
@@ -504,6 +506,7 @@ async function buildState(
     daily_total_goals: archived.goals + currentGoals,
     lifetime_total_shots: lifetimeStored.shots + currentShots,
     lifetime_total_goals: lifetimeStored.goals + currentGoals,
+    amateur_qualifying_goals: lifetimeStored.qualifyingGoals,
     amateur_unlock_goals_required: settings.amateur.unlockGoalsRequired,
     period_started_at: periodStartedAt,
     period_ends_at: periodEndsAt,

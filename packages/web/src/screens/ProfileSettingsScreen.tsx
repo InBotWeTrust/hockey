@@ -202,6 +202,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         <SectionLoading />
       ) : (
         <>
+          <button className="btn btn--ghost" onClick={()=>navigate('/sections?tour=1')}>Знакомство с городом</button>
           <div className="section-label">Аккаунт</div>
           <div
             className="profile-registration-account glass"

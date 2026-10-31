@@ -178,14 +178,15 @@ export async function reconcileReferralQualification(
       qualified_at: Date | null;
       blocked_at: Date | null;
       level: number;
-      lifetime_goals_total: number;
+      daily_goals_total: number;
+      amateur_access_preserved: boolean;
       unlock_goals_required: number;
     }>(
       `select relationship.inviter_user_id,
               relationship.qualified_at,
               invited.blocked_at,
               invited.level,
-              invited.lifetime_goals_total,
+              invited.daily_goals_total, invited.amateur_access_preserved,
               coalesce(
                 (select (value #>> '{}')::int
                    from game_settings
@@ -203,8 +204,8 @@ export async function reconcileReferralQualification(
       !row ||
       row.qualified_at !== null ||
       row.blocked_at !== null ||
-      (Number(row.level) < 2 &&
-        Number(row.lifetime_goals_total) < Number(row.unlock_goals_required))
+      (Number(row.level) < 2 && !row.amateur_access_preserved &&
+        Number(row.daily_goals_total) < Number(row.unlock_goals_required))
     ) {
       return false;
     }
@@ -286,7 +287,7 @@ export async function getReferralSummary(
                 case
                   when invited_user.level >= 3 then 'professional'
                   when invited_user.level >= 2
-                    or invited_user.lifetime_goals_total >= coalesce(
+                    or invited_user.amateur_access_preserved or invited_user.daily_goals_total >= coalesce(
                       (select (value #>> '{}')::int from game_settings
                         where key = 'amateur.unlock_goals_required'), 300)
                     then 'amateur'
@@ -390,7 +391,7 @@ export async function listReferralInvitees(
               case
                 when invited_user.level >= 3 then 'professional'
                 when invited_user.level >= 2
-                  or invited_user.lifetime_goals_total >= coalesce(
+                  or invited_user.amateur_access_preserved or invited_user.daily_goals_total >= coalesce(
                     (select (value #>> '{}')::int from game_settings
                       where key = 'amateur.unlock_goals_required'), 300)
                   then 'amateur'
