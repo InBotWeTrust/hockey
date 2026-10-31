@@ -1159,7 +1159,7 @@ describe.skipIf(!hasIntegrationEnv)('classic tournament game integration', () =>
   });
 
   it('rejects beginner Classic period start and shot before creating gameplay state', async () => {
-    await pool.query(`update users set level = 1, lifetime_goals_total = 17 where id = $1`, [
+    await pool.query(`update users set level = 1, lifetime_goals_total = 17, daily_goals_total = 17 where id = $1`, [
       PLAYER_ID,
     ]);
     await pool.query(

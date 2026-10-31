@@ -1,5 +1,31 @@
 # Novice start: amateur onboarding release notes
 
+
+## Current review status (2026-10-31)
+
+Development and local verification only. Draft PR #489 targets `dev`; no merge, deployment, staging data edit or production mutation is authorized in this stage. Floating games/chat controls remain unchanged by explicit user request and require a separate UX decision.
+
+Implemented since the earlier checkpoints: novice bar visibility and AI context filtering; empty furniture at hidden NPC positions; prospective funnel instrumentation; persisted optional 13-location city introduction, first-click disclosure and repeat-click entry, resume at the first unseen location after play, and the reviewed map/result/achievement feedback.
+
+Legacy inaccessible NPC games now finish technically through the existing transactional settlement path: return the original stake, release the visitor admission, retain the match and ledger, and do not grant a win. Paused legacy games are included. Unreachable local Maria card leases release their admission before a new available game is admitted. Human games and accessible NPC games retain their ordinary lifecycle. This is source code for the future authorized deployment, not a live cancellation.
+
+The joined API journey covers beginner onboarding, first daily period and its timeout, manual first-period reward, optional course invitation, school reward, the daily-goal 99/100 boundary, amateur onboarding, and exactly three starter inventory instances. Exercise completion and the final confirmed goal use explicit isolated DB fixtures; separate course/daily suites validate gameplay submissions. This is not an authenticated browser or physical-device end-to-end claim.
+
+The journey exposed a real lock-order race between background stage initialization and immediate reward claim. A two-transaction PostgreSQL test reproduced the deadlock before the fix; stage initialization now takes the user lock before stage rows, matching the claim path. Claims, history and reward values are unchanged.
+
+All 90 authored/recorded observation and curated shooting scenes reproduce their existing answers/windows under core 117. Only stale bank version metadata was refreshed; scene seeds, timing and deterministic shot behavior were not changed. Historical migration tests now stop at their intended schema version; tournament fixtures use daily qualification; profile/onboarding fixtures load the current API data they actually require.
+
+Local acceptance includes city cards/navigation at 320×568 and result layouts at 320×568 (light) and 390×844 (dark), including scrolling to both result actions. The narrow statistics grid retains readable labels. Previously existing players keep direct entry; only actual displayed card selections advance the city-tour viewed count. If browser storage is unavailable, server saves continue through the in-memory queue while the page is open. Physical iOS/PWA and Android permission/delivery checks, real Telegram authentication, and a full authenticated device playthrough remain manual acceptance gaps. They are not replaced by the fixture previews.
+
+Local release checks (2026-10-31):
+- Full game-core: 607 passed, 77 files.
+- Full server on the dedicated local database/Redis: 2667 passed, 51 skipped, 317 files (308 passed / 9 skipped). Command uses `vitest run --hookTimeout=60000` for local migration setup; gameplay assertion timeouts are unchanged. The default 10-second hook budget timed out on a cold run while other checks competed for resources.
+- Full web: 3765 passed across 422 files, including the isolated DailyScreen and other heavy suites.
+- Root typecheck, lint and builds passed. Final server/web package builds passed, as did the initial-load budget audit and its Node test. Existing chunk-size and Browserslist warnings remain. These are local results; no CI or deployed-runtime success is claimed.
+- Newly reproduced issues covered by failing-then-passing checks: hidden paused-game admission, one-time legacy stake/visitor refund, stale local-card lease, unavailable browser storage, unchanged legacy-player navigation, premature viewed-location accounting, and background-achievement / reward-claim lock ordering.
+
+Temporary `novice-*-preview.*`, `novice-toast-themes.html` and the local QA frame remain outside the PR. The test database and Redis are dedicated local instances, not dev/prod.
+
 ## Implemented in this stage
 
 - Both required stories load the current qualification threshold from the profile. A failed profile request shows retry instead of silently displaying the old 300-goal fallback.
@@ -24,7 +50,7 @@ After an authorized dev deployment:
 7. Verify mobile rendering and the story-to-map handoff. Automated tests do not establish this acceptance.
 8. Repeat the publication/data checks independently for production after separately authorized dev-to-main release. Watch GitHub Actions through migration, container recreation and health smoke.
 
-## Remaining work from the novice-start plan
+## Earlier remaining-work checkpoint (superseded by current status)
 
 One-time yard highlight; two achievements and grouped map notification; contextual push; novice NPC/AI spoiler restrictions; funnel events. Grigory mini-games remain P2. The first-stage course access and novice recovery changes are already in the branch, but the course's server/client activation flags still need release-time coordination.
 
@@ -105,3 +131,43 @@ Reviewed UI refinements are included: qualification counters animate from the pr
 Validation: 29 distinct server tests and 378 distinct client tests passed across the changed push/UI paths, including observed RED for prompt persistence, voluntary permission, timeout hiding and stale delivery. No real browser permission was requested and no real push message was sent in validation. Physical iOS/PWA and Android delivery acceptance remains outstanding. The previously documented four game-core fixture failures remain unrelated; game-core is unchanged. No environment was deployed or activated.
 
 Next stage: novice bar character restrictions and server-side AI spoiler context, followed by funnel events and release acceptance.
+
+
+## Novice bar access and story filtering (local implementation)
+
+The public layout removes Maria, Arsenich and Timofey slots, names and assets. The office entry is hidden; direct office/card routes check access before mounting private content. Igor, Grigory, Oleg, Veronika, Daria, human game tables and invitations remain available. Both panorama variants filter static game hotspots as well as character slots. Admin layout editing retains the full layout.
+
+A production-registered server policy runs after authentication and rejects hidden-character conversations, memory/physical actions, computer starts, local Maria cards and saved NPC match reads/actions. New players reveal the full cast after completing the second onboarding. Migration 246's preserved amateur access also preserves the existing cast for legacy amateurs. Existing per-character admission and office rules continue to apply afterward.
+
+Novice AI requests filter authored persona text, conversation history, memory and tool results; tool arguments containing unrevealed names cannot reach the underlying tool. Generated replies containing those names receive a neutral fallback. Response filtering also covers historical conversation snapshots and memory endpoints. This is a deterministic name filter plus prompt constraints, not proof against every indirect AI spoiler or player-authored chat.
+
+Validation: access and AI regression cases were observed failing before implementation. Targeted server checks cover 66 distinct tests (access policy, provider, conversations, personas); targeted UI checks cover 54 tests (panorama, scene, map, office, route gate). Local typecheck/lint/build status is recorded in the implementation report. No authenticated browser acceptance, live model call, deployment or production mutation was performed.
+
+Release caveat: existing novice matches against newly hidden NPCs are denied but not deleted or forcibly settled. A saved active match can still occupy the player's existing game admission until its normal expiry; inspect affected sessions before release and agree an explicit migration/settlement policy if needed. Do not silently cancel games or monetary stakes.
+
+Remaining: funnel instrumentation, optional first yard hint, authenticated/mobile acceptance, release activation and explicitly authorized deployment. Local preview fixtures remain untracked.
+
+
+## Funnel observations and first-yard hint (local implementation)
+
+Migration 251 reuses `event_log` with type `novice_funnel`, scenario version `novice-start-v1`, server timestamps and an idempotency index. The player identifier is the existing internal UUID: pseudonymous, not an irreversible anonymization. No names, contact details, message bodies, device fingerprints or tokens are copied. The view `novice_funnel_events` exposes the normalized analytical fields. Collection is prospective: old facts are not relabeled as v1 observations.
+
+Server triggers record natural onboarding completion (including its published version ID), daily first/second period starts, normal first-period/day completion, first exercise completions, achievement unlock/claim and qualification threshold crossing. Both the direct INSERT of the first active daily pool and later UPDATE starts are covered. Quota/timeout count as completion; day_end does not. Events commit or roll back with their source transaction. Preview/reset onboarding runs are excluded. Grigory minigame events remain unimplemented with the deferred P2 minigames.
+
+The authenticated client endpoint accepts only allowlisted observations: first city view, course catalogue/direct exercise view, visible push prompt, permission outcomes, visible app activity and sessions. It rejects arbitrary fields and gameplay success events. Client observations are best-effort, marked as such, and deduplicated server-side; failed delivery does not block UI. The app session is a per-tab session renewed after 30 minutes without visible activity; visible foreground sampling occurs once a minute. These are observed sessions, not a cross-device identity/session reconstruction. Native permission results, snooze, installation guidance and failures are distinct outcomes.
+
+The yard outline uses the existing blue hint treatment for eight seconds. Any location click dismisses it; other destinations remain usable. An atomic per-user receipt prevents repeated offers across tabs/devices. StrictMode shares the in-flight request. The receipt records an offer, not guaranteed pixels viewed if the application closes immediately. Existing task highlighting takes visual priority. Amateurs do not receive the hint.
+
+Read-only report queries: `docs/analytics/novice-funnel.sql`. They use a natural-beginner-onboarding v1 cohort, UTC exact-day retention and mature denominators for D1/D3/D7 and 3/7/14-day promotion windows. Time/session averages and medians are explicitly conditional on observed converters. First-to-second-period return matches the same pool; goal comparisons normalize by shots. Client delivery loss can undercount observations. Qualification events track progress/level changes, not retroactive eligibility caused solely by an admin lowering the threshold.
+
+Validation covers authenticated ownership, spoofed/unknown fields, replay, concurrent hint claims, transaction rollback, first INSERT and later period starts, timeout/day-end distinctions, promotion deduplication, StrictMode, dismissal/timeout and failed client delivery. Integration tests run against the isolated local test database. No production data, push delivery or deployment was changed. Physical-device and authenticated end-to-end acceptance, the old hidden-NPC match policy, and release activation remain pending.
+
+
+## Optional city introduction (local, 2026-10-31)
+- Replaces the rejected yard glow in CityMap with 13 location cards, synchronized map/dock navigation, a persistent direct /daily action, and explicit return to yard after completion.
+- Migration 252 persists viewed IDs and first daily-period start independently; existing starts are backfilled. Automatic guidance stops after actual play starts, not merely after entering the yard.
+- Interrupted introductions resume from a compact reminder. Settings exposes manual review. Failed writes stay queued locally and retry; gameplay remains available.
+- Local fixture: /novice-yard-preview.html, isolated fixture state without authentication changes.
+- Validation: server city-tour integration tests passed (2 tests with multi-step assertions); 54 focused web tests passed. Browser verified initial card, exploration and reload/resume. Full web suite has 11 failures across App onboarding, observation exercises, recorded playback and chat profile tests; not certified green. No deployment.
+
+- Follow-up: after the first period, an interrupted introduction remains available through the small viewed-count action until all locations have been shown. It resumes at the first unseen location. A first click on an unseen building/dock circle opens its card; subsequent clicks enter through the existing route. Previously viewed locations retain direct entry.

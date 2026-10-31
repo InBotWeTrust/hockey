@@ -1,6 +1,7 @@
 import type { PoolClient, Pool } from 'pg';
 
 export type EventType =
+  | 'novice_funnel'
   | 'shot_mismatch'
   | 'daily_shot_rejected'
   | 'day_pool_created'

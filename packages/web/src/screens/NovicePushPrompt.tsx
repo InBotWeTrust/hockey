@@ -1,3 +1,4 @@
+import {trackNovice,useFunnelObservation} from '../analytics/noviceFunnel.js';
 import { useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { fetchNovicePushPrompt, fetchPushConfig, recordNovicePushPrompt, savePushSubscription, updatePushPreferences } from '../api/push.js';
@@ -24,22 +25,24 @@ export function NovicePushPrompt({userId}:{userId:string}) {
   const config = useQuery({queryKey:['push','config'],queryFn:fetchPushConfig,enabled:eligibleEnvironment && !native,retry:false});
   const nativeStatus = useQuery({queryKey:['push','native-prompt-permission',userId],queryFn:()=>nativePush.getStatus(),enabled:native && eligibleEnvironment,retry:false});
   const available = native ? nativeStatus.data?.permission === 'prompt' || nativeStatus.data?.permission === 'prompt-with-rationale' : config.data?.supported && Boolean(config.data.publicKey);
+  useFunnelObservation('push_prompt_shown',!hidden && eligibleEnvironment && prompt.data?.eligible===true && !prompt.isFetching && Boolean(available));
   if (hidden || !eligibleEnvironment || !prompt.data?.eligible || prompt.isFetching || !available) return null;
 
   async function snooze() {
     if(pending.current)return;
     pending.current=true;setBusy(true);
-    try { await recordNovicePushPrompt('snooze');setHidden(true); }
+    try { await recordNovicePushPrompt('snooze');trackNovice('push_permission_outcome','snoozed');setHidden(true); }
     catch {setMessage('Не удалось сохранить выбор. Попробуй ещё раз.');}
     finally {pending.current=false;setBusy(false);}
   }
   async function enable() {
     if(pending.current)return;
-    if(install){setInstructions(true);return;}
+    if(install){trackNovice('push_permission_outcome','install_instructions');setInstructions(true);return;}
     pending.current=true;setBusy(true);setMessage('');
     try {
       // Permission is requested directly in the click handler, preserving user activation.
       const permission = native ? (await nativePush.subscribe()).status : await Notification.requestPermission();
+      trackNovice('push_permission_outcome',permission==='granted'?'granted':permission==='denied'?'denied':'default');
       await recordNovicePushPrompt('handled');
       if(permission !== 'granted') {
         setInstructions(true);
@@ -54,7 +57,7 @@ export function NovicePushPrompt({userId}:{userId:string}) {
       }
       await updatePushPreferences({dailyGame:true});
       setInstructions(true);setMessage('Напоминания включены');
-    } catch {setInstructions(true);setMessage('Не удалось включить напоминания. Попробуй в настройках профиля.');}
+    } catch {trackNovice('push_permission_outcome','error');setInstructions(true);setMessage('Не удалось включить напоминания. Попробуй в настройках профиля.');}
     finally {pending.current=false;setBusy(false);}
   }
   return <div className="novice-push-prompt">

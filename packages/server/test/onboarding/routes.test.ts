@@ -1,3 +1,4 @@
+import {DEFAULT_INITIAL_TRAINING_CONFIG} from '../../src/duel/training/initialCourse.js';
 import { createHmac, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { readFile } from 'node:fs/promises';
@@ -687,6 +688,45 @@ describe.skipIf(!hasIntegrationEnv)('onboarding lifecycle routes', () => {
       [user.userId],
     );
     expect(state.rows[0]?.beginner_onboarding_completed).toBe(false);
+  });
+
+  it('connects the novice journey from onboarding through first rewards to amateur entry',async()=>{
+    const beginner=await publishChain('beginner');
+    const amateur=await publishChain('amateur');
+    await pool.query("insert into game_settings(key,value,label,description) values('amateur.unlock_goals_required','100'::jsonb,'Threshold','Journey fixture') on conflict(key) do update set value=excluded.value");
+    await pool.query("insert into game_settings(key,value,label,description) values('training.initial_course.config',$1,'Course','Journey fixture') on conflict(key) do update set value=excluded.value",[JSON.stringify({...DEFAULT_INITIAL_TRAINING_CONFIG,enabled:true})]);
+    const user=await createUser(1),headers={authorization:user.authorization};
+    const inject=(method:'GET'|'POST',url:string)=>app.inject({method,url,headers});
+    const first=await start(user.authorization,randomUUID());
+    expect(first.json().required.chain).toBe('beginner');
+    await view(user.authorization,first.json().runId,beginner.stepIds[0]!);
+    expect((await complete(user.authorization,first.json().runId)).statusCode).toBe(200);
+    expect((await inject('POST','/city-tour/open')).json().eligible).toBe(true);
+    expect((await inject('POST','/duel/daily/period/start')).statusCode).toBe(200);
+    expect((await inject('POST','/city-tour/open')).json().gameStarted).toBe(true);
+    await pool.query("update day_pool set period_started_at=now()-interval '21 minutes' where user_id=$1",[user.userId]);
+    expect((await inject('GET','/duel/daily/state')).json().state).toBe('break_active');
+    expect((await inject('POST','/achievements/first-period/claim')).statusCode).toBe(200);
+    expect((await inject('POST','/achievements/first-period/claim')).statusCode).toBe(409);
+    const invitation=await inject('POST','/duel/training/course/invitation');
+    expect(invitation.statusCode).toBe(200);expect(invitation.json().exercise.key).toBe('first-shot');
+    // Retained completion fixtures model the seven validated exercise routes without replaying their UI.
+    for(const key of ['first-shot','three-positions','follow-the-goal','moving-goal','find-the-gap','pressure-window','game-pace'])
+      await pool.query('insert into initial_training_completion(user_id,exercise_key,reward_stars,reward_experience) values($1,$2,1,1)',[user.userId,key]);
+    expect((await inject('POST','/achievements/hockey-school/claim')).statusCode).toBe(200);
+    await pool.query('update users set daily_goals_total=99 where id=$1',[user.userId]);
+    expect((await inject('GET','/me')).json().amateurTransitionStatus).toBe('qualifying');
+    const day=(await pool.query('select id from day_pool where user_id=$1',[user.userId])).rows[0];
+    // A confirmed daily goal fixture exercises the qualification INSERT trigger at the 99/100 boundary.
+    await pool.query("insert into shot_session(user_id,mode,day_pool_id,period_number,shot_index,seed,input_payload,server_result,game_core_version) values($1,'daily',$2,2,1,'journey','{}','goal',117)",[user.userId,day.id]);
+    expect((await inject('GET','/me')).json().amateurTransitionStatus).toBe('onboarding_pending');
+    const second=await start(user.authorization,randomUUID());expect(second.json().required.chain).toBe('amateur');
+    await view(user.authorization,second.json().runId,amateur.stepIds[0]!);
+    expect((await complete(user.authorization,second.json().runId)).statusCode).toBe(200);
+    expect((await complete(user.authorization,second.json().runId)).statusCode).toBe(200);
+    expect((await inject('GET','/me')).json().amateurTransitionStatus).toBe('complete');
+    expect((await pool.query('select id from user_inventory_instance where user_id=$1',[user.userId])).rows).toHaveLength(3);
+    expect((await inject('GET','/bar/layout')).json().novice).toBe(false);
   });
 
   it('grants one medium-tier starter set atomically and never repeats it after retries or reset', async () => {

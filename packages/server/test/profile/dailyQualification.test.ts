@@ -17,6 +17,7 @@ describe.skipIf(!hasIntegrationEnv)('daily qualification migration and accountin
     const userId = randomUUID(), dayId = randomUUID();
     try {
       await client.query('begin');
+      await client.query('drop trigger novice_funnel_promotion on users');
       await client.query('drop trigger shot_session_daily_qualification_goal on shot_session');
       await client.query('drop function credit_daily_qualification_goal()');
       await client.query('alter table users drop column daily_goals_total, drop column amateur_access_preserved');

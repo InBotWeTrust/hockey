@@ -2,7 +2,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Pool } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { applyMigrations } from '../../src/db/migrations.js';
+import {applyMigrationsThrough} from '../helpers/migrations.js';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,7 +30,7 @@ describe.skipIf(!hasIntegrationEnv)('migration 122 bonus-game reward progression
   beforeAll(async () => {
     pool = createTestPool();
     await resetDatabase(pool);
-    await applyMigrations(pool, MIGRATIONS_DIR);
+    await applyMigrationsThrough(pool, MIGRATIONS_DIR, '122_production_data_operations.sql');
   });
 
   afterAll(async () => {

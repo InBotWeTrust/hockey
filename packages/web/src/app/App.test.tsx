@@ -209,6 +209,7 @@ describe('App routing + auth', () => {
         },
       ],
     };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ amateurUnlockGoalsRequired: 100 }));
     vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
     vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
     window.history.replaceState({}, '', '/profile');
@@ -244,6 +245,7 @@ describe('App routing + auth', () => {
         },
       ],
     };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(Response.json({ amateurUnlockGoalsRequired: 100 }));
     vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
     vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });
     window.history.replaceState({}, '', '/profile');

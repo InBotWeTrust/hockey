@@ -2234,7 +2234,7 @@ export function DailyStatsMetric({ label, value }: { label: string; value: strin
     <div
       style={{
         borderRadius: 16,
-        padding: '12px 8px',
+        padding: '12px 4px',
         textAlign: 'center',
         background: 'var(--daily-stats-metric-bg, var(--liquid-inset-bg))',
         border: '1px solid rgba(255, 255, 255, 0.7)',

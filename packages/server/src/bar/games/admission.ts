@@ -1,3 +1,4 @@
+import { hiddenNoviceCharacters } from '../noviceAccess.js';
 import { refundVisitorReceipt } from '../visitorService.js';
 import type { PoolClient } from 'pg';
 import { createPrivateOchko } from './ochkoDeck.js';
@@ -49,16 +50,51 @@ export function matchTime(row: MatchRow, now: number): number {
   return clock ? (clock.pausedAt ?? now) - clock.elapsed : now;
 }
 export async function reconcile(client: PoolClient, row: MatchRow, now: number): Promise<MatchRow> {
-  if (row.ended_at || (row.character && row.data.rulesClock?.pausedAt != null)) return row;
+  if (row.ended_at) return row;
+  if (row.character && hiddenNoviceCharacters.has(row.character)) {
+    const access = await client.query<{ novice: boolean }>(
+      'select not (amateur_onboarding_completed or amateur_access_preserved) as novice from users where id=$1',
+      [row.player_a],
+    );
+    if (access.rows[0]?.novice === true) {
+      // The restriction makes the old game unreachable. Preserve its history and return paid resources.
+      row.data.ready = null;
+      row.data.runtime = {
+        ...row.data.runtime,
+        game: { ...row.data.runtime.game, winner: 'draw' },
+        reason: 'technical',
+        animationUntil: now,
+        revision: row.data.runtime.revision + 1,
+      };
+      await persist(client, row, now);
+      return row;
+    }
+  }
+  if (row.character && row.data.rulesClock?.pausedAt != null) return row;
   const wallNow = now;
   now = matchTime(row, now);
   const ready = row.data.ready;
   if (ready) {
     if (ready.startsAt !== null && now >= ready.startsAt) {
       const prior = row.data.runtime;
-      row.data.runtime = createMatch(row.kind, row.data.starter, ready.startsAt, row.character!==null, prior.seed,prior.engineVersion);
-      if (row.kind === 'ochko') row.data.runtime.game = createPrivateOchko(ready.startsAt,prior.engineVersion,row.character!==null);
-      if(row.kind==='battleship')row.data.runtime.game=barBattleship.start(prior.game as unknown as barBattleship.State) as unknown as typeof prior.game;
+      row.data.runtime = createMatch(
+        row.kind,
+        row.data.starter,
+        ready.startsAt,
+        row.character !== null,
+        prior.seed,
+        prior.engineVersion,
+      );
+      if (row.kind === 'ochko')
+        row.data.runtime.game = createPrivateOchko(
+          ready.startsAt,
+          prior.engineVersion,
+          row.character !== null,
+        );
+      if (row.kind === 'battleship')
+        row.data.runtime.game = barBattleship.start(
+          prior.game as unknown as barBattleship.State,
+        ) as unknown as typeof prior.game;
       row.data.runtime.revision = prior.revision + 1;
       row.data.ready = null;
     } else if (ready.startsAt === null && now >= ready.expiresAt) {
@@ -102,10 +138,23 @@ export async function assertNewGamesFree(client: PoolClient, user: string, now: 
         matchId: row.id,
       });
   }
-  const local = await client.query(
+  const local = await client.query<{ session_id: string }>(
     'select session_id from bar_local_card_sessions where user_id=$1 and expires_at>$2',
     [user, new Date(now)],
   );
-  if (local.rows.length)
-    throw new AppError('bar_game_busy', 'Сначала заверши текущую партию в карты.', 409);
+  if (local.rows.length) {
+    const access = await client.query<{ novice: boolean }>(
+      'select not (amateur_onboarding_completed or amateur_access_preserved) as novice from users where id=$1',
+      [user],
+    );
+    if (access.rows[0]?.novice === true) {
+      for (const session of local.rows) {
+        await refundVisitorReceipt(client, user, session.session_id, 'game');
+        await client.query(
+          'delete from bar_local_card_sessions where user_id=$1 and session_id=$2',
+          [user, session.session_id],
+        );
+      }
+    } else throw new AppError('bar_game_busy', 'Сначала заверши текущую партию в карты.', 409);
+  }
 }

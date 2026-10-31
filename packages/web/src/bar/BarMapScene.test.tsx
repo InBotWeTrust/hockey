@@ -107,3 +107,17 @@ it('occludes Igor with the complete counter sprite while keeping the dartboard i
  expect(view.container.querySelector('.bar-map-counter')).toHaveAttribute('src','/bar/map-v31/counter-v1.webp');
  expect(view.container.querySelector('[data-map-dartboard]')).toBeNull();
 });
+
+it('does not render removed novice characters or their game targets',()=>{
+ const layout=createDefaultBarLayout();
+ layout.slots=layout.slots.filter(slot=>!['maria','arsenich','timofey'].includes(slot.occupantId??''));
+ const view=render(<MemoryRouter><BarMapScene layered layout={layout} activeSlotId={layout.slots.find(slot=>slot.occupantId==='igor')!.id} onSelectSlot={vi.fn()} onAction={vi.fn()}/></MemoryRouter>);
+ expect(screen.queryByRole('button',{name:/Мария|Арсенич|Тимофей|служебную дверь/i})).toBeNull();
+ for(const id of ['maria','arsenich','timofey'])expect(view.container.querySelector(`[data-map-character="${id}"]`)).toBeNull();
+ expect(screen.getByRole('button',{name:'Игорь'})).toBeInTheDocument();
+ expect(view.container.querySelectorAll('[data-map-empty-chair]')).toHaveLength(3);
+ expect(view.container.querySelector('[data-map-prop="battleship-table"]')).toHaveAttribute('src','/bar/novice-furniture-v1/battleship-table.png');
+ expect(view.container.querySelector('[data-map-prop="checkers-table"]')).toHaveAttribute('src','/bar/novice-furniture-v1/checkers-table.png');
+ expect(view.container.querySelector('[data-map-prop="maria-cards-table"]')).toHaveAttribute('src','/bar/novice-furniture-v1/cards-table.png');
+ expect(view.container.querySelector('[data-map-prop="grigory-cards-table"]')).toHaveAttribute('src','/bar/map-v36/cards-table-v1.webp');
+});

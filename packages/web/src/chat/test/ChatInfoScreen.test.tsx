@@ -1,3 +1,4 @@
+import { socialApi } from '../../social/api.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -61,6 +62,8 @@ describe('ChatInfoScreen', () => {
   });
 
   it('opens member profile in the shared profile sheet', async () => {
+    useAuthStore.getState().setSession({accessToken:'test',refreshToken:'test',user:{id:'viewer',displayName:'Viewer'}});
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.spyOn(api, 'fetchChatInfo').mockResolvedValue({
       id: 'chat-1',
       type: 'group',
@@ -92,7 +95,7 @@ describe('ChatInfoScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Player 12' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
   });
 
   it('opens the official account card for an official member', async () => {

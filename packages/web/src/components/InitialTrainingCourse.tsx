@@ -1,3 +1,4 @@
+import {useFunnelObservation} from '../analytics/noviceFunnel.js';
 import { useState } from 'react';
 import { AppToast } from './AppToast.js';
 import { Check, ChevronRight, Star, TrendingUp } from 'lucide-react';
@@ -177,6 +178,7 @@ export function InitialTrainingCatalog({
   catalog: InitialTrainingCatalogResponse;
   onStart: (key: InitialTrainingExerciseKey) => void;
 }): JSX.Element {
+  useFunnelObservation('novice_course_opened');
   const progressPercent =
     catalog.total_count > 0 ? (catalog.completed_count / catalog.total_count) * 100 : 0;
 

@@ -160,11 +160,11 @@ describe.skipIf(!hasIntegrationEnv)('beginner tournament registration preview', 
 
   it('keeps beginners read-only and allows registration after qualification or promotion', async () => {
     await pool.query(
-      `insert into users (id, display_name, timezone, role, level, lifetime_goals_total)
-       values ($1, 'Admin', 'Europe/Moscow', 'admin', 10, 1000),
-              ($2, 'Beginner apply', 'Europe/Moscow', 'player', 1, 17),
-              ($3, 'Beginner invited', 'Europe/Moscow', 'player', 1, 17),
-              ($4, 'Beginner withdraw', 'Europe/Moscow', 'player', 1, 17)`,
+      `insert into users (id, display_name, timezone, role, level, lifetime_goals_total, daily_goals_total)
+       values ($1, 'Admin', 'Europe/Moscow', 'admin', 10, 1000, 1000),
+              ($2, 'Beginner apply', 'Europe/Moscow', 'player', 1, 17, 17),
+              ($3, 'Beginner invited', 'Europe/Moscow', 'player', 1, 17, 17),
+              ($4, 'Beginner withdraw', 'Europe/Moscow', 'player', 1, 17, 17)`,
       [ADMIN_ID, APPLY_USER_ID, INVITED_USER_ID, WITHDRAW_USER_ID],
     );
     await pool.query(
@@ -259,7 +259,7 @@ describe.skipIf(!hasIntegrationEnv)('beginner tournament registration preview', 
         { user_id: INVITED_USER_ID, state: 'invited' },
         { user_id: WITHDRAW_USER_ID, state: 'approved' },
       ]);
-      await pool.query('update users set lifetime_goals_total=300 where id=$1',[APPLY_USER_ID]);
+      await pool.query('update users set daily_goals_total=300 where id=$1',[APPLY_USER_ID]);
       await pool.query('update users set level=2 where id=any($1::uuid[])',[[INVITED_USER_ID,WITHDRAW_USER_ID]]);
       for(const userId of [APPLY_USER_ID,INVITED_USER_ID]){
         const registered=await app.inject({method:'POST',url:`/tournaments/${tournament.id}/applications`,headers:await authorizationFor(userId)});
