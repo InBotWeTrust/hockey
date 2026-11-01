@@ -1,7 +1,7 @@
 export const STADIUM_MACHINE_SPRITES={
- right:'/caretaker/machine-right-v1.png',left:'/caretaker/machine-left-v1.png',
- up:'/caretaker/machine-up-v1.png',down:'/caretaker/machine-down-v2.png',impact:'/caretaker/machine-impact-v1.png',
- impactUp:'/caretaker/machine-impact-up-v1.png',impactDown:'/caretaker/machine-impact-down-v1.png',
+ right:'/caretaker/machine-right-v1.webp',left:'/caretaker/machine-left-v1.webp',
+ up:'/caretaker/machine-up-v1.webp',down:'/caretaker/machine-down-v2.webp',impact:'/caretaker/machine-impact-v1.webp',
+ impactUp:'/caretaker/machine-impact-up-v1.webp',impactDown:'/caretaker/machine-impact-down-v1.webp',
 };
 export type MachineDirection='right'|'left'|'up'|'down';
 // Bounds refer to the visible machine, not transparent image padding.

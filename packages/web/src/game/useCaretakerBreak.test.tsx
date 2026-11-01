@@ -27,7 +27,7 @@ function Harness({
         Григорий
       </button>
       <span>{caretaker.completed ? 'Убран' : 'На льду'}</span>
-      {caretaker.overlay}
+      {caretaker.overlay}{caretaker.invitation}
     </>
   );
 }
@@ -92,4 +92,10 @@ it('hides the caretaker after success until a new break', async () => {
  resumed.rerender(<Harness data={{...base, current_period: 2}} />);
  expect(screen.getByText('На льду')).toBeInTheDocument();
  expect(screen.getByText('Григорий')).not.toBeDisabled();
+});
+
+it('keeps the break invitation visible after the first introduction', async () => {
+ api.hint.mockResolvedValue({show:false});
+ render(<Harness/>);
+ expect(await screen.findByText('Нажми на Григория – помоги убрать лёд и сократи перерыв.')).toBeVisible();
 });

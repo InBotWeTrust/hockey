@@ -1,4 +1,5 @@
 import { Assets, Container, Graphics, Sprite, Texture } from 'pixi.js';
+import {STADIUM_MACHINE_SPRITES,stadiumMachineFrame} from '../stadiumMachine.js';
 import { RINK } from '@hockey/game-core';
 import type { Scale } from '../coords.js';
 import {
@@ -35,8 +36,8 @@ interface Seg {
   facing: 'up' | 'down';
 }
 
-export type IceMaintenanceMode = 'scrape' | 'flood';
-type IceCarVariant = 'scrape-up' | 'scrape-down' | 'flood';
+export type IceMaintenanceMode = 'scrape' | 'flood' | 'stadium';
+type IceCarVariant = 'scrape-up' | 'scrape-down' | 'flood' | 'machine-up' | 'machine-down';
 
 type IceCarPose = {
   x: number;
@@ -57,6 +58,8 @@ type IceCarSurfaceEffect = {
 };
 
 const TEXTURE_URLS: Record<IceCarVariant, string> = {
+  'machine-up': STADIUM_MACHINE_SPRITES.up,
+  'machine-down': STADIUM_MACHINE_SPRITES.down,
   'scrape-up': '/sprites/rink-caretaker-scrape.webp',
   'scrape-down': '/sprites/rink-caretaker-scrape-down.webp',
   flood: '/sprites/rink-caretaker-flood.webp',
@@ -179,6 +182,10 @@ export function iceCarPosAt(
   elapsed: number,
   mode: IceMaintenanceMode = 'scrape',
 ): IceCarPose {
+  if (mode === 'stadium') {
+    const pose = iceCarPosAt(elapsed, 'scrape');
+    return {...pose,variant:pose.variant === 'scrape-down' ? 'machine-down' : 'machine-up'};
+  }
   if (mode === 'flood') {
     const normalizedElapsed = Math.max(0, elapsed);
     const slotIndex = Math.floor(normalizedElapsed / FLOOD_SLOT_MS) % FLOOD_ANCHORS.length;
@@ -455,8 +462,19 @@ export class IceCar {
 
     const spriteWidth = variant === 'flood' ? FLOOD_SPRITE_WIDTH : SCRAPE_SPRITE_WIDTH;
     const spriteHeight = variant === 'flood' ? FLOOD_SPRITE_HEIGHT : SCRAPE_SPRITE_HEIGHT;
-    this.sprite.width = spriteWidth * size;
-    this.sprite.height = spriteHeight * size;
+    const machine = variant === 'machine-up' || variant === 'machine-down';
+    if (machine) {
+      const frame = stadiumMachineFrame(variant === 'machine-up' ? -Math.PI/2 : Math.PI/2);
+      const texture = this.textures.get(variant);
+      const pixelScale = frame.pixelScale * SCRAPE_SPRITE_WIDTH / 159;
+      this.sprite.width = (texture?.width ?? 1024) * pixelScale * size;
+      this.sprite.height = (texture?.height ?? 1536) * pixelScale * size;
+      this.snow.alpha = 0;
+      this.snowFlecks.alpha = 0;
+    } else {
+      this.sprite.width = spriteWidth * size;
+      this.sprite.height = spriteHeight * size;
+    }
     this.sprite.scale.x = (mirrorX ? -1 : 1) * Math.abs(this.sprite.scale.x);
     this.sprite.position.set(px, py);
     this.sprite.rotation = pose.rot;

@@ -19,3 +19,11 @@ it('describes the same gust schedule as ventilation without modifying the state'
  expect(initial).toEqual(before);
  expect(blizzardWeatherLabel({...initial,ticks:2000},'yard')).toContain('Ну и погодка!');
 });
+
+it('supports a shovel indoors without turning ventilation into outdoor weather',()=>{
+ const indoor=caretakerPresentation('blizzard','stadium','shovel');
+ expect(indoor.ventilation).toBe(true);
+ expect(indoor.copy).toContain('скребком');
+ expect(indoor.copy).not.toContain('машиной');
+ expect(caretakerPresentation('drift','stadium','shovel').copy).toContain('управлять Григорием');
+});

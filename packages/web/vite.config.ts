@@ -47,6 +47,16 @@ export default defineConfig({
         })],
         runtimeCaching: [
           {
+            // Pixi loads textures with fetch, whose destination is not "image".
+            urlPattern: ({ url }) => url.origin === self.location.origin && /^\/(?:caretaker|sprites)\/.+\.webp$/.test(url.pathname),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'hockey-caretaker-textures-v1',
+              cacheableResponse: { statuses: [200] },
+              expiration: { maxEntries: 64, maxAgeSeconds: 60 * 60 * 24 * 30 },
+            },
+          },
+          {
             urlPattern: ({ url }) => url.origin === self.location.origin && /^\/assets\/.+\.(js|css)$/.test(url.pathname),
             handler: 'CacheFirst',
             options: {
