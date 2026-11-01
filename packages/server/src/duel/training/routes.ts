@@ -19,6 +19,7 @@ import { AppError } from '../../plugins/errors.js';
 import { appendEvent } from '../eventLog.js';
 import { deriveShotSeed, deriveTrainingSeed } from '../seed.js';
 import { scheduleDailyCompletionSideEffect } from '../daily/completionSideEffects.js';
+import { createGameplayTiming } from '../gameplayTiming.js';
 import {
   getConfiguredDailyPeriodSpeedPreset,
   getGameSettings,
@@ -521,6 +522,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
   });
 
   app.post('/duel/training/shot', { preHandler: [app.authenticate] }, async (req) => {
+    const timing = createGameplayTiming();
     const parsed = shotBodySchema.safeParse(req.body);
     if (!parsed.success) {
       throw new AppError('bad_request', 'invalid training shot payload', 400);
@@ -531,6 +533,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
       app,
       async (client): Promise<TrainingShotSubmitResponse> => {
         await lockUserGameplay(client, req.user.id);
+        timing.mark('lock_wait');
         const now = new Date();
         const settings = await getGameSettings(client);
         await assertGameplayActionAllowed(client, {
@@ -594,6 +597,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
         );
         const serverResult: 'goal' | 'save' | 'miss' = result.type;
 
+        timing.mark('prepare_and_simulate');
         await client.query(
           `insert into shot_session
            (user_id, mode, training_session_id, period_number, shot_index, seed,
@@ -623,6 +627,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           });
         }
 
+        timing.mark('persist_shot');
         if (expectedShotIndex >= session.shots_limit) {
           await client.query(
             `update training_session
@@ -646,6 +651,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           });
         }
 
+        timing.mark('completion_achievements');
         const nextSession = await fetchTodayTrainingSession(client, req.user.id, localToday);
         const state = await buildTrainingState(
           client,
@@ -657,9 +663,12 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
           now,
           tournamentLock,
         );
+        timing.mark('build_state');
         return { server_result: serverResult, state };
       },
     );
+    timing.mark('commit');
+    timing.logIfSlow(req.log, { operation: 'training_shot', userId: req.user.id });
     schedulePendingAchievementRecovery(req.user.id);
     return response;
   });
