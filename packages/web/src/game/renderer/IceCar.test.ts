@@ -231,3 +231,9 @@ describe('iceCarSurfaceEffectsAt', () => {
     expect(near.shadow.height).toBeGreaterThan(far.shadow.height);
   });
 });
+
+it('uses the stadium machine for both directions of stadium maintenance', () => {
+  expect(iceCarPosAt(0, 'stadium').variant).toBe('machine-up');
+  const down = Array.from({length: 150}, (_, i) => iceCarPosAt(i * 1000, 'stadium')).find(p => p.heading > 0);
+  expect(down?.variant).toBe('machine-down');
+});

@@ -6863,7 +6863,8 @@ function DailyPlayView({
         caretakerPlaying={caretaker.active || caretaker.completed}
         onCaretakerTap={caretaker.onTap}
         rinkCover={caretaker.overlay}
-        maintenanceMode={isBreak || caretaker.active ? 'scrape' : 'flood'}
+        controlsFooter={caretaker.invitation}
+        maintenanceMode={caretaker.equipment === 'machine' ? 'stadium' : isBreak || caretaker.active ? 'scrape' : 'flood'}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
