@@ -31,7 +31,8 @@ describe('AmateurStoryFlow', () => {
     expect(screen.getByRole('region')).toHaveAttribute('aria-label', expect.stringContaining('Logan'));
     view.unmount();
     render(<AmateurStoryFlow mode="required" onCompleted={vi.fn()} />);
-    expect(screen.queryByRole('button', { name: 'Следующий экран' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Следующий экран' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Предыдущий экран' })).toBeNull();
   });
   it('shows initial loading as a neutral status rather than an error', () => {
     vi.mocked(storyImagesReady).mockReturnValue(false);
@@ -176,4 +177,23 @@ describe('AmateurStoryFlow', () => {
       /—|тренер|асинхрон|инвентарь/,
     );
   });
+});
+
+it('reveals the current onboarding text immediately and only allows forward navigation', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('matchMedia', vi.fn().mockReturnValue({ matches: false }));
+  try {
+    render(<AmateurStoryFlow mode="required" unlockGoalsRequired={100} onCompleted={vi.fn()} />);
+    expect(screen.queryByRole('button', {name:'Предыдущий экран'})).toBeNull();
+    const next = screen.getByRole('button', {name:'Следующий экран'});
+    fireEvent.click(next);
+    expect(screen.getByRole('status', {name: /Экран 1 из/})).toBeInTheDocument();
+    const copy = screen.getByRole('region');
+    expect(copy.querySelector('p')).not.toHaveClass('is-typing');
+    expect(copy.querySelector('[style*="hidden"]')).toBeNull();
+    act(() => { vi.advanceTimersByTime(1000); });
+    expect(copy.querySelector('p')).not.toHaveClass('is-typing');
+    fireEvent.click(next);
+    expect(screen.getByRole('status', {name: /Экран 2 из/})).toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
 });

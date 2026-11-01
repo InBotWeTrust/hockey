@@ -1,3 +1,4 @@
+import {caretakerRoutes} from './duel/daily/caretakerRoutes.js';
 import {cityTourRoutes} from './analytics/cityTourRoutes.js';
 import { noviceAnalyticsRoutes } from './analytics/noviceRoutes.js';
 import { registerBarNoviceAccess } from './bar/noviceAccess.js';
@@ -157,6 +158,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);
   await app.register(healthRoutes);
+  await app.register(caretakerRoutes);
   await app.register(mobileReleaseRoutes, {
     manifestPath:
       config.ANDROID_RELEASE_MANIFEST_PATH ?? '/var/lib/ultimate-hockey/android-release.json',

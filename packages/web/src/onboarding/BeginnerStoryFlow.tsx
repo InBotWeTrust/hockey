@@ -1,5 +1,5 @@
 import { StoryProgress } from './StoryProgress.js';
-import { StoryReplayNavigation } from './StoryReplayNavigation.js';
+import { StoryReplayNavigation, StoryForwardNavigation } from './StoryReplayNavigation.js';
 import { prepareStoryImages, storyImagesReady, storyImageUrl } from './storyImages.js';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowRight, X } from 'lucide-react';
@@ -102,6 +102,7 @@ export function BeginnerStoryFlow({
   const [scene, setScene] = useState<BeginnerStoryScene>('court');
   const [typedText, setTypedText] = useState('');
   const [typingDone, setTypingDone] = useState(false);
+  const [instantScene, setInstantScene] = useState<BeginnerStoryScene | null>(null);
   const [headlights, setHeadlights] = useState(false);
   const scenes = useMemo(() => beginnerStoryScenes(unlockGoalsRequired), [unlockGoalsRequired]);
   const resultScene = useRef<'goal' | 'miss'>('goal');
@@ -119,7 +120,7 @@ export function BeginnerStoryFlow({
     if (!content) return;
     setTypedText('');
     setTypingDone(false);
-    if (reduceMotion) {
+    if (reduceMotion || instantScene === scene) {
       setTypedText(content.copy);
       setTypingDone(true);
       if (scene === 'car') setHeadlights(true);
@@ -161,7 +162,7 @@ export function BeginnerStoryFlow({
       window.clearTimeout(startTimer);
       if (typingTimer !== undefined) window.clearTimeout(typingTimer);
     };
-  }, [content, reduceMotion, scene]);
+  }, [content, reduceMotion, scene, instantScene]);
 
   const courtDim = scene === 'court' && (reduceMotion || typedText.includes('Стемнело.'));
   const courtEmpty = scene === 'court' && (reduceMotion || typedText.includes('Коробка давно опустела.'));
@@ -210,6 +211,7 @@ export function BeginnerStoryFlow({
       if (!alive.current || token !== navigation.current) return;
       setLoadingScene(false);
       setImageError(false);
+      setInstantScene(null);
       setTypingDone(false);
       setTypedText('');
       setHeadlights(false);
@@ -283,6 +285,7 @@ export function BeginnerStoryFlow({
       data-testid="beginner-story"
     >
       <StoryProgress index={replayIndex} count={replayScenes.length} />
+      {mode === 'required' && !isShot && <StoryForwardNavigation disabled={completing || loadingScene} onNext={() => { if (!typingDone) setInstantScene(scene); else advance(); }} />}
       {mode === 'replay' && <StoryReplayNavigation previousDisabled={replayIndex === 0 || loadingScene} nextDisabled={replayIndex === replayScenes.length - 1 || loadingScene} onPrevious={() => transitionTo(replayScenes[replayIndex - 1]!)} onNext={() => transitionTo(replayScenes[replayIndex + 1]!)} />}
       {mode === 'replay' ? (
         <button

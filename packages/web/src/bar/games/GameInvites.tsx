@@ -5,7 +5,7 @@ import { useGameInvites } from './gameInviteStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
 import { InvitationToast } from '../../components/InvitationToast.js';
-export function GameInvites() {
+export function GameInvites({suppressed=false}:{suppressed?:boolean}) {
   const user = useAuthStore((s) => s.user?.id);
   const navigate = useNavigate();
   const invite = useGameInvites(state => state.owner === user ? state.incoming[0] ?? null : null);
@@ -67,7 +67,7 @@ export function GameInvites() {
       setBusy(false);
     }
   };
-  if (!invite) return null;
+  if (suppressed || !invite) return null;
   const label = {battleship:'морской бой',billiards:'бильярд',darts:'дартс',armwrestling:'армрестлинг',ochko:'очко',checkers:'шашки'}[invite.kind];
   return (
     <InvitationToast name={invite.senderName} avatarUrl={invite.senderAvatarUrl} description={`Приглашает сыграть в ${label}`}>

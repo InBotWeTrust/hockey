@@ -13,3 +13,10 @@ export function StoryReplayNavigation(props: Props): JSX.Element {
     <button type="button" className="icon-btn story-replay__nav story-replay__nav--next" aria-label="Следующий экран" disabled={props.nextDisabled} onClick={props.onNext}><ChevronRight aria-hidden="true" /></button>
   </>;
 }
+
+export function StoryForwardNavigation({ disabled, onNext }: {
+  disabled: boolean;
+  onNext: () => void;
+}): JSX.Element {
+  return <button type="button" className="icon-btn story-replay__nav story-replay__nav--next story-forward" aria-label="Следующий экран" disabled={disabled} onClick={onNext}><ChevronRight aria-hidden="true" /></button>;
+}

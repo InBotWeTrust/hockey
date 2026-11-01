@@ -72,7 +72,7 @@ vi.mock('./renderer/Hitboxes.js', () => ({
 
 vi.mock('./renderer/IceCar.js', () => ({
   IceCar: class IceCar {
-    container = { visible: false };
+    container = { visible: false, on: vi.fn() };
     update(): void {}
     destroy(): void {}
   },

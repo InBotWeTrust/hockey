@@ -1,3 +1,5 @@
+import { rememberResultContext, readResultComparison, type ResultComparison } from '../resultComparison.js';
+import { grantCompletionReward, readCompletionReward } from '../completionRewards.js';
 import type { FastifyInstance, FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
@@ -125,6 +127,8 @@ interface DailyHistorySummary {
 }
 
 interface DailyStateResponse {
+  completion_comparison?: ResultComparison | null;
+  completion_reward?: { stars: number; experience: number } | null;
   state: 'idle' | 'period_active' | 'break_active' | 'closed';
   current_period: number;
   current_period_shots: number;
@@ -471,6 +475,7 @@ async function buildState(
     };
   }
 
+  if (pool.state === 'period_active') await rememberResultContext(client, userId, 'daily', pool.id, settings);
   const archived = await aggregateDailyTotals(client, pool.id);
   let currentShots = 0;
   let currentGoals = 0;
@@ -494,7 +499,7 @@ async function buildState(
       : null;
   const breakEndsAt =
     pool.state === 'break_active' && pool.break_started_at !== null
-      ? new Date(pool.break_started_at.getTime() + settings.daily.breakDurationMs).toISOString()
+      ? new Date(Math.min(pool.break_started_at.getTime() + settings.daily.breakDurationMs,pool.caretaker_ready_at?.getTime() ?? Infinity)).toISOString()
       : null;
 
   return {
@@ -519,6 +524,8 @@ async function buildState(
     shots_per_period: settings.daily.shotsPerPeriod,
     total_periods: settings.daily.totalPeriods,
     period_speed_presets: settings.daily.periodSpeedPresets,
+    completion_reward: await readCompletionReward(client, 'daily', pool.id),
+    completion_comparison: pool.state === 'closed' ? await readResultComparison(client, userId, 'daily', pool.id, pool.day_date, archived.shots, archived.goals) : null,
     recent_periods: recentPeriods,
     previous_game: previousGame,
     training_cooldown_ends_at: trainingCooldownEndsAtIso,
@@ -927,6 +934,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
         const { rows } = await client.query<DayPoolRow>(updateSql, [periodEndedAt, pool.id]);
         currentPool = rows[0]!;
         if (isFinalPeriod) {
+          await grantCompletionReward(client, req.user.id, 'daily', pool.id, settings.daily.totalPeriods * settings.daily.shotsPerPeriod);
           await appendEvent(client, req.user.id, 'day_pool_closed', {
             day_pool_id: pool.id,
             reason: 'completed',

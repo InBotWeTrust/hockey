@@ -13,7 +13,6 @@ function Location() {
 }
 it('keeps chat available throughout gameplay but hides it on auth and chat routes', () => {
   for (const route of [
-    '/sections',
     '/bar',
     '/?view=daily',
     '/?view=training&play=1',
@@ -23,7 +22,7 @@ it('keeps chat available throughout gameplay but hides it on auth and chat route
     '/bonus-games/123/play',
   ])
     expect(isChatShortcutVisible(new URL(route, 'http://local'))).toBe(true);
-  for (const route of ['/chat', '/chat?view=feed', '/chat?view=chat', '/chat/123', '/login', '/auth/vk/callback'])
+  for (const route of ['/sections', '/chat', '/chat?view=feed', '/chat?view=chat', '/chat/123', '/login', '/auth/vk/callback'])
     expect(isChatShortcutVisible(new URL(route, 'http://local'))).toBe(false);
 });
 it('opens the chat list and preserves the source location for the overlay', () => {
@@ -59,7 +58,7 @@ it('drags without opening chat, persists the position, and clamps it after resiz
   };
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue(rect);
   const app = (
-    <MemoryRouter initialEntries={['/sections']}>
+    <MemoryRouter initialEntries={['/bar']}>
       <div className="app-shell">
         <FloatingChatShortcut owner="one" unreadCount={0} />
         <Location />
@@ -78,7 +77,7 @@ it('drags without opening chat, persists the position, and clamps it after resiz
   fireEvent.pointerMove(button, { pointerId: 1, isPrimary: true, clientX: 150, clientY: 300 });
   fireEvent.pointerUp(button, { pointerId: 1, isPrimary: true, clientX: 150, clientY: 300 });
   fireEvent.click(button, { detail: 1 });
-  expect(screen.getByText('/sections')).toBeVisible();
+  expect(screen.getByText('/bar')).toBeVisible();
   expect(button.style.left).not.toBe('');
   const saved = button.style.left;
   view.unmount();
@@ -101,7 +100,7 @@ it('still lets the existing side preference move a previously dragged shortcut',
   } as DOMRect);
   localStorage.setItem('floating-chat-position-v2:one', JSON.stringify({ x: 150, y: 200 }));
   render(
-    <MemoryRouter initialEntries={['/sections']}>
+    <MemoryRouter initialEntries={['/bar']}>
       <div className="app-shell">
         <FloatingChatShortcut owner="one" unreadCount={0} />
       </div>

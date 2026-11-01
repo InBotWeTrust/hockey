@@ -112,7 +112,7 @@ it('keeps the booth chat tab outside the floating chat overlay', () => {
 it('reopens the last dialog from the floating shortcut and remembers returning to the list', async () => {
   sessionStorage.clear();
   const { FloatingChatShortcut } = await import('../components/FloatingChatShortcut.js');
-  render(<MemoryRouter initialEntries={['/sections']}>
+  render(<MemoryRouter initialEntries={['/bar']}>
     <ChatOverlay owner="resume-one">
       <FloatingChatShortcut owner="resume-one" unreadCount={0}/>
     </ChatOverlay>

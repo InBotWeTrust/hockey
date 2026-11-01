@@ -380,8 +380,8 @@ function AppScene(): JSX.Element {
       <NativeNotificationBridge />
       <NativeUpdateBridge enabled={androidReleaseAccess} />
       <DuelInviteToast suppressed={isOpenRinkRoute(location) || hasCardInvite} />
-      <GameInvites/>
-      <CardInviteToast suppressed={isOpenRinkRoute(location)} />
+      <GameInvites suppressed={location.pathname==='/sections'}/>
+      <CardInviteToast suppressed={isOpenRinkRoute(location)||location.pathname==='/sections'} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}

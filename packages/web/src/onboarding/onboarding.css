@@ -664,3 +664,18 @@
   backdrop-filter: none;
   box-shadow: none;
 }
+
+/* Cinematic onboarding and story replay own the full screen. */
+body:has(.beginner-story) :is(.bottom-nav-shell, .floating-shortcut, .floating-games-layer) {
+  display: none !important;
+}
+
+/* Story controls must stay readable over the artwork in both application themes. */
+.beginner-story .story-replay__nav.icon-btn {
+  color: #fff !important;
+  background: rgba(8, 20, 38, 0.88) !important;
+  border: 1px solid rgba(255, 255, 255, 0.7) !important;
+  box-shadow: 0 3px 16px rgba(0, 0, 0, 0.32);
+}
+.beginner-story .story-replay__nav svg { width: 26px; height: 26px; stroke-width: 2.5; }
+.beginner-story .story-forward { width: 48px; height: 48px; }

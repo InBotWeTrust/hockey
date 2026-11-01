@@ -1,3 +1,4 @@
+import type { CompletionComparisonData } from '../components/CompletionComparison.js';
 import { apiFetch } from './apiFetch.js';
 import type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
@@ -42,6 +43,8 @@ export interface DailyHistoryResponse {
 }
 
 export interface DailyStateResponse {
+  completion_comparison?: CompletionComparisonData | null;
+  completion_reward?: { stars: number; experience: number } | null;
   state: DailyState;
   current_period: number; // 0..3
   current_period_shots: number;

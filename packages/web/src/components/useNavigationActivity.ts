@@ -34,7 +34,7 @@ export function useNavigationActivity(enabled: boolean) {
   });
   const { data: classicTournamentGames } = useQuery({
     queryKey: ['tournaments', 'classic', 'active'],
-    queryFn: fetchActiveClassicTournamentGames,
+    queryFn: () => fetchActiveClassicTournamentGames(),
     enabled,
     refetchInterval: 30_000,
   });

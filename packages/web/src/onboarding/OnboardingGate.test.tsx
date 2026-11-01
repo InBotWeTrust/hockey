@@ -139,6 +139,14 @@ describe('OnboardingGate', () => {
     expect(preparePlayer).toHaveBeenCalledTimes(1);
   });
 
+  it('hides the amateur application menu until required onboarding is completed', async () => {
+    vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
+    vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-menu', required });
+    renderGate(<nav aria-label="Основное меню"><button>Карта</button><button>Сообщения</button></nav>);
+    expect(await screen.findByText('Порог любителей: 100')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', {name:'Основное меню'})).toBeNull();
+    expect(screen.queryByRole('button', {name:'Сообщения'})).toBeNull();
+  });
   it('starts a required run and keeps children hidden', async () => {
     vi.mocked(fetchRequiredOnboarding).mockResolvedValue({ required });
     vi.mocked(startOnboarding).mockResolvedValue({ runId: 'run-1', required });

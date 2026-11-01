@@ -41,7 +41,7 @@ export interface ActivePlayoffTournamentGame {
   readiness_ends_at: string;
   closes_at: string;
   break_ends_at: string | null;
-  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';
+  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused' | 'closed';
   current_period: 0;
   total_shots: 0;
   total_goals: 0;
@@ -125,10 +125,10 @@ function classicTournamentMutation<T>(request: Promise<T>): Promise<T> {
   });
 }
 
-export function fetchActiveClassicTournamentGames(): Promise<{
+export function fetchActiveClassicTournamentGames(includeCompleted = false): Promise<{
   games: ActiveTournamentGame[];
 }> {
-  return apiFetch('/tournaments/classic/active');
+  return apiFetch(`/tournaments/classic/active${includeCompleted?'?includeCompleted=true':''}`);
 }
 
 export function fetchClassicTournamentState(

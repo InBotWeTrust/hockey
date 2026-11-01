@@ -1,0 +1,95 @@
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { beforeEach, expect, it, vi } from 'vitest';
+import { useCaretakerBreak } from './useCaretakerBreak.js';
+import type { DailyStateResponse } from '../api/duel.js';
+const api = vi.hoisted(() => ({ start: vi.fn(), hint: vi.fn() }));
+vi.mock('../api/caretaker.js', () => ({ caretakerHint: api.hint }));
+vi.mock('../api/drift.js', () => ({ startDrift: api.start, sendDrift: vi.fn() }));
+vi.mock('./DriftGame.js', () => ({ DriftGame: ({ onComplete, onExit }: { onComplete: () => void; onExit: () => void }) => <div aria-label="Лёд в заносе"><button onClick={onComplete}>Завершить уборку</button><button onClick={onExit}>Выйти из уборки</button></div> }));
+const base = {
+  day_date: '2026-10-31',
+  current_period: 1,
+  state: 'break_active',
+} as DailyStateResponse;
+function Harness({
+  data = base,
+  owner = 'a',
+  suppressed = false,
+}: {
+  data?: DailyStateResponse;
+  owner?: string;
+  suppressed?: boolean;
+}) {
+  const caretaker = useCaretakerBreak(data, suppressed, () => {}, owner);
+  return (
+    <>
+      <button onClick={caretaker.onTap} disabled={!caretaker.onTap}>
+        Григорий
+      </button>
+      <span>{caretaker.completed ? 'Убран' : 'На льду'}</span>
+      {caretaker.overlay}
+    </>
+  );
+}
+beforeEach(() => {
+  vi.resetAllMocks();
+  localStorage.clear();
+  api.hint.mockResolvedValue({ show: true });
+  api.start.mockResolvedValue({
+    id: 'a',
+    attemptId: 'a',
+    seed: 'test',
+    version: 2,
+    period: 1,
+    seq: 0,
+    progress: 0,
+    target: 20,
+    startedAt: new Date().toISOString(),
+    serverNow: new Date().toISOString(),
+    readyAt: new Date(Date.now() + 900000).toISOString(),
+    completed: false,
+  });
+});
+it('closes a running task when the break ends', async () => {
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByText('Григорий'));
+  expect(await screen.findByLabelText('Лёд в заносе')).toBeVisible();
+  view.rerender(<Harness data={{ ...base, state: 'idle' }} />);
+  await waitFor(() => expect(screen.queryByLabelText('Лёд в заносе')).toBeNull());
+  view.rerender(<Harness data={{ ...base, current_period: 2, state: 'period_active' }} />);
+  await waitFor(() => expect(screen.queryByLabelText('Лёд в заносе')).toBeNull());
+});
+it('hides interaction while results are open', () => {
+  render(<Harness suppressed />);
+  expect(screen.getByText('Григорий')).toBeDisabled();
+  expect(api.hint).not.toHaveBeenCalled();
+});
+it('does not show a late start response after changing accounts', async () => {
+  let resolve!: (value: unknown) => void;
+  api.start.mockImplementation(
+    () =>
+      new Promise((r) => {
+        resolve = r;
+      }),
+  );
+  const view = render(<Harness />);
+  fireEvent.click(screen.getByText('Григорий'));
+  view.rerender(<Harness owner="b" />);
+  resolve({ kind: 'push' });
+  await waitFor(() => expect(screen.queryByLabelText('Лёд в заносе')).toBeNull());
+});
+
+it('hides the caretaker after success until a new break', async () => {
+ const view = render(<Harness />);
+ fireEvent.click(screen.getByText('Григорий'));
+ fireEvent.click(await screen.findByText('Завершить уборку'));
+ fireEvent.click(screen.getByText('Выйти из уборки'));
+ expect(screen.getByText('Убран')).toBeInTheDocument();
+ expect(screen.getByText('Григорий')).toBeDisabled();
+ view.unmount();
+ const resumed = render(<Harness />);
+ expect(screen.getByText('Убран')).toBeInTheDocument();
+ resumed.rerender(<Harness data={{...base, current_period: 2}} />);
+ expect(screen.getByText('На льду')).toBeInTheDocument();
+ expect(screen.getByText('Григорий')).not.toBeDisabled();
+});

@@ -1,3 +1,7 @@
+import {MapActionButton} from './MapActionButton.js';
+import {useGameMenu} from './GameMenuContext.js';
+import {chatResumeRoute} from '../chat/chatResume.js';
+import {MessageCircle} from 'lucide-react';
 import {cityTourAnchor} from './cityTourAnchor.js';
 import {useFunnelObservation} from '../analytics/noviceFunnel.js';
 import {useCityTour} from './useCityTour.js';
@@ -21,7 +25,7 @@ import type {WeatherKind} from './weather.js';
 import type {SelectedCity,CityWeather} from './cityLocation.js';
 import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
-type Props={tourRequested?:boolean;tourPreviewApi?:CityTourApi;highlightTasks?:boolean;noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
+type Props={exercisesAction?:ReactNode;weeklyPanel?:ReactNode;tourRequested?:boolean;tourPreviewApi?:CityTourApi;highlightTasks?:boolean;noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
 const basePlaces=[
  {id:'profile',name:'Моя квартира',x:5.8,y:35,w:4,h:9},
  {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
@@ -44,16 +48,18 @@ const lockerPositions = {
 } as const;
 export function CityMap(props:Props){
  useFunnelObservation('city_first_seen');
+ const {setMapHost,setGuideActive}=useGameMenu();
  const tour=useCityTour(props.owner,props.tourRequested,import.meta.env.DEV?props.tourPreviewApi:undefined);
  const tourFull=tour.mode==='intro'||tour.mode==='tour'||tour.mode==='complete';
  const tourFocus=tourFull||tour.mode==='compact';
+ useEffect(()=>{setGuideActive(tourFocus);return()=>setGuideActive(false);},[tourFocus,setGuideActive]);
  const places=useMemo<Array<(typeof basePlaces)[number]>>(()=>{const locker={id:'locker',name:'Раздевалка',...lockerPositions[props.level],w:3,h:8};return basePlaces.flatMap(place=>place.id===homeVenues[props.level]?[place,locker]:[place]);}, [props.level]);
  const weather=props.currentWeather?.kind??'clear';
  const caretaker=useCaretakerVisit(props.owner,props.maintenanceBlocked??true);
  const district=useRef<HTMLElement>(null),panel=useRef<HTMLElement>(null);
  useLayoutEffect(()=>{
   const root=district.current,menu=panel.current;if(!root||!menu)return;
-  const update=()=>root.style.setProperty('--city-menu-top',`${menu.getBoundingClientRect().top-root.getBoundingClientRect().top}px`);
+  const update=()=>{const top=menu.getBoundingClientRect().top-root.getBoundingClientRect().top;root.style.setProperty('--city-menu-top',`${top}px`);root.style.setProperty('--map-actions-bottom',`${root.getBoundingClientRect().height-top+(props.noviceProgress?85:12)}px`);};
   update();const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(update);observer?.observe(root);observer?.observe(menu);window.addEventListener('resize',update);
   return()=>{observer?.disconnect();window.removeEventListener('resize',update);};
  },[]);
@@ -194,6 +200,13 @@ export function CityMap(props:Props){
   </div>
     {props.gamePanel&&<div className="district-game-anchor" data-venue={dailyId} onPointerDown={event=>event.stopPropagation()} onClick={event=>event.stopPropagation()}>{props.gamePanel}</div>}
   <WeatherOverlay key={props.weatherOverride??weather} weather={props.weatherOverride??weather}/>
+  <aside className="map-action-rail" hidden={tourFocus} aria-label="Игровые режимы">
+   <div className="map-game-actions-host" ref={setMapHost}/>
+   {props.exercisesAction}
+   {tour.mode==='resume'&&tour.state&&<MapActionButton label="Знакомство" note={`${tour.state.viewed.length}/${cityTourPlaces.length}`} icon={<MapIcon/>} onClick={explore}/>}
+   <MapActionButton label="Сообщения" icon={<MessageCircle/>} count={props.chatCount??0} onClick={()=>{rememberChatReturn(props.owner,'/sections');onNavigate(chatResumeRoute(props.owner));}}/>
+  </aside>
+  {!tourFocus&&props.weeklyPanel}
   {tourFocus&&<div className="city-tour-spotlight" aria-hidden="true"><div className="city-tour-spotlight__hole"/><svg className="city-tour-pointer-layer"><path className="city-tour-pointer"/></svg></div>}
   {props.noviceProgress&&props.noviceProgress.status!=='complete'&&<button type="button" className="district-novice-progress" onClick={()=>onNavigate('/daily')}>
    <strong><Target aria-hidden="true"/>Путь в Любители</strong>
@@ -201,7 +214,7 @@ export function CityMap(props:Props){
    <progress aria-label="Квалификационные голы" value={Math.min(props.noviceProgress.goals,props.noviceProgress.target)} max={Math.max(1,props.noviceProgress.target)}/>
   </button>}
   {!tour.state&&tour.syncError&&props.tourRequested&&<aside className="city-tour"><p role="status">Не удалось загрузить знакомство с городом.</p><button className="btn btn--ghost" onClick={tour.retry}>Повторить</button></aside>}
-  {tour.state&&tour.mode!=='hidden'&&<CityTourCard state={tour.state} mode={tour.mode} location={selected} onYard={yard} onExplore={explore} onNext={nextTour} syncError={tour.syncError} onRetry={tour.retry}/>}
+  {tour.state&&tour.mode!=='hidden'&&tour.mode!=='resume'&&<CityTourCard state={tour.state} mode={tour.mode} location={selected} onYard={yard} onExplore={explore} onNext={nextTour} syncError={tour.syncError} onRetry={tour.retry}/>}
   <section ref={panel} className={`district-panel${navigationCollapsed?' district-panel--collapsed navigation-collapsed-surface':''}`} aria-label="Выбранное место">
    <button type="button" className="icon-btn district-navigation-toggle" aria-label={navigationCollapsed?'Показать навигацию':'Свернуть навигацию'} title={navigationCollapsed?'Показать навигацию':'Свернуть навигацию'} aria-expanded={!navigationCollapsed} onClick={toggleNavigation}>{navigationCollapsed?<MapIcon aria-hidden="true"/>:<span className="district-navigation-handle" aria-hidden="true"/>}{navigationCollapsed&&navigationCount>0&&<small className="district-badge" aria-label={`Уведомления: ${navigationCount}`}>{navigationCount>99?'99+':navigationCount}</small>}{navigationCollapsed&&props.gameStatus?.label&&<em className="district-game-status" aria-label={`Статус игр: ${props.gameStatus.label}`}>{props.gameStatus.label}</em>}</button>
    {!navigationCollapsed&&<><div className="district-identity"><div><h1>{place.name}</h1><p>{description}{selected==='tasks'&&props.attention&&<span aria-label="Требуется действие"> · Есть награда</span>}</p></div><div className="district-actions">{actions.map(a=><button className="icon-btn" key={a.label} aria-label={a.label} title={a.label} onClick={()=>{if(tourFull)tour.record({action:'dismiss'});onNavigate(tourFull&&selected==='yard'?'/daily':entryRoute(selected,a.path));}}>{<ChevronRight/>}</button>)}</div></div>

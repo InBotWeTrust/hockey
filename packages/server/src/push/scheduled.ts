@@ -369,7 +369,7 @@ async function fetchDailyBreakFinishedRows(
               dp.user_id,
               dp.current_period as period_number,
               to_char(dp.day_date, 'YYYY-MM-DD') as local_date,
-              dp.break_started_at + ($2::bigint * interval '1 millisecond') as event_due_at
+              least(dp.break_started_at + ($2::bigint * interval '1 millisecond'),dp.caretaker_ready_at) as event_due_at
          from day_pool dp
          join users u on u.id = dp.user_id
          left join user_push_preferences pref on pref.user_id = dp.user_id
@@ -378,8 +378,8 @@ async function fetchDailyBreakFinishedRows(
           and dp.break_started_at is not null
           and dp.current_period < $4
           and dp.day_date = ($1::timestamptz at time zone u.timezone)::date
-          and dp.break_started_at + ($2::bigint * interval '1 millisecond') <= $1::timestamptz
-          and dp.break_started_at + ($2::bigint * interval '1 millisecond')
+          and least(dp.break_started_at + ($2::bigint * interval '1 millisecond'),dp.caretaker_ready_at) <= $1::timestamptz
+          and least(dp.break_started_at + ($2::bigint * interval '1 millisecond'),dp.caretaker_ready_at)
                 > $1::timestamptz - ($3::bigint * interval '1 millisecond')
      )
      select ps.id as subscription_id,

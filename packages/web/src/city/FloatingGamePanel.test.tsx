@@ -91,3 +91,19 @@ it('pulses only for a started duel, including waiting, until it completes', () =
  show({entries:[{...duel,dockState:'done'}]});
  expect(screen.queryByLabelText('Незавершённых игр: 1')).toBeNull();
 });
+
+import {GameMenuProvider,useGameMenu} from './GameMenuContext.js';
+function MapHost(){const {setMapHost}=useGameMenu();return <aside ref={setMapHost}/>;}
+it('uses filtered original cube cards on map and groups bar games',async()=>{
+ const a={...daily,id:'d1',kind:'duel' as const,title:'Alex',deadlineAt:Date.now()+60000};
+ const b={...a,id:'d2',title:'Max'};
+ render(<MemoryRouter initialEntries={['/sections']}><GameMenuProvider><MapHost/><FloatingGamePanel {...props} entries={[daily,a,b,{...a,id:'bar1',kind:'bar',eyebrow:'Карты'},{...a,id:'bar2',kind:'bar',eyebrow:'Бильярд'}]}/></GameMenuProvider></MemoryRouter>);
+ expect(screen.queryByRole('button',{name:'Открыть игры'})).toBeNull();
+ fireEvent.click(await screen.findByRole('button',{name:'Дуэли, событий: 2'}));
+ expect(screen.getByText('Alex')).toBeVisible();
+ expect(screen.getByRole('group',{name:'Вкладки игр'}).querySelectorAll('button')).toHaveLength(2);
+ fireEvent.click(screen.getByRole('button',{name:'Следующая игра'}));expect(screen.getByText('Max')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Свернуть игры'}));
+ fireEvent.click(screen.getByRole('button',{name:'Игры в баре, событий: 2'}));
+ expect(screen.getByRole('group',{name:'Вкладки игр'}).querySelectorAll('button')).toHaveLength(2);
+});

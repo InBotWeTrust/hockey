@@ -14,7 +14,7 @@ export function AmateurOnboardingPreviewScreen(): JSX.Element {
     >
       <AmateurStoryFlow
         key={run}
-        mode="replay"
+        mode={new URLSearchParams(window.location.search).get('mode') === 'required' ? 'required' : 'replay'}
         unlockGoalsRequired={100}
         onClose={() => setRun((value) => value + 1)}
         onCompleted={() => setRun((value) => value + 1)}

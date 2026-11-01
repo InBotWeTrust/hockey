@@ -105,13 +105,13 @@ it('keeps a small resume action after play and opens the first unseen place', as
     viewed: ['yard', 'locker', 'shop', 'tasks', 'chat'],
     lastLocation: 'chat',
   });
-  fireEvent.click(await screen.findByRole('button', { name: 'Осмотреть город · пройдено 5/13' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Знакомство' }));
   expect(screen.getByText('6/13')).toBeVisible();
   expect(t.navigate).not.toHaveBeenCalled();
 });
 it('shows an unseen location on its first click and enters on its second click', async () => {
   const t = setup({ gameStarted: true, eligible: false, viewed: ['yard'], autoShow: false });
-  await screen.findByRole('button', { name: 'Осмотреть город · пройдено 1/13' });
+  await screen.findByRole('button', { name: 'Знакомство' });
   fireEvent.click(screen.getByRole('button', { name: 'Выбрать Магазин' }));
   expect(screen.getByText('3/13')).toBeVisible();
   expect(t.navigate).not.toHaveBeenCalled();
@@ -122,7 +122,7 @@ it('shows an unseen location on its first click and enters on its second click',
 it('hides the resume action when all places have been seen', async () => {
   setup({ gameStarted: true, eligible: false, viewed: cityTourPlaces.map((p) => p.id) });
   await waitFor(() =>
-    expect(screen.queryByRole('button', { name: /Осмотреть город ·/ })).toBeNull(),
+    expect(screen.queryByRole('button', { name: 'Знакомство' })).toBeNull(),
   );
 });
 it('does not mark the restored map selection as viewed before centering the requested tour',async()=>{

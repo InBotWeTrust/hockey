@@ -1,3 +1,5 @@
+import { CompletionComparison, completionButtonLabel, type CompletionComparisonData } from '../components/CompletionComparison.js';
+import {useCaretakerBreak} from '../game/useCaretakerBreak.js';
 import { DailyResultFollowUp } from './DailyResultFollowUp.js';
 import { mergePendingRhythmShots } from '../components/duel/pendingRhythmShots.js';
 import { useAmateurAccess } from "../amateur/useAmateurAccess.js";
@@ -898,6 +900,8 @@ export function DailyGameStatsModal({
   ariaLabel = 'Статистика последней игры',
   closeLabel = 'Понятно',
   supplemental,
+  comparison,
+  reward,
   onClose,
 }: {
   stats: DailyGameStats | null;
@@ -906,6 +910,8 @@ export function DailyGameStatsModal({
   ariaLabel?: string;
   closeLabel?: string;
   supplemental?: ReactNode;
+  comparison?: CompletionComparisonData | null;
+  reward?: { stars: number; experience: number } | null;
   onClose: () => void;
 }): JSX.Element {
   const periodsByNumber = new Map<number, PeriodLogEntry>(
@@ -1005,7 +1011,7 @@ export function DailyGameStatsModal({
               }}
             >
               <DailyStatsMetric label="Броски" value={String(stats.total_shots)} />
-              <DailyStatsMetric label="Голы" value={String(stats.total_goals)} />
+              <DailyStatsMetric label="Шайбы" value={String(stats.total_goals)} />
               <DailyStatsMetric label="Время" value={formatDurationMs(stats.total_duration_ms)} />
               <DailyStatsMetric
                 label="Процент"
@@ -1031,6 +1037,8 @@ export function DailyGameStatsModal({
                 );
               })}
             </div>
+            <CompletionRewardSection reward={reward ?? null} />
+            {comparison && <CompletionComparison data={comparison} />}
             {supplemental}
           </>
         )}
@@ -1039,9 +1047,9 @@ export function DailyGameStatsModal({
           type="button"
           className="btn btn--cta"
           onClick={onClose}
-          style={{ marginTop: 18, width: '100%', padding: '12px 0', fontSize: 14 }}
+          style={{ marginTop: 18, width: '100%', padding: '12px 24px', fontSize: 12, letterSpacing: '0.06em' }}
         >
-          {closeLabel}
+          {comparison ? completionButtonLabel(comparison) : closeLabel}
         </button>
       </div>
     </div>
@@ -6700,6 +6708,11 @@ function DailyPlayView({
   const setDeferredState = useDailyStore((s) => s.setDeferredState);
   const applyDeferredState = useDailyStore((s) => s.applyDeferredState);
   const userId = useAuthStore((s) => s.user?.id ?? '');
+  const completionQueryClient = useQueryClient();
+  const completionReward = data.completion_reward;
+  useEffect(() => {
+    if (completionReward) void completionQueryClient.invalidateQueries({ queryKey: ['profile'] });
+  }, [completionReward, completionQueryClient]);
   const profileQuery = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me'),
@@ -6772,6 +6785,7 @@ function DailyPlayView({
     profileQuery.data?.competitionLevel === 'professional' ||
     (data.amateur_qualifying_goals ?? profileQuery.data?.amateurQualifyingGoals ?? data.lifetime_total_goals) >= amateurUnlockGoalsRequired;
   const dailyCourtBackground = usesAmateurCourt ? AMATEUR_DAILY_COURT_BACKGROUND : undefined;
+  const caretaker=useCaretakerBreak(data,hasStatsModal,refresh,userId,usesAmateurCourt?"stadium":"yard");
   const trainingCooldownEndsAt = data.gameplay_lock?.ends_at
     ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
@@ -6845,8 +6859,11 @@ function DailyPlayView({
       <PlayView<DailyStateResponse>
         suppressedByModal={shouldSuppressRink}
         showPeriodFatigueNotice
-        showIceCar={shouldShowIceCar}
-        maintenanceMode={isBreak ? 'scrape' : 'flood'}
+        showIceCar={shouldShowIceCar || caretaker.active}
+        caretakerPlaying={caretaker.active || caretaker.completed}
+        onCaretakerTap={caretaker.onTap}
+        rinkCover={caretaker.overlay}
+        maintenanceMode={isBreak || caretaker.active ? 'scrape' : 'flood'}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -6910,8 +6927,8 @@ function DailyPlayView({
                   ? 'ИГРА ЗАВЕРШЕНА'
                   : undefined
         }
-        inactiveAction={canStartPeriod ? handleStartPeriod : undefined}
-        primaryActionBlocked={needsReconcile || isActiveDailyLocked}
+        inactiveAction={canStartPeriod && !caretaker.active ? handleStartPeriod : undefined}
+        primaryActionBlocked={needsReconcile || isActiveDailyLocked || caretaker.active}
         entranceBeforeInactiveAction={true}
         periodEndsAt={data.state === 'period_active' ? periodEndsAt : undefined}
         onTimerExpired={refresh}
@@ -6925,10 +6942,12 @@ function DailyPlayView({
       {statsModal && (
         <DailyGameStatsModal
           stats={statsModal.stats}
+          reward={statsModal.snapshot.completion_reward ?? null}
+          comparison={statsModal.snapshot.completion_comparison ?? null}
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
-          closeLabel="Остаться на льду"
+          closeLabel={statsModal.state === 'closed' ? 'Ок, вернусь завтра' : 'Остаться на льду'}
           supplemental={<DailyResultFollowUp
             state={statsModal.snapshot}
             userId={userId}
@@ -7843,6 +7862,31 @@ function TrainingSpeedControls({
   );
 }
 
+function CompletionRewardSection({ reward }: {
+  reward: { stars: number; experience: number } | null;
+}): JSX.Element | null {
+  if (!reward || (reward.stars <= 0 && reward.experience <= 0)) return null;
+  return <section aria-label="Награда" style={{ marginTop: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="section-label" style={{ margin: 0, padding: 0 }}>Награда:</div>
+    <DuelEarnedRewards reward={reward} />
+  </section>;
+}
+
+export function TrainingCompletionModal({ goals, shots, reward, comparison, onClose }: {
+  goals: number;
+  shots: number;
+  comparison?: CompletionComparisonData | null;
+  reward: { stars: number; experience: number };
+  onClose: () => void;
+}): JSX.Element {
+  return <AccessibleModal title="Тренировка завершена" onClose={onClose}>
+    <CompletionRewardSection reward={reward} />
+    <p className="modal-copy" style={{ marginTop: 20 }}>Шайбы: {goals} из {shots}</p>
+    {comparison && <CompletionComparison data={comparison} />}
+    <div className="modal-actions"><button type="button" className="modal-primary btn--cta" style={{ fontSize: 12, letterSpacing: '0.06em', paddingInline: 24 }} onClick={onClose}>{comparison ? completionButtonLabel(comparison) : 'Ок, вернусь завтра'}</button></div>
+  </AccessibleModal>;
+}
+
 function TrainingPlayView({
   onBack,
   selectedPeriod = 1,
@@ -7859,6 +7903,11 @@ function TrainingPlayView({
   onRouteTransitionConsumed?: (() => void) | undefined;
 }): JSX.Element | null {
   const data = useTrainingSessionStore((s) => s.data);
+  const completionQueryClient = useQueryClient();
+  const completionReward = data?.completion_reward;
+  useEffect(() => {
+    if (completionReward) void completionQueryClient.invalidateQueries({ queryKey: ['profile'] });
+  }, [completionReward, completionQueryClient]);
   const start = useTrainingSessionStore((s) => s.start);
   const optimisticAddShot = useTrainingSessionStore((s) => s.optimisticAddShot);
   const submitShot = useTrainingSessionStore((s) => s.submitShot);
@@ -7879,6 +7928,7 @@ function TrainingPlayView({
     initialTrainingDebugSettings.speedOverrides,
   );
   const [now, setNow] = useState(Date.now());
+  const [dismissedResult, setDismissedResult] = useState<string | null>(null);
   const canShowTrainingDebugControls = initialTrainingDebugSettings.enabled;
   const trainingPeriodNumber = data?.selected_period ?? selectedPeriod;
   const trainingDefaultSpeeds = useMemo(
@@ -7944,6 +7994,9 @@ function TrainingPlayView({
       : 'ЛИМИТ';
   return (
     <>
+      {isTrainingClosed && data.completion_reward && dismissedResult !== data.day_date && (
+        <TrainingCompletionModal goals={data.goals} shots={data.shots_taken} reward={data.completion_reward} comparison={data.completion_comparison ?? null} onClose={() => setDismissedResult(data.day_date)} />
+      )}
       <PlayView<TrainingStateResponse>
         suppressedByModal={!isTrainingPlayable}
         showIceCar={isTrainingClosed || isTrainingLocked}

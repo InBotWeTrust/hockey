@@ -4191,7 +4191,7 @@ describe('DailyScreen', () => {
     act(() => useDailyStore.getState().setDeferredState(closedState));
     const dialog = await screen.findByRole('dialog', { name: 'Игра завершена' });
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Остаться на льду' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Ок, вернусь завтра' }));
 
     expect(await screen.findByLabelText('location')).toHaveTextContent('/?view=daily');
     expect(refreshAfterGameExit).not.toHaveBeenCalled();
@@ -4241,6 +4241,12 @@ describe('DailyScreen', () => {
           daily_seed: 'seed-abc',
           recent_periods: previousGame.periods,
           previous_game: previousGame,
+          completion_reward: { stars: 2, experience: 2 },
+          completion_comparison: {
+            kind: 'daily', currentDate: '2026-04-25',
+            current: { shots: 90, goals: 42, limit: 90 },
+            previous: { day: '2026-04-24', shots: 90, goals: 36, limit: 90, comparable: true },
+          },
         }),
         { status: 200, headers: { 'content-type': 'application/json' } },
       ),
@@ -4251,12 +4257,15 @@ describe('DailyScreen', () => {
     expect(await screen.findByRole('dialog', { name: 'Игра завершена' })).toBeInTheDocument();
     expect(screen.queryByRole('dialog', { name: '3-й период завершён' })).not.toBeInTheDocument();
     expect(screen.getByText('Дата: 25.04.2026')).toBeInTheDocument();
+    expect(screen.getByText('Прошлая игра · вчера')).toBeInTheDocument();
+    expect(screen.getByText('+7%')).toBeInTheDocument();
+    expect(screen.getByLabelText('Звёзды: 2')).toBeInTheDocument();
     expect(screen.getByLabelText('Итого: 42 голов из 90 бросков')).toBeInTheDocument();
     expect(
       screen.getByLabelText('3-й период: 15 голов из 30 бросков за 20:00'),
     ).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Отлично, завтра продолжу' }));
 
     expect(await screen.findByRole('button', { name: 'ИГРА ЗАВЕРШЕНА' })).toBeDisabled();
     expect(screen.queryByRole('dialog', { name: 'Игра завершена' })).not.toBeInTheDocument();
@@ -9966,7 +9975,7 @@ describe('floating game hub presentation',()=>{
   useDailyStore.setState({data:baseState,inFlight:true});
   useTrainingSessionStore.setState({data:trainingIdleState,inFlight:true});
   const enter=vi.fn();
-  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/sections']}><div className="app-shell"><GameHub presentation="floating" extraEntries={[{id:'bar-party',kind:'bar',dockState:'active',inProgress:true,attention:true,eyebrow:'Игры бара',title:'Бильярд',subtitle:'Партия продолжается',meta:'',ctaLabel:'Вернуться',onEnter:enter}]} onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></div></MemoryRouter></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/bar']}><div className="app-shell"><GameHub presentation="floating" extraEntries={[{id:'bar-party',kind:'bar',dockState:'active',inProgress:true,attention:true,eyebrow:'Игры бара',title:'Бильярд',subtitle:'Партия продолжается',meta:'',ctaLabel:'Вернуться',onEnter:enter}]} onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></div></MemoryRouter></QueryClientProvider>);
   expect(document.querySelector('.floating-shortcut__badge--pulse')).not.toBeNull();
   fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));
   expect(screen.getByRole('article',{name:'Игры бара: Бильярд'})).toBeVisible();

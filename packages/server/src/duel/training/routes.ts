@@ -1,3 +1,5 @@
+import { rememberResultContext, readResultComparison, type ResultComparison } from '../resultComparison.js';
+import { grantCompletionReward, readCompletionReward } from '../completionRewards.js';
 import type { FastifyPluginAsync } from 'fastify';
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
@@ -75,6 +77,8 @@ interface TrainingSessionRow {
 }
 
 interface TrainingStateResponse {
+  completion_comparison?: ResultComparison | null;
+  completion_reward?: { stars: number; experience: number } | null;
   state: 'idle' | 'active' | 'closed';
   selected_period: number | null;
   shots_taken: number;
@@ -248,9 +252,12 @@ async function buildTrainingState(
     };
   }
 
+  if (session.state === 'active') await rememberResultContext(client, userId, 'training', session.id, settings, session.selected_period);
   const stats = await aggregateTraining(client, session.id);
   return {
     state: session.state,
+    completion_reward: await readCompletionReward(client, 'training', session.id),
+    completion_comparison: session.state === 'closed' ? await readResultComparison(client, userId, 'training', session.id, session.day_date, stats.shots, stats.goals) : null,
     selected_period: session.selected_period,
     shots_taken: stats.shots,
     goals: stats.goals,
@@ -627,6 +634,7 @@ export const trainingRoutes: FastifyPluginAsync<{ trainingSeedSecret: string }> 
             training_session_id: session.id,
             closed_reason: 'quota',
           });
+          await grantCompletionReward(client, req.user.id, 'training', session.id, session.shots_limit);
           await grantInitialTrainingOpenAccess(client, req.user.id, 'legacy', now);
           await evaluateTrainingClosedAchievements(client, {
             userId: req.user.id,

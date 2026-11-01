@@ -3,7 +3,7 @@
 
 ## Current review status (2026-10-31)
 
-Development and local verification only. Draft PR #489 targets `dev`; no merge, deployment, staging data edit or production mutation is authorized in this stage. Floating games/chat controls remain unchanged by explicit user request and require a separate UX decision.
+The user authorized the complete branch release to `dev` on 2026-11-01, including the subsequent map, caretaker, rewards and onboarding changes. PR #489 targets `dev`; production deployment and resets are not authorized. The subsequently approved fixed map actions are integrated locally; other sections retain floating game/chat controls. Grigory mini-games are the next planned stage, before any dev release.
 
 Implemented since the earlier checkpoints: novice bar visibility and AI context filtering; empty furniture at hidden NPC positions; prospective funnel instrumentation; persisted optional 13-location city introduction, first-click disclosure and repeat-click entry, resume at the first unseen location after play, and the reviewed map/result/achievement feedback.
 
@@ -171,3 +171,55 @@ Validation covers authenticated ownership, spoofed/unknown fields, replay, concu
 - Validation: server city-tour integration tests passed (2 tests with multi-step assertions); 54 focused web tests passed. Browser verified initial card, exploration and reload/resume. Full web suite has 11 failures across App onboarding, observation exercises, recorded playback and chat profile tests; not certified green. No deployment.
 
 - Follow-up: after the first period, an interrupted introduction remains available through the small viewed-count action until all locations have been shown. It resumes at the first unseen location. A first click on an unseen building/dock circle opens its card; subsequent clicks enter through the existing route. Previously viewed locations retain direct entry.
+
+## 2026-10-31: local map action integration
+
+- `/sections` now hosts fixed game/message actions. Other sections retain the floating shortcuts.
+- The existing floating cube is filtered by daily/training/duel/tournament/bar group. Multiple bar games share one action and count; single games use their own icon.
+- Invitations expose accept/decline/cancel, expiration and incoming/outgoing labels. A failed lobby refresh cannot prevent navigation after a successful acceptance. Account ownership and synchronous duplicate-submit guards are retained.
+- Exercises and city tour actions disappear when complete. Participating amateur weekly challenges have a collapsible task panel. Full city guide suppresses the map actions and closes the cube.
+- The active tournament API optionally includes today's settled playoff attempts for the map. Default callers remain unchanged.
+
+Validation: local fixture-attempt integration suite 61/61; scoped map/chat/tour tests 31/31; invitation actions 5/5; weekly panel 2/2. Full web run: 3308 passed, one stale floating-chat-on-map test failed; that test was updated to an off-map route and its entire suite passed 6/6. Root typecheck, lint and web production build passed. Browser fixture verified real CityMap/FloatingGamePanel integration and bar carousel switching. This fixture uses synthetic entries, not authenticated gameplay. Physical devices, real invitations and deployed runtime remain unverified. No push or deployment performed.
+
+## Final local acceptance pass (2026-10-31, map integration)
+
+Scope remains local only. No push, merge, dev/prod activation or deployment. Grigory mini-games remain the next development stage.
+
+The novice API journey, daily rules, course submissions, qualification accounting, achievement claims, persisted city tour and push snooze passed 71 tests against the dedicated local DB. The joined journey deliberately uses DB fixtures for seven course completions and the 99/100 boundary; this is not a claim of 100 manual browser goals or Telegram registration acceptance.
+
+The invitation pass reproduced a stale incoming bar invite after a successful response followed by a failed lobby refresh. Successful responses now remove the matching owned incoming invitation immediately. The regression failed before the fix and passed afterward. Actions and exercise-panel checks passed 10 tests. The earlier monitor test was moved off `/sections`, matching the intentional replacement of the floating shortcut on the map.
+
+Browser layout checks used actual map/cube components in isolated frames at 360×640 light, 320×568 dark and 390×844 dark. Rails remained above the lower map navigation. The fixture has synthetic entries; server invitation behavior is covered separately by local integration suites. These checks do not replace physical iPhone/Android, real realtime delivery or a fully authenticated browser session.
+
+Future release checklist (not executed):
+- Apply and verify migrations 245–252, including preserved amateur access, one-time starter receipts, achievement backfill and tour progress.
+- Check the qualification threshold is 100 and enable exercises coherently in client build configuration and server course configuration.
+- Inspect the rare stick/skates/nutrition catalog and publish the reviewed amateur onboarding with valid media through the existing admin workflow.
+- Include Grigory's games and their validation in the final release scope before requesting dev deployment.
+- Then perform authorized authenticated/device acceptance; real push permissions and delivery remain separate manual checks.
+
+Final results for this pass: full web 3783/3783 across 426 files; novice server suites 71/71; bar-game integration 39/39; amateur duels 218/218 (328 server checks total). The first duel-suite setup hit the default 10-second migration hook timeout; rerunning with the documented 60-second hook budget passed, without relaxing gameplay assertion timeouts. Root typecheck, lint, final web production build and `git diff --check` passed. The dedicated test Redis was stopped afterward. No CI/deployed runtime verification is claimed.
+
+## Grigory rink games: local implementation (2026-10-31)
+
+Five voluntary daily-break tasks are connected to the existing caretaker tap target on both daily courts. They use the same scene and caretaker art, a compact progress/instruction overlay, and explicit exit. Other game modes do not receive this interaction. No score, currency, inventory or experience rewards are added.
+
+Migration 253 adds a per-user shuffled deck, one assignment per break, sequenced attempts and an effective readiness override. First assignment is push; restarting preserves the kind and resets attempt progress. Superseded start IDs and stale/foreign action IDs are rejected. Server geometry/timing checks and idempotent sequence receipts validate progress; these are not a claim of detecting all automation. One successful completion applies min(original readiness, max(completion time, previous period end + three minutes)). Natural expiry keeps a started task visible and never starts the period automatically. New period/day invalidates it. Scheduled break reminders now respect effective readiness. Funnel start/completion events are transactional and deduplicated by assignment.
+
+Local validation: 62 distinct server tests (daily 28, caretaker lifecycle 4, rules 8, push scheduling 22); full web 3787 passed plus three separately added lifecycle tests. Types, lint and web build passed. Browser fixture verified progress for swipe, short trail drag, hold, turn-window tap and snow throw. Fixed confirmed regressions in delayed start retries, accelerated push scheduling and short trail release. Pure input rules also verify each variant can reach completion.
+
+The local `/grigory-preview.html` fixture exposes all five variants and themes without accounts or server mutation. It simulates server responses with the actual validation functions. This is a first playable iteration; physical touch, real network timing and authenticated daily scene acceptance remain unverified. Normalized gesture thresholds/cadences are tuning defaults for review. Migration 253 is not applied on dev/prod. No push, merge or deployment occurred.
+
+
+## Authorized dev release preparation (2026-11-01)
+
+- Fixed map action icons, grouped duel/bar events and the existing cube controls are integrated on the main map; other sections retain floating shortcuts.
+- Daily breaks alternate Drift and Blizzard/Ventilation on the server, preserving the selected variant on retries and across days. These games are not mounted in duel, tournament or training scenes. Completed maintenance hides the caretaker until the next break and applies the agreed two-minute/45-second break reduction rules.
+- Daily completion grants 2 stars and 2 experience; ordinary training completion grants 1 of each. Full shot quotas are required. Reward receipts prevent duplicate grants, and currency ledger entries expose both amounts in bank history. Migration 257 restores prior receipt history without changing balances.
+- Actual completion responses now supply previous-session comparisons. Migration 258 records session conditions prospectively; unknown historical conditions never produce an accuracy comparison. The last played earlier local date is used, including incomplete results. Training period, shot limit, venue and speed configuration must match for accuracy comparison. The UI uses yesterday/day-before-yesterday/date labels, only colors the signed change, and chooses the agreed completion button caption.
+- Required beginner/amateur stories have a forward-only control: reveal the current copy, then advance. Tutorial shots cannot be skipped. Replay retains both directions. Story controls remain contrasty in both themes, and ambient game/chat/navigation controls are hidden while a story is displayed. No tooltip is shown.
+- Local root-level preview and QA files remain local review tools outside the application build and release commit. Only runtime-referenced caretaker artwork is included.
+- Deployment is authorized only through the normal dev GitHub Actions workflow. No achievement reset, onboarding reset, starter-item replay or production write is part of this release.
+
+Final local release validation: 628 game-core tests passed; 155 affected server tests plus 4 database comparison tests passed; all 333 DailyScreen tests passed; the sequential final onboarding/comparison/caretaker client group passed 125 tests. The earlier full client run passed its 429-file general group and four isolated groups; its two stale DailyScreen caption assertions were updated and the complete 333-test suite rerun successfully. A concurrent onboarding lazy-import timeout was rerun sequentially without changing application behavior. Full server execution was interrupted during the explicitly requested release pause; the later scoped server regression is the current result. Physical-device and authenticated deployed-gameplay acceptance remain separate from these checks.

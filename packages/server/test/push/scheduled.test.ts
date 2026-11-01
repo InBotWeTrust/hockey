@@ -997,6 +997,17 @@ describe.skipIf(!hasIntegrationEnv)('scheduled push delivery', () => {
     expect(result.skipped).toBe(1);
   });
 
+  it('queues the break reminder at caretaker readiness instead of fifteen minutes',async()=>{
+    const id=await createUser(pool,'Cleaned break');
+    await pool.query('insert into user_push_preferences(user_id,training_available) values($1,false)',[id]);
+    await addSubscription(pool,id,'https://push.example.test/send/cleaned-break');
+    await pool.query("insert into day_pool(user_id,day_date,state,current_period,break_started_at,caretaker_ready_at,game_core_version,daily_seed) values($1,'2026-05-04','break_active',1,'2026-05-04T05:00:00Z','2026-05-04T05:03:00Z',1,'break')",[id]);
+    const early=await runScheduledPushes(pool,{...vapid,now:new Date('2026-05-04T05:02:59Z'),processQueue:false});
+    expect(early.events.find(e=>e.eventType==='daily.break_finished')?.claimed).toBe(0);
+    const ready=await runScheduledPushes(pool,{...vapid,now:new Date('2026-05-04T05:03:00Z'),processQueue:false});
+    expect(ready.events.find(e=>e.eventType==='daily.break_finished')?.claimed).toBe(1);
+  });
+
   it('sends active-period warning and break-finished pushes', async () => {
     const periodUserId = await createUser(pool, 'Period player');
     const breakUserId = await createUser(pool, 'Break player');
