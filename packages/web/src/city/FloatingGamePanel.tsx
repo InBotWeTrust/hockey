@@ -1,11 +1,11 @@
+import {WindowHandleHint,FloatingShortcutsHint} from '../components/WindowHandleHint.js';
 import {useGameMenu} from './GameMenuContext.js';
 import {MapGameActions} from './MapGameActions.js';
-import {mapGameGroups} from './mapGameGroups.js';
 import {useGameWindowPosition} from './useGameWindowPosition.js';
 import {CityGameDetails} from './CityGamePanel.js';
 import {useEffect,useRef,useState,type ReactNode} from 'react';
 import {useLocation} from 'react-router-dom';
-import {Monitor,Minimize2} from 'lucide-react';
+import {Monitor,X} from 'lucide-react';
 import {createPortal} from 'react-dom';
 import {FloatingShortcut} from '../components/FloatingShortcut.js';
 import {isOpenRinkRoute} from '../components/BottomNav.js';
@@ -17,13 +17,11 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
  const [open,setOpen]=useState(false);const location=useLocation(),chatOpen=useChatOverlayOpen();
  const {mapHost,guideActive}=useGameMenu();
  const onMap=location.pathname==='/sections';
- const [groupId,setGroupId]=useState<string|null>(null);
  const [mapEntryId,setMapEntryId]=useState<string|null>(null);
  const [now,setNow]=useState(Date.now());
  useEffect(()=>{if(!onMap)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[onMap]);
- const group=onMap?mapGameGroups(entries,now).find(g=>g.id===groupId):undefined;
- useEffect(()=>{if(onMap&&(guideActive||!group)){setOpen(false);}},[onMap,guideActive,group?.id]);
- const shownEntries=onMap?(group?.entries??[]):entries;
+ useEffect(()=>{if(onMap&&guideActive)setOpen(false);},[onMap,guideActive]);
+ const shownEntries=entries;
  const shownIndex=onMap?Math.max(0,shownEntries.findIndex(e=>e.id===mapEntryId)):activeIndex;
  const changeIndex=(index:number)=>{if(onMap)setMapEntryId(shownEntries[index]?.id??null);else onActiveIndexChange(index);};
  const {handleProps,cardStyle}=useGameWindowPosition(owner,open&&!chatOpen);
@@ -38,15 +36,17 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
  const playing=isOpenRinkRoute(location)||location.pathname.startsWith('/duel/');
  const allowed=!(onMap&&guideActive)&&!/^\/(?:login|auth|mobile-auth)(?:\/|$)/.test(location.pathname)&&!chatOpen;
  return <>
+  <FloatingShortcutsHint owner={owner} visible={allowed&&!open&&!onMap&&!guideActive}/>
   <FloatingShortcut owner={owner} storagePrefix="floating-games-position-v1" side="left" initialTop={80} visible={allowed&&!open&&!onMap} playing={playing} label="Открыть игры" count={notices.count} badgeLabel="Незавершённых игр" neutralBadge={!notices.urgent} pulseBadge={notices.pulsing} className="floating-games" icon={<Monitor aria-hidden="true"/>} onOpen={show}/>
-  {onMap&&mapHost&&!chatOpen&&createPortal(<MapGameActions entries={entries} now={now} onOpen={(id,firstId)=>{setGroupId(id);setMapEntryId(firstId);setOpen(true);}}/>,mapHost)}
+  {onMap&&mapHost&&!chatOpen&&createPortal(<MapGameActions entries={entries} now={now} onOpen={(_id,firstId)=>{setMapEntryId(firstId);setOpen(true);}}/>,mapHost)}
   {open&&active&&allowed&&createPortal(
    <div className="floating-games-layer" style={{alignItems:'center'}}>
     <section role="dialog" aria-modal="false" aria-label="Игры" className="city-game-panel glass is-expanded floating-games-window" style={cardStyle} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();setOpen(false);}}}>
      <button {...handleProps} type="button" className="floating-games-window__handle" aria-label="Переместить окно игр"><span aria-hidden="true"/></button>
-     <div className="floating-games-window__header"><button ref={minimizedButton} type="button" className="icon-btn" aria-label="Свернуть игры" onClick={()=>setOpen(false)}><Minimize2 size={18}/></button></div>
+     <div className="floating-games-window__header"><button ref={minimizedButton} type="button" className="icon-btn" aria-label="Закрыть игры" onClick={()=>setOpen(false)}><X size={18}/></button></div>
      <CityGameDetails entries={shownEntries} activeIndex={shownIndex} onActiveIndexChange={changeIndex} renderFace={renderFace} renderActions={renderActions}/>
     </section>
+    <WindowHandleHint owner={owner} kind="games" anchorRef={minimizedButton}/>
    </div>,document.body)}
  </>;
 }

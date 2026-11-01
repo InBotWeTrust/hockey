@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -787,6 +788,25 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].closed_reason).toBe('day_end');
   });
 
+  it('starts a fresh 15-minute second break after the first break was shortened', async () => {
+    expect((await startPeriod()).statusCode).toBe(200);
+    for(let i=1;i<=30;i++) expect((await submitShot(i)).statusCode).toBe(200);
+    await pool.query("update day_pool set caretaker_ready_at=now()-interval '1 second' where user_id=$1",[userId]);
+    expect((await getState()).state).toBe('idle');
+    expect((await startPeriod()).statusCode).toBe(200);
+    expect((await pool.query("select caretaker_ready_at from day_pool where user_id=$1 and state='period_active'", [userId])).rows[0].caretaker_ready_at).toBeNull();
+    for(let i=1;i<30;i++) expect((await submitShot(i)).statusCode).toBe(200);
+    await pool.query("update day_pool set caretaker_ready_at=now()-interval '1 second' where user_id=$1",[userId]);
+    const finalShot=await submitShot(30);
+    expect(finalShot.statusCode).toBe(200);
+    const result=finalShot.json().state;
+    expect(result.state).toBe('break_active');
+    expect(Date.parse(result.break_ends_at)-Date.parse(result.server_now)).toBe(15*60*1000);
+    expect((await getState()).state).toBe('break_active');
+    const game=await app.inject({method:'POST',url:'/duel/daily/caretaker/drift/start',headers:authHeader(),payload:{requestId:randomUUID()}});
+    expect(game.statusCode).toBe(200);
+    expect(game.json().completed).toBe(false);
+  });
   it('runs 3 periods with 2 breaks, then stays closed until the next local day', async () => {
     const beforeReward = await pool.query('select xp, experience from users where id=$1', [userId]);
     for (let p = 1; p <= 3; p += 1) {
