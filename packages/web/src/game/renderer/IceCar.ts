@@ -321,6 +321,10 @@ export function perspectiveIceCarPose(pos: { x: number; y: number; rot: number }
   };
 }
 
+export function maintenanceMachinePixelScale(angle: number): number {
+  return stadiumMachineFrame(angle).pixelScale;
+}
+
 export class IceCar {
   readonly container = new Container();
   private readonly trail: Graphics;
@@ -464,9 +468,9 @@ export class IceCar {
     const spriteHeight = variant === 'flood' ? FLOOD_SPRITE_HEIGHT : SCRAPE_SPRITE_HEIGHT;
     const machine = variant === 'machine-up' || variant === 'machine-down';
     if (machine) {
-      const frame = stadiumMachineFrame(variant === 'machine-up' ? -Math.PI/2 : Math.PI/2);
+      const angle = variant === 'machine-up' ? -Math.PI/2 : Math.PI/2;
       const texture = this.textures.get(variant);
-      const pixelScale = frame.pixelScale * SCRAPE_SPRITE_WIDTH / 159;
+      const pixelScale = maintenanceMachinePixelScale(angle);
       this.sprite.width = (texture?.width ?? 1024) * pixelScale * size;
       this.sprite.height = (texture?.height ?? 1536) * pixelScale * size;
       this.snow.alpha = 0;
