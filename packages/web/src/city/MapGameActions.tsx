@@ -13,6 +13,7 @@ export function MapGameActions({entries,onOpen,now}:{entries:ArenaEntry[];onOpen
  const Icon=group.id==='bar'&&group.entries.length===1?(barIcons[group.first.eyebrow]??Dices):icons[group.id];
  const label=group.id==='bar'&&group.entries.length===1?group.first.eyebrow:({daily:'Ежедневная',training:'Тренировка',duel:'Дуэли',tournament:'Турнир',bar:'Игры в баре'})[group.id];
  const note=group.first.mapLabel??(group.first.mapExpiresAt?`Ждём ${Math.floor(Math.max(0,group.first.mapExpiresAt-now)/60000)}:${String(Math.floor(Math.max(0,group.first.mapExpiresAt-now)/1000)%60).padStart(2,'0')}`:group.first.inProgress?'В игре':'Открыть');
- return <MapActionButton key={group.id} label={label} note={note} timer={group.first.mapTimer ?? ''} icon={<Icon/>} count={group.entries.length>1?group.entries.length:0} done={group.done} onClick={()=>onOpen(group.id,group.first.id)}/>;
+ const progress=(group.id==='daily'||group.id==='training')&&/^\d+\/\d+$/.test(note)?note:'';
+ return <MapActionButton key={group.id} label={label} progress={progress} note={progress?'':note} timer={group.first.mapTimer ?? ''} icon={<Icon/>} count={group.entries.length>1?group.entries.length:0} done={group.done} onClick={()=>onOpen(group.id,group.first.id)}/>;
  })}</>;
 }

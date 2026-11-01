@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter, useLocation, useNavigate } from 'react-router-dom';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { ChatOverlay } from './ChatOverlay.js';
 vi.mock('./screens/ChatListScreen.js', () => ({
   ChatListScreen: () => {
@@ -137,17 +137,29 @@ it('expands above the iOS keyboard even when innerHeight also shrinks', async ()
   const vv = Object.assign(new EventTarget(), { height: 471, offsetTop: 341, scale: 1 });
   vi.stubGlobal('visualViewport', vv);
   vi.stubGlobal('innerHeight', 471);
-  const layoutHeight = vi.spyOn(document.documentElement, 'clientHeight', 'get').mockReturnValue(812);
+  const layoutHeight = Object.getOwnPropertyDescriptor(document.documentElement, 'clientHeight');
+  Object.defineProperty(document.documentElement, 'clientHeight', {configurable:true, value:812});
   try {
     const view = render(<MemoryRouter initialEntries={['/chat']}><ChatOverlay owner="ios-keyboard"><p>Background</p></ChatOverlay></MemoryRouter>);
     expect(await screen.findByRole('dialog')).toHaveStyle({ height: '100%' });
     vv.height = 874;
     vi.stubGlobal('innerHeight', 874);
     act(() => { vv.dispatchEvent(new Event('resize')); });
-    await waitFor(() => expect(screen.getByRole('dialog')).toHaveStyle({ height: '55%' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toHaveStyle({ height: '75%' }));
     view.unmount();
   } finally {
-    layoutHeight.mockRestore();
+    if (layoutHeight) Object.defineProperty(document.documentElement, 'clientHeight', layoutHeight);
+    else Reflect.deleteProperty(document.documentElement, 'clientHeight');
     vi.unstubAllGlobals();
   }
 });
+
+it('shows the first-open resize hint outside the chat card',()=>{
+ render(<MemoryRouter initialEntries={['/chat']}><ChatOverlay owner="external-chat-hint"><p>Background</p></ChatOverlay></MemoryRouter>);
+ const hint=screen.getByRole('status',{name:'Подсказка: сообщения'});
+ const dialog=screen.getByRole('dialog',{name:'Чат'});
+ expect(dialog).not.toContainElement(hint);
+ expect(dialog.parentElement).toContainElement(hint);
+});
+
+afterEach(()=>{vi.restoreAllMocks();vi.unstubAllGlobals();});

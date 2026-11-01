@@ -7,8 +7,15 @@ it('keeps progress and separately labelled timers under their respective map ico
  render(<MapGameActions entries={[entry('daily','daily','30/90','Перерыв 14:59'),entry('training','training','40/100','До обновления\n11:43:35')]} onOpen={vi.fn()} now={0}/>);
  expect(screen.getByText('30/90')).toBeVisible();
  expect(screen.getByText('40/100')).toBeVisible();
- expect(within(screen.getByRole('button',{name:'Ежедневная'})).getByRole('timer')).toHaveTextContent('Перерыв 14:59');
- expect(within(screen.getByRole('button',{name:'Тренировка'})).getByRole('timer')).toHaveTextContent('До обновления 11:43:35');
+ expect(within(screen.getByRole('button',{name:'Ежедневная'})).getByRole('timer')).toHaveTextContent('14:59');
+ const timer=within(screen.getByRole('button',{name:'Тренировка'})).getByRole('timer');
+ expect(timer).toHaveTextContent('11:43:35');
+ expect(timer.parentElement).toHaveClass('map-action-note','map-action-summary');
+ expect(timer.textContent).toBe('11:43:35');
+ expect(timer.parentElement?.textContent).not.toContain('40/100');
+ expect(screen.getByText('40/100').parentElement).toHaveClass('map-action-art');
+ expect(screen.getByText('30/90').parentElement).toHaveClass('map-action-art');
+ expect(timer.parentElement?.textContent).not.toContain('До обновления');
 });
 it('keeps only a completion check for completed activities',()=>{
  render(<MapGameActions entries={[{...entry('daily','daily','90/90','До обновления 11:43:35'),dockState:'done'}]} onOpen={vi.fn()} now={0}/>);

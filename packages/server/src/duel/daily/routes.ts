@@ -664,7 +664,8 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
                 set state='period_active',
                     current_period = current_period + 1,
                     period_started_at = $1,
-                    break_started_at = null
+                    break_started_at = null,
+                    caretaker_ready_at = null
               where id = $2
             returning *`,
           [now, pool.id],
@@ -928,6 +929,7 @@ export const dailyRoutes: FastifyPluginAsync<{ dailySeedSecret: string }> = asyn
           : `update day_pool
                   set state='break_active',
                       break_started_at=$1,
+                      caretaker_ready_at=null,
                       period_started_at=null
                 where id=$2
               returning *`;

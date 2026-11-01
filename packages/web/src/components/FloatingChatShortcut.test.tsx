@@ -92,6 +92,7 @@ it('drags without opening chat, persists the position, and clamps it after resiz
 });
 
 it('still lets the existing side preference move a previously dragged shortcut', async () => {
+  localStorage.setItem('map-chat-position-v1:one', 'right');
   const { setMapChatPosition } = await import('../app/mapChatPosition.js');
   const { act } = await import('@testing-library/react');
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
