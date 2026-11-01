@@ -13,6 +13,7 @@ import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { pairAvailability } from './pairAvailability.js';
 import { lockRatingLifecycle, nextRatingMonthBoundary } from './ratingLock.js';
+import { warmRhythmHistory } from './rhythmHistory.js';
 import { REWARD_AMOUNT_LIMIT } from './rewardRules.js';
 import {
   ordinaryDuelReward,
@@ -3951,6 +3952,8 @@ async function scoredParticipantFields(
       flightMs:(PUCK_START.y-GOAL_OPENING.y)/shot.input_payload.puckSpeedPerMs,
       travel:shot.input_payload.rhythmTravel ?? 0,boardContacts:shot.input_payload.rhythmBoardContacts ?? 0,goal:shot.server_result==='goal'}));
     const sampler=rhythmMovementForParticipant(match,participant,rules);
+    if (isTerminalMatchStatus(match.status))
+      await warmRhythmHistory(sampler, clockFields.scene_elapsed_ms, history);
     const travel=sampler.travelAt(clockFields.scene_elapsed_ms,history);
     const projection=projectRhythm({shots:history,travel,version:rules.rhythmVersion ?? 1,currentBoardContacts:sampler.boardContactsAt(clockFields.scene_elapsed_ms,history)});
     return {...clockFields,format_score:projection.score,rhythm_series:projection.series,
@@ -4006,6 +4009,7 @@ async function buildMatchDto(
   match: DuelMatchRow,
   currentUserId: string,
   now: Date,
+  inventoryAvailable?: InventoryAvailabilityItem[],
 ): Promise<DuelMatchDTO> {
   match = await materializeLegacyVenueSnapshot(client, match);
   const participants = await fetchParticipants(client, match.id);
@@ -4149,7 +4153,7 @@ async function buildMatchDto(
         match,
         rules,
         now.getTime(),
-        await fetchAvailableInventory(client, currentUserId),
+        inventoryAvailable ?? await fetchAvailableInventory(client, currentUserId),
         meCurrentStats,
       ),
     },
@@ -5354,7 +5358,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
 	          limit 50`,
         [req.user.id],
       );
-      const matches: DuelMatchDTO[] = [];
+      const visibleMatches: DuelMatchRow[] = [];
       await lockMatchRewardRecipients(
         client,
         rows.filter((row) => !isTerminalMatchStatus(row.status)).map((row) => row.id),
@@ -5400,8 +5404,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           match.status === 'active' ||
           match.status === 'settled'
         ) {
-          matches.push(await buildMatchDto(client, match, req.user.id, now));
+          visibleMatches.push(match);
         }
+      }
+      const inventoryAvailable = await fetchAvailableInventory(client, req.user.id);
+      const matches: DuelMatchDTO[] = [];
+      const terminalMatches: DuelMatchRow[] = [];
+      for (const match of visibleMatches) {
+        if (isTerminalMatchStatus(match.status)) terminalMatches.push(match);
+        else matches.push(await buildMatchDto(client, match, req.user.id, now, inventoryAvailable));
       }
       const limitSettings = (await getGameSettings(client)).amateur.limits;
       const formatCapacities = (
@@ -5410,6 +5421,10 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
       const limitUsage = await duelLimitUsage(client, req.user.id, limitSettings, now);
       return {
         matches,
+        terminalMatches,
+        matchOrder: visibleMatches.map(match => match.id),
+        inventoryAvailable,
+        now,
         duelLock: await duelLockDto(client, req.user.id, new Date()),
         formatLocks: await duelFormatLocks(client, req.user.id, new Date()),
         formatLimits: Object.fromEntries(
@@ -5430,12 +5445,22 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         newlySettledRegularFixtures: [...newlySettledRegularFixtures.values()],
       };
     });
+    // History rendering can scan old shot details. Release live match/player locks
+    // before this work so a background list cannot hold up a shot in another game.
+    const history = await withTransaction(app, async client => {
+      const matches: DuelMatchDTO[] = [];
+      for (const match of response.terminalMatches) {
+        matches.push(await buildMatchDto(client, match, req.user.id, response.now, response.inventoryAvailable));
+      }
+      return matches;
+    });
+    const matchesById = new Map([...response.matches, ...history].map(match => [match.id, match]));
     for (const matchId of response.changedMatchIds) {
       await publishDuelFixtureProgress(app, matchId);
     }
     await reconcileNewlySettledRegularFixtures(app, response.newlySettledRegularFixtures);
     return {
-      matches: response.matches,
+      matches: response.matchOrder.map(id => matchesById.get(id)!),
       duel_lock: response.duelLock,
       gameplay_lock: response.duelLock,
       format_locks: response.formatLocks,
