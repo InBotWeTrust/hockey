@@ -43,6 +43,7 @@ export type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic' | 'bar';
 export interface ArenaEntry {
   mapGroup?: 'daily'|'training'|'duel'|'tournament'|'bar';
   mapLabel?: string;
+  mapTimer?: string;
   mapDone?: boolean;
   mapExpiresAt?: number;
 
@@ -193,10 +194,14 @@ export function GameHub({
     ? new Date(data.gameplay_lock.ends_at).getTime()
     : 0;
   const [now, setNow] = useState(Date.now());
-  const breakRemaining = Math.max(0, breakEndsAt - now);
-  const periodRemaining = Math.max(0, periodEndsAt - now);
-  const nextDayRemaining = Math.max(0, nextDayAt - now);
-  const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - now);
+  const dailyNow = data.received_at_performance_ms !== undefined
+    ? timestampMs(data.server_now) + Math.max(0, performance.now() - data.received_at_performance_ms) : now;
+  const trainingNow = trainingData?.received_at_performance_ms !== undefined
+    ? timestampMs(trainingData.server_now) + Math.max(0, performance.now() - trainingData.received_at_performance_ms) : dailyNow;
+  const breakRemaining = Math.max(0, breakEndsAt - dailyNow);
+  const periodRemaining = Math.max(0, periodEndsAt - dailyNow);
+  const nextDayRemaining = Math.max(0, nextDayAt - dailyNow);
+  const trainingCooldownRemaining = Math.max(0, trainingCooldownEndsAt - dailyNow);
   const isTrainingLockedByDaily =
     trainingData?.gameplay_lock?.reason === 'recent_gameplay' ||
     trainingData?.gameplay_lock?.reason === 'active_daily';
@@ -238,6 +243,7 @@ export function GameHub({
   useEffect(() => {
     if (
       presentation !== 'city' &&
+      presentation !== 'floating' &&
       data.state !== 'period_active' &&
       data.state !== 'break_active' &&
       data.state !== 'closed' &&
@@ -486,7 +492,11 @@ export function GameHub({
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
-    mapLabel: data.state==='break_active'?dailyHubScoreboard.timer:`${data.daily_total_shots}/${data.total_periods*data.shots_per_period}`,
+    mapLabel: `${data.daily_total_shots}/${data.total_periods*data.shots_per_period}`,
+    mapTimer: data.state === 'period_active' ? `Период ${formatMs(periodRemaining)}`
+      : data.state === 'break_active' ? `Перерыв ${formatMs(breakRemaining)}`
+      : isDailyLockedByTraining && trainingCooldownEndsAt > 0 ? `Доступно через\n${formatHms(trainingCooldownRemaining)}`
+      : `До обновления\n${formatHms(nextDayRemaining)}`,
     dockTimer: isDailyInProgress?dailyHubScoreboard.timer:formatHms(nextDayRemaining),
     dockState: data.state==='closed'?'done':isDailyLockedByTraining?'blocked':data.state==='period_active'?'active':data.state==='break_active'?'break':'ready',
     kind: 'daily',
@@ -525,6 +535,9 @@ export function GameHub({
   const trainingArenaEntry: ArenaEntry = {
     id: 'training',
     mapLabel: trainingData?`${trainingData.shots_taken}/${trainingData.shots_limit}`:'Загрузка',
+    mapTimer: trainingData ? trainingData.gameplay_lock?.ends_at
+      ? `Доступно через\n${formatHms(Math.max(0, timestampMs(trainingData.gameplay_lock.ends_at) - trainingNow))}`
+      : `До обновления\n${formatHms(Math.max(0, timestampMs(trainingData.next_day_starts_at) - trainingNow))}` : '',
     dockTimer: trainingData?formatHms(Math.max(0,timestampMs(trainingData.next_day_starts_at)-now)):'',
     dockState: trainingData?.state==='closed'?'done':!trainingData||trainingData.gameplay_lock?.blocked?'blocked':trainingData.state==='active'?'active':'ready',
     kind: 'training',

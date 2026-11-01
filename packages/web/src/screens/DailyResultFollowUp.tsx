@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import { NovicePushPrompt } from './NovicePushPrompt.js';
 import { NoviceResultProgress } from './NoviceResultProgress.js';
 import { useQuery } from '@tanstack/react-query';
@@ -11,8 +12,23 @@ export function DailyResultFollowUp({ state, userId, novice, now, onOpenCourse }
   now: number;
   onOpenCourse: (key: InitialTrainingExerciseKey) => void;
 }) {
+  // The parent rink intentionally keeps its active-period snapshot until this
+  // result is dismissed. Its wall-clock state may therefore be stale here.
+  const clock = useMemo(() => {
+    const serverTime = Date.parse(state.server_now);
+    return { server: Number.isFinite(serverTime) ? serverTime : now,
+      received: state.received_at_performance_ms ?? performance.now() };
+  }, [state]);
+  const [tick, setTick] = useState(() => performance.now());
+  useEffect(() => {
+    setTick(performance.now());
+    if (state.state !== 'break_active') return;
+    const timer = window.setInterval(() => setTick(performance.now()), 500);
+    return () => window.clearInterval(timer);
+  }, [state]);
+  const currentServerTime = clock.server + Math.max(0, tick - clock.received);
   const exercisesEnabled = import.meta.env.DEV || import.meta.env.VITE_TRAINING_EXERCISES_ENABLED === true;
-  const breakRemaining = state.break_ends_at ? Math.max(0, Date.parse(state.break_ends_at) - now) : 0;
+  const breakRemaining = state.break_ends_at ? Math.max(0, Date.parse(state.break_ends_at) - currentServerTime) : 0;
   const invitation = useQuery({
     queryKey: ['training', 'initial-invitation', userId, state.recent_periods.at(-1)?.ended_at],
     queryFn: claimInitialTrainingInvitation,

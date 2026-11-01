@@ -145,10 +145,10 @@ for(const [level,id,name] of [['beginner','yard','Дворовый каток'],
  });
 }
 for(const [level,name] of [['beginner','Дворовый каток'],['amateur','Стадион «Центральный»'],['professional','Арена Ультимейт']] as const){
- it(`shows the game timer only under the ${level} home venue and enters the section directly`,()=>{
+ it(`keeps the ${level} home circle free of duplicate timers and enters the section directly`,()=>{
   const open=vi.fn();const view=render(<CityMap {...base} level={level} gameStatus={{label:'04:59',urgent:true}} onOpenGamePanel={open}/>);
-  expect(screen.getAllByLabelText('Статус игр: 04:59')).toHaveLength(1);
-  const circle=screen.getByRole('button',{name:`Выбрать ${name}`});expect(circle).toContainElement(screen.getByLabelText('Статус игр: 04:59'));
+  expect(screen.queryByLabelText(/Статус игр:/)).not.toBeInTheDocument();
+  const circle=screen.getByRole('button',{name:`Выбрать ${name}`});
   fireEvent.click(circle);expect(open).not.toHaveBeenCalled();expect(base.onNavigate).toHaveBeenCalledWith('/daily');
   view.rerender(<CityMap {...base} level={level} gameStatus={{label:null,urgent:false}} onOpenGamePanel={open}/>);expect(screen.queryByLabelText(/Статус игр:/)).not.toBeInTheDocument();
  });

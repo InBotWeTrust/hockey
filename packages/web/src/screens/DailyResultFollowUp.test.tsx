@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { claimInitialTrainingInvitation } from '../api/initialTraining.js';
 import type { DailyStateResponse } from '../api/duel.js';
@@ -10,10 +10,10 @@ const state = {
   state: 'break_active', amateur_qualifying_goals: 42, amateur_unlock_goals_required: 100,
   break_ends_at: '2026-10-30T12:15:00Z', recent_periods: [{ ended_at: '2026-10-30T12:00:00Z' }],
 } as DailyStateResponse;
-function renderFollowUp(snapshot = state, novice = true) {
+function renderFollowUp(snapshot = state, novice = true, wallNow = now) {
   const onOpenCourse = vi.fn();
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  render(<QueryClientProvider client={client}><DailyResultFollowUp state={snapshot} userId="player" novice={novice} now={now} onOpenCourse={onOpenCourse}/></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><DailyResultFollowUp state={snapshot} userId="player" novice={novice} now={wallNow} onOpenCourse={onOpenCourse}/></QueryClientProvider>);
   return onOpenCourse;
 }
 beforeEach(() => { vi.mocked(claimInitialTrainingInvitation).mockReset().mockResolvedValue({ exercise: null }); });
@@ -43,4 +43,16 @@ it('keeps results usable when the optional invitation request fails', async () =
   await waitFor(() => expect(claimInitialTrainingInvitation).toHaveBeenCalledTimes(1));
   expect(screen.getByText('осталось шайб: 58')).toBeVisible();
   expect(screen.queryByRole('button')).not.toBeInTheDocument();
+});
+
+it('counts a 15-minute break in the deferred result modal without using the stale rink clock', () => {
+  vi.useFakeTimers({toFake:['setInterval','clearInterval','performance']});
+  try {
+    renderFollowUp({...state, server_now:new Date(now).toISOString(), received_at_performance_ms:performance.now()}, false, now-60_000);
+    expect(screen.getByText('15:00')).toBeInTheDocument();
+    act(()=>{vi.advanceTimersByTime(2000);});
+    expect(screen.getByText('14:58')).toBeInTheDocument();
+    act(()=>{vi.advanceTimersByTime(898_000);});
+    expect(screen.getByText('Перерыв завершён')).toBeInTheDocument();
+  } finally { vi.useRealTimers(); }
 });
