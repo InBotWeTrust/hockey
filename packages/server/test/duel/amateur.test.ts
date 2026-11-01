@@ -5753,6 +5753,52 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     }
   });
 
+  it('releases active duel locks before rendering settled list history and reads inventory once', async () => {
+    const historyId = (await challenge(await createTemplate())).json().match.id;
+    await pool.query("update amateur_duel_match set status='settled',settled_at=now() where id=$1", [historyId]);
+    await pool.query("update amateur_duel_participant set state='completed',completed_at=now() where match_id=$1", [historyId]);
+    await pool.query('update amateur_duel_template set is_active=false');
+    const activeId = await createActiveMatch(true);
+    const blocker = await pool.connect();
+    const probe = await pool.connect();
+    const queries = vi.spyOn(Client.prototype, 'query');
+    let pending: ReturnType<typeof app.inject> | undefined;
+    try {
+      await blocker.query('begin');
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+      // Hold only settled-history rendering; active reconciliation must finish first.
+      await blocker.query('lock table currency_ledger in access exclusive mode');
+      pending = app.inject({ method: 'GET', url: '/duel/amateur/matches', headers: auth(tokenA) });
+      await waitForBlockedWriter(pool, pid, /select metadata from currency_ledger/i);
+      await probe.query('begin');
+      // Bonus completion and duel shots need this same recipient row lock.
+      await probe.query('select id from users where id=$1 for no key update nowait', [userA]);
+      await probe.query('rollback');
+      const shot = await app.inject({
+        method: 'POST', url: `/duel/amateur/matches/${activeId}/shot`, headers: auth(tokenA),
+        payload: { shot_index: 1, input: { tapTime: 1000 }, claimed_result: 'goal' },
+      });
+      expect(shot.statusCode).toBe(200);
+      await blocker.query('commit');
+      const response = await pending;
+      expect(response.statusCode).toBe(200);
+      expect(response.json().matches.map((match: { id: string }) => match.id)).toEqual([activeId, historyId]);
+      // One list snapshot plus the independent live shot's inventory reads.
+      const listInventoryQueries = queries.mock.calls.filter((call, index) =>
+        String(call[0]).includes('from admin_inventory_items i') &&
+        queries.mock.instances[index] === queries.mock.instances[queries.mock.calls.findIndex(call =>
+          String(call[0]).includes('select metadata from currency_ledger'))]);
+      expect(listInventoryQueries).toHaveLength(1);
+    } finally {
+      await probe.query('rollback');
+      probe.release();
+      await blocker.query('rollback');
+      blocker.release();
+      await pending;
+      queries.mockRestore();
+    }
+  });
+
   it('locks the complete match-list recipient set before processing recent matches', async () => {
     const lower = '00000000-0000-4000-8000-000000000001';
     const higher = 'ffffffff-ffff-4fff-8fff-ffffffffffff';
