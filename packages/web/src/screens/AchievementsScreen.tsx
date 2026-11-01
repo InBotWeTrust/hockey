@@ -12,7 +12,7 @@ import {
   TrendingUp,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   achievementKeys,
   claimAchievement,
@@ -167,7 +167,8 @@ export function AchievementsScreen({
   const weeklyChallengeRoute = profileContext
     ? '/profile/achievements/weekly-challenge'
     : '/achievements/weekly-challenge';
-  const [filter, setFilter] = useState<AchievementFilter>('all');
+  const [searchParams] = useSearchParams();
+  const [filter, setFilter] = useState<AchievementFilter>(() => searchParams.get('filter') === 'claimable' ? 'claimable' : 'all');
   const [selected, setSelected] = useState<AchievementDto | null>(null);
   const [claimedReward, setClaimedReward] = useState<{
     title: string;
@@ -225,8 +226,8 @@ export function AchievementsScreen({
   };
 
   useEffect(() => {
-    if (filter === 'claimable' && !hasClaimableAchievements) setFilter('all');
-  }, [filter, hasClaimableAchievements]);
+    if (achievementsQuery.isSuccess && !achievementsQuery.isFetching && filter === 'claimable' && !hasClaimableAchievements) setFilter('all');
+  }, [filter, hasClaimableAchievements, achievementsQuery.isSuccess, achievementsQuery.isFetching]);
 
   const claimMutation = useMutation({
     mutationFn: (achievementId: string) => claimAchievement(achievementId),

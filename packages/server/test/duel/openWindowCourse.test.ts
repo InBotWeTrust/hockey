@@ -8,7 +8,7 @@ import { findOrCreateTelegramUser } from '../../src/auth/users.js';
 import { createJwt } from '../../src/auth/jwt.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import { INITIAL_TRAINING_EXERCISE_KEYS } from '../../src/duel/training/initialCourse.js';
-import { OPEN_WINDOW_STEPS } from '@hockey/game-core';
+import { GAME_CORE_VERSION, OPEN_WINDOW_STEPS } from '@hockey/game-core';
 import { createTestPool, createTestRedis, getTestUrls, hasIntegrationEnv,
   resetDatabase, resetRedis } from '../helpers/testDb.js';
 
@@ -95,7 +95,7 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
     expect(start.statusCode).toBe(200);
     expect(start.json().state).toMatchObject({
       step_key: 'notice_frame', phase: 'practice', scene: { source: 'authored' },
-      game_core_version: 69, bank_version: 4,
+      game_core_version: GAME_CORE_VERSION, bank_version: 4,
     });
     const runId = start.json().state.run_id as string;
     const state = await app.inject({ method: 'GET',
@@ -324,7 +324,7 @@ describe.skipIf(!hasIntegrationEnv)('open-window advanced course', () => {
       headers: { authorization: `Bearer ${otherToken}` } });
     expect(alien.statusCode).toBe(401);
     await pool.query(`update open_window_training_run
-      set game_core_version = game_core_version - 1 where id = $1`, [original.run_id]);
+      set game_core_version = 1 where id = $1`, [original.run_id]);
     const stale = await app.inject({ method: 'GET',
       url: `${base}/state?run_id=${original.run_id}`, headers: headers() });
     expect(stale.statusCode).toBe(409);

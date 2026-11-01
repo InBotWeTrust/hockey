@@ -88,17 +88,73 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
       `insert into game_settings (key, value, label, description)
        values ('training.initial_course.config', $1::jsonb, 'Начальное обучение', 'Test config')
        on conflict (key) do update set value = excluded.value`,
-      [JSON.stringify({
-        ...DEFAULT_INITIAL_TRAINING_CONFIG,
-        enabled: true,
-        targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'first-shot': 1 },
-      })],
+      [
+        JSON.stringify({
+          ...DEFAULT_INITIAL_TRAINING_CONFIG,
+          enabled: true,
+          targetGoals: { ...DEFAULT_INITIAL_TRAINING_CONFIG.targetGoals, 'first-shot': 1 },
+        }),
+      ],
     );
   });
 
   const headers = () => ({ authorization: `Bearer ${accessToken}` });
 
-  it('returns seven sequential cards and locks open training', async () => {
+  async function prepareInvitationBreak() {
+    await app.inject({ method: 'POST', url: '/duel/daily/period/start', headers: headers() });
+    await pool.query(`insert into period_log (day_pool_id, period_number, started_at, ended_at, shots_taken, goals, closed_reason)
+      select id, 1, now()-interval '20 minutes', now(), 5, 2, 'timeout' from day_pool where user_id=$1`, [userId]);
+    await pool.query(`update day_pool set state='break_active', period_started_at=null, break_started_at=now() where user_id=$1`, [userId]);
+  }
+  const claimInvitation = () => app.inject({ method: 'POST', url: '/duel/training/course/invitation', headers: headers() });
+
+  it('offers the next incomplete exercise once across concurrent requests', async () => {
+    await prepareInvitationBreak();
+    await pool.query(`insert into initial_training_completion (user_id, exercise_key, reward_stars, reward_experience)
+      values ($1, 'first-shot', 1, 1)`, [userId]);
+    const responses = await Promise.all([claimInvitation(), claimInvitation()]);
+    expect(responses.map(response => response.statusCode)).toEqual([200, 200]);
+    expect(responses.map(response => response.json().exercise?.key ?? null).sort()).toEqual(['three-positions', null].sort());
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+  });
+
+  it('does not consume the invitation during shooting or when the course is disabled', async () => {
+    await app.inject({ method: 'POST', url: '/duel/daily/period/start', headers: headers() });
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    await pool.query(`update day_pool set state='closed', closed_at=now() where user_id=$1`, [userId]);
+    await pool.query('delete from day_pool where user_id=$1', [userId]);
+    await prepareInvitationBreak();
+    await pool.query(`update game_settings set value=jsonb_set(value, '{enabled}', 'false') where key='training.initial_course.config'`);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    await pool.query(`update game_settings set value=jsonb_set(value, '{enabled}', 'true') where key='training.initial_course.config'`);
+    expect((await claimInvitation()).json().exercise?.key).toBe('first-shot');
+  });
+
+  it('does not offer a completed course or an expired break', async () => {
+    await prepareInvitationBreak();
+    await pool.query(`update day_pool set break_started_at=now()-interval '1 hour' where user_id=$1`, [userId]);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    await pool.query(`update day_pool set break_started_at=now() where user_id=$1`, [userId]);
+    for (const key of INITIAL_TRAINING_EXERCISE_KEYS) await pool.query(`insert into initial_training_completion
+      (user_id, exercise_key, reward_stars, reward_experience) values ($1,$2,1,1)`, [userId,key]);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+  });
+
+  it.each(['amateur', 'day_end', 'previous_day'] as const)('does not invite during %s', async reason => {
+    await prepareInvitationBreak();
+    if (reason === 'amateur') await pool.query('update users set level=2 where id=$1', [userId]);
+    if (reason === 'day_end') await pool.query(`update period_log set closed_reason='day_end' where day_pool_id in (select id from day_pool where user_id=$1)`, [userId]);
+    if (reason === 'previous_day') await pool.query(`update day_pool set day_date=day_date-1 where user_id=$1`, [userId]);
+    expect((await claimInvitation()).json()).toEqual({ exercise: null });
+    expect((await pool.query('select initial_training_invitation_offered_at from users where id=$1', [userId])).rows[0].initial_training_invitation_offered_at).toBeNull();
+  });
+
+  it('requires authentication for claiming an invitation', async () => {
+    const response = await app.inject({ method: 'POST', url: '/duel/training/course/invitation' });
+    expect(response.statusCode).toBe(401);
+  });
+
+  it('returns seven sequential cards without requiring them for open training', async () => {
     const catalog = await app.inject({
       method: 'GET',
       url: '/duel/training/course',
@@ -109,7 +165,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
       enabled: true,
       beginner_training_completed: false,
       completed_count: 0,
-      open_training_unlocked: false,
+      open_training_unlocked: true,
       exercises: [
         { key: 'first-shot', state: 'available' },
         { key: 'three-positions', state: 'locked' },
@@ -127,8 +183,148 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
       headers: headers(),
       payload: { period_number: 1 },
     });
-    expect(openTraining.statusCode).toBe(409);
-    expect(openTraining.json().error.code).toBe('initial_training_required');
+    expect(openTraining.statusCode).toBe(200);
+  });
+
+  it.each(['break_active', 'idle', 'closed'] as const)(
+    'allows the course during daily %s without spending open-training shots',
+    async (state) => {
+      const daily = await app.inject({
+        method: 'POST',
+        url: '/duel/daily/period/start',
+        headers: headers(),
+      });
+      expect(daily.statusCode).toBe(200);
+      const shot = await app.inject({
+        method: 'POST',
+        url: '/duel/daily/shot',
+        headers: headers(),
+        payload: { shot_index: 1, input: { tapTime: 0 }, claimed_result: 'miss' },
+      });
+      expect(shot.statusCode).toBe(200);
+      await pool.query(
+        `update day_pool set state = $2, period_started_at = null,
+        break_started_at = now(), closed_at = case when $2 = 'closed' then now() else null end
+        where user_id = $1`,
+        [userId, state],
+      );
+      const catalog = await app.inject({
+        method: 'GET',
+        url: '/duel/training/course',
+        headers: headers(),
+      });
+      expect(catalog.json().initial_course_gameplay_lock).toBeNull();
+      const start = await app.inject({
+        method: 'POST',
+        url: '/duel/training/course/first-shot/start',
+        headers: headers(),
+      });
+      expect(start.statusCode).toBe(200);
+      const courseShot = await app.inject({
+        method: 'POST',
+        url: '/duel/training/course/first-shot/shot',
+        headers: headers(),
+        payload: {
+          run_id: start.json().run_id,
+          shot_index: 1,
+          input: { tapTime: 0 },
+          claimed_result: 'miss',
+        },
+      });
+      expect(courseShot.statusCode).toBe(200);
+      const repeatedShot = await app.inject({
+        method: 'POST',
+        url: '/duel/training/course/first-shot/shot',
+        headers: headers(),
+        payload: {
+          run_id: start.json().run_id,
+          shot_index: 1,
+          input: { tapTime: 0 },
+          claimed_result: 'miss',
+        },
+      });
+      expect(repeatedShot.statusCode).toBe(200);
+      expect(repeatedShot.json()).toEqual(courseShot.json());
+      const open = await app.inject({
+        method: 'POST',
+        url: '/duel/training/start',
+        headers: headers(),
+        payload: { period_number: 1 },
+      });
+      expect(open.statusCode).toBe(state === 'closed' ? 200 : 409);
+      const usage = await pool.query(
+        "select count(*)::int as n from shot_session where user_id = $1 and mode = 'training'",
+        [userId],
+      );
+      expect(usage.rows[0].n).toBe(0);
+    },
+  );
+
+  it('blocks course entry during an active daily period even before its first shot', async () => {
+    const daily = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/period/start',
+      headers: headers(),
+    });
+    expect(daily.statusCode).toBe(200);
+    const catalog = await app.inject({
+      method: 'GET',
+      url: '/duel/training/course',
+      headers: headers(),
+    });
+    expect(catalog.json().initial_course_gameplay_lock).toMatchObject({ reason: 'active_daily' });
+    const start = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/first-shot/start',
+      headers: headers(),
+    });
+    expect(start.statusCode).toBe(409);
+  });
+
+  it('blocks a previously opened exercise when the daily period starts', async () => {
+    const start = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/first-shot/start',
+      headers: headers(),
+    });
+    expect(start.statusCode).toBe(200);
+    const daily = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/period/start',
+      headers: headers(),
+    });
+    expect(daily.statusCode).toBe(200);
+    const shot = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/first-shot/shot',
+      headers: headers(),
+      payload: {
+        run_id: start.json().run_id,
+        shot_index: 1,
+        input: { tapTime: 0 },
+        claimed_result: 'miss',
+      },
+    });
+    expect(shot.statusCode).toBe(409);
+  });
+
+  it('allows course entry after a daily period expires without requiring a daily poll', async () => {
+    const daily = await app.inject({
+      method: 'POST',
+      url: '/duel/daily/period/start',
+      headers: headers(),
+    });
+    expect(daily.statusCode).toBe(200);
+    await pool.query(
+      "update day_pool set period_started_at = now() - interval '21 minutes' where user_id = $1",
+      [userId],
+    );
+    const start = await app.inject({
+      method: 'POST',
+      url: '/duel/training/course/first-shot/start',
+      headers: headers(),
+    });
+    expect(start.statusCode).toBe(200);
   });
 
   it('publishes completion from the seven durable exercise rows', async () => {
@@ -379,7 +575,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/course/*', () => {
     const offsets = getSessionPhaseOffsets(session.seed);
     let tapTime = 0;
     for (; tapTime < 20_000; tapTime += 5) {
-      if (Math.abs(simulateShooter(tapTime + offsets.shooter, preset.shooterFrequency).x - 286) < 2) {
+      if (
+        Math.abs(simulateShooter(tapTime + offsets.shooter, preset.shooterFrequency).x - 286) < 2
+      ) {
         break;
       }
     }

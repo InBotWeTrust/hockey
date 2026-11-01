@@ -1,3 +1,4 @@
+import { isBarNovice, noviceBarLayout } from './noviceAccess.js';
 import type { FastifyPluginAsync } from 'fastify';
 import { createDefaultBarLayout, upgradeBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
 import { createAdminPreHandlers } from '../admin/guards.js';
@@ -13,7 +14,10 @@ export const barLayoutRoutes: FastifyPluginAsync = async (app) => {
       ? { revision: row.revision, layout: barLayoutSchema.parse(upgradeBarLayout(row.layout)) }
       : { revision: 1, layout: createDefaultBarLayout() };
   };
-  app.get('/bar/layout', { preHandler: [app.authenticate] }, read);
+  app.get('/bar/layout', { preHandler: [app.authenticate] }, async request => {
+    const [snapshot, novice] = await Promise.all([read(), isBarNovice(app, request.user.id)]);
+    return {...snapshot, novice, layout: novice ? noviceBarLayout(snapshot.layout) : snapshot.layout};
+  });
   app.get('/admin/bar/layout', { preHandler: createAdminPreHandlers(app) }, read);
   app.put('/admin/bar/layout', { preHandler: createAdminPreHandlers(app) }, async (request) => {
     const parsed = barLayoutWriteSchema.safeParse(request.body);

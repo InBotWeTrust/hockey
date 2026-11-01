@@ -98,6 +98,20 @@ function getUserAgent(header: string | string[] | undefined): string | null {
 }
 
 export const pushRoutes: FastifyPluginAsync<PushVapidOptions> = async (app, opts) => {
+  app.get('/push/novice-prompt', {preHandler:[app.authenticate]}, async req => {
+    const {rows}=await app.pg.query<{eligible:boolean}>(`select novice_push_permission_handled_at is null
+      and (novice_push_snoozed_until is null or novice_push_snoozed_until <= now()) as eligible
+      from users where id=$1`,[req.user.id]);
+    return {eligible:rows[0]?.eligible === true};
+  });
+  app.post('/push/novice-prompt', {preHandler:[app.authenticate]}, async req => {
+    const body=z.object({action:z.enum(['snooze','handled'])}).strict().safeParse(req.body);
+    if(!body.success) throw new AppError('bad_request','invalid prompt action',400);
+    if(body.data.action==='snooze') await app.pg.query(`update users set novice_push_snoozed_until=now()+interval '7 days' where id=$1`,[req.user.id]);
+    else await app.pg.query(`update users set novice_push_permission_handled_at=coalesce(novice_push_permission_handled_at,now()) where id=$1`,[req.user.id]);
+    return {ok:true};
+  });
+
   app.put(
     '/push/android/installations/:installationId',
     { preHandler: [app.authenticate] },

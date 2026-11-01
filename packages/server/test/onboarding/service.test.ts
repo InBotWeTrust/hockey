@@ -232,7 +232,7 @@ describe.skipIf(!hasIntegrationEnv)('onboarding applicability service', () => {
     async (unlockGoalsRequired, lifetimeGoals) => {
       await publishChain('amateur');
       const userId = await createUser({ beginnerDone: true });
-      await pool.query(`update users set lifetime_goals_total = $2 where id = $1`, [
+      await pool.query(`update users set daily_goals_total = $2 where id = $1`, [
         userId,
         lifetimeGoals,
       ]);

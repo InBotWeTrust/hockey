@@ -1,3 +1,4 @@
+import type { CompletionComparisonData } from '../components/CompletionComparison.js';
 import { apiFetch } from './apiFetch.js';
 import type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
@@ -42,6 +43,8 @@ export interface DailyHistoryResponse {
 }
 
 export interface DailyStateResponse {
+  completion_comparison?: CompletionComparisonData | null;
+  completion_reward?: { stars: number; experience: number } | null;
   state: DailyState;
   current_period: number; // 0..3
   current_period_shots: number;
@@ -51,6 +54,7 @@ export interface DailyStateResponse {
   lifetime_total_shots: number;
   lifetime_total_goals: number;
   amateur_unlock_goals_required?: number;
+  amateur_qualifying_goals?: number;
   period_started_at: string | null;
   period_ends_at: string | null; // ISO ts
   break_ends_at: string | null;

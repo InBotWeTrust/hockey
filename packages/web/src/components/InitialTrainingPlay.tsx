@@ -1,3 +1,4 @@
+import {useFunnelObservation} from '../analytics/noviceFunnel.js';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Star, TrendingUp } from 'lucide-react';
 import {
@@ -135,6 +136,7 @@ export function InitialTrainingPlay({
   onOpenTraining: () => void;
   onCatalogRefresh: (completedKey: InitialTrainingExerciseKey) => void;
 }): JSX.Element {
+  useFunnelObservation('novice_course_opened');
   const [run, setRun] = useState<InitialTrainingRun | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<InitialTrainingFeedbackCode | null>(null);

@@ -5,12 +5,14 @@ import { assertFullAmateurAccess, resolveAmateurAccess } from '../../src/profile
 interface UserRow {
   level: number | string;
   lifetime_goals_total: number | string;
+  daily_goals_total?: number | string;
+  amateur_access_preserved?: boolean;
 }
 
 function accessDb(user: UserRow | undefined, unlockGoalsRequired = 300) {
   const query = vi.fn(async (sql: unknown) => {
     const statement = String(sql);
-    if (statement.includes('from users')) return { rows: user ? [user] : [] };
+    if (statement.includes('from users')) return { rows: user ? [{ daily_goals_total: user.lifetime_goals_total, amateur_access_preserved: false, ...user }] : [] };
     if (statement.includes('from game_settings')) {
       return {
         rows: [
@@ -29,6 +31,27 @@ function accessDb(user: UserRow | undefined, unlockGoalsRequired = 300) {
 }
 
 describe('Amateur access', () => {
+  it('does not qualify using goals from other game modes', async () => {
+    const { db } = accessDb({ level: 1, lifetime_goals_total: 1000, daily_goals_total: 99 }, 100);
+    await expect(resolveAmateurAccess(db, 'novice')).resolves.toMatchObject({
+      qualifyingGoals: 99, goalsRemaining: 1, hasFullAccess: false,
+    });
+  });
+
+  it('qualifies immediately at 100 daily goals even before period statistics are archived', async () => {
+    const { db } = accessDb({ level: 1, lifetime_goals_total: 90, daily_goals_total: 100 }, 100);
+    await expect(resolveAmateurAccess(db, 'novice')).resolves.toMatchObject({
+      qualifyingGoals: 100, goalsRemaining: 0, hasFullAccess: true,
+    });
+  });
+
+  it('preserves previously earned access without inventing daily goals', async () => {
+    const { db } = accessDb({ level: 1, lifetime_goals_total: 1000, daily_goals_total: 40, amateur_access_preserved: true }, 100);
+    await expect(resolveAmateurAccess(db, 'existing')).resolves.toMatchObject({
+      qualifyingGoals: 40, goalsRemaining: 60, hasFullAccess: true,
+    });
+  });
+
   it('returns remaining qualifying goals for a beginner below the configured threshold', async () => {
     const { db, query } = accessDb({ level: '1', lifetime_goals_total: '116' });
 

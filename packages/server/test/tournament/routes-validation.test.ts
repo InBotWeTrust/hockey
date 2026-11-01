@@ -141,10 +141,10 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
 
   it('keeps reads and acknowledgements open while rejecting gameplay mutations', async () => {
     await pool.query(
-      `insert into users (id, display_name, timezone, role, level, lifetime_goals_total)
-       values ($1, 'Beginner admin', 'Europe/Moscow', 'admin', 1, 0),
-              ($2, 'Beginner viewer', 'Europe/Moscow', 'player', 1, 17),
-              ($3, 'Invited player', 'Europe/Moscow', 'player', 1, 0)`,
+      `insert into users (id, display_name, timezone, role, level, lifetime_goals_total, daily_goals_total)
+       values ($1, 'Beginner admin', 'Europe/Moscow', 'admin', 1, 0, 0),
+              ($2, 'Beginner viewer', 'Europe/Moscow', 'player', 1, 17, 17),
+              ($3, 'Invited player', 'Europe/Moscow', 'player', 1, 0, 0)`,
       [ADMIN_ID, BEGINNER_ID, INVITED_USER_ID],
     );
     await pool.query(

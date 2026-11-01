@@ -271,6 +271,8 @@ function sameDuelConditionUiState(
 export interface PlayViewProps<TState> {
   suppressedByModal: boolean;
   showIceCar: boolean;
+  onCaretakerTap?: (()=>void) | undefined;
+  caretakerPlaying?: boolean;
   maintenanceMode?: IceMaintenanceMode | undefined;
   playEntranceOnMount?: boolean | undefined;
   onEntranceConsumed?: (() => void) | undefined;
@@ -594,6 +596,8 @@ function TrainingPerspectiveRink({
 export function PlayView<TState>({
   suppressedByModal,
   showIceCar,
+  onCaretakerTap,
+  caretakerPlaying=false,
   maintenanceMode = 'scrape',
   playEntranceOnMount = false,
   onEntranceConsumed,
@@ -846,6 +850,8 @@ export function PlayView<TState>({
   const clockRebaseRafRef = useRef<number | null>(null);
   const skipNextUnsuppressedEntranceRef = useRef(false);
   const iceCarRef = useRef<IceCar | null>(null);
+  const caretakerTapRef=useRef(onCaretakerTap);caretakerTapRef.current=onCaretakerTap;
+  useEffect(()=>{if(iceCarRef.current){iceCarRef.current.container.alpha=caretakerPlaying?0:1;iceCarRef.current.container.eventMode=onCaretakerTap?'static':'none';iceCarRef.current.container.cursor=onCaretakerTap?'pointer':'default';}},[onCaretakerTap,caretakerPlaying]);
   const iceCarRafRef = useRef<number | null>(null);
   const shotTimeoutsRef = useRef<number[]>([]);
   const mountedRef = useRef(true);
@@ -1511,6 +1517,8 @@ export function PlayView<TState>({
 
       const iceCar = new IceCar();
       iceCarRef.current = iceCar;
+      iceCar.container.eventMode=caretakerTapRef.current?'static':'none';
+      iceCar.container.on('pointertap',()=>caretakerTapRef.current?.());
 
       const layer = new Container();
       if (beachEnvironmentRef.current) {
@@ -2531,6 +2539,7 @@ export function PlayView<TState>({
               beachWaterRef.current?.splash(x, y, time);
             }
           }}
+          data-caretaker-surface
           ref={rinkShellRef}
           style={{
             position: 'relative',

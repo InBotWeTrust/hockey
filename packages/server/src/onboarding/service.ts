@@ -26,7 +26,8 @@ interface ApplicabilityRow {
   beginner_onboarding_completed: boolean;
   amateur_onboarding_completed: boolean;
   level: number | string;
-  lifetime_goals_total: number | string;
+  daily_goals_total: number | string;
+  amateur_access_preserved: boolean;
   beginner_enforcement_enabled: boolean;
   beginner_version_id: string | null;
   amateur_enforcement_enabled: boolean;
@@ -253,8 +254,9 @@ function requiredChain(
 ): OnboardingChainKey | null {
   const competitionLevel = resolveCompetitionLevel(
     numberValue(row.level),
-    numberValue(row.lifetime_goals_total),
+    numberValue(row.daily_goals_total),
     amateurUnlockGoalsRequired,
+    row.amateur_access_preserved,
   );
   if (
     !row.beginner_onboarding_completed &&
@@ -282,7 +284,8 @@ async function loadApplicabilityRow(
     `select u.beginner_onboarding_completed,
             u.amateur_onboarding_completed,
             u.level,
-            u.lifetime_goals_total,
+            u.daily_goals_total,
+            u.amateur_access_preserved,
             beginner.enforcement_enabled as beginner_enforcement_enabled,
             beginner_version.id as beginner_version_id,
             amateur.enforcement_enabled as amateur_enforcement_enabled,

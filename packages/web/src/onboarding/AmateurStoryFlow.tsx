@@ -4,7 +4,7 @@ import { ArrowRight, X } from 'lucide-react';
 import { getAmateurStoryScenes, type AmateurStoryScene } from './amateurStory.js';
 import { prepareStoryImages, storyImagesReady, storyImageUrl } from './storyImages.js';
 import './onboarding.css';
-import { StoryReplayNavigation } from './StoryReplayNavigation.js';
+import { StoryReplayNavigation, StoryForwardNavigation } from './StoryReplayNavigation.js';
 
 interface Props {
   mode: 'required' | 'replay';
@@ -110,6 +110,7 @@ function AmateurStorySceneView({
   const reducedMotion =
     typeof matchMedia !== 'undefined' && matchMedia('(prefers-reduced-motion: reduce)').matches;
   const [count, setCount] = useState(reducedMotion ? scene.copy.length : 0);
+  const [showAll, setShowAll] = useState(false);
   const [ready, setReady] = useState(() => storyImagesReady(images(scene)));
   const [imageError, setImageError] = useState(false);
   const [retry, setRetry] = useState(0);
@@ -129,7 +130,8 @@ function AmateurStorySceneView({
     };
   }, [ready, retry, scene]);
   useEffect(() => {
-    if (!ready || reducedMotion) return;
+    if (!ready) return;
+    if (reducedMotion || showAll) { setCount(scene.copy.length); return; }
     let current = 0;
     let timer: number;
     const type = () => {
@@ -148,7 +150,7 @@ function AmateurStorySceneView({
     };
     timer = window.setTimeout(type, 300);
     return () => window.clearTimeout(timer);
-  }, [ready, reducedMotion, scene]);
+  }, [ready, reducedMotion, scene, showAll]);
   const revealed = reducedMotion || count >= scene.copy.indexOf(scene.cue) + scene.cue.length;
   const thirdRevealed = Boolean(scene.imageC && scene.cueC &&
     (reducedMotion || count >= scene.copy.indexOf(scene.cueC) + scene.cueC.length));
@@ -200,6 +202,7 @@ function AmateurStorySceneView({
       data-typed={count}
     >
       {navigation}
+      {mode === 'required' && <StoryForwardNavigation disabled={!ready || loading || Boolean(completing)} onNext={() => { if (!done) setShowAll(true); else advance(); }} />}
       {mode === 'replay' && (
         <button
           className="icon-btn beginner-story__close"

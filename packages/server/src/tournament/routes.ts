@@ -288,7 +288,7 @@ export const tournamentRoutes: FastifyPluginAsync<TournamentRoutesOptions> = asy
       ...(options.systemUserId === undefined ? {} : { systemUserId: options.systemUserId }),
       invalidateUnreadCache: (userId) => invalidateUnreadCache(app.redis, userId),
     });
-    const games = await listActiveClassicGames(app.pg, { userId: req.user.id, now });
+    const games = await listActiveClassicGames(app.pg, { userId: req.user.id, now, includeCompleted: (req.query as {includeCompleted?:string}).includeCompleted === 'true' });
     const hasUnstartedClassic = games.some(
       (game) =>
         game.kind === 'classic' &&

@@ -1,3 +1,7 @@
+import {caretakerRoutes} from './duel/daily/caretakerRoutes.js';
+import {cityTourRoutes} from './analytics/cityTourRoutes.js';
+import { noviceAnalyticsRoutes } from './analytics/noviceRoutes.js';
+import { registerBarNoviceAccess } from './bar/noviceAccess.js';
 import { performancePlugin } from './plugins/performance.js';
 import { configureBarInviteChat } from './bar/inviteChat.js';
 import { visitorRoutes } from './bar/visitorRoutes.js';
@@ -154,6 +158,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(authPlugin, { accessSecret: config.JWT_SECRET });
   await app.register(lastSeenPlugin);
   await app.register(healthRoutes);
+  await app.register(caretakerRoutes);
   await app.register(mobileReleaseRoutes, {
     manifestPath:
       config.ANDROID_RELEASE_MANIFEST_PATH ?? '/var/lib/ultimate-hockey/android-release.json',
@@ -277,6 +282,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(weeklyChallengeRoutes);
   await app.register(chatRoutes, { ...pushVapidOptions, mediaAccessSecret: config.JWT_SECRET });
   await app.register(olegFightRoutes);
+  registerBarNoviceAccess(app);
   await app.register(barLayoutRoutes);
   await app.register(visitorRoutes);
   await app.register(staffRoomRoutes);
@@ -294,6 +300,8 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(barRoutes, { accessSecret: config.JWT_SECRET });
   await app.register(tournamentWs, { accessSecret: config.JWT_SECRET });
   await app.register(pushRoutes, pushVapidOptions);
+  await app.register(noviceAnalyticsRoutes);
+  await app.register(cityTourRoutes);
   await app.register(
     adminRoutes,
     objectStorage !== undefined

@@ -24,6 +24,7 @@ export interface EnqueuePushDeliveryInput {
 }
 
 export interface ProcessPushDeliveryQueueOptions extends PushVapidOptions {
+  now?: Date;
   fcm?: FcmOptions;
   batchSize?: number;
   concurrency?: number;
@@ -366,6 +367,7 @@ async function processDelivery(
     vapid: ReturnType<typeof resolvePushVapidOptions>;
     fcm?: FcmOptions;
     maxAttempts: number;
+    now: Date;
   },
 ): Promise<DeliveryResult> {
   const emptyCounts: TransportCounts = {
@@ -378,6 +380,21 @@ async function processDelivery(
   if (payload === null) {
     await finishDelivery(pool, row, 'skipped', 0, 0, 0, 'invalid push payload', emptyCounts);
     return { eventType: row.event_type, sent: 0, skipped: 1, failed: 0, retried: 0 };
+  }
+
+  if (row.event_type === 'daily.break_finished') {
+    const event = /^([0-9a-f-]{36}):period:([1-3]):break_finished$/i.exec(row.event_key);
+    const current = event ? await pool.query<{eligible:boolean}>(`select exists(
+      select 1 from day_pool p join users u on u.id=p.user_id
+      left join user_push_preferences pref on pref.user_id=p.user_id
+      where p.id=$1 and p.user_id=$2 and p.current_period=$3 and p.state='break_active'
+        and p.day_date=($4::timestamptz at time zone u.timezone)::date
+        and coalesce(pref.daily_game,true)
+    ) as eligible`,[event[1],row.user_id,Number(event[2]),options.now]) : null;
+    if (!current?.rows[0]?.eligible) {
+      await finishDelivery(pool,row,'skipped',0,0,0,'daily break is no longer relevant',emptyCounts);
+      return {eventType:row.event_type,sent:0,skipped:1,failed:0,retried:0};
+    }
   }
 
   const [subscriptions, installations] = await Promise.all([
@@ -534,6 +551,7 @@ export async function processPushDeliveryQueue(
       vapid,
       ...(options.fcm === undefined ? {} : { fcm: options.fcm }),
       maxAttempts,
+      now: options.now ?? new Date(),
     }),
   );
 

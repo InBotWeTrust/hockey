@@ -43,7 +43,7 @@ export function BarStaffRoom() {
   active.current=true;
   let disposed=false;
   setError(false);
-  void staffRoomEvent('enter',entry.current).then(next=>{if(!disposed)applyState(next);}).catch(error=>{if(!disposed){if(error instanceof ApiError&&error.code==='bar_closed')navigate('/sections',{replace:true});else setError(true);}});
+  void staffRoomEvent('enter',entry.current).then(next=>{if(!disposed)applyState(next);}).catch(error=>{if(!disposed){if(error instanceof ApiError&&error.code==='bar_character_unavailable')navigate('/bar',{replace:true});else if(error instanceof ApiError&&error.code==='bar_closed')navigate('/sections',{replace:true});else setError(true);}});
   return()=>{disposed=true;active.current=false;};
  },[attempt]);
  const showOleg=()=>{sessionStorage.removeItem('bar-office-entry');navigate('/bar',{replace:true,state:{staffRoomWarning:true}});};

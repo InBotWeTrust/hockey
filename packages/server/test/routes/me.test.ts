@@ -383,6 +383,8 @@ describe.skipIf(!hasIntegrationEnv)('GET /me', () => {
 
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({
+      competitionLevel: 'beginner',
+      amateurQualifyingGoals: 0,
       stats: {
         shots: 1200,
         goals: 1000,

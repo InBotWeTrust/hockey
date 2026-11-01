@@ -19,16 +19,17 @@ export async function resolveAmateurAccess(
 ): Promise<AmateurAccessSnapshot> {
   const { rows } = await db.query<{
     level: number | string;
-    lifetime_goals_total: number | string;
-  }>(`select level, lifetime_goals_total from users where id = $1`, [userId]);
+    daily_goals_total: number | string;
+    amateur_access_preserved: boolean;
+  }>(`select level, daily_goals_total, amateur_access_preserved from users where id = $1`, [userId]);
   const user = rows[0];
   if (!user) throw new AppError('not_found', 'user not found', 404);
 
   const settings = await getGameSettings(db);
   const level = Number(user.level);
-  const qualifyingGoals = Number(user.lifetime_goals_total);
+  const qualifyingGoals = Number(user.daily_goals_total);
   const unlockGoalsRequired = settings.amateur.unlockGoalsRequired;
-  const competitionLevel = resolveCompetitionLevel(level, qualifyingGoals, unlockGoalsRequired);
+  const competitionLevel = resolveCompetitionLevel(level, qualifyingGoals, unlockGoalsRequired, user.amateur_access_preserved);
 
   return {
     competitionLevel,

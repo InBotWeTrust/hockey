@@ -1,0 +1,1 @@
+alter table users add column initial_training_invitation_offered_at timestamptz;

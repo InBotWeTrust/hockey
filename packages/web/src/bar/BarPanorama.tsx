@@ -25,7 +25,6 @@ export function BarPanorama() {
   const [visitorShop, setVisitorShop] = useState(false);
   const activityCounts = useBarActivity();
   const account=useAuthStore(state=>state.user?.id)??'preview';
-  useEffect(()=>{if(account!=='preview')void apiFetch('/bar/office-presence',{method:'POST'}).catch(()=>{});},[account]);
   const [day,setDay]=useState(localDay);
   const [visible,setVisible]=useState(()=>document.visibilityState!=='hidden');
   useEffect(()=>{
@@ -43,6 +42,8 @@ export function BarPanorama() {
   },[]);
   const [layout, setLayout] = useState(createDefaultBarLayout);
   const [layoutReady,setLayoutReady]=useState(false);
+  const [novice,setNovice]=useState(true);
+  useEffect(()=>{if(layoutReady&&!novice&&account!=='preview')void apiFetch('/bar/office-presence',{method:'POST'}).catch(()=>{});},[account,layoutReady,novice]);
   const tabKey=`section-scroll:${account==='preview'?'guest':account}:bar`;
   const [slot, setSlot] = useState(() => {
     if(onlineGame)return createDefaultBarLayout().slots.find(s=>s.occupantId==='online')!.id;
@@ -158,6 +159,7 @@ export function BarPanorama() {
             ),
         );
         if (cancelled) return;
+        setNovice(snapshot.novice === true);
         setLayout(snapshot.layout);
         setLayoutReady(true);
         setSlot((current) =>
@@ -189,7 +191,7 @@ export function BarPanorama() {
         {...(onlineGame?{onlineGame,onlineRequestKey:location.key}:{})}
         onVisitorShop={() => setVisitorShop(true)} activityCounts={activityCounts}
         layout={layout}
-        onStaffRoom={(id) => {sessionStorage.setItem('bar-staff-return-slot', id); sessionStorage.setItem('bar-active-slot', id); navigate('/bar/staff-room');}}
+        {...(!novice ? {onStaffRoom:(id: string) => {sessionStorage.setItem('bar-staff-return-slot', id); sessionStorage.setItem('bar-active-slot', id); navigate('/bar/staff-room');}} : {})}
         characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
         hideIdentity={conversation !== null}
         activeSlotId={slot}

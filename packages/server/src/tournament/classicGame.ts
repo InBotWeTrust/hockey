@@ -285,7 +285,7 @@ export interface ActivePlayoffGame {
   readiness_ends_at: string;
   closes_at: string;
   break_ends_at: string | null;
-  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused';
+  state: 'scheduled' | 'ready_check' | 'active' | 'inter_game_break' | 'paused' | 'closed';
   current_period: 0;
   total_shots: 0;
   total_goals: 0;
@@ -1225,7 +1225,7 @@ async function buildState(
 
 export async function listActiveClassicGames(
   pool: Pool,
-  input: { userId: string; now: Date },
+  input: { userId: string; now: Date; includeCompleted?: boolean },
 ): Promise<ActiveTournamentGame[]> {
   const { rows } = await pool.query<{
     tournament_id: string;
@@ -1321,7 +1321,8 @@ export async function listActiveClassicGames(
       | 'ready_check'
       | 'active'
       | 'needs_reschedule'
-      | 'needs_admin_decision';
+      | 'needs_admin_decision'
+      | 'settled';
     attempt_number: number;
   }>(
     `select distinct on (
@@ -1368,12 +1369,12 @@ export async function listActiveClassicGames(
        left join amateur_duel_participant duel_participant
          on duel_participant.match_id = attempt.amateur_duel_match_id
         and duel_participant.user_id = participant.user_id
-      where tournament.status = 'playoff'
+      where (tournament.status = 'playoff' or ($3::boolean and tournament.status = 'finished'))
         and round.stage in ('playoff', 'third_place')
-        and fixture.status in ('scheduled', 'open', 'active', 'paused')
+        and (fixture.status in ('scheduled', 'open', 'active', 'paused') or ($3::boolean and fixture.status='settled'))
         and (attempt.status is null or attempt.status in (
           'pending', 'ready_check', 'active', 'needs_reschedule', 'needs_admin_decision'
-        ))
+        ) or ($3::boolean and attempt.status='settled' and coalesce(round_game_day.local_date,(attempt.scheduled_starts_at at time zone coalesce(revision.rules_snapshot->'config'->>'timezone','UTC'))::date)=($2::timestamptz at time zone coalesce(revision.rules_snapshot->'config'->>'timezone','UTC'))::date))
         and coalesce(
               round_game_day.local_date,
               (coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
@@ -1382,6 +1383,7 @@ export async function listActiveClassicGames(
               at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
         and (
           attempt.status in ('needs_reschedule', 'needs_admin_decision')
+          or ($3::boolean and attempt.status='settled')
           or coalesce(attempt.hard_deadline_at, fixture.window_ends_at) > $2::timestamptz
         )
       order by fixture.tournament_id, participant.user_id,
@@ -1390,9 +1392,10 @@ export async function listActiveClassicGames(
                  (coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at)
                    at time zone coalesce(revision.rules_snapshot->'config'->>'timezone', 'UTC'))::date
                ),
+               case when attempt.status='settled' then 1 else 0 end,
                coalesce(attempt.scheduled_starts_at, fixture.scheduled_starts_at),
                coalesce(attempt.attempt_number, 1)`,
-    [input.userId, input.now],
+    [input.userId, input.now, input.includeCompleted === true],
   );
   const playoffGames: ActivePlayoffGame[] = playoff.rows.map((row) => {
     const beforeStart = input.now < row.scheduled_starts_at;
@@ -1414,7 +1417,7 @@ export async function listActiveClassicGames(
       closes_at: row.hard_deadline_at.toISOString(),
       break_ends_at: beforeStart ? row.scheduled_starts_at.toISOString() : null,
       state:
-        row.attempt_status === 'needs_reschedule' || row.attempt_status === 'needs_admin_decision'
+        row.attempt_status === 'settled' ? 'closed' : row.attempt_status === 'needs_reschedule' || row.attempt_status === 'needs_admin_decision'
           ? 'paused'
           : beforeStart
             ? Number(row.attempt_number) > 1

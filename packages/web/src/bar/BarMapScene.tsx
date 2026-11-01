@@ -117,6 +117,11 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
    <div ref={world} className="bar-map-world">
     {layered&&lighting.previous&&<img className="bar-map-background" src={barMapBackground(lighting.previous)} alt="" draggable={false}/>}
     <img key={background} className={`bar-map-background${layered&&lighting.previous?' bar-map-background--enter':''}`} data-bar-map-background src={background} alt="" draggable={false}/>
+    {layered&&(['timofey','arsenich','maria'] as const).filter(id=>!layout.slots.some(slot=>slot.occupantId===id)).map(id=>{
+     const place=layeredPlaces[id]!;const width=place.height*2/9;
+     return <img key={id} data-map-empty-chair={id} className="bar-map-character" src={`/bar/novice-furniture-v1/${id}-chair.png`} alt="" draggable={false}
+      style={{left:`${place.x-width/2}%`,top:`${place.floor-place.height}%`,width:`${width}%`,height:`${place.height}%`,objectFit:'contain',pointerEvents:'none'}}/>;
+    })}
     {layout.slots.map(s=>{
      const id=s.occupantId,place=id?places[id]:null,composition=id?layout.profiles[id].composition:null;
      if(!id||!place?.height||!isBarAssetPath(composition)||!barCharacters.includes(id as BarCharacter))return null;
@@ -129,8 +134,13 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
      </div>;
     })}
     <img className={layered?'bar-map-counter bar-map-counter--sprite':'bar-map-counter'} src={layered?'/bar/map-v31/counter-v1.webp':background} style={layered?rectangle([28.5,31,20,30]):undefined} alt="" draggable={false}/>
-    {layered&&layeredProps.map(prop=><img key={prop.id} data-map-prop={prop.id} className="bar-map-prop" src={'asset' in prop?prop.asset:`/bar/map-v30/${prop.id}-v1.webp`} style={rectangle(prop.box)} alt="" draggable={false}/>)}
-    {!hideIdentity&&targets.map(target=><button key={target.id} className="bar-map-target" data-map-target={target.id} aria-label={target.label} style={rectangle(target.box)} onClick={()=>{
+    {layered&&layeredProps.map(prop=>{
+     const target=layeredTargets.find(target=>target.id===prop.target);
+     const empty=target&&!layout.slots.some(slot=>slot.occupantId===target.owner);
+     const emptyAsset=prop.id==='battleship-table'?'battleship-table':prop.id==='checkers-table'?'checkers-table':prop.id==='maria-cards-table'?'cards-table':null;
+     return <img key={prop.id} data-map-prop={prop.id} className="bar-map-prop" src={empty&&emptyAsset?`/bar/novice-furniture-v1/${emptyAsset}.png`:'asset' in prop?prop.asset:`/bar/map-v30/${prop.id}-v1.webp`} style={rectangle(prop.box)} alt="" draggable={false}/>;
+    })}
+    {!hideIdentity&&targets.filter(target=>layout.slots.some(slot=>slot.occupantId===target.owner)).map(target=><button key={target.id} className="bar-map-target" data-map-target={target.id} aria-label={target.label} style={rectangle(target.box)} onClick={()=>{
      if(!ready(target.owner))return;
      if(target.action)onAction(target.action,target.owner);
      else if(target.id==='terminal')setTerminalOpen(true);

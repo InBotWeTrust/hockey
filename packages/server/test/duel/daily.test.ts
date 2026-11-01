@@ -227,7 +227,32 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(rows[0].n).toBe(0);
   });
 
-  it('locks daily start for one hour after a training shot', async () => {
+  it('lets a novice at 99 of 100 goals start daily immediately after an open-training shot', async () => {
+    await pool.query(`insert into game_settings (key, value, label, description)
+      values ('amateur.unlock_goals_required', '100'::jsonb, 'Qualification', 'Test')
+      on conflict (key) do update set value = excluded.value`);
+    await pool.query('update users set daily_goals_total = 99 where id = $1', [userId]);
+    expect((await startTraining(1)).statusCode).toBe(200);
+    expect((await submitTrainingShot(1)).statusCode).toBe(200);
+    const state = await getState();
+    expect(state.training_cooldown_ends_at).toBeNull();
+    expect(state.gameplay_lock).toBeNull();
+    expect((await startPeriod()).statusCode).toBe(200);
+  });
+
+  it('applies recovery when a level-one player reaches the configured 100-goal threshold', async () => {
+    await pool.query(`insert into game_settings (key, value, label, description)
+      values ('amateur.unlock_goals_required', '100'::jsonb, 'Qualification', 'Test')
+      on conflict (key) do update set value = excluded.value`);
+    expect((await startTraining(1)).statusCode).toBe(200);
+    expect((await submitTrainingShot(1)).statusCode).toBe(200);
+    await pool.query('update users set daily_goals_total = 100 where id = $1', [userId]);
+    expect((await getState()).gameplay_lock).toMatchObject({ reason: 'recent_gameplay' });
+    expect((await startPeriod()).statusCode).toBe(409);
+  });
+
+  it('locks amateur daily start for one hour after a training shot', async () => {
+    await pool.query('update users set level = 2 where id = $1', [userId]);
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values (
@@ -763,6 +788,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
   });
 
   it('runs 3 periods with 2 breaks, then stays closed until the next local day', async () => {
+    const beforeReward = await pool.query('select xp, experience from users where id=$1', [userId]);
     for (let p = 1; p <= 3; p += 1) {
       const start = await startPeriod();
       expect(start.statusCode).toBe(200);
@@ -792,6 +818,28 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
 
     const s = await getState();
     expect(s.state).toBe('closed');
+    expect(s.completion_reward).toEqual({ stars: 2, experience: 2 });
+    expect(s.completion_comparison).toMatchObject({kind: 'daily', current: {shots:90,limit:90}, previous:null});
+    const afterReward = await pool.query('select xp, experience from users where id=$1', [userId]);
+    expect(Number(afterReward.rows[0].xp)).toBe(Number(beforeReward.rows[0].xp) + 2);
+    expect(Number(afterReward.rows[0].experience)).toBe(Number(beforeReward.rows[0].experience) + 2);
+    await getState();
+    await getState();
+    const repeatedReward = await pool.query('select xp, experience from users where id=$1', [userId]);
+    expect(repeatedReward.rows).toEqual(afterReward.rows);
+    const ledger = await pool.query("select metadata from currency_ledger where user_id=$1 and reason=$2", [userId, 'daily_completion_reward']);
+    expect(ledger.rows).toHaveLength(1);
+    expect(ledger.rows[0].metadata).toMatchObject({ stars: 2, experience: 2 });
+    for (const filter of ['all', 'credit']) {
+      const history = await app.inject({ method: 'GET', url: `/inventory/transactions?filter=${filter}`, headers: authHeader() });
+      expect(history.statusCode).toBe(200);
+      expect(history.json().transactions).toEqual(expect.arrayContaining([expect.objectContaining({
+        title: 'Награда за ежедневную игру', category: 'reward', flow: 'credit',
+        amounts: [{ currency: 'star', value: 2 }, { currency: 'experience', value: 2 }],
+      })]));
+    }
+
+
     expect(s.current_period).toBe(3);
     expect(s.daily_total_shots).toBe(90);
     expect(s.recent_periods).toHaveLength(3);
@@ -873,12 +921,18 @@ describe.skipIf(!hasIntegrationEnv)('/duel/daily/*', () => {
     expect(s.lifetime_total_goals).toBe(0);
 
     await startPeriod();
+    let confirmedGoals = 0;
     for (let i = 1; i <= 30; i += 1) {
       const r = await submitShot(i);
       expect(r.statusCode).toBe(200);
+      confirmedGoals += r.json().server_result === 'goal' ? 1 : 0;
+      expect(r.json().state.amateur_qualifying_goals).toBe(confirmedGoals);
+      expect((await pool.query('select daily_goals_total from users where id=$1', [userId])).rows[0].daily_goals_total).toBe(confirmedGoals);
     }
 
+    expect((await submitShot(30)).statusCode).toBe(409);
     s = await getState();
+    expect((await pool.query('select daily_goals_total from users where id=$1', [userId])).rows[0].daily_goals_total).toBe(confirmedGoals);
     expect(s.lifetime_total_shots).toBe(30);
     // Goals depend on RNG but daily_total_goals must equal lifetime_total_goals
     // because we only have one closed period.

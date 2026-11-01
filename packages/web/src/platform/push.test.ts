@@ -145,6 +145,6 @@ describe('nativePush', () => {
         key === 'android_push_installation_id' ? '22222222-2222-4222-8222-222222222222' : 'false',
     }));
 
-    await expect(nativePush.getStatus()).resolves.toEqual({ status: 'prompt' });
+    await expect(nativePush.getStatus()).resolves.toEqual({ status: 'prompt', permission: 'granted' });
   });
 });

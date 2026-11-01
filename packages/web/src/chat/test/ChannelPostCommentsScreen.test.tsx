@@ -1,3 +1,4 @@
+import { socialApi } from '../../social/api.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -173,6 +174,8 @@ describe('ChannelPostCommentsScreen', () => {
   });
 
   it('opens author profile from a channel comment avatar', async () => {
+    useAuthStore.getState().setSession({accessToken:'test',refreshToken:'test',user:{id:'viewer',displayName:'Viewer'}});
+    vi.spyOn(socialApi,'summary').mockResolvedValue({followersCount:0,followingCount:0,following:false,canFollow:true});
     vi.spyOn(api, 'fetchChannelPost').mockResolvedValue(post);
     vi.spyOn(api, 'fetchChannelPostComments').mockResolvedValue([parentComment, childComment]);
     vi.spyOn(api, 'fetchUserProfile').mockResolvedValue({
@@ -197,6 +200,6 @@ describe('ChannelPostCommentsScreen', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Аватар: Bob' }));
 
     expect(await screen.findByTestId('profile-sheet-backdrop')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /написать в личку/i })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Написать' })).toBeInTheDocument();
   });
 });

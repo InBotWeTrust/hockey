@@ -90,7 +90,7 @@ async function registerForToken(): Promise<string> {
 }
 
 export const nativePush = {
-  async getStatus(): Promise<{ status: NativePushPermissionStatus }> {
+  async getStatus(): Promise<{ status: NativePushPermissionStatus; permission?: NativePushPermissionStatus }> {
     if (!isNativeAndroid()) return { status: 'denied' };
     const native = plugins();
     const [permission, enabled] = await Promise.all([
@@ -98,9 +98,9 @@ export const nativePush = {
       native.Preferences.get({ key: PUSH_ENABLED_KEY }),
     ]);
     if (permission.receive === 'granted' && enabled.value !== 'true') {
-      return { status: 'prompt' };
+      return { status: 'prompt', permission: permission.receive };
     }
-    return { status: permission.receive };
+    return { status: permission.receive, permission: permission.receive };
   },
 
   async subscribe(): Promise<{ status: NativePushPermissionStatus }> {

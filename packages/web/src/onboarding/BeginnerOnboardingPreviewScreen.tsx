@@ -9,7 +9,7 @@ export function BeginnerOnboardingPreviewScreen(): JSX.Element {
     <div style={{ maxWidth: 430, margin: '0 auto', height: 'var(--app-viewport-height, 100dvh)', transform: 'translateZ(0)' }}>
       <BeginnerStoryFlow
         key={run}
-        mode="replay"
+        mode={new URLSearchParams(window.location.search).get('mode') === 'required' ? 'required' : 'replay'}
         unlockGoalsRequired={100}
         onCompleted={() => setRun((value) => value + 1)}
         onClose={() => setRun((value) => value + 1)}

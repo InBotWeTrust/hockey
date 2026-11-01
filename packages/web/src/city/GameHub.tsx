@@ -41,6 +41,11 @@ export type ModeInfoModalContent = { title: string; text: string };
 export type ArenaEntryKind = 'daily' | 'training' | 'duel' | 'classic' | 'bar';
 
 export interface ArenaEntry {
+  mapGroup?: 'daily'|'training'|'duel'|'tournament'|'bar';
+  mapLabel?: string;
+  mapDone?: boolean;
+  mapExpiresAt?: number;
+
   matchId?: string | null;
   dockTimer?:string;
   inProgress?: boolean;
@@ -208,8 +213,8 @@ export function GameHub({
     refetchOnMount: presentation==='city'?false:true,
   });
   const classicTournamentGames = useQuery({
-    queryKey: ['tournaments', 'classic', 'active'],
-    queryFn: fetchActiveClassicTournamentGames,
+    queryKey: ['tournaments', 'classic', 'active', ...(hubLocation.pathname==='/sections'?['map']:[])],
+    queryFn: () => fetchActiveClassicTournamentGames(hubLocation.pathname==='/sections'),
     refetchInterval: presentation==='city'?false:30_000,
     refetchOnMount: presentation==='city'?false:true,
   });
@@ -481,6 +486,7 @@ export function GameHub({
 
   const dailyArenaEntry: ArenaEntry = {
     id: 'daily',
+    mapLabel: data.state==='break_active'?dailyHubScoreboard.timer:`${data.daily_total_shots}/${data.total_periods*data.shots_per_period}`,
     dockTimer: isDailyInProgress?dailyHubScoreboard.timer:formatHms(nextDayRemaining),
     dockState: data.state==='closed'?'done':isDailyLockedByTraining?'blocked':data.state==='period_active'?'active':data.state==='break_active'?'break':'ready',
     kind: 'daily',
@@ -518,6 +524,7 @@ export function GameHub({
   };
   const trainingArenaEntry: ArenaEntry = {
     id: 'training',
+    mapLabel: trainingData?`${trainingData.shots_taken}/${trainingData.shots_limit}`:'Загрузка',
     dockTimer: trainingData?formatHms(Math.max(0,timestampMs(trainingData.next_day_starts_at)-now)):'',
     dockState: trainingData?.state==='closed'?'done':!trainingData||trainingData.gameplay_lock?.blocked?'blocked':trainingData.state==='active'?'active':'ready',
     kind: 'training',
@@ -539,6 +546,10 @@ export function GameHub({
       (declineArenaDuelMut.isPending && declineArenaDuelMut.variables === event.id);
     return {
       id: `duel-${event.id}`,
+      mapGroup: event.source==='tournament'?'tournament':'duel',
+      ...(event.status==='invited'?{mapExpiresAt:timestampMs(event.ready_expires_at)}:{}),
+      mapLabel: event.status==='invited'?`${isIncomingInvite?'Ответ':'Ждём'} ${timing.value}`:timing.value,
+
       inProgress: event.status === 'active',
       attention: isActionableDuelEvent(event),
       dockState: event.me.state==='period_active'?'active':event.me.state==='break_active'?'break':isActionableDuelEvent(event)?'ready':'blocked',
@@ -633,6 +644,7 @@ export function GameHub({
         const closesAtRemaining = Math.max(0, timestampMs(game.closes_at) - now);
         const isBreak = game.state === 'inter_game_break' && game.break_ends_at !== null;
         const isPaused = game.state === 'paused';
+        const isCompleted = game.state === 'closed';
         const isReady = game.state === 'ready_check' && readinessRemaining > 0;
         const isExpiredReadyCheck = game.state === 'ready_check' && readinessRemaining === 0;
         const isActive = game.state === 'active';
@@ -640,15 +652,19 @@ export function GameHub({
         const canEnterGame = isReady || isActive;
         return {
           id: `playoff-${game.tournament_id}-${game.tournament_day}`,
+          mapGroup: 'tournament',
+          mapDone: isCompleted,
+          mapLabel: waitingForOpponent?'Ожидание':isPaused?'Пауза':isExpiredReadyCheck?'Проверка':`${isBreak?'Перерыв':isReady?'Готовность':isActive?'Игра':'Старт'} ${formatMs(isBreak?breakRemaining:isReady?readinessRemaining:isActive?closesAtRemaining:startsAtRemaining)}`,
+
           matchId: game.duel_match_id,
           inProgress: isActive || isBreak || isPaused,
-          attention: !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
-          dockState: waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
+          attention: !isCompleted && !waitingForOpponent && !isPaused && !isExpiredReadyCheck,
+          dockState: isCompleted?'done':waitingForOpponent||isPaused||isExpiredReadyCheck?'blocked':isBreak?'break':isActive?'active':isReady?'ready':'blocked',
           deadlineAt: timestampMs(isReady?game.readiness_ends_at:isBreak?game.break_ends_at:isActive?game.closes_at:game.starts_at),
           kind: 'duel',
           eyebrow: `Турнир · ${playoffArenaStageLabel(game)}`,
           title: game.tournament_title,
-          subtitle: waitingForOpponent
+          subtitle: isCompleted?'На сегодня завершено':waitingForOpponent
             ? 'Ждём соперника'
             : isPaused
             ? 'Игра ожидает решения администратора.'
@@ -661,7 +677,7 @@ export function GameHub({
                   : isExpiredReadyCheck
                     ? 'Время подтверждения истекло.'
                     : 'Игра серии ожидает готовности.',
-          meta: isActive && game.my_completed === true
+          meta: isCompleted ? 'Результаты в расписании' : isActive && game.my_completed === true
             ? 'Вы завершили свою игру'
             : isBreak
             ? `Следующая игра через ${formatMs(breakRemaining)}`
@@ -694,7 +710,7 @@ export function GameHub({
             <DailyHubScoreboard
               activePeriod={0}
               ariaLabel={
-                isActive && game.my_completed === true
+                isCompleted ? 'Завершено' : isActive && game.my_completed === true
                   ? `${game.tournament_title}. Вы завершили свою игру. Ждём соперника.`
                   : isPaused
                   ? `${game.tournament_title}. Игра ожидает решения администратора.`
@@ -710,7 +726,7 @@ export function GameHub({
               }
               periodsTotal={game.total_periods}
               timer={
-                isActive && game.my_completed === true
+                isCompleted ? 'Завершено' : isActive && game.my_completed === true
                   ? '—'
                   : isPaused
                   ? '—'
@@ -725,7 +741,7 @@ export function GameHub({
                           : formatEventRemaining(startsAtRemaining)
               }
               timerLabel={
-                isActive && game.my_completed === true
+                isCompleted ? 'Завершено' : isActive && game.my_completed === true
                   ? 'Ожидание'
                   : isPaused
                   ? 'Пауза'
@@ -759,6 +775,7 @@ export function GameHub({
         : 0;
       return {
         id: `classic-${game.tournament_id}`,
+        mapLabel: completed?'':isBreak?`Перерыв ${formatMs(breakRemaining)}`:locked?'Недоступно':started?'Продолжить':'Играть',
         inProgress: started && !completed,
         attention: !completed,
         dockState: completed?'done':locked?'blocked':isBreak?'break':game.state==='period_active'?'active':'ready',
@@ -2234,7 +2251,7 @@ export function DailyStatsMetric({ label, value }: { label: string; value: strin
     <div
       style={{
         borderRadius: 16,
-        padding: '12px 8px',
+        padding: '12px 4px',
         textAlign: 'center',
         background: 'var(--daily-stats-metric-bg, var(--liquid-inset-bg))',
         border: '1px solid rgba(255, 255, 255, 0.7)',

@@ -7,7 +7,7 @@ import {rememberChatReturn} from '../chat/chatReturn.js';
 import {useChatOverlayOpen} from '../chat/ChatOverlayContext.js';
 import {FloatingShortcut} from './FloatingShortcut.js';
 export function isChatShortcutVisible(location:{pathname:string;search:string}):boolean {
- return !/^\/(?:chat|login|auth|mobile-auth)(?:\/|$)/.test(location.pathname);
+ return location.pathname !== '/sections' && !/^\/(?:chat|login|auth|mobile-auth)(?:\/|$)/.test(location.pathname);
 }
 export function FloatingChatShortcut({owner,unreadCount}:{owner?:string;unreadCount:number}):JSX.Element {
  const location=useLocation(),navigate=useNavigate(),side=useMapChatPosition(owner),overlayOpen=useChatOverlayOpen();

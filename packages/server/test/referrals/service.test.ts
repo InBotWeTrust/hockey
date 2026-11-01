@@ -61,7 +61,7 @@ describe.skipIf(!hasIntegrationEnv)('referral rewards', () => {
 
   it('qualifies an invited amateur once and snapshots every reached milestone', async () => {
     const pair = await createPair();
-    await pool.query('update users set lifetime_goals_total = 300 where id = $1', [pair.inviteeId]);
+    await pool.query('update users set daily_goals_total = 300 where id = $1', [pair.inviteeId]);
 
     expect(await reconcileReferralQualification(pool, pair.inviteeId)).toBe(true);
     expect(await reconcileReferralQualification(pool, pair.inviteeId)).toBe(false);
@@ -82,10 +82,18 @@ describe.skipIf(!hasIntegrationEnv)('referral rewards', () => {
     ]);
   });
 
+  it('does not reward qualification from other-mode goals', async () => {
+    const pair = await createPair();
+    await pool.query('update users set lifetime_goals_total = 1000, daily_goals_total = 299 where id = $1', [pair.inviteeId]);
+    expect(await reconcileReferralQualification(pool, pair.inviteeId)).toBe(false);
+    await pool.query('update users set daily_goals_total = 300 where id = $1', [pair.inviteeId]);
+    expect(await reconcileReferralQualification(pool, pair.inviteeId)).toBe(true);
+  });
+
   it('does not qualify a blocked invited player', async () => {
     const pair = await createPair();
     await pool.query(
-      'update users set lifetime_goals_total = 300, blocked_at = now() where id = $1',
+      'update users set daily_goals_total = 300, blocked_at = now() where id = $1',
       [pair.inviteeId],
     );
     expect(await reconcileReferralQualification(pool, pair.inviteeId)).toBe(false);
@@ -93,7 +101,7 @@ describe.skipIf(!hasIntegrationEnv)('referral rewards', () => {
 
   it('claims a reward exactly once and records stars in the currency ledger', async () => {
     const pair = await createPair();
-    await pool.query('update users set lifetime_goals_total = 300 where id = $1', [pair.inviteeId]);
+    await pool.query('update users set daily_goals_total = 300 where id = $1', [pair.inviteeId]);
     await reconcileReferralQualification(pool, pair.inviteeId);
     const unlock = await pool.query<{ id: string }>(
       'select id from referral_reward_unlock where inviter_user_id = $1',

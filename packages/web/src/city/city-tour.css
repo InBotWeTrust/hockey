@@ -1,0 +1,295 @@
+.city-tour {
+  position: absolute;
+  z-index: 12;
+  left: 28px;
+  right: 28px;
+  bottom: calc(100% - var(--city-menu-top, 75%) + 12px);
+  max-width: 344px;
+  margin: 0 auto;
+  padding: 16px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 20px;
+  background: rgba(236, 242, 249, 0.84);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  color: var(--text-primary, #263447);
+  box-shadow: 0 4px 16px rgba(10, 23, 42, 0.1);
+  max-height: calc(var(--city-menu-top, 75dvh) - 24px);
+  overflow-y: auto;
+}
+.city-tour .modal-header {
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.city-tour-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.65;
+}
+.city-tour h2 {
+  font-size: 19px;
+  margin: 0 0 8px;
+  line-height: 1.2;
+}
+.city-tour p {
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0 0 16px;
+}
+.city-tour-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.city-tour-actions .btn {
+  flex: 1;
+  min-height: 40px;
+  font-size: 12px;
+  padding: 10px 12px;
+  white-space: normal;
+}
+.city-tour-pagination {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 8px;
+  gap: 12px;
+}
+.city-tour-pagination .btn {
+  font-size: 12px;
+  padding: 8px 12px;
+}
+.city-tour--compact strong {
+  display: block;
+  font-size: 19px;
+  line-height: 1.2;
+  margin-bottom: 8px;
+}
+.city-tour .city-tour-sync {
+  font-size: 11px;
+  margin: 8px 0 0;
+}
+.city-tour-sync button {
+  background: none;
+  border: 0;
+  color: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.district:has(.city-tour) .district-novice-progress {
+  visibility: hidden;
+}
+[data-theme='dark'] .city-tour {
+  background: rgba(35, 45, 59, 0.84);
+  color: #edf3fb;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.city-tour-meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  flex: 1;
+  min-width: 0;
+}
+.city-tour-count {
+  font-size: 11px;
+  line-height: 1.4;
+  color: inherit;
+  opacity: 0.6;
+  white-space: nowrap;
+  margin-left: auto;
+}
+.city-tour .city-tour-actions .btn,
+.city-tour .city-tour-pagination .btn {
+  letter-spacing: 0;
+  box-shadow: none;
+  filter: none;
+  font-weight: 600;
+  line-height: 1.2;
+  min-width: 0;
+}
+.city-tour .city-tour-actions .btn::before,
+.city-tour .city-tour-actions .btn::after,
+.city-tour .city-tour-pagination .btn::before,
+.city-tour .city-tour-pagination .btn::after {
+  display: none;
+}
+.city-tour .city-tour-actions .btn {
+  min-height: 42px;
+  font-size: 13px;
+}
+.city-tour .city-tour-pagination .btn {
+  box-shadow: none;
+  background: transparent;
+  border-color: transparent;
+}
+
+.city-tour-step {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0;
+  padding: 10px 0;
+  min-height: 40px;
+  cursor: pointer;
+}
+.city-tour-step::before,
+.city-tour-step::after {
+  display: none;
+}
+.city-tour-step:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.city-tour-step:focus-visible {
+  outline: 2px solid #65bde9;
+  outline-offset: 3px;
+}
+.city-tour-pagination {
+  border-top: 1px solid rgba(120, 140, 160, 0.18);
+  margin-top: 12px;
+  padding-top: 2px;
+}
+
+.city-tour .city-tour-pagination {
+  display: flex;
+  gap: 8px;
+  border: 0;
+  padding: 0;
+  margin: 0 0 10px;
+}
+.city-tour .city-tour-pagination .btn {
+  flex: 1;
+  min-height: 42px;
+  font-size: 13px;
+  padding: 10px 12px;
+}
+.city-tour .city-tour-pagination .btn--cta {
+  background: #202a3a;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+}
+.city-tour .city-tour-pagination .btn--ghost {
+  background: rgba(255, 255, 255, 0.55);
+  color: #263447;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+}
+[data-theme='dark'] .city-tour .city-tour-pagination .btn--ghost {
+  background: rgba(255, 255, 255, 0.1);
+  color: #edf3fb;
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.city-tour-spotlight {
+  position: absolute;
+  inset: 0 0 auto;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 10;
+}
+.city-tour-spotlight__hole {
+  position: absolute;
+  border-radius: 24px;
+  box-shadow: 0 0 0 5000px rgba(9, 19, 34, 0.43);
+  border: 0;
+}
+.city-tour-pointer-layer {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.city-tour-pointer {
+  fill: none;
+  stroke: rgba(238, 248, 255, 0.9);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.city-tour-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 8px;
+}
+.city-tour-heading h2 {
+  margin: 0;
+  min-width: 0;
+}
+.city-tour-counter {
+  flex-shrink: 0;
+  margin-left: auto;
+  text-align: right;
+  font-family: var(--font-mono, monospace);
+  font-size: 13px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.65;
+}
+
+.city-tour-resume {
+  position: absolute;
+  z-index: 8;
+  left: 28px;
+  right: 28px;
+  bottom: calc(100% - var(--city-menu-top, 75%) + 16px);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+.city-tour-resume .btn {
+  pointer-events: auto;
+  font-size: 12px;
+  letter-spacing: 0;
+  min-height: 36px;
+  padding: 8px 16px;
+  background: rgba(235, 242, 249, 0.92);
+  color: #263447;
+  box-shadow: 0 2px 10px #09132222;
+  backdrop-filter: blur(16px);
+}
+.district:has(.district-novice-progress) .city-tour-resume {
+  bottom: calc(100% - var(--city-menu-top, 75%) + 100px);
+}
+[data-theme='dark'] .city-tour-resume .btn {
+  background: rgba(35, 45, 59, 0.92);
+  color: #edf3fb;
+}
+
+/* Preserve the full description and bottom inset; placement may overlap the location. */
+.city-tour {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.city-tour > .city-tour-heading,
+.city-tour > .city-tour-eyebrow,
+.city-tour > strong,
+.city-tour > .city-tour-actions,
+.city-tour > .city-tour-pagination {
+  flex-shrink: 0;
+}
+.city-tour > p {
+  overflow: visible;
+  flex-shrink: 0;
+}
+.city-tour > .city-tour-pagination {
+  margin-bottom: 0;
+}

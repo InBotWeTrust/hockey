@@ -34,7 +34,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
     await admin.query(`create schema ${schema}`);
     pool = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
     await pool.query(
-      "create table users(id uuid primary key,display_name text,avatar_url text,last_seen_at timestamptz,xp int not null default 100,experience int default 0,coins int default 0,account_kind text default 'player',blocked_at timestamptz,timezone text default 'UTC')",
+      "create table users(id uuid primary key,display_name text,avatar_url text,last_seen_at timestamptz,xp int not null default 100,experience int default 0,coins int default 0,account_kind text default 'player',blocked_at timestamptz,timezone text default 'UTC',amateur_onboarding_completed boolean not null default true,amateur_access_preserved boolean not null default false)",
     );
     await pool.query(`create table user_currency_account(user_id uuid primary key references users(id), balance int not null default 0, reserved_balance int not null default 0);
       create table currency_ledger(id bigserial primary key,user_id uuid not null references users(id),reason text not null,available_delta int not null,reserved_delta int not null,balance_after int not null,reserved_after int not null,metadata jsonb not null default '{}',created_at timestamptz not null default now());`);
@@ -75,10 +75,40 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
   beforeEach(async () => {
     vi.restoreAllMocks();
     vi.spyOn(ochkoDeck, 'createPrivateOchko').mockImplementation((now,version=12,character=true) => version>=12?barOchkoSeries.create(Array.from({length:36},(_,i)=>35-i),now,character,0):barOchko.createOchko(1, now));
-    await pool.query('update users set xp=100');
+    await pool.query('update users set xp=100,amateur_onboarding_completed=true,amateur_access_preserved=false');
     await pool.query(
       'truncate message_reactions,messages,chat_members,chats,bar_visitor_receipts,bar_visitor_accounts,currency_ledger,bar_game_stakes,bar_ochko_offers,bar_game_commands,bar_game_queue,bar_game_invites,bar_game_matches,bar_local_card_sessions,bar_card_queue,bar_card_invites,bar_card_room_players,bar_card_rooms,bar_card_matches',
     );
+  });
+  it('releases a paused legacy game with a hidden NPC before admitting another game',async()=>{
+    const match=await startComputer(pool,a,'arsenich',randomUUID());
+    await pool.query("update bar_game_matches set data=jsonb_set(data,'{rulesClock}',jsonb_build_object('pausedAt',$2::bigint,'elapsed',0)) where id=$1",[match.id,Date.now()]);
+    await pool.query('update users set amateur_onboarding_completed=false where id=$1',[a]);
+    expect((await gameLobby(pool,a)).matchId).toBeNull();
+    const archived=(await pool.query('select data,ended_at from bar_game_matches where id=$1',[match.id])).rows[0];
+    expect(archived.ended_at).not.toBeNull();
+    expect(archived.data.runtime.reason).toBe('technical');
+    const retry=await startComputer(pool,a,'daria',randomUUID());
+    expect(retry.id).not.toBe(match.id);
+    expect((await gameLobby(pool,a)).matchId).toBe(retry.id);
+  });
+  it('refunds a legacy hidden-NPC stake exactly once and preserves the audit history',async()=>{
+    const offer=await proposeOchkoStake(pool,a);
+    const match=await startOchkoStake(pool,a,{requestId:randomUUID(),offerId:offer.offerId,stars:20});
+    await pool.query("update bar_game_matches set character='arsenich' where id=$1",[match.id]);
+    await pool.query('update users set amateur_onboarding_completed=false where id=$1',[a]);
+    await gameLobby(pool,a);await gameLobby(pool,a);
+    expect((await pool.query('select xp from users where id=$1',[a])).rows[0].xp).toBe(100);
+    const stake=(await pool.query('select amount,payout,settled_at from bar_game_stakes where match_id=$1',[match.id])).rows[0];
+    expect(Number(stake.payout)).toBe(Number(stake.amount));expect(stake.settled_at).not.toBeNull();
+  });
+  it('releases the unavailable local-card lease and receipt for a novice',async()=>{
+    const lease=randomUUID();await localCards(pool,a,lease);
+    await pool.query('update users set amateur_onboarding_completed=false where id=$1',[a]);
+    const match=await startComputer(pool,a,'daria',randomUUID());
+    expect(match.id).toBeTruthy();
+    expect((await pool.query('select session_id from bar_local_card_sessions where user_id=$1',[a])).rows).toEqual([]);
+    expect((await pool.query("select status from bar_visitor_receipts where user_id=$1 and id=$2 and kind='game'",[a,lease])).rows[0].status).toBe('released');
   });
   it('creates a new Grigory stake with five deals using the real deck constructor',async()=>{
     vi.mocked(ochkoDeck.createPrivateOchko).mockRestore();

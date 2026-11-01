@@ -15905,3 +15905,119 @@ button.daily-calendar__day:active {
 .profile-bio-field { display: flex; flex-direction: column; gap: 6px; margin-top: 12px; }
 .profile-bio-field textarea { font: inherit; font-size: 14px; font-weight: 400; line-height: 1.45; color: var(--muted); padding: 11px 12px; border: 1px solid rgba(100,116,139,.24); border-radius: 13px; background: var(--liquid-card-bg); resize: vertical; }
 .profile-bio-field small { color: var(--muted); }
+
+.daily-result-follow-up {display:grid;gap:10px;margin-top:16px;padding-top:14px;border-top:1px solid var(--liquid-border);font-size:13px;line-height:1.45;}
+.daily-result-follow-up p {margin:4px 0 0;color:var(--liquid-muted);}
+.daily-result-follow-up__invitation {display:grid;gap:10px;}
+.daily-result-follow-up__invitation .btn {width:100%;}
+
+.daily-result-follow-up__progress {
+  height: 6px;
+  margin-top: 10px;
+  overflow: hidden;
+  border-radius: var(--r-pill);
+  background: var(--liquid-border);
+}
+.daily-result-follow-up__progress > div {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--blue-accent);
+}
+.daily-result-follow-up__timer {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 900;
+  color: var(--liquid-ink);
+}
+
+.daily-result-follow-up__heading {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.daily-result-follow-up__heading svg { width: 16px; height: 16px; flex-shrink: 0; }
+.daily-result-follow-up__numbers {
+  font-variant-numeric: tabular-nums;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  color: var(--liquid-ink);
+}
+
+.achievement-map-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-sizing: border-box;
+}
+.achievement-map-notice .achievement-map-notice__action {
+  flex: 1;
+  min-width: 0;
+  min-height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: inherit;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: normal;
+  text-align: left;
+  cursor: pointer;
+}
+.achievement-map-notice__action:focus-visible { outline: 2px solid var(--blue-accent); outline-offset: 2px; }
+.achievement-map-notice > .icon-btn {
+  flex-shrink: 0;
+  color: inherit;
+  background: rgba(255,255,255,.08);
+  border-color: rgba(255,255,255,.2);
+}
+.district-dock button.district-task-hint > span { box-shadow: 0 0 0 2px var(--blue-accent); filter: none; }
+
+.district-hit.district-task-hint { outline: 2px solid var(--blue-accent); outline-offset: 3px; border-radius: 12px; }
+
+.novice-result-progress { overflow: visible; }
+.novice-result-progress > div { position: relative; }
+.novice-result-progress--settled > div::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  border-radius: 50%;
+  background: radial-gradient(circle, #fff 0 9%, rgba(255,255,255,.9) 12%, rgba(255,255,255,.35) 30%, transparent 68%);
+  opacity: 0;
+  animation: novice-progress-glint 550ms ease-out both;
+}
+@keyframes novice-progress-glint {
+  0% { opacity: 0; transform: translate(50%, -50%) scale(.35); }
+  25% { opacity: 1; transform: translate(50%, -50%) scale(1); }
+  100% { opacity: 0; transform: translate(50%, -50%) scale(1.5); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .novice-result-progress--settled > div::after { display: none; animation: none; }
+}
+
+:root .achievement-map-notice > .icon-btn,
+:root[data-theme='light'] .achievement-map-notice > .icon-btn {
+  color: #f8f9fb;
+  border-color: rgba(255,255,255,.24);
+  background: rgba(255,255,255,.08);
+}
+:root .achievement-map-notice > .icon-btn svg,
+:root[data-theme='light'] .achievement-map-notice > .icon-btn svg {
+  color: #f8f9fb;
+  stroke: currentColor;
+  opacity: 1;
+}
+
+.novice-push-prompt { font-size: 12px; }
+.novice-push-prompt__actions { display: flex; flex-wrap: wrap; gap: 16px; }
+.novice-push-prompt button { padding: 8px 0; border: 0; background: none; color: var(--liquid-ink); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.novice-push-prompt button:disabled { opacity: .6; cursor: default; }

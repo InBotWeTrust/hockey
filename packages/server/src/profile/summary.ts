@@ -335,6 +335,8 @@ export interface ProfileProgressRow {
   timezone: string;
   lifetime_shots_total: number | string;
   lifetime_goals_total: number | string;
+  daily_goals_total: number | string;
+  amateur_access_preserved: boolean;
 }
 
 function toNumber(value: number | string): number {
@@ -343,11 +345,12 @@ function toNumber(value: number | string): number {
 
 export function resolveCompetitionLevel(
   level: number,
-  lifetimeGoals: number,
+  qualifyingGoals: number,
   amateurUnlockGoalsRequired = 300,
+  accessPreserved = false,
 ): CompetitionLevel {
   if (level >= 3) return 'professional';
-  if (level >= 2 || lifetimeGoals >= amateurUnlockGoalsRequired) return 'amateur';
+  if (level >= 2 || accessPreserved || qualifyingGoals >= amateurUnlockGoalsRequired) return 'amateur';
   return 'beginner';
 }
 
@@ -392,7 +395,7 @@ export async function readPublicProfileProgress(db: Queryable, row: ProfileProgr
   ]);
   const shots = toNumber(row.lifetime_shots_total), goals = toNumber(row.lifetime_goals_total);
   return {
-    competitionLevel: resolveCompetitionLevel(toNumber(row.level), goals, settings.amateur.unlockGoalsRequired),
+    competitionLevel: resolveCompetitionLevel(toNumber(row.level), toNumber(row.daily_goals_total), settings.amateur.unlockGoalsRequired, row.amateur_access_preserved),
     stats: { shots, goals, accuracy: shots > 0 ? Math.round(goals / shots * 1_000) / 10 : 0,
       playStreakDays: streak.currentDays, bestPlayStreakDays: streak.bestDays },
     achievements: [], achievementSummary, unclaimedAchievementsCount,
@@ -422,7 +425,7 @@ export async function buildProfileProgress(
   ]);
 
   return {
-    competitionLevel: resolveCompetitionLevel(level, goals, settings.amateur.unlockGoalsRequired),
+    competitionLevel: resolveCompetitionLevel(level, toNumber(row.daily_goals_total), settings.amateur.unlockGoalsRequired, row.amateur_access_preserved),
     stats: {
       shots,
       goals,

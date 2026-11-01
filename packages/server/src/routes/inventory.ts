@@ -231,6 +231,8 @@ function transactionFlow(amounts: InventoryTransactionAmountDto[]): TransactionF
 function transactionCategory(reason: string): TransactionCategory {
   if (reason === 'inventory_purchase' || reason === 'bar_purchase' || reason === 'recovery_kit_use') return 'inventory';
   if (
+    reason === 'daily_completion_reward' ||
+    reason === 'training_completion_reward' ||
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_reward' ||
     reason === 'duel_fight_reward' ||
@@ -255,6 +257,8 @@ export function transactionTitle(reason: string, metadata: Record<string, unknow
   if (reason === 'inventory_purchase') return 'Покупка инвентаря';
   if (reason === 'purchase') return 'Пополнение баланса';
   if (reason === 'recovery_kit_use') return 'Использование восстановления';
+  if (reason === 'daily_completion_reward') return 'Награда за ежедневную игру';
+  if (reason === 'training_completion_reward') return 'Награда за тренировку';
   if (reason === 'weekly_challenge_reward') return 'Недельная награда';
   if (reason === 'bonus_game_reward') return 'Награда за бонусную игру';
   if (reason === 'tournament_reward') return 'Награда за турнир';
@@ -291,6 +295,8 @@ function transactionSubtitle(
     const recoveryMinutes = numberMetadata(metadata, 'recovery_minutes');
     if (recoveryMinutes > 0) parts.push(`−${recoveryMinutes} минут`);
   } else if (
+    reason === 'daily_completion_reward' ||
+    reason === 'training_completion_reward' ||
     reason === 'weekly_challenge_reward' ||
     reason === 'duel_fight_reward' ||
     reason === 'achievement_reward' ||

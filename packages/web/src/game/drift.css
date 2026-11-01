@@ -1,0 +1,192 @@
+.drift-game {
+  position: absolute;
+  inset: 0;
+  z-index: 12;
+  pointer-events: auto;
+  color: #18344d;
+  touch-action: none;
+}
+.drift-hud {
+  position: absolute;
+  top: 1%;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: #edf7f2e0;
+  backdrop-filter: blur(10px);
+  text-align: center;
+  z-index: 2;
+}
+.drift-hud strong {
+  font-size: 18px;
+}
+.drift-hud > span {
+  font-size: 12px;
+}
+.drift-hud > div {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  margin-top: 5px;
+}
+.drift-hud time {
+  font: 700 16px var(--font-mono, monospace);
+}
+.drift-hud progress {
+  width: 100%;
+  height: 6px;
+  accent-color: #31b5eb;
+}
+.drift-ice {
+  position: absolute;
+  top: 29%;
+  left: 5%;
+  width: 90%;
+  height: 61%;
+  touch-action: none;
+}
+.drift-game footer {
+  position: absolute;
+  bottom: 1%;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.drift-game footer .btn {
+  padding: 8px 22px;
+  min-height: 34px;
+  font-size: 12px;
+  background: #edf7f2e0;
+  color: #18344d;
+}
+.drift-game footer small {
+  max-width: 140px;
+  font-size: 11px;
+  background: #edf7f2d9;
+  border-radius: 8px;
+  padding: 5px;
+}
+.drift-instruction {
+  position: absolute;
+  z-index: 3;
+  top: 35%;
+  left: 8%;
+  right: 8%;
+  padding: 16px;
+  border-radius: 18px;
+  background: #edf7f2f2;
+  backdrop-filter: blur(10px);
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.4;
+}
+.drift-instruction .btn {
+  width: 100%;
+}
+[data-theme='dark'] .drift-hud,
+[data-theme='dark'] .drift-instruction {
+  background: #142638ed;
+  color: #edf7ff;
+}
+[data-theme='dark'] .drift-game footer .btn {
+  background: #142638ed;
+  color: #edf7ff;
+}
+/* Preserve the normal period scoreboard; tools sit immediately underneath it. */
+.drift-hud {
+  top: 13%;
+  left: 5%;
+  right: 5%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  background: none !important;
+  backdrop-filter: none;
+  gap: 10px;
+}
+.drift-hud .drift-status {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  max-width: none;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.2;
+}
+.drift-hud .drift-status::before {
+  display: none;
+}
+.drift-status b {
+  font-weight: 500;
+}
+.drift-status progress {
+  appearance: none;
+  border: 0;
+  border-radius: 3px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.15);
+  height: 3px;
+}
+.drift-status progress::-webkit-progress-bar {
+  background: rgba(255, 255, 255, 0.15);
+}
+.drift-status progress::-webkit-progress-value {
+  background: #65c9ef;
+  border-radius: 3px;
+}
+.drift-status progress::-moz-progress-bar {
+  background: #65c9ef;
+  border-radius: 3px;
+}
+.drift-hud .icon-btn {
+  flex-shrink: 0;
+}
+.drift-ice {
+  top: 35%;
+  left: 0;
+  width: 100%;
+  height: 65%;
+}
+.drift-ready {
+  position: absolute;
+  top: 23%;
+  left: 10%;
+  right: 10%;
+  text-align: center;
+  color: white;
+}
+
+.city-tour.drift-rules-card {
+  top: 25%;
+  bottom: auto;
+  left: 24px;
+  right: 24px;
+  max-width: 300px;
+  max-height: none;
+  overflow: visible;
+  z-index: 15;
+}
+.modal-card.drift-briefing {
+  width: min(360px, calc(100vw - 32px));
+  padding: 20px;
+}
+.drift-briefing .drift-briefing-art{aspect-ratio:1;object-fit:cover;width:100%;height:auto}
+.drift-briefing .modal-copy {
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 400;
+  margin-top: 14px;
+}
+.blizzard-wind {display:block; font-size:11px;line-height:1.3;margin-top:4px;color:var(--ink);font-weight:650;}

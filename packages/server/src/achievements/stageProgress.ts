@@ -6,8 +6,9 @@ export interface StageObservation {
   eventKey: string;
   occurredAt: Date;
   /** Expensive observations run only for a new event on an unfinished stage. */
-  progress: Record<string, number | string | boolean> |
-    ((client: PoolClient) => Promise<Record<string, number | string | boolean>>);
+  progress:
+    | Record<string, number | string | boolean>
+    | ((client: PoolClient) => Promise<Record<string, number | string | boolean>>);
   context?: Record<string, unknown>;
   progressMode?: 'max' | 'increment';
 }
@@ -89,8 +90,11 @@ export async function openFirstAchievementStages(
   userId: string,
   openedAt: Date,
 ): Promise<void> {
-  await db.query(
-    `insert into user_achievement_stages
+  await inTransaction(db, async (client) => {
+    // Reward claims lock users before stages; background initialization must use the same order.
+    await client.query('select id from users where id=$1 for update', [userId]);
+    await client.query(
+      `insert into user_achievement_stages
        (user_id, achievement_id, stage_number, opened_at)
      select $1, stage.achievement_id, stage.stage_number, $2
        from achievement_stages stage
@@ -105,8 +109,9 @@ export async function openFirstAchievementStages(
              and existing.achievement_id = stage.achievement_id
         )
      on conflict (user_id, achievement_id, stage_number) do nothing`,
-    [userId, openedAt],
-  );
+      [userId, openedAt],
+    );
+  });
 }
 
 export async function observeAchievementStage(
@@ -149,8 +154,10 @@ export async function observeAchievementStage(
     );
     if (event.rowCount === 0) return { completed: false, stageNumber: active.stage_number };
 
-    const observedProgress = typeof observation.progress === 'function'
-      ? await observation.progress(client) : observation.progress;
+    const observedProgress =
+      typeof observation.progress === 'function'
+        ? await observation.progress(client)
+        : observation.progress;
 
     const displayProgress =
       observation.progressMode === 'increment'

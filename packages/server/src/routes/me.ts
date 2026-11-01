@@ -7,6 +7,7 @@ import { getGameSettings, type GameSettings } from '../duel/gameSettings.js';
 import { AppError } from '../plugins/errors.js';
 import {
   buildProfileProgress,
+  resolveCompetitionLevel,
   readPublicProfileProgress,
   fetchTrophyDetails,
   fetchTrophySummary,
@@ -29,6 +30,8 @@ interface MeRow {
   timezone: string;
   lifetime_shots_total: number;
   lifetime_goals_total: number;
+  daily_goals_total: number;
+  amateur_access_preserved: boolean;
   display_source: DisplaySource;
   custom_display_name: string | null;
   custom_first_name: string | null;
@@ -52,20 +55,26 @@ interface MeRow {
 }
 
 export function buildStoryProfileFields(
-  row: Pick<MeRow, 'beginner_onboarding_completed' | 'amateur_onboarding_completed'>,
+  row: Pick<MeRow, 'beginner_onboarding_completed' | 'amateur_onboarding_completed' | 'level' | 'daily_goals_total' | 'amateur_access_preserved'>,
   settings: Pick<GameSettings, 'amateur'>,
 ) {
   return {
     beginnerOnboardingCompleted: row.beginner_onboarding_completed,
     amateurOnboardingCompleted: row.amateur_onboarding_completed,
     amateurUnlockGoalsRequired: settings.amateur.unlockGoalsRequired,
+    amateurQualifyingGoals: row.daily_goals_total,
+    amateurTransitionStatus: resolveCompetitionLevel(
+      row.level, row.daily_goals_total, settings.amateur.unlockGoalsRequired, row.amateur_access_preserved,
+    ) === 'beginner'
+      ? 'qualifying'
+      : row.amateur_onboarding_completed ? 'complete' : 'onboarding_pending',
   };
 }
 
 async function getMe(app: Parameters<FastifyPluginAsync>[0], userId: string, options: {summary?: boolean; countersOnly?: boolean} = {}) {
   const { rows } = await app.pg.query<MeRow>(
     `select u.id, u.bio, u.created_at, u.display_name, u.avatar_url, u.role, u.grip, u.level, u.timezone,
-            u.lifetime_shots_total, u.lifetime_goals_total, u.display_source,
+            u.lifetime_shots_total, u.lifetime_goals_total, u.daily_goals_total, u.amateur_access_preserved, u.display_source,
             u.beginner_onboarding_completed, u.amateur_onboarding_completed,
             u.custom_display_name, u.custom_first_name, u.custom_last_name, u.custom_avatar_url,
             tg.provider_uid as tg_id,

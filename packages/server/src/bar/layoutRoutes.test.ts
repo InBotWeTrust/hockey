@@ -70,8 +70,11 @@ it('saves once atomically and rejects a stale concurrent write', async () => {
   expect(responses.find((r) => r.statusCode === 409)?.json().error.code).toBe(
     'bar_layout_conflict',
   );
-  const read = await app.inject({ url: '/bar/layout', headers: { authorization: 'player' } });
+  const read = await app.inject({ url: '/admin/bar/layout', headers: { authorization: 'admin' } });
   expect(read.json()).toEqual(stored);
+  const novice=await app.inject({url:'/bar/layout',headers:{authorization:'player'}});
+  expect(novice.json().novice).toBe(true);
+  expect(novice.json().layout.slots.some((slot:{occupantId:string})=>slot.occupantId==='maria')).toBe(false);
 });
 it.each(['duplicate', 'path', 'bounds', 'default', 'unknown', 'actions'])(
   'rejects invalid %s without writing',

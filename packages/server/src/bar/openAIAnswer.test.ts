@@ -279,3 +279,19 @@ it('requires a structured Elina interest assessment and includes authoritative m
  transport.mockResolvedValue(Response.json({output:[{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Ответ',usedStoryIds:[]})}]}]}));
  await expect(answer('elina',[],'Привет',context)).rejects.toThrow();
 });
+
+it('filters novice lore, old memories, tool results and generated spoilers', async () => {
+  const bodies: unknown[] = [];
+  const answer = createOpenAIAnswer('test-placeholder', 'gpt-5.6-terra', async (_url, init) => {
+    bodies.push(JSON.parse(String(init?.body)));
+    return Response.json({status:'completed', output:bodies.length===1
+      ? [{type:'function_call',name:'find_stories',arguments:'{"topic":"знакомство"}',call_id:'story'}]
+      : [{type:'message',content:[{type:'output_text',text:JSON.stringify({text:'Незнакомец – это Арсенич.',usedStoryIds:[]})}]}]});
+  });
+  const result = await answer('igor', [], 'Привет', {
+    novice:true, summary:'Арсенич встретил новичка.', facts:[], relationship:[],
+    tool:async()=>[{id:'secret',content:'Незнакомец – это Арсенич.'}],
+  });
+  expect(JSON.stringify(bodies)).not.toMatch(/Арсенич|Тимофей|Мария|Элина|arsenich|timofey|maria|elina/i);
+  expect(JSON.stringify(result)).not.toContain('Арсенич');
+});

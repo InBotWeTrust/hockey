@@ -12,6 +12,7 @@ export interface MemoryFact {
   quote: string;
 }
 export interface ConversationContext {
+  novice?: boolean;
   elinaMeeting?: {remaining:number;personalAllowed:boolean;successful:boolean;regular:boolean;competitionLevel:string;achievements?:unknown};
   boundaryWarning?: 'insult'|'sexual';
   fightMemories?: unknown;

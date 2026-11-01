@@ -1,3 +1,4 @@
+import { supportsPushNotifications, urlBase64ToArrayBuffer, normalizePushSubscription, getReadyServiceWorkerRegistration } from '../platform/webPush.js';
 import { CommunitySection } from '../components/CommunityLinks.js';
 import { Fragment, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -11,7 +12,6 @@ import {
   updatePushPreferences,
   type PushConfig,
   type PushPreferences,
-  type PushSubscriptionPayload,
 } from '../api/push.js';
 import { getTelegramMiniApp } from '../auth/telegramMiniApp.js';
 import { OFFICIAL_ACCOUNT_AVATAR_URL } from '../chat/chatAvatar.js';
@@ -98,57 +98,6 @@ function SettingsSectionIcon({ children }: { children: JSX.Element }): JSX.Eleme
       {children}
     </div>
   );
-}
-
-function supportsPushNotifications(): boolean {
-  return (
-    typeof window !== 'undefined' &&
-    'Notification' in window &&
-    'serviceWorker' in navigator &&
-    'PushManager' in window
-  );
-}
-
-function urlBase64ToArrayBuffer(value: string): ArrayBuffer {
-  const padding = '='.repeat((4 - (value.length % 4)) % 4);
-  const base64 = `${value}${padding}`.replace(/-/g, '+').replace(/_/g, '/');
-  const raw = window.atob(base64);
-  const buffer = new ArrayBuffer(raw.length);
-  const output = new Uint8Array(buffer);
-  for (let i = 0; i < raw.length; i += 1) {
-    output[i] = raw.charCodeAt(i);
-  }
-  return buffer;
-}
-
-function normalizePushSubscription(subscription: PushSubscription): PushSubscriptionPayload {
-  const json = subscription.toJSON();
-  const p256dh = json.keys?.p256dh;
-  const auth = json.keys?.auth;
-  if (!json.endpoint || !p256dh || !auth) {
-    throw new Error('invalid push subscription');
-  }
-  return {
-    endpoint: json.endpoint,
-    expirationTime: json.expirationTime ?? null,
-    keys: { p256dh, auth },
-  };
-}
-
-function getReadyServiceWorkerRegistration(): Promise<ServiceWorkerRegistration> {
-  return new Promise((resolve, reject) => {
-    const timeout = window.setTimeout(() => reject(new Error('service worker is not ready')), 8000);
-    navigator.serviceWorker.ready.then(
-      (registration) => {
-        window.clearTimeout(timeout);
-        resolve(registration);
-      },
-      (err: unknown) => {
-        window.clearTimeout(timeout);
-        reject(err);
-      },
-    );
-  });
 }
 
 export function PushPreferenceToggle({
@@ -587,7 +536,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
             setPushMessage('Уведомления включены');
           } else if (status === 'denied') {
             setPushStatus('denied');
-            setPushMessage('Запрещено в настройках Android');
+            setPushMessage('Разреши уведомления для Ultimate Hockey в настройках Android.');
           }
         })
         .catch(() => {
@@ -619,13 +568,13 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
         }
         if (Notification.permission === 'denied') {
           setPushStatus('denied');
-          setPushMessage('Запрещено в настройках браузера');
+          setPushMessage('Разреши уведомления для этого сайта в настройках браузера.');
         }
       })
       .catch(() => {
         if (!disposed && Notification.permission === 'denied') {
           setPushStatus('denied');
-          setPushMessage('Запрещено в настройках браузера');
+          setPushMessage('Разреши уведомления для этого сайта в настройках браузера.');
         }
       });
 

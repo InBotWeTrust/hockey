@@ -1,3 +1,4 @@
+import { grantCompletionReward } from '../completionRewards.js';
 import type { PoolClient } from 'pg';
 import { evaluateDailyClosedAchievements } from '../../achievements/engine.js';
 import { AppError } from '../../plugins/errors.js';
@@ -34,6 +35,7 @@ export interface DayPoolRow {
   current_period: number;
   period_started_at: Date | null;
   break_started_at: Date | null;
+  caretaker_ready_at?: Date | null;
   closed_at: Date | null;
   game_core_version: number;
   daily_seed: string;
@@ -224,6 +226,7 @@ export async function reconcileDayPool(
         : `update day_pool
               set state='break_active',
                   break_started_at=$1,
+                  caretaker_ready_at=null,
                   period_started_at=null
             where id=$2
           returning *`;
@@ -234,6 +237,7 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
+        await grantCompletionReward(client, pool.user_id, 'daily', pool.id, rules.totalPeriods * rules.shotsPerPeriod);
         await evaluateDailyClosedAchievements(client, {
           userId: pool.user_id,
           dayPoolId: pool.id,
@@ -261,6 +265,7 @@ export async function reconcileDayPool(
         : `update day_pool
               set state='break_active',
                   break_started_at=$1,
+                  caretaker_ready_at=null,
                   period_started_at=null
             where id=$2
           returning *`;
@@ -271,6 +276,7 @@ export async function reconcileDayPool(
           day_pool_id: pool.id,
           reason: 'completed',
         });
+        await grantCompletionReward(client, pool.user_id, 'daily', pool.id, rules.totalPeriods * rules.shotsPerPeriod);
         await evaluateDailyClosedAchievements(client, {
           userId: pool.user_id,
           dayPoolId: pool.id,
@@ -284,7 +290,7 @@ export async function reconcileDayPool(
   }
 
   if (pool.state === 'break_active' && pool.break_started_at !== null) {
-    const breakEnd = new Date(pool.break_started_at.getTime() + rules.breakDurationMs);
+    const breakEnd = new Date(Math.min(pool.break_started_at.getTime() + rules.breakDurationMs, pool.caretaker_ready_at?.getTime() ?? Infinity));
     if (now >= breakEnd) {
       const { rows } = await client.query<DayPoolRow>(
         `update day_pool
@@ -309,6 +315,7 @@ export async function reconcileDayPool(
       day_pool_id: pool.id,
       reason: 'completed',
     });
+    await grantCompletionReward(client, pool.user_id, 'daily', pool.id, rules.totalPeriods * rules.shotsPerPeriod);
     await evaluateDailyClosedAchievements(client, {
       userId: pool.user_id,
       dayPoolId: pool.id,

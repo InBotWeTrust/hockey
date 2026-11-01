@@ -234,3 +234,6 @@ export type { RhythmShot, RhythmProjection, RhythmFlightPause } from './rhythm.j
 
 export * from './visitorCard.js';
 export * from './visitorPhrases.js';
+export * from './caretaker/drift.js';
+export * from './caretaker/blizzard.js';
+export * from './caretaker/game.js';

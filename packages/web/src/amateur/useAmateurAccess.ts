@@ -11,7 +11,7 @@ export function useAmateurAccess(){
  const profile=useOwnProfileSummary();
  return deriveAmateurAccess({
   competitionLevel:profile.data?.competitionLevel??user?.competitionLevel??null,
-  qualifyingGoals:daily?.lifetime_total_goals??profile.data?.stats?.goals,
+  qualifyingGoals:daily?.amateur_qualifying_goals??profile.data?.amateurQualifyingGoals??daily?.lifetime_total_goals??profile.data?.stats?.goals,
   unlockGoalsRequired:daily?.amateur_unlock_goals_required??profile.data?.amateurUnlockGoalsRequired,
  });
 }

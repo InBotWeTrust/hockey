@@ -1,3 +1,4 @@
+import {applyMigrationsThrough} from '../helpers/migrations.js';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -172,7 +173,7 @@ describe.skipIf(!hasIntegrationEnv)('071 accuracy World Tour migration', () => {
       [userId, paidGame.id, paidGame.unlock_price_stars, purchase.rows[0]!.id],
     );
 
-    const applied = await applyMigrations(pool, MIGRATIONS_DIR);
+    const applied = await applyMigrationsThrough(pool, MIGRATIONS_DIR, '124_production_data_operations_if_missing.sql');
     expect(applied.applied).toEqual(expect.arrayContaining([
       '071_bonus_game_accuracy_world_tour.sql',
       '072_tournament_fixture_series_lookup.sql',

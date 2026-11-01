@@ -1776,6 +1776,18 @@ describe.skipIf(!hasIntegrationEnv)('tournament fixture attempts integration', (
     }
   });
 
+  it('keeps settled playoff games for today on the map only', async () => {
+    const { fixture } = await openFirstPlayoffAttempt(pool, 'map-settled-playoff');
+    const now = new Date('2030-10-26T17:00:00.000Z');
+    await pool.query(`update tournament_fixture_attempt set status='settled', scheduled_starts_at=$2,
+      readiness_expires_at=$2::timestamptz+interval '1 minute', hard_deadline_at=$2::timestamptz+interval '2 minutes', settled_at=$2 where fixture_id=$1`,[fixture.fixture_id,now]);
+    await pool.query("update tournament_fixture set status='settled' where id=$1",[fixture.fixture_id]);
+    expect((await listActiveClassicGames(pool,{userId:fixture.home_user_id,now})).filter(g=>g.kind==='playoff')).toEqual([]);
+    const result=await listActiveClassicGames(pool,{userId:fixture.home_user_id,now,includeCompleted:true});
+    expect(result).toContainEqual(expect.objectContaining({kind:'playoff',fixture_id:fixture.fixture_id,state:'closed'}));
+    expect((await listActiveClassicGames(pool,{userId:fixture.home_user_id,now:new Date('2030-10-27T17:00:00Z'),includeCompleted:true})).filter(g=>g.kind==='playoff')).toEqual([]);
+  });
+
   it('exposes personal readiness and completion on the active playoff board', async () => {
     const { fixture, opened } = await openFirstPlayoffAttempt(pool, 'personal-board-state');
     const now = new Date('2030-10-26T17:00:00.000Z');

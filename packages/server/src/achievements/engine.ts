@@ -1380,7 +1380,7 @@ async function hasIdealDay(
 
 async function hasReachedAmateurGoalThreshold(db: Queryable, userId: string): Promise<boolean> {
   const { rows } = await db.query<{ goals: number | string; threshold: number | string }>(
-    `select u.lifetime_goals_total as goals,
+    `select u.daily_goals_total as goals,
             coalesce(
               (
                 select (value #>> '{}')::int

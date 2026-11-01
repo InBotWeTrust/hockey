@@ -1,3 +1,4 @@
+import type { CompletionComparisonData } from '../components/CompletionComparison.js';
 import { apiFetch } from './apiFetch.js';
 import type { GameplayLockDTO } from './gameplayLock.js';
 import type { GameRequestOptions } from './requestTimeout.js';
@@ -7,6 +8,8 @@ import type { DailyPeriodSpeedPreset } from '@hockey/game-core';
 export type TrainingState = 'idle' | 'active' | 'closed';
 
 export interface TrainingStateResponse {
+  completion_comparison?: CompletionComparisonData | null;
+  completion_reward?: { stars: number; experience: number } | null;
   state: TrainingState;
   selected_period: number | null;
   shots_taken: number;

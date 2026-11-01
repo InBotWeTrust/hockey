@@ -63,13 +63,13 @@ function mockAchievementsApi(achievements: AchievementDto[], unclaimedCount = 0)
   });
 }
 
-function renderAchievements(panorama=false): void {
+function renderAchievements(panorama=false, route='/achievements'): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
   render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={['/achievements']}>
+      <MemoryRouter initialEntries={[route]}>
         {panorama ? <VenuePanorama level="amateur" owner="test"><AchievementsScreen/></VenuePanorama> : <AchievementsScreen />}
       </MemoryRouter>
     </QueryClientProvider>,
@@ -118,6 +118,16 @@ describe('AchievementsScreen', () => {
     });
     vi.spyOn(globalThis, 'fetch');
     mockAchievementsApi([]);
+  });
+
+  it('keeps the claimable deep link while the catalogue loads', async () => {
+    mockAchievementsApi([
+      makeAchievement({id:'ready',title:'Ready reward',status:'completed_unclaimed',isClaimable:true}),
+      makeAchievement({id:'locked',title:'Locked reward',status:'locked',isClaimable:false}),
+    ],1);
+    renderAchievements(false,'/achievements?filter=claimable');
+    expect(await screen.findByRole('tab',{name:/Забрать/,selected:true})).toBeInTheDocument();
+    expect(screen.queryByText('Locked reward')).not.toBeInTheDocument();
   });
 
   it('moves page tabs and their reward attention into panorama circles',async()=>{

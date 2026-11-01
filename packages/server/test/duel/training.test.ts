@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect, beforeAll, afterAll, beforeEach, vi } from 'vitest';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -476,7 +477,8 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     }
   });
 
-  it('persists post-lock training acceptance time and a full rolling hour after a transaction wait', async () => {
+  it('persists post-lock amateur training acceptance time and a full rolling hour after a transaction wait', async () => {
+    await pool.query('update users set level = 2 where id = $1', [userId]);
     const arrivedAt = new Date();
     const acceptedAt = new Date(arrivedAt.getTime() + 2_000);
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -773,6 +775,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
   });
 
   it('closes after the 500th shot', async () => {
+    const beforeReward = await pool.query('select xp, experience from users where id=$1', [userId]);
     await startTraining(1);
     for (let i = 1; i <= TRAINING_SHOTS_LIMIT; i += 1) {
       const r = await submitShot(i);
@@ -780,8 +783,39 @@ describe.skipIf(!hasIntegrationEnv)('/duel/training/*', () => {
     }
     const state = await getState();
     expect(state.state).toBe('closed');
+    expect(state.completion_reward).toEqual({ stars: 1, experience: 1 });
+    expect(state.completion_comparison).toMatchObject({kind: 'training', current: {shots:TRAINING_SHOTS_LIMIT,limit:TRAINING_SHOTS_LIMIT}, previous:null});
+    const afterReward = await pool.query('select xp, experience from users where id=$1', [userId]);
+    expect(Number(afterReward.rows[0].xp)).toBe(Number(beforeReward.rows[0].xp) + 1);
+    expect(Number(afterReward.rows[0].experience)).toBe(Number(beforeReward.rows[0].experience) + 1);
+    await getState();
+    await getState();
+    const repeatedReward = await pool.query('select xp, experience from users where id=$1', [userId]);
+    expect(repeatedReward.rows).toEqual(afterReward.rows);
+    const ledger = await pool.query("select metadata from currency_ledger where user_id=$1 and reason=$2", [userId, 'training_completion_reward']);
+    expect(ledger.rows).toHaveLength(1);
+    expect(ledger.rows[0].metadata).toMatchObject({ stars: 1, experience: 1 });
+    for (const filter of ['all', 'credit']) {
+      const history = await app.inject({ method: 'GET', url: `/inventory/transactions?filter=${filter}`, headers: authHeader() });
+      expect(history.statusCode).toBe(200);
+      expect(history.json().transactions).toEqual(expect.arrayContaining([expect.objectContaining({
+        title: 'Награда за тренировку', category: 'reward', flow: 'credit',
+        amounts: [{ currency: 'star', value: 1 }, { currency: 'experience', value: 1 }],
+      })]));
+    }
+
+
     expect(state.shots_taken).toBe(TRAINING_SHOTS_LIMIT);
 
+    // Historical rewards are restored to bank history without another payout.
+    await pool.query("delete from currency_ledger where user_id=$1 and reason='training_completion_reward'", [userId]);
+    const backfill = readFileSync(path.join(MIGRATIONS_DIR, '257_session_completion_reward_history.sql'), 'utf8');
+    await pool.query(backfill);
+    await pool.query(backfill);
+    const restored = await pool.query("select metadata from currency_ledger where user_id=$1 and reason='training_completion_reward'", [userId]);
+    expect(restored.rows).toHaveLength(1);
+    const restoredBalance = await pool.query('select xp, experience from users where id=$1', [userId]);
+    expect(restoredBalance.rows).toEqual(afterReward.rows);
     const extra = await submitShot(TRAINING_SHOTS_LIMIT + 1);
     expect(extra.statusCode).toBe(409);
   });
