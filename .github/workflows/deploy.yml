@@ -28,7 +28,7 @@ env:
   WWW_APP_DOMAIN: www.ultimatehockey.ru
   HEALTH_URL: https://ultimatehockey.ru/api/health
   LEGACY_URL: https://hockey.inbotwetrust.ru
-  DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru
+  DEV_APP_DOMAIN: dev.ultimatehockey.ru
 
 jobs:
   build-and-push:
