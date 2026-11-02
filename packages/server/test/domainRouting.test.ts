@@ -25,7 +25,7 @@ describe('production domain migration phase 1', () => {
     );
     expect(compose).toContain('WWW_APP_DOMAIN: ${WWW_APP_DOMAIN:-www.ultimatehockey.ru}');
     expect(compose).toContain(
-      'DEV_APP_DOMAIN: ${DEV_APP_DOMAIN:-dev.hockey.inbotwetrust.ru}',
+      'DEV_APP_DOMAIN: ${DEV_APP_DOMAIN:-dev.ultimatehockey.ru}',
     );
   });
 
@@ -39,13 +39,14 @@ describe('production domain migration phase 1', () => {
     expect(productionWorkflow).toContain('LEGACY_URL: https://hockey.inbotwetrust.ru');
   });
 
-  it('keeps dev on its current host and preserves production hosts for shared Caddy', () => {
-    expect(devWorkflow).toContain('DEV_APP_DOMAIN: dev.hockey.inbotwetrust.ru');
+  it('serves dev on the canonical development host and preserves production hosts for shared Caddy', () => {
+    expect(devWorkflow).toContain('DEV_APP_DOMAIN: dev.ultimatehockey.ru');
+    expect(productionWorkflow).toContain('DEV_APP_DOMAIN: dev.ultimatehockey.ru');
     expect(devWorkflow).toContain('APP_DOMAIN: ultimatehockey.ru');
     expect(devWorkflow).toContain('LEGACY_APP_DOMAIN: hockey.inbotwetrust.ru');
     expect(devWorkflow).toContain('WWW_APP_DOMAIN: www.ultimatehockey.ru');
     expect(devWorkflow).toContain(
-      'HEALTH_URL: https://dev.hockey.inbotwetrust.ru/api/health',
+      'HEALTH_URL: https://dev.ultimatehockey.ru/api/health',
     );
   });
 });
