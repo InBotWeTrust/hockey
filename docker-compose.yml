@@ -135,7 +135,7 @@ services:
       APP_DOMAIN: ${APP_DOMAIN:-ultimatehockey.ru}
       LEGACY_APP_DOMAIN: ${LEGACY_APP_DOMAIN:-hockey.inbotwetrust.ru}
       WWW_APP_DOMAIN: ${WWW_APP_DOMAIN:-www.ultimatehockey.ru}
-      DEV_APP_DOMAIN: ${DEV_APP_DOMAIN:-dev.hockey.inbotwetrust.ru}
+      DEV_APP_DOMAIN: ${DEV_APP_DOMAIN:-dev.ultimatehockey.ru}
       ADMIN_EMAIL: ${ADMIN_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

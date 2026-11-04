@@ -260,6 +260,7 @@ export async function buildApp(options: BuildAppOptions = {}) {
   await app.register(chatWs, { accessSecret: config.JWT_SECRET });
   await app.register(amateurDuelRoutes, {
     accessSecret: config.JWT_SECRET,
+    shotProgressWorkerEnabled: config.NODE_ENV !== 'test',
     fightWorkerEnabled: options.duelFightWorkerEnabled ?? config.NODE_ENV !== 'test',
     fightRuntimeRecoveryEnabled: options.duelFightRuntimeRecoveryEnabled ?? config.NODE_ENV !== 'test',
     duelSeedSecret: config.DAILY_SEED_SECRET,

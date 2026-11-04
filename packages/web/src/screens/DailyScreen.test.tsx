@@ -19,8 +19,6 @@ import { MemoryRouter, Routes, Route, useLocation, useNavigate } from 'react-rou
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createDuelStumbleRandomness,
-  createFightState,
-  DEFAULT_FIGHT_RULES,
   DAILY_PERIOD_SPEED_PRESETS,
   DEFAULT_DUEL_INVENTORY_TIMING,
   STICK_NEUTRAL,
@@ -8878,7 +8876,7 @@ describe('DailyScreen', () => {
     expect(within(opponentLine).getByText('07/30 · ИГРАЕТ 2/3')).toBeInTheDocument();
   });
 
-  it('keeps hockey playable and shows an incoming fight on the right without a modal', async () => {
+  it.each(['offered','resolved'] as const)('ignores stale duel fight state %s and keeps hockey playable', async status => {
     const now = Date.now();
     const activeMatch: AmateurDuelMatchState = {
       ...settledDuelMatch, status: 'active', outcome: null, winner_user_id: null, settled_at: null,
@@ -8886,7 +8884,7 @@ describe('DailyScreen', () => {
       period_started_at: new Date(now - 31000).toISOString(), period_ends_at: new Date(now + 180000).toISOString(),
       ends_at: new Date(now + 600000).toISOString(), fight_enabled: true, fight_paused_at: null,
       fight_availability: { allowed: false, reason: 'attempt_used', remainingMs: 0 },
-      fight: { id: 'fight-1', status: 'offered', initiator_user_id: settledDuelMatch.opponent.user_id,
+      fight: { id: 'fight-1', status, initiator_user_id: settledDuelMatch.opponent.user_id,
         response_deadline_at: new Date(now + 3000).toISOString(), starts_at: null, engine_state: null, resolved_at: null, winner_user_id: null },
       me: { ...settledDuelMatch.me, state: 'period_active', current_period: 1 },
       opponent: { ...settledDuelMatch.opponent, state: 'period_active', current_period: 1 },
@@ -8898,110 +8896,11 @@ describe('DailyScreen', () => {
       return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } });
     });
     renderWith(['/?view=amateur&match=match-1&play=1']);
-    const accept = await screen.findByRole('button', { name: 'Принять драку' });
-    expect(accept.parentElement?.parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
-    expect(screen.queryByRole('dialog', { name: 'Драка' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).not.toBeDisabled();
-    expect(screen.getByRole('timer')).toBeInTheDocument();
-    const engine=createFightState(DEFAULT_FIGHT_RULES, now - 1000);
-    engine.status='resolved';engine.winner=0;engine.hp=[2,0];
-    const resultMatch: AmateurDuelMatchState={...activeMatch,state_revision:1,fight_paused_at:new Date(now).toISOString(),
-      me:{...activeMatch.me,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}},
-      fight:{...activeMatch.fight!,status:'resolved',engine_state:engine,winner_user_id:activeMatch.me.user_id,resolved_at:new Date(now).toISOString()}};
-    act(()=>useAmateurDuelStore.getState().applyState(resultMatch));
-    expect(within(await screen.findByRole('dialog',{name:'Вы победили'})).getByRole('group',{name:'+1 звезда'})).toBeInTheDocument();
-    expect(screen.getByRole('dialog',{name:'Драка',hidden:true})).toBeInTheDocument();
-    expect(screen.getByText('02:29')).toBeInTheDocument();
-    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null}));
-    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    await screen.findByRole('button', {name:'БРОСОК'});
+    expect(screen.queryByRole('button',{name:'Принять драку'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog',{name:'Драка'})).not.toBeInTheDocument();
     expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
-
-  });
-
-  it('holds a fight without a winner in the result modal then resumes shooting', async () => {
-    const now = Date.now();
-    const activeMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch, status: 'active', outcome: null, winner_user_id: null, settled_at: null,
-      settled_reason: null, earned_reward: null, server_now: new Date(now).toISOString(),
-      period_started_at: new Date(now - 31000).toISOString(), period_ends_at: new Date(now + 180000).toISOString(),
-      ends_at: new Date(now + 600000).toISOString(), fight_enabled: true, fight_paused_at: null,
-      fight_availability: { allowed: false, reason: 'attempt_used', remainingMs: 0 },
-      fight: { id: 'fight-1', status: 'offered', initiator_user_id: settledDuelMatch.opponent.user_id,
-        response_deadline_at: new Date(now + 3000).toISOString(), starts_at: null, engine_state: null, resolved_at: null, winner_user_id: null },
-      me: { ...settledDuelMatch.me, state: 'period_active', current_period: 1 },
-      opponent: { ...settledDuelMatch.opponent, state: 'period_active', current_period: 1 },
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const payload = url.includes('/duel/amateur/matches/match-1') ? { match: activeMatch }
-        : url.includes('/duel/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
-      return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } });
-    });
-    renderWith(['/?view=amateur&match=match-1&play=1']);
-    const accept = await screen.findByRole('button', { name: 'Принять драку' });
-    expect(accept.parentElement?.parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
-    expect(screen.queryByRole('dialog', { name: 'Драка' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).not.toBeDisabled();
-    expect(screen.getByRole('timer')).toBeInTheDocument();
-    const engine=createFightState(DEFAULT_FIGHT_RULES, now - 1000);
-    engine.status='cancelled';engine.winner=null;engine.hp=[1,1];
-    const resultMatch: AmateurDuelMatchState={...activeMatch,state_revision:1,fight_paused_at:new Date(now).toISOString(),
-      me:{...activeMatch.me,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}},
-      fight:{...activeMatch.fight!,status:'cancelled',engine_state:engine,winner_user_id:null,resolved_at:new Date(now).toISOString()}};
-    act(()=>useAmateurDuelStore.getState().applyState(resultMatch));
-    expect(within(await screen.findByRole('dialog',{name:'Ничья'})).getByText('Драка завершена без победителя')).toBeInTheDocument();
-    expect(screen.queryByRole('group',{name:'+1 опыт'})).not.toBeInTheDocument();
-    expect(screen.getByRole('dialog',{name:'Драка',hidden:true})).toBeInTheDocument();
-    expect(screen.getByText('02:29')).toBeInTheDocument();
-    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null}));
-    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
-
-  });
-
-  it('shows medical assistance after defeat then returns directly to hockey', async () => {
-    const now = Date.now();
-    const activeMatch: AmateurDuelMatchState = {
-      ...settledDuelMatch, status: 'active', outcome: null, winner_user_id: null, settled_at: null,
-      settled_reason: null, earned_reward: null, server_now: new Date(now).toISOString(),
-      period_started_at: new Date(now - 31000).toISOString(), period_ends_at: new Date(now + 180000).toISOString(),
-      ends_at: new Date(now + 600000).toISOString(), fight_enabled: true, fight_paused_at: null,
-      fight_availability: { allowed: false, reason: 'attempt_used', remainingMs: 0 },
-      fight: { id: 'fight-1', status: 'offered', initiator_user_id: settledDuelMatch.opponent.user_id,
-        response_deadline_at: new Date(now + 3000).toISOString(), starts_at: null, engine_state: null, resolved_at: null, winner_user_id: null },
-      me: { ...settledDuelMatch.me, state: 'period_active', current_period: 1 },
-      opponent: { ...settledDuelMatch.opponent, state: 'period_active', current_period: 1 },
-    };
-    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
-      const url = input instanceof Request ? input.url : String(input);
-      const payload = url.includes('/duel/amateur/matches/match-1') ? { match: activeMatch }
-        : url.includes('/duel/training/state') ? trainingIdleState : { ...baseState, lifetime_total_goals: 1000 };
-      return new Response(JSON.stringify(payload), { status: 200, headers: { 'content-type': 'application/json' } });
-    });
-    renderWith(['/?view=amateur&match=match-1&play=1']);
-    const accept = await screen.findByRole('button', { name: 'Принять драку' });
-    expect(accept.parentElement?.parentElement).toHaveStyle({ right: 'clamp(10px, 4.2%, 22px)' });
-    expect(screen.queryByRole('dialog', { name: 'Драка' })).not.toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'БРОСОК' })).not.toBeDisabled();
-    expect(screen.getByRole('timer')).toBeInTheDocument();
-    const engine=createFightState(DEFAULT_FIGHT_RULES, now - 1000);
-    engine.status='resolved';engine.winner=1;engine.hp=[0,2];
-    const resultMatch: AmateurDuelMatchState={...activeMatch,state_revision:1,fight_paused_at:new Date(now).toISOString(),
-      me:{...activeMatch.me,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}},
-      fight:{...activeMatch.fight!,status:'resolved',engine_state:engine,winner_user_id:activeMatch.opponent.user_id,resolved_at:new Date(now).toISOString()}};
-    act(()=>useAmateurDuelStore.getState().applyState(resultMatch));
-    expect(within(await screen.findByRole('dialog',{name:'Вы проиграли'})).getByRole('group',{name:'+1 опыт'})).toBeInTheDocument();
-    expect(screen.getByRole('dialog',{name:'Драка',hidden:true})).toBeInTheDocument();
-    expect(screen.getByText('02:29')).toBeInTheDocument();
-    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:2,fight_paused_at:null,me:{...resultMatch.me,recovery_until:null,fight_aid_until:new Date(Date.now()+10000).toISOString(),clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:false}}}));
-    expect(await screen.findByRole('dialog',{name:'Оказание помощи'})).toBeInTheDocument();
-    expect(screen.getByRole('img',{name:'Доктор оказывает помощь хоккеисту'})).toBeInTheDocument();
-    expect(screen.getByRole('timer',{name:'До возвращения в игру'})).toHaveTextContent('10');
-    expect(screen.queryByText('Восстановление после драки')).not.toBeInTheDocument();
-    act(()=>useAmateurDuelStore.getState().applyState({...resultMatch,state_revision:3,fight_paused_at:null,me:{...resultMatch.me,recovery_until:null,fight_aid_until:null,clock:{periodElapsedMs:31000,totalActiveMs:31000,remainingMs:149000,running:true}}}));
-    await waitFor(()=>expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(screen.getByRole('button',{name:'БРОСОК'})).not.toBeDisabled();
-
+    expect(vi.mocked(fetch).mock.calls.some(([url])=>String(url).includes('/fight/'))).toBe(false);
   });
 
   it('shows five minutes to a technical forfeit after an intermission period is ready', () => {
