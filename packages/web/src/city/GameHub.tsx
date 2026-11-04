@@ -177,6 +177,13 @@ export function GameHub({
   const trainingData = useTrainingSessionStore((s) => s.data);
   const trainingInFlight = useTrainingSessionStore((s) => s.inFlight);
   const refreshTraining = useTrainingSessionStore((s) => s.refresh);
+  useEffect(() => {
+    // The floating hub deliberately avoids polling while gameplay is active.
+    // Once daily play closes, revalidate its cached training lock immediately.
+    if (data.state === 'closed' && trainingData?.gameplay_lock?.reason === 'active_daily') {
+      void refreshTraining();
+    }
+  }, [data.state, trainingData?.gameplay_lock?.reason, refreshTraining]);
   const [modeInfoModal, setModeInfoModal] = useState<ModeInfoModalContent | null>(null);
   const [duelStatsMatch, setDuelStatsMatch] = useState<AmateurDuelMatch | null>(null);
   const [recoveryTarget, setRecoveryTarget] = useState<{
