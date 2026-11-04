@@ -9894,3 +9894,28 @@ describe('floating game hub presentation',()=>{
   expect(trainingRefresh).not.toHaveBeenCalled();
  });
 });
+
+describe('training availability after daily completion',()=>{
+ it('revalidates a cached training snapshot when entering the training rink',async()=>{
+  useDailyStore.setState({data:{...baseState,state:'closed'}});
+  useTrainingSessionStore.setState({data:{...trainingIdleState,gameplay_lock:{blocked:true,reason:'active_daily',ends_at:null,tournament_starts_at:null}}});
+  const refresh=vi.spyOn(useTrainingSessionStore.getState(),'refresh').mockImplementation(async()=>{
+   useTrainingSessionStore.setState({data:{...trainingIdleState,gameplay_lock:null}});
+  });
+  renderWith(['/?view=training&play=1']);
+  await waitFor(()=>expect(refresh).toHaveBeenCalled());
+  expect(useTrainingSessionStore.getState().data?.gameplay_lock).toBeNull();
+ });
+ it('refreshes a cached daily lock when the daily game closes in the floating hub',async()=>{
+  useDailyStore.setState({data:{...baseState,state:'period_active'},inFlight:true});
+  useTrainingSessionStore.setState({data:{...trainingIdleState,gameplay_lock:{blocked:true,reason:'active_daily',ends_at:null,tournament_starts_at:null}},inFlight:false});
+  const refresh=vi.spyOn(useTrainingSessionStore.getState(),'refresh').mockImplementation(async()=>{
+   useTrainingSessionStore.setState({data:{...trainingIdleState,gameplay_lock:null}});
+  });
+  render(<QueryClientProvider client={new QueryClient({defaultOptions:{queries:{retry:false}}})}><MemoryRouter initialEntries={['/?view=daily&play=1']}><div className="app-shell"><GameHub presentation="floating" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}}/></div></MemoryRouter></QueryClientProvider>);
+  expect(refresh).not.toHaveBeenCalled();
+  act(()=>useDailyStore.setState({data:{...baseState,state:'closed'},inFlight:false}));
+  await waitFor(()=>expect(refresh).toHaveBeenCalledOnce());
+  expect(useTrainingSessionStore.getState().data?.gameplay_lock).toBeNull();
+ });
+});

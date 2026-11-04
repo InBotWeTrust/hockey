@@ -1324,8 +1324,9 @@ function TrainingPlaceholder({
   }, [refreshCourseCatalog]);
 
   useEffect(() => {
-    if (data === null) void refresh();
-  }, [data, refresh]);
+    // A cached snapshot can still contain the lock from a just-finished daily game.
+    void refresh();
+  }, [refresh]);
 
   useEffect(() => {
     if (data?.selected_period === 1 || data?.selected_period === 2 || data?.selected_period === 3) {
