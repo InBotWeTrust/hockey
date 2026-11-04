@@ -20,11 +20,6 @@ import { duelTemplateChoices } from "../components/duel/duelTemplateChoices.js";
 import { classifyMarksmanshipShot } from "@hockey/game-core";
 import { DuelKindPreferenceButton } from "../components/DuelKindPreferenceButton.js";
 import { AMATEUR_DAILY_COURT_BACKGROUND, AMATEUR_DUEL_COURT_BACKGROUND, AMATEUR_TOURNAMENT_COURT_BACKGROUND } from "../game/matchCourt.js";
-import { useDuelFightSocket } from "../hooks/useDuelFightSocket.js";
-import { FightControls } from "../components/duel/fight/FightControls.js";
-import { FightView } from "../game/fight/FightView.js";
-import { FightResultModal } from "../components/duel/fight/FightResultModal.js";
-import { FightModal } from "../components/duel/fight/FightModal.js";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -3402,7 +3397,6 @@ export function AmateurDuelPlayView({
     guardAmateurMutation(amateurAccess, () => undefined);
   };
   const match = useAmateurDuelStore((s) => s.match);
-  const fightSocket=useDuelFightSocket(matchId,match?.id===matchId&&(match.fight_enabled===true||!!match.fight_paused_at)&&match.source!=='tournament');
   const loading = useAmateurDuelStore((s) => s.loading);
   const error = useAmateurDuelStore((s) => s.error);
   const inFlight = useAmateurDuelStore((s) => s.inFlight);
@@ -3831,33 +3825,6 @@ export function AmateurDuelPlayView({
   const visibleMatch = periodLocallyExpired
     ? duelExpiredPeriodPresentation(match, periodEndsAt ?? fightNow)
     : match;
-  const fight = match.fight;
-  const medicalAidUntilMs = match.me.fight_aid_until ? Date.parse(match.me.fight_aid_until) : undefined;
-  const medicalAid = medicalAidUntilMs !== undefined;
-  const fightPaused = medicalAid || (!!match.fight_paused_at && fight?.status !== 'offered');
-  const fightOverlay = fightPaused && fight?.status !== 'offered' ? (
-    <FightModal {...(medicalAid ? {medicalAidUntilMs,nowMs:fightNow} : {})}>
-      {fight?.engine_state ? (
-        <FightView key={`${fight.id}:scene`}
-          state={fight.engine_state}
-          player={match.me.side === 'challenger' ? 0 : 1}
-          currentPlayer={{ name: match.me.display_name, avatarUrl: match.me.avatar_url }}
-          opponent={{ name: match.opponent.display_name, avatarUrl: match.opponent.avatar_url }}
-          nowMs={fightNow}
-          onAction={fightSocket.sendAction}
-          onMove={fightSocket.sendMove}
-          onInput={fightSocket.sendInput}
-          onAttack={fightSocket.sendAttack}
-          predictionReset={fightSocket.predictionReset}
-        />
-      ) : <p>Восстанавливаем состояние боя…</p>}
-      {(fight?.status === 'resolved' || fight?.status === 'cancelled') && <FightResultModal key={`${fight.id}:result`} won={fight.winner_user_id === match.me.user_id} draw={fight.status === 'cancelled'} interrupted={fight.reason === 'runtime_interrupted'} />}
-      {!fightSocket.connected && fight?.status !== 'resolved' && <p className="fight-connection" role="status">Восстанавливаем связь…</p>}
-      {fightSocket.error && fight?.status !== 'resolved' && <p className="fight-connection" role="status">{fightSocket.error}</p>}
-    </FightModal>
-  ) : null;
-  const fightRecovery=match.me.recovery_until?Math.max(0,Date.parse(match.me.recovery_until)-fightNow):0;
-  const fightAction = fight?.status === 'offered' || (match.fight_enabled && match.fight_availability?.allowed) ? <FightControls match={match} nowMs={fightNow} iconStyle={DUEL_INVENTORY_ICON_GLASS_STYLE}/> : null;
   if ((directPlayOnly && match.me.state !== 'period_active') || periodLocallyExpired ||
       (match.status === 'active' && match.me.state === 'completed')) {
     const timing = duelEventTiming(visibleMatch, now);
@@ -3905,7 +3872,7 @@ export function AmateurDuelPlayView({
             inFlight ? 'ФИКСИРУЕМ...' : duelRinkPrimaryLabel(visibleMatch, now).toUpperCase()
           }
           inactiveAction={canRunDirectDuelAction ? handleDirectDuelAction : undefined}
-          primaryActionBlocked={duelBlocked || fightRecovery>0}
+          primaryActionBlocked={duelBlocked}
           readyPresence={{
             playerReady: meReady,
             goalieReady: opponentReady,
@@ -3917,7 +3884,7 @@ export function AmateurDuelPlayView({
           optimisticAddShot={optimisticAddShot}
           submitShot={submitShot}
           applyState={applyState}
-          duelCondition={(elapsed,speeds)=>{const condition=duelCondition(elapsed,speeds);return condition&&fightRecovery>0?{...condition,canShoot:false}:condition;}}
+          duelCondition={duelCondition}
           longCourtBackground={amateurDuelCourtBackground(match)}
           hudAddon={
             <DuelRinkLoadoutHud
@@ -4069,7 +4036,6 @@ export function AmateurDuelPlayView({
       <>
         <PlayView<AmateurDuelMatchState>
           noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
-          suppressedByModal={!!fightOverlay}
           preserveSceneOnModalReturn
           showIceCar={false}
           playEntranceOnMount={playEntranceOnMount}
@@ -4078,7 +4044,8 @@ export function AmateurDuelPlayView({
           onRouteTransitionConsumed={onRouteTransitionConsumed}
           onBack={onBack}
           active={match.status === 'active' && !duelBlocked && amateurAccess.hasFullAccess}
-          primaryActionBlocked={duelBlocked || fightRecovery>0 || fightPaused}
+          suppressedByModal={false}
+          primaryActionBlocked={duelBlocked}
           {...(!amateurAccess.hasFullAccess ? { inactiveAction: showAmateurRestriction } : {})}
           seed={match.match_seed}
           goalieId={match.rules.goalieId}
@@ -4098,7 +4065,7 @@ export function AmateurDuelPlayView({
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
           }
           periodEndsAt={periodEndsAt}
-          {...(fightPaused ? { timer: formatMs(match.me.clock?.remainingMs ?? Math.max(0, (periodEndsAt ?? 0) - Date.parse(match.fight_paused_at!))) } : { onTimerExpired: refresh })}
+          onTimerExpired={refresh}
           backLabel={duelBackLabel(match.source, false)}
           scoreLabel={match.rules.duelKind === 'sniper' ? 'ОЧКИ' : 'ГОЛЫ'}
           canStartAction={
@@ -4226,8 +4193,7 @@ export function AmateurDuelPlayView({
             if (!condition) return condition;
             if (rhythmSampler && !rhythmSampler.conditionAt(elapsed).canShoot)
               return {...condition,canShoot:false};
-            if (fightRecovery <= 0) return condition;
-            return { ...condition, canShoot: false };
+            return condition;
           }}
           longCourtBackground={amateurDuelCourtBackground(match)}
           scoreboardAccessory={match.rules.duelKind==='rhythm' && !periodLocallyExpired && scoredRemainingMs>0 ? (
@@ -4253,17 +4219,15 @@ export function AmateurDuelPlayView({
               <DuelInventoryMiniHud
                 match={match}
                 liveCondition={liveDuelCondition}
-                {...(loadoutEditable && !fightPaused
+                {...(loadoutEditable
                   ? { onSelectKind: setSelectedLoadoutKind }
                   : {})}
               />
             </>
           }
-          rightHudAddon={fightAction}
           scoreboardOpponent={duelScoreboardOpponent(match)}
         />
-        {fightOverlay}
-        {!fightPaused && loadoutEditable && selectedLoadoutKind === 'stick' && (
+        {loadoutEditable && selectedLoadoutKind === 'stick' && (
           <DuelRinkLoadoutModal
             kind="stick"
             match={match}
