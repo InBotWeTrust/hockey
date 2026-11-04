@@ -215,7 +215,7 @@ export function LoginScreen(): JSX.Element {
               onClick={() => void openMobileAuth('vk')}
               style={{
                 alignSelf: 'center',
-                background: 'var(--liquid-selected-bg)',
+                background: '#0077ff',
                 color: '#fff',
                 justifyContent: 'center',
               }}
@@ -246,7 +246,7 @@ export function LoginScreen(): JSX.Element {
               style={{
                 alignSelf: 'center',
                 padding: '0 14px',
-                background: 'var(--liquid-selected-bg)',
+                background: '#0077ff',
                 color: '#ffffff',
                 justifyContent: 'center',
                 fontWeight: 700,
