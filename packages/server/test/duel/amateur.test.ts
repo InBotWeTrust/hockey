@@ -1,3 +1,5 @@
+import { readFile } from 'node:fs/promises';
+import { drainDuelShotProgress, enqueueDuelShotProgress } from '../../src/duel/amateur/shotProgress.js';
 import { renewRuntimeLease } from '../../src/duel/amateur/fight/runtime/persistence.js';
 import { randomUUID } from 'node:crypto';
 import { startFightWorker } from '../../src/duel/amateur/fight/worker.js';
@@ -5735,8 +5737,9 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       await blocker.query('begin');
       const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
       await blocker.query('lock table amateur_duel_participant in access exclusive mode');
-      pending = app.inject({method:'GET',url:'/duel/amateur/matches',headers:auth(tokenA)});
-      await waitForBlockedWriter(pool, pid, /amateur_duel_participant/i);
+      pending = app.inject({method:'GET',url:'/duel/amateur/matches',headers:auth(tokenA)}).then(response => response);
+      // PostgreSQL truncates long activity queries before the participant join.
+      await waitForBlockedWriter(pool, pid, /amateur_duel_participant|tournament_fixture_attempt/i);
       await probe.query('begin');
       // PostgreSQL takes KEY SHARE on users when inserting a shot's foreign key.
       // Settled history must not take a user write lock at all.
@@ -7482,7 +7485,140 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       duration_ms: 180000,
     });
   });
-  describe('ordinary duel fight challenge', () => {
+  it('reading a settled result does not lock either player during history loading', async () => {
+    const id=await createActiveMatch(false,2);
+    await pool.query("update amateur_duel_match set status='settled',settled_at=now() where id=$1",[id]);
+    await pool.query("update amateur_duel_participant set state='completed',completed_at=now() where match_id=$1",[id]);
+    const blocker=await pool.connect();
+    const probe=await pool.connect();
+    let pending:Promise<unknown>|undefined;
+    try {
+      await blocker.query('begin');
+      const pid=(await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+      await blocker.query('lock table currency_ledger in access exclusive mode');
+      pending=Promise.resolve(app.inject({url:`/duel/amateur/matches/${id}`,headers:auth(tokenA)}));
+      await waitForBlockedWriter(pool,pid,/currency_ledger/i);
+      await probe.query('begin');
+      await probe.query('select id from users where id=any($1::uuid[]) order by id for update nowait',[[userA,userB]]);
+    } finally {
+      await probe.query('rollback');probe.release();
+      await blocker.query('rollback');blocker.release();await pending;
+    }
+  });
+
+  it('both players can shoot while achievement storage is blocked', async () => {
+    const id = await createActiveMatch(true, 2);
+    expect((await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/period/start`,headers:auth(tokenB)})).statusCode).toBe(200);
+    const blocker = await pool.connect();
+    const responses: number[] = [];
+    let pending: Promise<unknown>[] = [];
+    try {
+      await blocker.query('begin');
+      await blocker.query('lock table user_achievement_stages in access exclusive mode');
+      pending = [tokenA,tokenB].map(token => Promise.resolve(app.inject({method:'POST',url:`/duel/amateur/matches/${id}/shot`,headers:auth(token),payload:{shot_index:1,input:{tapTime:1000},claimed_result:'goal'}})).then(response => responses.push(response.statusCode)));
+      await Promise.race([Promise.all(pending),new Promise(resolve=>setTimeout(resolve,1500))]);
+      expect(responses).toEqual([200,200]);
+    } finally {
+      await blocker.query('rollback');
+      blocker.release();
+      await Promise.all(pending);
+    }
+  });
+
+  it('persists progress until both players stop and retries it atomically', async () => {
+    const id=await createActiveMatch(true,2);
+    expect((await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/period/start`,headers:auth(tokenB)})).statusCode).toBe(200);
+    const shot=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/shot`,headers:auth(tokenA),payload:{shot_index:1,input:{tapTime:1000},claimed_result:'goal'}});
+    expect(shot.statusCode,shot.body).toBe(200);
+    expect(await drainDuelShotProgress(pool)).toBe(false);
+    expect((await pool.query('select count(*)::int as count from duel_shot_progress')).rows[0].count).toBe(1);
+    await pool.query("update amateur_duel_match set starts_at=now()-interval '1 hour', ends_at=now()-interval '1 second' where id=$1",[id]);
+    const blocker=await pool.connect();
+    try {
+      await blocker.query('begin');
+      await blocker.query('lock table user_achievement_stages in access exclusive mode');
+      await expect(drainDuelShotProgress(pool)).rejects.toThrow();
+    } finally {await blocker.query('rollback');blocker.release();}
+    expect((await pool.query('select count(*)::int as count from duel_shot_progress')).rows[0].count).toBe(1);
+    await pool.query('update duel_shot_progress set retry_at=now()');
+    expect(await drainDuelShotProgress(pool)).toBe(true);
+    expect(await drainDuelShotProgress(pool)).toBe(false);
+    expect((await pool.query('select count(*)::int as count from duel_shot_progress')).rows[0].count).toBe(0);
+    expect((await pool.query('select lifetime_shots_total from users where id=$1',[userA])).rows[0].lifetime_shots_total).toBe(1);
+  });
+
+  it('processes a saved batch once and preserves goals when the last shot missed', async () => {
+    const id=await createActiveMatch(false,2);
+    await pool.query('update users set lifetime_shots_total=3,lifetime_goals_total=2 where id=$1',[userA]);
+    const client=await pool.connect();
+    const at=Date.now();
+    try {
+      await client.query('begin');
+      for(const n of [1,2,3]) await enqueueDuelShotProgress(client,{
+        eventKey:`batch:${id}:${n}`,matchId:id,userId:userA,occurredAt:new Date(at+n),
+        progress:{lifetimeShots:n,lifetimeGoals:Math.min(n,2),level:2,goal:n<3},
+      });
+      await client.query('commit');
+    } finally {client.release();}
+    expect(await drainDuelShotProgress(pool)).toBe(true);
+    expect(await drainDuelShotProgress(pool)).toBe(false);
+    expect((await pool.query('select count(*)::int as count from duel_shot_progress')).rows[0].count).toBe(0);
+    const progress=await pool.query("select progress->>'total' as total from user_achievement_stages where user_id=$1 and achievement_id='career-goals' and stage_number=1",[userA]);
+    expect(progress.rows[0]?.total).toBe('2');
+    expect((await pool.query('select lifetime_shots_total from users where id=$1',[userA])).rows[0].lifetime_shots_total).toBe(3);
+  });
+
+  it('training activity completion can use its partial shot index', async () => {
+    const definition=(await pool.query("select pg_get_functiondef('social_capture_result'::regproc) as source")).rows[0].source as string;
+    const predicate=definition.match(/into total,goals from shot_session where ([^;]+);/)?.[1];
+    expect(predicate).toBeDefined();
+    const client=await pool.connect();
+    try {
+      await client.query('begin');
+      await client.query('create temp table activity_shot_probe(mode text,training_session_id uuid,shot_index int,server_result text) on commit drop');
+      const index=(await client.query("select pg_get_indexdef('shot_session_training_idx'::regclass) as definition")).rows[0].definition as string;
+      await client.query(index.replace('shot_session_training_idx','activity_probe_training_idx').replace('public.shot_session','activity_shot_probe'));
+      await client.query("insert into activity_shot_probe select 'training',md5(n::text)::uuid,n,'goal' from generate_series(1,10000) n");
+      await client.query('analyze activity_shot_probe');
+      const where=predicate!.replace("(r->>'id')::uuid", "'00000000-0000-4000-8000-000000000001'::uuid");
+      const plan=await client.query(`explain (format json) select count(*),count(*) filter(where server_result='goal') from activity_shot_probe where ${where}`);
+      expect(JSON.stringify(plan.rows)).toContain('activity_probe_training_idx');
+    } finally {await client.query('rollback');client.release();}
+  });
+
+  it('suspension migration releases existing fight pauses and preserves playing time', async () => {
+    const id=await createActiveMatch(true,2);
+    const before=(await pool.query('select ends_at from amateur_duel_match where id=$1',[id])).rows[0].ends_at as Date;
+    await pool.query("update amateur_duel_match set fight_paused_at=now()-interval '5 seconds' where id=$1",[id]);
+    await pool.query("update amateur_duel_participant set period_paused_at=now()-interval '5 seconds',recovery_until=now()+interval '10 seconds',fight_aid_until=now()+interval '10 seconds' where match_id=$1",[id]);
+    await pool.query(`insert into amateur_duel_fight(match_id,initiator_user_id,request_id,status,offered_at,response_deadline_at,rules)
+      values($1,$2,$3,'fighting',now()-interval '5 seconds',now(),'{}')`,[id,userA,randomUUID()]);
+    await pool.query(await readFile(path.join(MIGRATIONS_DIR,'259_suspend_duel_fights.sql'),'utf8'));
+    const match=(await pool.query('select ends_at,fight_paused_at from amateur_duel_match where id=$1',[id])).rows[0];
+    expect(match.fight_paused_at).toBeNull();
+    expect(match.ends_at.getTime()-before.getTime()).toBeGreaterThanOrEqual(5000);
+    const participants=(await pool.query('select period_paused_ms,period_paused_at,recovery_until,fight_aid_until from amateur_duel_participant where match_id=$1',[id])).rows;
+    for(const player of participants) {
+      expect(player.period_paused_ms).toBeGreaterThanOrEqual(5000);
+      expect(player.period_paused_at).toBeNull();
+      expect(player.recovery_until).toBeNull();
+      expect(player.fight_aid_until).toBeNull();
+    }
+    expect((await pool.query('select status from amateur_duel_fight where match_id=$1',[id])).rows[0].status).toBe('cancelled');
+    const shot=await app.inject({method:'POST',url:`/duel/amateur/matches/${id}/shot`,headers:auth(tokenA),payload:{shot_index:1,input:{tapTime:0},claimed_result:'goal'}});
+    expect(shot.statusCode,shot.body).toBe(200);
+  });
+
+  it('disabled duel fights expose no challenge or socket routes even with the old setting enabled', async () => {
+    const id = await createActiveMatch(true);
+    await pool.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fight test','Test') on conflict(key) do update set value=excluded.value");
+    const response = await app.inject({method: 'POST', url: `/duel/amateur/matches/${id}/fight/challenge`, headers: auth(tokenA), payload: {requestId: randomUUID()}});
+    expect(response.statusCode).toBe(404);
+    expect(app.hasRoute({method: 'GET', url: '/duel/amateur/matches/:matchId/ws'})).toBe(false);
+  });
+
+  // Dormant feature coverage retained for deliberate re-enablement.
+  describe.skip('ordinary duel fight challenge', () => {
     async function preparedFightMatch(totalPeriods = 1) {
       const id = await createActiveMatch(true,totalPeriods);
       const started = await app.inject({ method: 'POST', url: `/duel/amateur/matches/${id}/period/start`, headers: auth(tokenB) });
