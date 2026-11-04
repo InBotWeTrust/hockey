@@ -156,7 +156,7 @@ Concurrency: `group: deploy-prod, cancel-in-progress: false` — новый пу
 
 ### Dev → prod release rule
 
-Dev and prod are separate environments. `dev` deploys from branch `dev` to `dev.hockey.inbotwetrust.ru` with `server-dev/web-dev` and its own staging DB. Prod deploys from branch `main` to `ultimatehockey.ru` with `server/web` and its own prod DB; `hockey.inbotwetrust.ru` is the permanent legacy redirect after domain acceptance. To move changes from dev to prod, merge or PR `dev` → `main`; never try to copy built files or rebuild on the VPS manually.
+Dev and prod are separate environments. `dev` deploys from branch `dev` to `dev.ultimatehockey.ru` with `server-dev/web-dev` and its own staging DB. Prod deploys from branch `main` to `ultimatehockey.ru` with `server/web` and its own prod DB; `hockey.inbotwetrust.ru` is the permanent legacy redirect after domain acceptance. To move changes from dev to prod, merge or PR `dev` → `main`; never try to copy built files or rebuild on the VPS manually.
 
 Before merging `dev` to `main`, run a release sanity check:
 

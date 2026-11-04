@@ -829,7 +829,7 @@ describe('DailyScreen', () => {
       hitboxesVisible: false,
       speedOverrides: null,
     });
-    expect(trainingDebugSettingsForHost('dev.hockey.inbotwetrust.ru', true, savedSpeeds)).toEqual({
+    expect(trainingDebugSettingsForHost('dev.ultimatehockey.ru', true, savedSpeeds)).toEqual({
       enabled: true,
       hitboxesVisible: true,
       speedOverrides: savedSpeeds,

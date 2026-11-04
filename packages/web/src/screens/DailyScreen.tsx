@@ -197,7 +197,7 @@ function saveTrainingSpeedOverrides(value: SpeedOverrides | null): void {
 function isDevTrainingDebugHost(hostname: string): boolean {
   const normalizedHostname = hostname.trim().toLowerCase();
   return (
-    normalizedHostname === 'dev.hockey.inbotwetrust.ru' ||
+    normalizedHostname === 'dev.ultimatehockey.ru' ||
     normalizedHostname === 'localhost' ||
     normalizedHostname === '127.0.0.1' ||
     normalizedHostname === '::1'
