@@ -21,7 +21,7 @@ async function main():Promise<void>{
   const deals=newGame.series?.totalRounds??4;
   console.log('[bar-release]',JSON.stringify({engine:ENGINE_VERSION,newGrigoryDeals:deals,settings:settings.rows,existingGrigoryGames:games.rows}));
   if(deals!==5)throw new Error('New Grigory games must contain five deals');
-  if(settings.rows.find(row=>row.key==='duels.fights.enabled')?.value!==true)throw new Error('Ordinary duel fights are not enabled');
+  if(settings.rows.find(row=>row.key==='duels.fights.enabled')?.value!==false)throw new Error('Duel fights must remain suspended');
  } finally {client.release();await pool.end();}
 }
 main().catch(()=>{console.error('[bar-release] verification failed');process.exitCode=1;});
