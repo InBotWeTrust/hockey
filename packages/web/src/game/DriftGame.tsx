@@ -1,3 +1,4 @@
+import type {CaretakerEquipment} from './caretakerEquipment.js';
 import { useEffect, useRef, useState, type PointerEvent } from 'react';
 import {
   createCaretakerGame,
@@ -27,16 +28,18 @@ export function DriftGame({
   onComplete,
   send = sendDrift,
   venue = "yard",
+  equipment = venue === "stadium" ? "machine" : "shovel",
 }: {
   initial: DriftSession;
   onExit: () => void;
-  onComplete: () => void;
+  onComplete: (result: DriftSession) => void;
   send?: typeof sendDrift;
   venue?: "yard" | "stadium";
+  equipment?: CaretakerEquipment;
 }) {
   const variant=initial.variant??'drift';
   const engineVersion=caretakerGameVersion(variant);
-  const presentation=caretakerPresentation(variant,venue);
+  const presentation=caretakerPresentation(variant,venue,equipment);
   const {title,copy}=presentation;
   const [weather,setWeather]=useState(`${presentation.ventilation?'Включают продувку':'Подуло'} · 1/3`);
   const [startingPhysics]=useState(()=>createCaretakerGame(initial.seed,variant));
@@ -99,7 +102,7 @@ export function DriftGame({
         confirmed.current = true;
         release();
         setDone(true);
-        complete.current();
+        complete.current(result);
       }
     } catch (e) {
       if (mounted.current) {
@@ -118,19 +121,19 @@ export function DriftGame({
       acc = 0,
       completionAt = 0;
     const machineImages=Object.fromEntries(Object.entries(STADIUM_MACHINE_SPRITES).map(([key,src])=>{
-      const img=new Image();img.src=src;return [key,img];
+      const img=new Image();if(equipment==='machine')img.src=src;return [key,img];
     })) as Record<keyof typeof STADIUM_MACHINE_SPRITES,HTMLImageElement>;
     const waterTrail=new MachineWaterTrail();
     const image = new Image();
-    image.src = '/sprites/rink-caretaker-scrape.webp';
+    if(equipment==='shovel')image.src = '/sprites/rink-caretaker-scrape.webp';
     const downImage = new Image();
-    downImage.src = '/sprites/rink-caretaker-scrape-down.webp';
+    if(equipment==='shovel')downImage.src = '/sprites/rink-caretaker-scrape-down.webp';
     const rightImage = new Image();
-    rightImage.src = '/caretaker/grigory-right-fresh-v1.png';
+    if(equipment==='shovel')rightImage.src = '/caretaker/grigory-right-fresh-v1.webp';
     const leftImage = new Image();
-    leftImage.src = '/caretaker/grigory-left-fresh-v1.png';
+    if(equipment==='shovel')leftImage.src = '/caretaker/grigory-left-fresh-v1.webp';
     const seatedImage = new Image();
-    seatedImage.src = '/caretaker/grigory-seated-fresh-v1.png';
+    if(equipment==='shovel')seatedImage.src = '/caretaker/grigory-seated-fresh-v1.webp';
     const reducedMotion=window.matchMedia?.('(prefers-reduced-motion: reduce)').matches??false;
     let impactAnimation:Animation|null=null;
     let impactAt = -1000,
@@ -166,11 +169,11 @@ export function DriftGame({
             input = { ...control.current };
           physics.current = stepCaretakerGame(previous, input);
           queue.current.push(input);
-          const machineCrash=venue==='stadium'&&variant==='drift'&&previous.fallTicks===0&&physics.current.fallTicks>0;
+          const machineCrash=equipment==='machine'&&variant==='drift'&&previous.fallTicks===0&&physics.current.fallTicks>0;
           if(machineCrash){
             impactAnimation?.cancel();
             impactAnimation=animateMachineImpact(canvas.current?.closest<HTMLElement>('[data-caretaker-surface]')??null,
-              previous,physics.current,{venue,variant,reducedMotion});
+              previous,physics.current,{venue:equipment==='machine'?'stadium':'yard',variant,reducedMotion});
           }
           if (physics.current.collision > previous.collision && time - impactAt > 180) {
             impactAt = time;
@@ -263,7 +266,7 @@ export function DriftGame({
         ctx.clearRect(0, 0, rect.width, rect.height);
         const sx = rect.width / 600,
           sy = rect.height / 800;
-        if(venue==='stadium'){
+        if(equipment==='machine'){
           const scale=driftCaretakerWidth(rect.width,p.y)/SCRAPE_SPRITE_WIDTH*stadiumMachineFrame(p.angle).appearanceScale;
           if(!paused.current&&!confirmed.current&&p.fallTicks===0&&Math.hypot(p.vx,p.vy)>12){
             waterTrail.add(p.x*sx-Math.cos(p.angle)*103*scale,
@@ -314,7 +317,7 @@ export function DriftGame({
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         ctx.translate(p.x * sx, p.y * sy);
         ctx.scale(characterScale, characterScale);
-        if(venue==='stadium')drawStadiumMachine(ctx,machineImages,p.angle,p.fallTicks>0);
+        if(equipment==='machine')drawStadiumMachine(ctx,machineImages,p.angle,p.fallTicks>0);
         else {
         const sideways = Math.abs(Math.cos(p.angle)) > 0.707;
         const right = Math.cos(p.angle) > 0;
@@ -372,7 +375,7 @@ export function DriftGame({
       release();
       document.removeEventListener('visibilitychange', visibility);
     };
-  }, [initial.attemptId,venue]);
+  }, [initial.attemptId,venue,equipment]);
   const move = (e: PointerEvent<HTMLCanvasElement>) => {
     if (!origin.current) return;
     const rect = e.currentTarget.getBoundingClientRect(),
@@ -445,7 +448,7 @@ export function DriftGame({
           cardClassName="bonus-game-preview-modal bonus-game-launch-modal"
           onRequestClose={() => setInstruction(false)}
         >
-          <img className="bonus-game-preview-modal__artwork drift-briefing-art" src={venue === 'stadium' ? '/caretaker/machine-preview-v1.png' : '/caretaker/drift-yard-v2.png'} alt={venue==='yard'?'Григорий убирает снег на дворовом катке':'Григорий за рулём уборочной машины на любительском стадионе'}/>
+          <img className="bonus-game-preview-modal__artwork drift-briefing-art" src={equipment === 'machine' ? '/caretaker/machine-preview-v1.webp' : '/caretaker/drift-yard-v2.webp'} alt={equipment==='shovel'?'Григорий убирает лёд скребком':'Григорий за рулём уборочной машины на любительском стадионе'}/>
           <p className="modal-copy bonus-game-preview-modal__story">
             {copy}
           </p>

@@ -2,10 +2,10 @@ export interface ChatSheetHeight {
   height: number;
   compactHeight: number;
 }
-const DEFAULT_HEIGHT: ChatSheetHeight = { height: 0.55, compactHeight: 0.55 };
+const DEFAULT_HEIGHT: ChatSheetHeight = { height: 0.75, compactHeight: 0.75 };
 const keyFor = (owner?: string) => `chat-sheet-height-v1:${owner ?? 'anonymous'}`;
 export function clampChatSheetHeight(height: number): number {
-  return Number.isFinite(height) ? Math.max(1 / 3, Math.min(1, height)) : 0.55;
+  return Number.isFinite(height) ? Math.max(1 / 3, Math.min(1, height)) : 0.75;
 }
 export function readChatSheetHeight(owner?: string): ChatSheetHeight {
   try {
@@ -14,7 +14,7 @@ export function readChatSheetHeight(owner?: string): ChatSheetHeight {
       return { ...DEFAULT_HEIGHT };
     return {
       height: clampChatSheetHeight(saved.height),
-      compactHeight: saved.compactHeight < 1 ? clampChatSheetHeight(saved.compactHeight) : 0.55,
+      compactHeight: saved.compactHeight < 1 ? clampChatSheetHeight(saved.compactHeight) : 0.75,
     };
   } catch {
     return { ...DEFAULT_HEIGHT };

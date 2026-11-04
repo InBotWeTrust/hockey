@@ -1,6 +1,8 @@
+import {stadiumMachineFrame} from '../stadiumMachine.js';
 import { describe, expect, it } from 'vitest';
 import { RINK } from '@hockey/game-core';
 import {
+  maintenanceMachinePixelScale,
   CARETAKER_BOTTOM_Y,
   CARETAKER_LEFT_X,
   CARETAKER_RIGHT_X,
@@ -230,4 +232,16 @@ describe('iceCarSurfaceEffectsAt', () => {
     expect(near.shadow.width).toBeGreaterThan(far.shadow.width);
     expect(near.shadow.height).toBeGreaterThan(far.shadow.height);
   });
+});
+
+it('uses the stadium machine for both directions of stadium maintenance', () => {
+  expect(iceCarPosAt(0, 'stadium').variant).toBe('machine-up');
+  const down = Array.from({length: 150}, (_, i) => iceCarPosAt(i * 1000, 'stadium')).find(p => p.heading > 0);
+  expect(down?.variant).toBe('machine-down');
+});
+
+it('keeps the machine at the same base scale in maintenance and the mini-game',()=>{
+ for(const angle of [-Math.PI/2,Math.PI/2]){
+  expect(maintenanceMachinePixelScale(angle)).toBeCloseTo(stadiumMachineFrame(angle).pixelScale,8);
+ }
 });

@@ -192,7 +192,7 @@ function saveTrainingSpeedOverrides(value: SpeedOverrides | null): void {
 function isDevTrainingDebugHost(hostname: string): boolean {
   const normalizedHostname = hostname.trim().toLowerCase();
   return (
-    normalizedHostname === 'dev.hockey.inbotwetrust.ru' ||
+    normalizedHostname === 'dev.ultimatehockey.ru' ||
     normalizedHostname === 'localhost' ||
     normalizedHostname === '127.0.0.1' ||
     normalizedHostname === '::1'
@@ -6827,7 +6827,9 @@ function DailyPlayView({
         caretakerPlaying={caretaker.active || caretaker.completed}
         onCaretakerTap={caretaker.onTap}
         rinkCover={caretaker.overlay}
-        maintenanceMode={isBreak || caretaker.active ? 'scrape' : 'flood'}
+        statusNotice={caretaker.invitation}
+        statusNoticeUnderScoreboard
+        maintenanceMode={caretaker.equipment === 'machine' ? 'stadium' : isBreak || caretaker.active ? 'scrape' : 'flood'}
         playEntranceOnMount={data.state === 'period_active' ? playEntranceOnMount : false}
         onEntranceConsumed={onEntranceConsumed}
         playRouteTransitionOnMount={playRouteTransitionOnMount}
@@ -6911,7 +6913,7 @@ function DailyPlayView({
           totalPeriods={data.total_periods}
           title={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
           ariaLabel={statsModal.state === 'closed' ? 'Игра завершена' : 'Итоги ежедневной игры'}
-          closeLabel={statsModal.state === 'closed' ? 'Ок, вернусь завтра' : 'Остаться на льду'}
+          closeLabel={statsModal.state === 'closed' ? 'Ок, вернусь завтра' : 'Продолжить'}
           supplemental={<DailyResultFollowUp
             state={statsModal.snapshot}
             userId={userId}

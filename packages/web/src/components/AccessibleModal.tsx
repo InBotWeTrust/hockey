@@ -57,6 +57,7 @@ export function AccessibleModal({
   backdropTestId,
   headerAction,
   beforeHeader,
+  outsideCard,
   children,
 }: {
   title: ReactNode;
@@ -80,10 +81,13 @@ export function AccessibleModal({
   backdropTestId?: string;
   headerAction?: ReactNode;
   beforeHeader?: ReactNode;
+  outsideCard?: ReactNode;
   children: ReactNode;
 }): JSX.Element {
   const reduceMotion = useReducedMotion();
   const titleId = useId();
+  const outsideId = useId();
+  const hasOutsideCard = outsideCard != null;
   const modalIdRef = useRef(Symbol('accessible-modal'));
   const backdropRef = useRef<HTMLDivElement | null>(null);
   const dialogRef = useRef<HTMLElement | null>(null);
@@ -129,7 +133,7 @@ export function AccessibleModal({
       }
       if (event.key !== 'Tab') return;
 
-      const focusable = focusableElements(dialog);
+      const focusable = focusableElements(hasOutsideCard ? backdrop : dialog);
       const first = focusable[0];
       const last = focusable.at(-1);
       if (first === undefined || last === undefined) {
@@ -163,7 +167,7 @@ export function AccessibleModal({
         deferredRestoreTarget = null;
       }
     };
-  }, [initialFocusRef, open]);
+  }, [initialFocusRef, open, hasOutsideCard]);
 
   return createPortal(
     <AnimatePresence {...(onExitComplete ? { onExitComplete } : {})}>
@@ -191,6 +195,7 @@ export function AccessibleModal({
             className={cardClassName ? `modal-card ${cardClassName}` : 'modal-card'}
             role="dialog"
             aria-modal="true"
+            {...(hasOutsideCard ? {'aria-owns': outsideId} : {})}
             {...(ariaLabel === undefined
               ? { 'aria-labelledby': titleId }
               : { 'aria-label': ariaLabel })}
@@ -248,6 +253,7 @@ export function AccessibleModal({
             {copy !== undefined && <p className="modal-copy">{copy}</p>}
             <div style={{ marginTop: 14 }}>{children}</div>
           </motion.section>
+          {hasOutsideCard && <div id={outsideId} style={{display:'contents'}}>{outsideCard}</div>}
         </motion.div>
       )}
     </AnimatePresence>,

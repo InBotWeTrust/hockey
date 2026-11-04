@@ -22,7 +22,7 @@ it('shows a neutral square during gameplay and opens a complete window without t
  await waitFor(()=>expect(screen.getByRole('dialog',{name:'Игры'})).toBeVisible());
  expect(screen.getByText('Период доступен')).toBeVisible();expect(screen.getByRole('button',{name:'На лёд'})).toBeVisible();
  expect(screen.queryByText('Ежедневная игра')).toBeNull();
- fireEvent.click(screen.getByRole('button',{name:'Свернуть игры'}));
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть игры'}));
  expect(screen.getByRole('button',{name:'Открыть игры'})).toBeVisible();
 });
 it('turns red for an unfinished duel and prefers that entry when opening',()=>{
@@ -58,7 +58,7 @@ it('keeps a saved window reachable after a smaller viewport and separates accoun
 it('opens a tournament before daily and training every time, even after browsing another card',()=>{
  const change=vi.fn();show({entries:[daily,{...daily,id:'cup',kind:'classic',dockState:'active'}],onActiveIndexChange:change});
  fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));expect(change).toHaveBeenLastCalledWith(1);
- fireEvent.click(screen.getByRole('button',{name:'Свернуть игры'}));
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть игры'}));
  change.mockClear();fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));expect(change).toHaveBeenCalledWith(1);
 });
 
@@ -94,16 +94,32 @@ it('pulses only for a started duel, including waiting, until it completes', () =
 
 import {GameMenuProvider,useGameMenu} from './GameMenuContext.js';
 function MapHost(){const {setMapHost}=useGameMenu();return <aside ref={setMapHost}/>;}
-it('uses filtered original cube cards on map and groups bar games',async()=>{
+it('opens the selected map event in the full cube and keeps every activity navigable',async()=>{
  const a={...daily,id:'d1',kind:'duel' as const,title:'Alex',deadlineAt:Date.now()+60000};
  const b={...a,id:'d2',title:'Max'};
- render(<MemoryRouter initialEntries={['/sections']}><GameMenuProvider><MapHost/><FloatingGamePanel {...props} entries={[daily,a,b,{...a,id:'bar1',kind:'bar',eyebrow:'Карты'},{...a,id:'bar2',kind:'bar',eyebrow:'Бильярд'}]}/></GameMenuProvider></MemoryRouter>);
+ render(<MemoryRouter initialEntries={['/sections']}><GameMenuProvider><MapHost/><FloatingGamePanel {...props} entries={[daily,{...daily,id:'training',kind:'training',eyebrow:'Тренировка',title:'Training'},a,b,{...a,id:'bar1',kind:'bar',eyebrow:'Карты'},{...a,id:'bar2',kind:'bar',eyebrow:'Бильярд'}]}/></GameMenuProvider></MemoryRouter>);
  expect(screen.queryByRole('button',{name:'Открыть игры'})).toBeNull();
  fireEvent.click(await screen.findByRole('button',{name:'Дуэли, событий: 2'}));
  expect(screen.getByText('Alex')).toBeVisible();
- expect(screen.getByRole('group',{name:'Вкладки игр'}).querySelectorAll('button')).toHaveLength(2);
+ expect(screen.getByRole('group',{name:'Вкладки игр'}).querySelectorAll('button')).toHaveLength(6);
  fireEvent.click(screen.getByRole('button',{name:'Следующая игра'}));expect(screen.getByText('Max')).toBeVisible();
- fireEvent.click(screen.getByRole('button',{name:'Свернуть игры'}));
+ fireEvent.click(screen.getByRole('button',{name:'Выбрать Тренировка'}));expect(screen.getByText('Training')).toBeVisible();
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть игры'}));
  fireEvent.click(screen.getByRole('button',{name:'Игры в баре, событий: 2'}));
- expect(screen.getByRole('group',{name:'Вкладки игр'}).querySelectorAll('button')).toHaveLength(2);
+ expect(screen.getByRole('group',{name:'Вкладки игр'}).querySelectorAll('button')).toHaveLength(6);
+ expect(screen.getByRole('button',{name:'Следующая игра'})).toBeEnabled();
+});
+
+it('shows the first-open movement hint outside the cube content',()=>{
+ show({owner:'external-cube-hint'});
+ fireEvent.click(screen.getByRole('button',{name:'Открыть игры'}));
+ const hint=screen.getByRole('status',{name:'Подсказка: окно игр'});
+ expect(screen.getByRole('dialog',{name:'Игры'})).not.toContainElement(hint);
+ expect(screen.getByRole('dialog',{name:'Игры'}).parentElement).toContainElement(hint);
+});
+it('starts the game shortcut on the left slightly above the middle of the section',()=>{
+ const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({width:390,height:844} as DOMRect);
+ show({owner:'first-placement'});
+ expect(screen.getByRole('button',{name:'Открыть игры'})).toHaveStyle({left:'12px',top:'337.6px'});
+ rect.mockRestore();
 });

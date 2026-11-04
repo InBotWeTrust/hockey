@@ -92,6 +92,7 @@ it('drags without opening chat, persists the position, and clamps it after resiz
 });
 
 it('still lets the existing side preference move a previously dragged shortcut', async () => {
+  localStorage.setItem('map-chat-position-v1:one', 'right');
   const { setMapChatPosition } = await import('../app/mapChatPosition.js');
   const { act } = await import('@testing-library/react');
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
@@ -108,4 +109,9 @@ it('still lets the existing side preference move a previously dragged shortcut',
   );
   act(() => setMapChatPosition('one', 'left'));
   expect(screen.getByRole('button', { name: 'Открыть чат' }).style.left).toBe('12px');
+});
+it('starts chat directly below the game shortcut on first section entry',()=>{
+ vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({width:390,height:844} as DOMRect);
+ render(<MemoryRouter initialEntries={['/bar']}><div className="app-shell"><FloatingChatShortcut owner="first-placement" unreadCount={0}/></div></MemoryRouter>);
+ expect(screen.getByRole('button',{name:'Открыть чат'})).toHaveStyle({left:'12px',top:'397.6px'});
 });

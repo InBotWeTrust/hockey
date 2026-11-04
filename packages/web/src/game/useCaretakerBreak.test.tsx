@@ -1,11 +1,12 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { useCaretakerBreak } from './useCaretakerBreak.js';
+import type { DriftSession } from '../api/drift.js';
 import type { DailyStateResponse } from '../api/duel.js';
-const api = vi.hoisted(() => ({ start: vi.fn(), hint: vi.fn() }));
+const api = vi.hoisted(() => ({ start: vi.fn(), hint: vi.fn(), result: {} as DriftSession }));
 vi.mock('../api/caretaker.js', () => ({ caretakerHint: api.hint }));
 vi.mock('../api/drift.js', () => ({ startDrift: api.start, sendDrift: vi.fn() }));
-vi.mock('./DriftGame.js', () => ({ DriftGame: ({ onComplete, onExit }: { onComplete: () => void; onExit: () => void }) => <div aria-label="Лёд в заносе"><button onClick={onComplete}>Завершить уборку</button><button onClick={onExit}>Выйти из уборки</button></div> }));
+vi.mock('./DriftGame.js', () => ({ DriftGame: ({ onComplete, onExit }: { onComplete: (result: DriftSession) => void; onExit: () => void }) => <div aria-label="Лёд в заносе"><button onClick={()=>onComplete(api.result)}>Завершить уборку</button><button onClick={onExit}>Выйти из уборки</button></div> }));
 const base = {
   day_date: '2026-10-31',
   current_period: 1,
@@ -27,7 +28,7 @@ function Harness({
         Григорий
       </button>
       <span>{caretaker.completed ? 'Убран' : 'На льду'}</span>
-      {caretaker.overlay}
+      {caretaker.overlay}{caretaker.invitation}
     </>
   );
 }
@@ -35,6 +36,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   localStorage.clear();
   api.hint.mockResolvedValue({ show: true });
+  api.result={attemptId:'a',seed:'test',version:2,seq:1,progress:100,completed:true,showInstruction:false,serverNow:new Date().toISOString(),readyAt:new Date(Date.now()+120000).toISOString()};
   api.start.mockResolvedValue({
     id: 'a',
     attemptId: 'a',
@@ -83,7 +85,7 @@ it('hides the caretaker after success until a new break', async () => {
  const view = render(<Harness />);
  fireEvent.click(screen.getByText('Григорий'));
  fireEvent.click(await screen.findByText('Завершить уборку'));
- fireEvent.click(screen.getByText('Выйти из уборки'));
+ fireEvent.click(await screen.findByRole('button',{name:'Отлично'}));
  expect(screen.getByText('Убран')).toBeInTheDocument();
  expect(screen.getByText('Григорий')).toBeDisabled();
  view.unmount();
@@ -92,4 +94,28 @@ it('hides the caretaker after success until a new break', async () => {
  resumed.rerender(<Harness data={{...base, current_period: 2}} />);
  expect(screen.getByText('На льду')).toBeInTheDocument();
  expect(screen.getByText('Григорий')).not.toBeDisabled();
+});
+
+it('keeps the break invitation visible after the first introduction', async () => {
+ api.hint.mockResolvedValue({show:false});
+ render(<Harness/>);
+ expect(await screen.findByText('Нажми на Григория – помоги убрать лёд и сократи перерыв.')).toBeVisible();
+});
+
+it('shows the saved time and remaining break after a confirmed success',async()=>{
+ render(<Harness/>);
+ fireEvent.click(screen.getByText('Григорий'));
+ fireEvent.click(await screen.findByText('Завершить уборку'));
+ expect(await screen.findByRole('dialog',{name:'Лёд готов!'})).toHaveTextContent('Перерыв сокращён на:13 мин');
+ expect(screen.getByText('2:00')).toBeInTheDocument();
+});
+it('offers the next period when a successful game ends the break',async()=>{
+ api.result={...api.result,readyAt:api.result.serverNow};
+ render(<Harness/>);
+ fireEvent.click(screen.getByText('Григорий'));
+ fireEvent.click(await screen.findByText('Завершить уборку'));
+ expect(await screen.findByRole('dialog',{name:'Лёд готов!'})).toHaveTextContent('Можно начинать следующий период.');
+ fireEvent.click(screen.getByRole('button',{name:'На лёд'}));
+ expect(screen.queryByRole('dialog')).toBeNull();
+ expect(screen.getByText('Григорий')).toBeDisabled();
 });

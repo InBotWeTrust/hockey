@@ -1,3 +1,4 @@
+import { WindowHandleHint } from '../components/WindowHandleHint.js';
 import { isAppKeyboardOpen } from '../app/viewport.js';
 import {rememberChatScreen} from './chatResume.js';
 import {chatBackdropStyle} from '../components/chatBackdrop.js';
@@ -145,6 +146,7 @@ function ChatSheet({
       dragListener={false}
       onClose={onClose}
       initialFocusRef={closeButton}
+      outsideCard={<WindowHandleHint owner={owner} kind="messages" anchorRef={closeButton} />}
       cardClassName={`sheet-card game-scoreboard game-scoreboard--stable-surface chat-overlay${expanded ? ' chat-overlay--expanded' : ''}`}
       cardStyle={{ height: `${Math.round((keyboardOpen ? 1 : selection.height) * 10000) / 100}%` }}
       backdropStyle={chatBackdropStyle}
