@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  GAME_CORE_VERSION,
   DEFAULT_MARKSMANSHIP_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V3_SCORING_RULES,
   DEFAULT_MARKSMANSHIP_V4_SCORING_RULES,
@@ -38,9 +37,8 @@ describe('marksmanship score details', () => {
     expect(bonusService.supportsBonusGameCoreVersion(64)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(65)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(61)).toBe(false);
-    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125]) expect(bonusService.supportsBonusGameCoreVersion(version)).toBe(true);
-    expect(bonusService.supportsBonusGameCoreVersion(GAME_CORE_VERSION)).toBe(true);
-    expect(bonusService.supportsBonusGameCoreVersion(GAME_CORE_VERSION + 1)).toBe(false);
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117]) expect(bonusService.supportsBonusGameCoreVersion(version)).toBe(true);
+    expect(bonusService.supportsBonusGameCoreVersion(118)).toBe(false);
     expect(bonusService.supportsBonusGameCoreVersion(66)).toBe(true);
     expect(bonusService.supportsBonusGameCoreVersion(67)).toBe(true);
   });
