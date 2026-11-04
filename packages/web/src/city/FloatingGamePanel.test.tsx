@@ -117,3 +117,9 @@ it('shows the first-open movement hint outside the cube content',()=>{
  expect(screen.getByRole('dialog',{name:'Игры'})).not.toContainElement(hint);
  expect(screen.getByRole('dialog',{name:'Игры'}).parentElement).toContainElement(hint);
 });
+it('starts the game shortcut on the left slightly above the middle of the section',()=>{
+ const rect=vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({width:390,height:844} as DOMRect);
+ show({owner:'first-placement'});
+ expect(screen.getByRole('button',{name:'Открыть игры'})).toHaveStyle({left:'12px',top:'337.6px'});
+ rect.mockRestore();
+});

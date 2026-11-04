@@ -2,7 +2,7 @@
   position: absolute;
   z-index: 5;
   top: calc(12px + var(--app-safe-top, 0px));
-  left: 12px;
+  right: 12px;
   display: grid;
   gap: 3px;
   max-width: 160px;
@@ -63,4 +63,14 @@
 
 .district--weather .district-game-anchor {
   --city-panel-open-top: calc(104px + var(--app-safe-top, 0px));
+}
+
+.district .map-weekly {
+  max-height: none;
+  overflow: visible;
+}
+
+.map-action-rail {
+  top: max(calc(var(--city-tour-safe-top, 16px) + 4px), var(--map-weather-clearance, 0px));
+  max-height: calc(100% - var(--map-actions-bottom, 200px) - max(calc(var(--city-tour-safe-top, 16px) + 4px), var(--map-weather-clearance, 0px)) - 8px);
 }

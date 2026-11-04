@@ -4051,7 +4051,7 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByTestId('pixi-stage-stub')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     await waitFor(() => {
       expect(
@@ -4130,7 +4130,7 @@ describe('DailyScreen', () => {
     ).toBeInTheDocument();
     expect(screen.getByText('Путь в Любители')).toBeInTheDocument();
     expect(await screen.findByText('осталось шайб: 58')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Остаться на льду' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
 
     expect(await screen.findByRole('button', { name: 'ЛЁД ГОТОВИТСЯ' })).toBeDisabled();
     expect(screen.getByLabelText('location')).toHaveTextContent('/?view=daily');

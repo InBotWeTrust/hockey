@@ -2,5 +2,3 @@
 .caretaker-power{position:absolute;bottom:4%;left:15%;right:15%;text-align:center;font-size:12px;pointer-events:none;background:#edf7f2dd;border-radius:10px;padding:6px}
 /* Keep all gestures and snow on the ice, below the stadium stands. */
 .caretaker-field{position:absolute;top:30%;bottom:54px;left:0;right:0}.caretaker-game footer{margin-top:auto}
-
-.caretaker-invitation{max-width:340px;margin:0 auto;padding:0 14px;color:var(--liquid-ink,#fff);text-align:center;font-size:11px;line-height:15px;}

@@ -110,3 +110,8 @@ it('still lets the existing side preference move a previously dragged shortcut',
   act(() => setMapChatPosition('one', 'left'));
   expect(screen.getByRole('button', { name: 'Открыть чат' }).style.left).toBe('12px');
 });
+it('starts chat directly below the game shortcut on first section entry',()=>{
+ vi.spyOn(HTMLElement.prototype,'getBoundingClientRect').mockReturnValue({width:390,height:844} as DOMRect);
+ render(<MemoryRouter initialEntries={['/bar']}><div className="app-shell"><FloatingChatShortcut owner="first-placement" unreadCount={0}/></div></MemoryRouter>);
+ expect(screen.getByRole('button',{name:'Открыть чат'})).toHaveStyle({left:'12px',top:'397.6px'});
+});
