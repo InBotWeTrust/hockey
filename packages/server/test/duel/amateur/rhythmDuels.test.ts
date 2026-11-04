@@ -1,3 +1,4 @@
+import * as rhythmHistory from '../../../src/duel/amateur/rhythmHistory.js';
 import {
   createRhythmMovementSampler,
   projectRhythm,
@@ -112,7 +113,36 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
     for (const side of [0, 1]) expect((await post('period/start', side)).statusCode).toBe(200);
     return { id, post, rules: response.json().match.rules };
   }
-  it.each([false, true])('keeps simultaneous shots and polling indexed with fight offer=%s', async (fightOffered) => {
+  it('does not wait for another viewer filling a cold result summary', async () => {
+    const {id,post}=await start();
+    await app.pg.query("update amateur_duel_participant set period_started_at=now()-interval '180 seconds' where match_id=$1",[id]);
+    expect((await post('settle')).statusCode).toBe(200);
+    await app.pg.query('delete from amateur_duel_result_snapshot where match_id=$1',[id]);
+    const blocker=await app.pg.connect();
+    let status:number|undefined;
+    let pending:Promise<void>|undefined;
+    try {
+      await blocker.query('begin');
+      await blocker.query("select pg_advisory_xact_lock(hashtextextended('duel_result_snapshot:' || $1,0))",[id]);
+      pending=Promise.resolve(app.inject({url:`/duel/amateur/matches/${id}`,headers:players[0]!.headers})).then(response=>{status=response.statusCode;});
+      await Promise.race([pending,new Promise(resolve=>setTimeout(resolve,1500))]);
+      expect(status).toBe(200);
+    } finally {await blocker.query('rollback');blocker.release();await pending;}
+  });
+  it('reads completed rhythm results without replaying movement history', async () => {
+    const {id,post}=await start();
+    await app.pg.query("update amateur_duel_participant set period_started_at=now()-interval '180 seconds' where match_id=$1",[id]);
+    const settled=await post('settle');
+    expect(settled.statusCode,settled.body).toBe(200);
+    const replay=vi.spyOn(rhythmHistory,'warmRhythmHistory');
+    try {
+      const result=await app.inject({url:`/duel/amateur/matches/${id}`,headers:players[0]!.headers});
+      expect(result.statusCode,result.body).toBe(200);
+      expect(result.json().match.me.rhythm_travel).toBe(settled.json().match.me.rhythm_travel);
+      expect(replay).not.toHaveBeenCalled();
+    } finally { replay.mockRestore(); }
+  });
+  it.each([false, true])('keeps simultaneous shots and polling indexed with stale fight setting=%s', async (fightOffered) => {
     const { id, post } = await start();
     if (fightOffered) {
       await app.pg.query("insert into game_settings(key,value,label,description) values('duels.fights.enabled','true'::jsonb,'Fights','Test') on conflict(key) do update set value=excluded.value");
@@ -120,8 +150,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
         await app.pg.query("insert into amateur_duel_fight_presence(match_id,user_id,connection_id,expires_at) values($1,$2,gen_random_uuid(),now()+interval '1 minute')", [id, player.id]);
       }
       const offer = await post('fight/challenge', 0, { requestId: '00000000-0000-4000-8000-000000000099' });
-      expect(offer.statusCode, offer.body).toBe(200);
-      expect(offer.json().fight.status).toBe('offered');
+      expect(offer.statusCode, offer.body).toBe(404);
     }
     const queries = vi.spyOn(Client.prototype, 'query');
     let lookups: Array<{ text: string; values: unknown[] }> = [];
@@ -150,7 +179,7 @@ describe.skipIf(!hasIntegrationEnv)('Rhythm duel API', () => {
         }
       }
       expect(queries.mock.calls.filter(([sql]) => String(sql).includes('historical_streaks.best_days')))
-        .toHaveLength(2); // One new day per player; subsequent shots reuse the day receipt.
+        .toHaveLength(0); // Progress is durable but never evaluated in a live shot.
       lookups = queries.mock.calls.flatMap((args) => {
         const text = args[0];
         const values = args[1];
