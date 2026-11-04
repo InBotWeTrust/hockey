@@ -32,7 +32,7 @@ export function DriftGame({
 }: {
   initial: DriftSession;
   onExit: () => void;
-  onComplete: () => void;
+  onComplete: (result: DriftSession) => void;
   send?: typeof sendDrift;
   venue?: "yard" | "stadium";
   equipment?: CaretakerEquipment;
@@ -102,7 +102,7 @@ export function DriftGame({
         confirmed.current = true;
         release();
         setDone(true);
-        complete.current();
+        complete.current(result);
       }
     } catch (e) {
       if (mounted.current) {

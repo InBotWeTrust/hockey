@@ -375,7 +375,6 @@ export interface PlayViewProps<TState> {
   overlayControls?: ReactNode;
   rinkOverlay?: ReactNode;
   rinkCover?: ReactNode;
-  controlsFooter?: ReactNode;
   rinkUnderlay?: ReactNode;
   overlayControlsTop?: string | undefined;
   overlayControlsCentered?: boolean | undefined;
@@ -689,7 +688,6 @@ export function PlayView<TState>({
   overlayControls,
   rinkOverlay,
   rinkCover,
-  controlsFooter,
   rinkUnderlay,
   overlayControlsTop,
   overlayControlsCentered = false,
@@ -2696,12 +2694,12 @@ export function PlayView<TState>({
       </div>
 
       <div
-        aria-hidden={controlsFooter ? undefined : true}
+        aria-hidden="true"
         style={{
           flex: playLayout ? `0 0 ${playLayout.bottomSpace}px` : '0 1 88px',
           minHeight: 0,
         }}
-      >{controlsFooter}</div>
+      />
 
       {soundToastVisible && (
         <>

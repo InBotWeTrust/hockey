@@ -37,7 +37,7 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
  const allowed=!(onMap&&guideActive)&&!/^\/(?:login|auth|mobile-auth)(?:\/|$)/.test(location.pathname)&&!chatOpen;
  return <>
   <FloatingShortcutsHint owner={owner} visible={allowed&&!open&&!onMap&&!guideActive}/>
-  <FloatingShortcut owner={owner} storagePrefix="floating-games-position-v1" side="left" initialTop={80} visible={allowed&&!open&&!onMap} playing={playing} label="Открыть игры" count={notices.count} badgeLabel="Незавершённых игр" neutralBadge={!notices.urgent} pulseBadge={notices.pulsing} className="floating-games" icon={<Monitor aria-hidden="true"/>} onOpen={show}/>
+  <FloatingShortcut owner={owner} storagePrefix="floating-games-position-v1" side="left" initialTopFraction={.4} visible={allowed&&!open&&!onMap} playing={playing} label="Открыть игры" count={notices.count} badgeLabel="Незавершённых игр" neutralBadge={!notices.urgent} pulseBadge={notices.pulsing} className="floating-games" icon={<Monitor aria-hidden="true"/>} onOpen={show}/>
   {onMap&&mapHost&&!chatOpen&&createPortal(<MapGameActions entries={entries} now={now} onOpen={(_id,firstId)=>{setMapEntryId(firstId);setOpen(true);}}/>,mapHost)}
   {open&&active&&allowed&&createPortal(
    <div className="floating-games-layer" style={{alignItems:'center'}}>

@@ -11,7 +11,7 @@ function readPosition(prefix:string,owner?: string): Point | null {
     return null;
   }
 }
-export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false,side='right',initialTop,label,count,badgeLabel,neutralBadge=false,pulseBadge=false,className='',icon,onOpen}:{owner?:string|undefined;storagePrefix:string;visible?:boolean;playing?:boolean;side?:'left'|'right';initialTop?:number;label:string;count:number;badgeLabel:string;neutralBadge?:boolean;pulseBadge?:boolean;className?:string;icon:ReactNode;onOpen:()=>void}):JSX.Element|null {
+export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false,side='right',initialTop,initialTopFraction,label,count,badgeLabel,neutralBadge=false,pulseBadge=false,className='',icon,onOpen}:{owner?:string|undefined;storagePrefix:string;visible?:boolean;playing?:boolean;side?:'left'|'right';initialTop?:number;initialTopFraction?:number;label:string;count:number;badgeLabel:string;neutralBadge?:boolean;pulseBadge?:boolean;className?:string;icon:ReactNode;onOpen:()=>void}):JSX.Element|null {
   const button = useRef<HTMLButtonElement>(null);
   const [point, setPoint] = useState<Point | null>(() => readPosition(storagePrefix,owner));
   const previousSide = useRef(side);
@@ -50,12 +50,13 @@ export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false
     const update = () => {
       const r = bounds();
       if (!r) return;
+      const defaultY = initialTopFraction === undefined ? initialTop ?? r.height - 160 : r.height * initialTopFraction + (initialTop ?? 0);
       const sideChanged = previousSide.current !== side;
       previousSide.current = side;
       const next = clamp(
         sideChanged
-          ? { x: side === 'left' ? 12 : r.width - 56, y: position.current?.y ?? initialTop ?? r.height - 160 }
-          : (position.current ?? { x: side === 'left' ? 12 : r.width - 56, y: initialTop ?? r.height - 160 }),
+          ? { x: side === 'left' ? 12 : r.width - 56, y: position.current?.y ?? defaultY }
+          : (position.current ?? { x: side === 'left' ? 12 : r.width - 56, y: defaultY }),
       );
       if (sideChanged) save(next);
       setPoint(next);
@@ -69,7 +70,7 @@ export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false
       observer?.disconnect();
       window.removeEventListener('resize', update);
     };
-  }, [visible, side, owner,storagePrefix,initialTop]);
+  }, [visible, side, owner,storagePrefix,initialTop,initialTopFraction]);
   if (!visible) return null;
   return (
     <button
