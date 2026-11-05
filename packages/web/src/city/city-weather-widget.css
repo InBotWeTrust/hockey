@@ -5,9 +5,11 @@
   right: 12px;
   display: grid;
   gap: 3px;
-  width: 136px;
+  width: max-content;
   max-width: calc(100% - 24px);
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, max-content);
+  text-align: right;
+  justify-items: end;
   box-sizing: border-box;
   padding: 12px;
   border-radius: 18px;
@@ -32,6 +34,7 @@
 .city-weather-widget__reading {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: 8px;
 }
 .city-weather-widget__reading > span {
@@ -41,6 +44,8 @@
   font-variant-numeric: tabular-nums;
 }
 .city-weather-widget__description {
+  max-width: 100px;
+  text-wrap: balance;
   font-size: 10px;
   overflow: hidden;
   display: -webkit-box;
