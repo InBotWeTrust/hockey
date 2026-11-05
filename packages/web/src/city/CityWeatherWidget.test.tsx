@@ -26,3 +26,9 @@ it('distinguishes loading, unavailable and stale weather without inventing a tem
   view.rerender(<CityWeatherWidget cityName="Москва" weather={weather} stale />);
   expect(screen.getByText('Последние данные')).toBeVisible();
 });
+
+it('omits the provider proximity wording from the description', () => {
+  render(<CityWeatherWidget cityName="Краснодар" weather={{ ...weather, description: 'Местами дождь поблизости' }} />);
+  expect(screen.getByText('Местами дождь')).toBeVisible();
+  expect(screen.queryByText(/поблизости/i)).toBeNull();
+});
