@@ -3,13 +3,13 @@
   z-index: 5;
   top: calc(12px + var(--app-safe-top, 0px));
   right: 12px;
-  display: grid;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
   gap: 3px;
   width: max-content;
   max-width: calc(100% - 24px);
-  grid-template-columns: minmax(0, max-content);
   text-align: right;
-  justify-items: end;
   box-sizing: border-box;
   padding: 12px;
   border-radius: 18px;
@@ -44,6 +44,7 @@
   font-variant-numeric: tabular-nums;
 }
 .city-weather-widget__description {
+  width: min-content;
   max-width: 100px;
   text-wrap: balance;
   font-size: 10px;
@@ -52,7 +53,7 @@
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
   color: var(--liquid-muted, rgba(248, 249, 251, 0.82));
 }
 .city-weather-widget__footer {
