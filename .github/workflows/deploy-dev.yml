@@ -163,14 +163,14 @@ jobs:
           chmod 600 ~/.ssh/id_ed25519
           ssh-keyscan -H "$HOST" >> ~/.ssh/known_hosts
 
-      - name: Upload compose and Caddy config
+      - name: Upload staging compose files
         env:
           USER: ${{ secrets.DEPLOY_USER }}
           HOST: ${{ secrets.DEPLOY_HOST }}
           REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           scp -i ~/.ssh/id_ed25519 \
-            docker-compose.yml docker-compose.staging.yml Caddyfile \
+            docker-compose.yml docker-compose.staging.yml \
             "${USER}@${HOST}:${REMOTE_PATH}/"
 
       - name: Pull staging images and restart services on VPS
@@ -429,12 +429,8 @@ jobs:
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             up -d --force-recreate server-dev push-worker-dev web-dev < /dev/null
 
-          # Caddy belongs to the shared compose file and depends on prod
-          # services there. Recreate only Caddy itself so a dev deploy cannot
-          # restart prod server/web with whatever IMAGE_TAG happens to be in
-          # the environment.
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
-            up -d --force-recreate --no-deps caddy < /dev/null
+          # The shared proxy serves production too. Its configuration and lifecycle
+          # are managed by the production deployment, never by a staging release.
           docker image prune -f
           docker logout ghcr.io
           ENDSSH
