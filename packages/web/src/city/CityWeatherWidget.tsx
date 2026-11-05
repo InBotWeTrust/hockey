@@ -16,6 +16,7 @@ export function CityWeatherWidget({
   loading?: boolean;
   night?: boolean;
 }) {
+  const description = weather?.description.replace(/\s*поблизости/gi, '').trim();
   const Icon = weather ? (weather.kind === 'clear' && night ? Moon : icons[weather.kind]) : CloudOff;
   const temperature = weather
     ? `${new Intl.NumberFormat('ru', { signDisplay: 'exceptZero', maximumFractionDigits: 0 }).format(weather.temperature)}°`
@@ -33,8 +34,8 @@ export function CityWeatherWidget({
           {temperature}
         </span>
       </div>
-      <span className="city-weather-widget__description" title={weather?.description}>
-        {weather?.description ?? (loading ? 'Загрузка…' : 'Нет данных')}
+      <span className="city-weather-widget__description" title={description}>
+        {description ?? (loading ? 'Загрузка…' : 'Нет данных')}
       </span>
       {stale && weather && (
         <span className="city-weather-widget__footer">Последние данные</span>

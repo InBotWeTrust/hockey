@@ -5,7 +5,9 @@
   right: 12px;
   display: grid;
   gap: 3px;
-  max-width: 160px;
+  width: 136px;
+  max-width: calc(100% - 24px);
+  grid-template-columns: minmax(0, 1fr);
   box-sizing: border-box;
   padding: 12px;
   border-radius: 18px;
@@ -41,8 +43,11 @@
 .city-weather-widget__description {
   font-size: 10px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: var(--liquid-muted, rgba(248, 249, 251, 0.82));
 }
 .city-weather-widget__footer {
