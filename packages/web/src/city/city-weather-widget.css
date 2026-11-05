@@ -77,6 +77,7 @@
 }
 
 .district .map-weekly {
+  top: calc(12px + var(--app-safe-top, 0px));
   max-height: none;
   overflow: visible;
 }
