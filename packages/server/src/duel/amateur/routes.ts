@@ -1,3 +1,4 @@
+import { createGameplayRequestTiming, type GameplayRequestTiming } from '../requestTiming.js';
 import { sniperBreakdown, type SniperCategory } from './sniperBreakdown.js';
 import { createRhythmMovementSampler, projectRhythm, compareRhythmSeries } from '@hockey/game-core';
 import { projectMarathon, restoreScoredSceneClocks, compareScoredDuel, type MarathonWindowMs } from './scoredFormats.js';
@@ -1698,14 +1699,19 @@ function durationSeconds(ms: number): number {
 async function withTransaction<T>(
   app: { pg: { connect: () => Promise<PoolClient> } },
   fn: (client: PoolClient) => Promise<T>,
+  timing?: GameplayRequestTiming,
 ): Promise<T> {
+  timing?.phase('pool_wait');
   const client = await app.pg.connect();
   try {
+    timing?.phase('transaction_begin');
     await client.query('begin');
     const result = await fn(client);
+    timing?.phase('commit');
     await client.query('commit');
     return result;
   } catch (err) {
+    timing?.phase('rollback');
     await client.query('rollback').catch(() => undefined);
     throw err;
   } finally {
@@ -6859,18 +6865,25 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
     },
   );
 
+  const shotTiming = createGameplayRequestTiming('amateur_duel_shot');
   app.post(
     '/duel/amateur/matches/:matchId/shot',
-    { preHandler: [app.authenticate] },
+    { preHandler: [app.authenticate], onRequest: shotTiming.onRequest, onResponse: shotTiming.onResponse },
     async (req) => {
+      const timing = shotTiming.forRequest(req);
+      timing.phase('validation');
       const params = z.object({ matchId: uuid }).parse(req.params);
       const parsed = shotBodySchema.safeParse(req.body);
       if (!parsed.success) throw new AppError('bad_request', 'invalid duel shot payload', 400);
       const body = parsed.data;
+      timing.identify({ matchId: params.matchId, userId: req.user.id, shotIndex: body.shot_index });
 
       const response = await withTransaction(app, async (client) => {
+        timing.phase('gameplay_lock');
         await lockMatchGameplay(client, params.matchId);
+        timing.phase('match_lock');
         const lockedMatch = await fetchPlayableMatchForUpdate(client, params.matchId);
+        timing.phase('access_and_retry_check');
         const now = new Date();
         if (
           lockedMatch.challenger_user_id !== req.user.id &&
@@ -6886,6 +6899,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             [lockedMatch.id, req.user.id, body.shot_index],
           );
           if (prior.rows[0]) {
+            timing.phase('retry_response');
             const dto = await buildMatchStateDto(client, lockedMatch, req.user.id, now);
             const confirmedStats=await fetchCurrentPeriodStats(client,lockedMatch.id,req.user.id,1);
             const response: SubmitAmateurDuelShotResponse = {
@@ -6911,6 +6925,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             return { matchId: lockedMatch.id, settled: false, response };
           }
         }
+        timing.phase('reconcile_before_shot');
         let match = (await reconcileMatch(client, lockedMatch, now)).match;
         if (match.status !== 'active') {
           throw new AppError(
@@ -6919,6 +6934,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
             409,
           );
         }
+        timing.phase('shot_validation');
         const rules = parseRulesSnapshot(match.rules_snapshot);
         const participants = await fetchParticipants(client, match.id);
         const participant = participants.find((p) => p.user_id === req.user.id);
@@ -7011,6 +7027,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           )
             throw new AppError('conflict', 'duel shots overlap or rewind the clock', 409);
         }
+        timing.phase('simulation_setup');
         const loadout = loadoutFromUnknown(participant.loadout_snapshot, rules.powerCap);
         const inventoryReport = inventoryReportFromUnknown(participant.inventory_report);
         const effects = effectsFromUnknown(participant.inventory_effects_snapshot);
@@ -7053,9 +7070,11 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           );
         }
         const rhythmSampler = rules.duelKind === 'rhythm' ? rhythmMovementForParticipant(match, participant, rules) : null;
+        timing.phase('history_read');
         const rhythmHistory = rhythmSampler ? (await client.query<{input_payload:{tapTime:number;puckSpeedPerMs:number}}>(
           "select input_payload from shot_session where mode='amateur_duel' and amateur_duel_match_id=$1 and user_id=$2 order by period_number,shot_index",
           [match.id,req.user.id])).rows.map(row=>({tapTime:row.input_payload.tapTime,flightMs:(PUCK_START.y-GOAL_OPENING.y)/row.input_payload.puckSpeedPerMs})) : [];
+        timing.phase('simulation');
         if (rhythmSampler && !rhythmSampler.conditionAt(body.input.tapTime,rhythmHistory).canShoot)
           throw new AppError('conflict','player is still recovering from a stumble',409);
         const effectiveShooterFrequency = clampSpeed(
@@ -7109,6 +7128,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
         const awardedPoints = classification?.awardedPoints ?? 0;
         const serverResult: DuelShotResult = classification?.result.type ?? result.type;
 
+        timing.phase('shot_write');
         await client.query(
           `insert into shot_session
            (user_id, mode, amateur_duel_match_id, period_number, shot_index, seed,
@@ -7153,6 +7173,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           }
         }
 
+        timing.phase('user_progress');
         const updatedUser = await client.query<{
           lifetime_shots_total: number;
           lifetime_goals_total: number;
@@ -7183,11 +7204,13 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           });
         }
 
+        timing.phase('inventory');
         await consumeInventoryForShot(client, participant, loadout, inventoryReport, {
           skatesConsumed: condition.skatesConsumed,
           nutritionConsumed: condition.nutritionConsumed,
         });
 
+        timing.phase('settlement');
         if (
           periodRule.mode === 'quota' &&
           periodRule.shotsLimit !== null &&
@@ -7207,6 +7230,7 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
           now,
         );
         match = settledReconciliation.match;
+        timing.phase('response_build');
         const refreshedParticipant = (await fetchParticipants(client, match.id)).find(
           (candidate) => candidate.user_id === req.user.id,
         );
@@ -7265,12 +7289,15 @@ export const amateurDuelRoutes: FastifyPluginAsync<{
               }),
           response,
         };
-      });
+      }, timing);
+      timing.phase('publish');
       await publishDuelFixtureProgress(app, response.matchId);
+      timing.phase('tournament_completion');
       if (response.newlySettledRegularFixture !== undefined) {
         await reconcileNewlySettledRegularFixture(app, response.newlySettledRegularFixture);
       }
       if (response.settled) void notifySettlement(app, response.matchId);
+      timing.phase('response');
       return response.response;
     },
   );

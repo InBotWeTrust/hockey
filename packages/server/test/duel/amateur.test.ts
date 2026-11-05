@@ -76,6 +76,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   let tokenA: string;
   let tokenB: string;
   let homeArenaGameOrder = 10_000;
+  let timingLogCapture: unknown[][] | undefined;
 
   beforeAll(async () => {
     const initPool = createTestPool();
@@ -104,6 +105,13 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
       pushWorkerEnabled: false,
     });
     pool = app.pg;
+    app.addHook('onRequest', async (req) => {
+      if (timingLogCapture && req.routeOptions.url === '/duel/amateur/matches/:matchId/shot') {
+        vi.spyOn(req.log, 'warn').mockImplementation((...args) => {
+          timingLogCapture?.push(args);
+        });
+      }
+    });
   });
 
   afterAll(async () => {
@@ -111,6 +119,7 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
   });
 
   beforeEach(async () => {
+    timingLogCapture = undefined;
     await pool.query(
       `truncate users, auth_providers, user_equipment, user_sticks,
               user_currency_account, user_inventory_item,
@@ -7503,6 +7512,42 @@ describe.skipIf(!hasIntegrationEnv)('/duel/amateur/*', () => {
     } finally {
       await probe.query('rollback');probe.release();
       await blocker.query('rollback');blocker.release();await pending;
+    }
+  });
+
+  it('attributes a slow duel shot to its gameplay lock and keeps the shot result', async () => {
+    const id = await createActiveMatch(true);
+    const blocker = await pool.connect();
+    const logs: unknown[][] = [];
+    timingLogCapture = logs;
+    let pending: ReturnType<typeof app.inject> | undefined;
+    try {
+      await blocker.query('begin');
+      const pid = (await blocker.query('select pg_backend_pid() as pid')).rows[0].pid;
+      await blocker.query("select pg_advisory_xact_lock(hashtext('gameplay:' || $1))", [userA]);
+      pending = app.inject({method: 'POST', url: `/duel/amateur/matches/${id}/shot`,
+        headers: auth(tokenA), payload: {shot_index: 1, input: {tapTime: 1000}, claimed_result: 'goal'}});
+      // Start the injection before waiting for the database lock.
+      const responsePromise = Promise.resolve(pending);
+      await waitForBlockedWriter(pool, pid, /pg_advisory_xact_lock/);
+      await new Promise(resolve => setTimeout(resolve, 1100));
+      await blocker.query('rollback');
+      const response = await responsePromise;
+      expect(response.statusCode, response.body).toBe(200);
+      const entry = logs.find(([fields]) => (fields as {operation?: string})?.operation === 'amateur_duel_shot');
+      expect(entry, 'slow shot must expose its stage timings').toBeDefined();
+      const fields = entry![0] as {phasesMs: Record<string, number>; totalMs: number};
+      expect(fields).toMatchObject({matchId: id, userId: userA, shotIndex: 1, statusCode: 200});
+      expect(fields.phasesMs.gameplay_lock).toBeGreaterThanOrEqual(1000);
+      for (const phase of ['pool_wait', 'transaction_begin', 'match_lock', 'simulation', 'shot_write', 'response_build', 'commit', 'publish', 'response']) {
+        expect(fields.phasesMs[phase], phase).toBeGreaterThanOrEqual(0);
+      }
+      expect(JSON.stringify(entry)).not.toContain(tokenA);
+    } finally {
+      await blocker.query('rollback');
+      blocker.release();
+      if (pending) await pending;
+      timingLogCapture = undefined;
     }
   });
 
