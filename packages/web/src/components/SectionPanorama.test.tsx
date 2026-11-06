@@ -183,3 +183,13 @@ it('drags overflowed section circles with a mouse and suppresses the release cli
  fireEvent.click(target,{detail:1});expect(change).not.toHaveBeenCalled();
  fireEvent.click(target,{detail:0});expect(change).toHaveBeenCalledWith('1');
 });
+
+it('renders every internal menu item as an icon while keeping the panorama and badges',()=>{
+ const sections=['profile','rewards','friends','settings','story','open','daily','course','advanced','duels','tournaments','tasks','challenges','bank','history','stick','skates','nutrition','recovery','bar','inventory','speed','accuracy','marksmanship','endurance','rhythm','challenge'];
+ const view=render(<SectionPanorama label="Все разделы" pages={sections.map(id=>({id,label:id,image:'/thumb.webp',attention:id==='tasks'?7:0}))} selected="daily" onSelect={vi.fn()} panorama="/scene.webp" storageKey="all-icons"><p>Контент</p></SectionPanorama>);
+ const dock=screen.getByRole('tablist');
+ expect(dock.querySelectorAll('img')).toHaveLength(0);
+ for(const tab of screen.getAllByRole('tab'))expect(tab.querySelector('svg')).not.toBeNull();
+ expect(view.container.querySelector('.section-scene__panorama img')).toHaveAttribute('src','/scene.webp');
+ expect(screen.getByLabelText('Есть награда')).toHaveTextContent('7');
+});

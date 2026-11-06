@@ -111,10 +111,13 @@
   touch-action: manipulation;
   -webkit-tap-highlight-color: transparent;
 }
-.section-scene__dock img {
+.section-scene__dock .section-scene__icon {
   width: var(--navigation-circle);
   height: var(--navigation-circle);
-  object-fit: cover;
+  display: grid;
+  place-items: center;
+  color: inherit;
+  background: rgba(225, 235, 255, 0.08);
   border: var(--navigation-border);
   border-radius: 50%;
   filter: grayscale(1);
@@ -125,14 +128,14 @@
     opacity 0.15s,
     transform 0.18s ease;
 }
-.section-scene__dock [aria-selected='true'] img {
+.section-scene__dock [aria-selected='true'] .section-scene__icon {
   transform: scale(1.12);
   filter: none;
   opacity: 1;
   border: var(--navigation-selected-border);
   box-shadow: var(--navigation-selected-shadow);
 }
-.section-scene__dock button > span {
+.section-scene__dock button > span:not(.section-scene__icon) {
   font-size: 10px;
   font-weight: 650;
   line-height: 13px;
@@ -147,8 +150,8 @@
   outline-offset: 2px;
   border-radius: 12px;
 }
-.section-scene__dock button:hover img,
-.section-scene__dock button:focus-visible img {
+.section-scene__dock button:hover .section-scene__icon,
+.section-scene__dock button:focus-visible .section-scene__icon {
   transform: scale(1.22);
   filter: none;
   opacity: 1;
@@ -157,7 +160,7 @@
   margin-bottom: 0;
 }
 @media (prefers-reduced-motion: reduce) {
-  .section-scene__dock img {
+  .section-scene__dock .section-scene__icon {
     transition: none;
   }
 }

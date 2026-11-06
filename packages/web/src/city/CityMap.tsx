@@ -30,21 +30,21 @@ const basePlaces=[
  {id:'profile',name:'Моя квартира',x:7.2,y:36,w:3,h:8},
  {id:'yard',name:'Дворовый каток',x:11,y:60,w:12,h:14,thumb:[11,60]},
  {id:'shop',name:'Магазин',x:28.428,y:60.304,w:7.821,h:15.42,thumb:[28.428,60.304]},
- {id:'tasks',name:'Задания',x:39.618,y:60.912,w:6.578,h:13.986,thumb:[39.618,60.912]},
- {id:'chat',name:'Лента',x:19.837,y:47.806,w:3.89,h:7.779,thumb:[19.837,47.806]},
+ {id:'tasks',name:'Задания',x:39.866,y:60.958,w:6.578,h:13.986,thumb:[39.866,60.958]},
+ {id:'chat',name:'Лента',x:20.006,y:48.145,w:3.591,h:7.182,thumb:[20.006,48.145]},
  {id:'bank',name:'Банк',x:28.371,y:40.14,w:6.881,h:13.607,thumb:[28.371,40.14]},
  {id:'stadium',name:'Стадион «Центральный»',x:44.327,y:37.152,w:16.89,h:26.1,thumb:[44.327,37.152]},
  {id:'gym',name:'Спортзал',x:61.799,y:39.66,w:11.017,h:16.62,thumb:[61.799,39.66]},
  {id:'bar',name:'Бар "4-й период"',x:67.173,y:59.658,w:10.459,h:20.931,thumb:[67.173,59.658]},
  {id:'fame',name:'Зал славы',x:81.111,y:58.552,w:10.307,h:20.83,thumb:[81.111,58.552]},
  {id:'bonus',name:'Бонусные игры',x:53.598,y:60.024,w:7.956,h:15.826,thumb:[53.598,60.024]},
- {id:'pro',name:'Арена Ультимейт',x:87.331,y:39.356,w:25.468,h:38.726,thumb:[87.331,39.356]},
+ {id:'pro',name:'Арена Ультимейт',x:88.63,y:40.573,w:22.279,h:33.876,thumb:[88.63,40.573]},
 ];
 const locationIcons:Record<string,typeof Shirt>={feed:Newspaper,yard:Fence,shop:Store,tasks:ClipboardList,bank:Landmark,stadium:Goal,gym:Dumbbell,bar:Beer,fame:Trophy,bonus:Gamepad2,pro:Shield,locker:Shirt};
 function LocationIcon({id}:{id:string}){const Icon=locationIcons[id]??MapIcon;return <span className="district-profile district-location-icon"><Icon size={24} strokeWidth={1.5} aria-hidden="true"/></span>;}
 const homeVenues = {beginner:'yard',amateur:'stadium',professional:'pro'} as const;
 const lockerPositions = {
- beginner: {x:20.8,y:60.7}, amateur: {x:50,y:49}, professional: {x:93,y:57},
+ beginner: {x:21.47,y:59.44}, amateur: {x:50,y:49}, professional: {x:93,y:57},
 } as const;
 export function CityMap(props:Props){
  useFunnelObservation('city_first_seen');
