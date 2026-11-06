@@ -6,8 +6,8 @@ afterEach(()=>{localStorage.clear();vi.useRealTimers();vi.restoreAllMocks();});
 it('assigns all four lanes to the agreed directions and wheel baselines',()=>{
  const choices=[0,.25,.5,.75].map(value=>trafficChoice(()=>value));
  expect(choices.map(c=>c.lane)).toEqual([0,1,2,3]);
- expect(choices.map(c=>c.leftward)).toEqual([false,false,true,true]);
- expect(choices.map(c=>c.bottom)).toEqual([19.5,17,13,8.5]);
+ expect(choices.map(c=>c.leftward)).toEqual([true,true,false,false]);
+ expect(choices.map(c=>c.bottom)).toEqual([18,14.5,10.5,7.2]);
  expect(new Set(choices.map(c=>c.duration)).size).toBeGreaterThan(1);
  expect(trafficDelay(()=>0)).toBeGreaterThanOrEqual(40_000);
  expect(trafficDelay(()=>.99)).toBeGreaterThan(90_000);
@@ -40,4 +40,19 @@ it('reserves both upper lanes for the accident while lower traffic continues',()
  act(()=>vi.advanceTimersByTime(100000));expect(screen.queryByTestId('city-vehicle')).toBeNull();expect(screen.getByTestId('city-accident')).toBeInTheDocument();
  random.mockReturnValue(.6);act(()=>vi.advanceTimersByTime(90000));
  expect(screen.getAllByTestId('city-vehicle').every(car=>parseFloat(car.style.getPropertyValue('--lane-bottom'))<=13)).toBe(true);view.unmount();
+});
+
+it('stops an approaching car at the zebra on red and moves again on green',()=>{
+ vi.useFakeTimers({toFake:['setTimeout','clearTimeout','setInterval','clearInterval','Date','performance']});
+ vi.spyOn(Math,'random').mockReturnValue(.6);
+ const view=render(<CityTraffic night={false} preview/>);
+ act(()=>vi.advanceTimersByTime(24700));
+ expect(document.querySelector('.city-road-signals')).toHaveAttribute('data-signal','red');
+ const car=screen.getByTestId('city-vehicle');
+ const stopped=car.style.left;
+ act(()=>vi.advanceTimersByTime(100));expect(car.style.left).toBe(stopped);
+ act(()=>vi.advanceTimersByTime(700));
+ expect(document.querySelector('.city-road-signals')).toHaveAttribute('data-signal','green');
+ expect(parseFloat(car.style.left)).toBeGreaterThan(parseFloat(stopped));
+ view.unmount();expect(vi.getTimerCount()).toBe(0);
 });

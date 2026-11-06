@@ -1,11 +1,11 @@
 import {trafficAssets} from './trafficAssets.js';
 export type AccidentModel=keyof typeof trafficAssets;
 export const accidentModels=Object.keys(trafficAssets) as AccidentModel[];
-export const accidentWidth=(model:AccidentModel)=>model.startsWith('bus')?7:3.6;
+export const accidentWidth=(model:AccidentModel)=>model.startsWith('bus')?7.5:4.5;
 export type Accident={vehicleA?:AccidentModel;vehicleB?:AccidentModel;start:number;lane:0|1;policeLane:0|1;speedA:number;speedB:number;policeSpeed:number;departSpeedA:number;departSpeedB:number;departPoliceSpeed:number;impact:number;collisionAt:number;policeStart:number;policeArrived:number;departAt:number;end:number};
 export type AccidentPhase='approach'|'waiting'|'police-approach'|'police-wait'|'departing'|'done';
 export type AccidentSchedule={nextAt:number;event:Accident|null};
-export const accidentCarWidth=3.6;
+export const accidentCarWidth=4.5;
 export function createAccident(now:number,random:()=>number=Math.random,preview=false):Accident{
  const vehicleA=accidentModels[Math.min(accidentModels.length-1,Math.floor(random()*accidentModels.length))]!;
  const others=accidentModels.filter(model=>model!==vehicleA);
