@@ -4,6 +4,14 @@ import {cityImage, cityTimeOfDay, useCityImage} from './lighting.js';
 
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
+it('uses the layered night export at both resolutions and preserves the other phases',()=>{
+ expect(cityImage(new Date(2026,10,6,23),1)).toBe('/maps/city-night-4096-9da9745a1af1.webp');
+ expect(cityImage(new Date(2026,10,6,23),2)).toBe('/maps/city-night-6144-d693d3ecf94c.webp');
+ expect(cityImage(new Date(2026,10,6,8),1)).toBe('/maps/city-morning-4096-599182173a15.webp');
+ expect(cityImage(new Date(2026,10,6,12),1)).toBe('/maps/city-day-4096-819ac2d8ab57.webp');
+ expect(cityImage(new Date(2026,10,6,18),1)).toBe('/maps/city-sunset-4096-c57a2c05d161.webp');
+});
+
 describe('device-local city lighting',()=>{
  for(const [hour,minute,expected] of [[5,59,'night'],[6,0,'night'],[6,59,'night'],[7,0,'morning'],[9,59,'morning'],[10,0,'day'],[17,59,'day'],[18,0,'sunset'],[19,29,'sunset'],[19,30,'night'],[20,59,'night'],[21,0,'night'],[22,0,'night'],[23,59,'night']] as const){
   it(`${hour}:${minute} is ${expected}`,()=>expect(cityTimeOfDay(new Date(2026,9,15,hour,minute))).toBe(expected));
