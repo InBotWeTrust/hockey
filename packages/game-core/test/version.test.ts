@@ -7,8 +7,8 @@ describe('GAME_CORE_VERSION', () => {
     expect(GAME_CORE_VERSION).toBeGreaterThan(0);
   });
 
-  it('is bumped for five-deal Grigory matches', () => {
-    expect(GAME_CORE_VERSION).toBe(117);
+  it('is bumped for seeded billiards bot accuracy', () => {
+    expect(GAME_CORE_VERSION).toBe(118);
   });
 });
 
@@ -18,7 +18,7 @@ describe('shot core compatibility', () => {
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 118, NaN])
+    for (const version of [77, 87, 119, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });

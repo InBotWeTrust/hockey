@@ -45,3 +45,11 @@ it('requires a table size again after deselecting the last format',()=>{
  const two=screen.getByRole('button',{name:'2 игрока'});fireEvent.click(two);fireEvent.click(two);
  expect(screen.getByRole('button',{name:'Предложить'})).toBeDisabled();
 });
+
+it('confirms a bar invitation without reporting an unavailable duel', async () => {
+ open();
+ fireEvent.click(screen.getByRole('button', {name:'Бильярд'}));
+ fireEvent.click(screen.getByRole('button', {name:'Предложить'}));
+ expect(await screen.findByText('Приглашение отправлено')).toBeInTheDocument();
+ expect(screen.queryByText('Дуэль недоступна')).not.toBeInTheDocument();
+});

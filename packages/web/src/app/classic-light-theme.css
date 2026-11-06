@@ -4361,10 +4361,10 @@
 :root[data-theme='light'] .profile-theme-settings .segmented-tabs__item { padding-inline:6px; }
 /* Trophy labels need a stable reading surface over profile scenery. */
 :root[data-theme="light"] .profile-trophy-showcase {
-  background: rgba(237, 244, 250, 0.88);
-  border: 1px solid var(--liquid-border);
-  border-radius: 16px;
-  padding: 12px 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
 }
 :root[data-theme="light"] .profile-trophy-showcase__item strong,
 :root[data-theme="light"] .profile-trophy-showcase__item > span {

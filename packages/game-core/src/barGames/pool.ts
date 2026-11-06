@@ -323,7 +323,7 @@ function clearPath(g: Game, a: Point, b: Point, ignored: number[]): boolean {
     return Math.hypot(ball.x-a.x-t*dx,ball.y-a.y-t*dy)>2*R+.002;
   });
 }
-export function bot(g: Game, smart = true): {placement: Point|null; shot: Shot} {
+export function bot(g: Game, smart = true, accuracyRoll?: number): {placement: Point|null; shot: Shot} {
   const fallback=legacyBot(g);
   if(!smart||g.break)return fallback;
   const state=fallback.placement?place(g,fallback.placement):g;
@@ -353,18 +353,29 @@ export function bot(g: Game, smart = true): {placement: Point|null; shot: Shot} 
       pots.push({shot:{angle:Math.atan2(ghost.y-cue.y,ghost.x-cue.x),power:Math.max(.15,Math.min(.9,(d+travel)*.28+.15))},cost:d+travel+(1-alignment)*1.5});
     }
   }
-  let best=fallback.shot,bestValue=-Infinity;
-  const evaluate=(shot:Shot)=>{
+  let best = fallback.shot;
+  let bestValue = -Infinity;
+  let bestDifficulty = 0;
+  const evaluate=(shot:Shot,difficulty:number)=>{
     const sim=shoot(state,shot,'responsive',false);
     const legalPocket=(id:number)=>id>0&&id!==8&&(!own||group(id)===own);
     const value=sim.game.winner===state.turn?10000:sim.game.winner!==null?-10000:
       (sim.game.lastFoul?-1000:5)+(sim.scratch?-1000:0)+sim.pocketed.filter(legalPocket).length*100-
       sim.pocketed.filter(id=>id>0&&id!==8&&!legalPocket(id)).length*10+(sim.game.turn===state.turn?2:0)-shot.power;
-    if(value>bestValue){bestValue=value;best=shot;}
+    if (value > bestValue) {
+      bestValue = value;
+      best = shot;
+      bestDifficulty = difficulty;
+    }
   };
   // Bound work per decision: 12 pot simulations, then at most 6 safety simulations.
   for(const candidate of pots.sort((a,b)=>a.cost-b.cost).slice(0,4))
-    for(const factor of [.8,1,1.2])evaluate({...candidate.shot,power:Math.min(1,candidate.shot.power*factor)});
-  if(bestValue<90)for(const candidate of safeties.sort((a,b)=>a.cost-b.cost).slice(0,6))evaluate(candidate.shot);
+    for(const factor of [.8,1,1.2])evaluate({...candidate.shot,power:Math.min(1,candidate.shot.power*factor)},candidate.cost);
+  if(bestValue<90)for(const candidate of safeties.sort((a,b)=>a.cost-b.cost).slice(0,6))evaluate(candidate.shot,candidate.cost);
+  if (accuracyRoll !== undefined) {
+    // Longer routes and thin cuts amplify a seeded human aiming error.
+    const spread = .006 + Math.min(.08, bestDifficulty * .025);
+    best = {...best, angle: best.angle + (accuracyRoll - .5) * spread};
+  }
   return {placement:fallback.placement,shot:best};
 }

@@ -1,6 +1,6 @@
 import { useGameInvites } from './gameInviteStore.js';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { afterEach, expect, it, vi } from 'vitest';
 import { GameInvites } from './GameInvites.js';
 import { gameApi } from './api.js';
@@ -52,4 +52,26 @@ it('rejects a previous account response after the signed-in user changes',async(
  await act(async()=>finish(lobbyWith([invitation])));
  expect(useGameInvites.getState().owner).toBe('new-user');
  expect(useGameInvites.getState().incoming).toHaveLength(0);
+});
+
+it.each(['/?view=classic', '/?view=amateur&match=m&play=1', '/bar/games/match/m', '/bar/cards/match/m', '/duel/m'])('defers incoming invitations until leaving %s', async (route) => {
+ useAuthStore.setState({user:{id:'b'} as NonNullable<ReturnType<typeof useAuthStore.getState>['user']>});
+ vi.mocked(gameApi.lobby).mockResolvedValue(lobbyWith([{...invitation,expiresAt:Date.now()+60000}]));
+ function Scene(){const navigate=useNavigate();return <><GameInvites/><button onClick={()=>navigate('/profile')}>Выйти из игры</button></>;}
+ render(<MemoryRouter initialEntries={[route]}><Scene/></MemoryRouter>);
+ await act(async()=>{});
+ expect(screen.queryByRole('button',{name:'Принять'})).not.toBeInTheDocument();
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Выйти из игры'})));
+ expect(screen.getByRole('button',{name:'Принять'})).toBeInTheDocument();
+});
+
+it('revalidates deferred invitations before showing them after a game', async () => {
+ useAuthStore.setState({user:{id:'b'} as NonNullable<ReturnType<typeof useAuthStore.getState>['user']>});
+ vi.mocked(gameApi.lobby).mockResolvedValue(lobbyWith([{...invitation,expiresAt:Date.now()+60000}]));
+ function Scene(){const navigate=useNavigate();return <><GameInvites/><button onClick={()=>navigate('/profile')}>Выйти из игры</button></>;}
+ render(<MemoryRouter initialEntries={['/bar/games/match/m']}><Scene/></MemoryRouter>);
+ await act(async()=>{});
+ vi.mocked(gameApi.lobby).mockResolvedValue(lobbyWith([]));
+ await act(async()=>fireEvent.click(screen.getByRole('button',{name:'Выйти из игры'})));
+ expect(screen.queryByRole('button',{name:'Принять'})).not.toBeInTheDocument();
 });

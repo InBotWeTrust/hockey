@@ -76,7 +76,7 @@ import { dismissTournamentReadinessHint, fetchTournamentFixtureAttempt, fetchTou
 import { venueRoleLabel } from "../components/VenueBadge.js";
 import { artworkForInventoryItem, placeholderArtworkForKind } from "./inventoryArtwork.js";
 import { formatInventoryBadgeAmount, formatInventoryResourceAmount } from "./inventoryResourceLabels.js";
-import { timestampMs, type PlayOpenOptions, GameHub, duelMatchNowMs, canStartArenaDuelPeriod, isDuelInviteForMe, arenaDuelCtaLabel, DailyStatsMetric, formatDurationMs, formatHms, duelParticipantPeriodRule, duelEventTiming, duelOutcomeText, duelParticipantStateText, ModeInfoModal, formatShortDateTime, DUEL_INVENTORY_ICON_GLASS_STYLE, duelNextPeriod, DuelLoadoutSummary, DuelInventoryUsageSummary, DUEL_INVENTORY_SLOTS, duelConsumedForItem, duelConsumedBeforePeriodItem, duelInventoryItemRemaining, formatEventRemaining } from "../city/GameHub.js";
+import { timestampMs, type PlayOpenOptions, GameHub, duelMatchNowMs, canStartArenaDuelPeriod, isDuelInviteForMe, arenaDuelCtaLabel, DailyStatsMetric, formatDurationMs, formatHms, duelParticipantPeriodRule, duelCumulativeShotsLimit, duelEventTiming, duelOutcomeText, duelParticipantStateText, ModeInfoModal, formatShortDateTime, DUEL_INVENTORY_ICON_GLASS_STYLE, duelNextPeriod, DuelLoadoutSummary, DuelInventoryUsageSummary, DUEL_INVENTORY_SLOTS, duelConsumedForItem, duelConsumedBeforePeriodItem, duelInventoryItemRemaining, formatEventRemaining } from "../city/GameHub.js";
 export { type ArenaEntry, trainingProgressLabel, GameHub, ArenaCubeActions, ArenaCubeFace, DailyHubScoreboard, duelEventTiming, DUEL_INVENTORY_ICON_GLASS_STYLE, duelInventoryItemRemaining } from "../city/GameHub.js";
 
 
@@ -3803,7 +3803,7 @@ export function AmateurDuelPlayView({
           shots={match.me.shots_taken}
           shotsTotal={
             inactivePeriodRule.mode === 'quota'
-              ? (inactivePeriodRule.shotsLimit ?? match.rules.shotsPerPeriod)
+              ? duelCumulativeShotsLimit(match, match.me)
               : undefined
           }
           timer={timing.value}
@@ -3975,7 +3975,7 @@ export function AmateurDuelPlayView({
     return (
       <>
         <PlayView<AmateurDuelMatchState>
-          noticesOnIce={match.rules.duelKind === 'sniper' || match.rules.duelKind === 'marathon'}
+          noticesOnIce={['sniper', 'marathon', 'rhythm'].includes(match.rules.duelKind)}
           preserveSceneOnModalReturn
           showIceCar={false}
           playEntranceOnMount={playEntranceOnMount}
@@ -4001,6 +4001,8 @@ export function AmateurDuelPlayView({
           goals={match.current_period_goals}
           scoreboardGoals={duelDisplayScore(match.rules.duelKind, match.me)}
           shots={match.current_period_shots}
+          scoreboardShots={match.me.shots_taken}
+          scoreboardShotsTotal={activePeriodRule.mode === 'quota' ? duelCumulativeShotsLimit(match, match.me) : undefined}
           shotsTotal={
             activePeriodRule.mode === 'quota' ? (activePeriodRule.shotsLimit ?? 30) : undefined
           }
@@ -5716,8 +5718,8 @@ export function duelScoreboardOpponent(match: AmateurDuelMatch): ScoreBoardOppon
     opponent.state === 'period_active' &&
     opponentRule.mode === 'quota' &&
     opponentRule.shotsLimit !== null
-      ? `${String(opponent.current_period_shots).padStart(2, '0')}/${String(
-          opponentRule.shotsLimit,
+      ? `${String(opponent.shots_taken).padStart(2, '0')}/${String(
+          duelCumulativeShotsLimit(match, opponent),
         ).padStart(2, '0')}`
       : undefined;
   const time =

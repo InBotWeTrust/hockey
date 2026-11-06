@@ -6,9 +6,10 @@ interface AppToastProps {
   onDismiss: () => void;
   variant?: 'default' | 'reward';
   durationMs?: number;
+  status?: string;
 }
 
-export function AppToast({ message, onDismiss, variant = 'default', durationMs = 4500 }: AppToastProps): JSX.Element {
+export function AppToast({ message, onDismiss, variant = 'default', durationMs = 4500, status = 'Дуэль недоступна' }: AppToastProps): JSX.Element {
   const onDismissRef = useRef(onDismiss);
   useEffect(() => {
     onDismissRef.current = onDismiss;
@@ -25,7 +26,7 @@ export function AppToast({ message, onDismiss, variant = 'default', durationMs =
 
   if (variant === 'reward') return createPortal(
     <div className="achievement-reward-toast" role="status" aria-live="polite">
-      <span className="achievement-reward-toast__status">Дуэль недоступна</span>
+      <span className="achievement-reward-toast__status">{status}</span>
       <strong className="achievement-reward-toast__title">{message}</strong>
     </div>,
     document.body,

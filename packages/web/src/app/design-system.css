@@ -3696,7 +3696,7 @@
   margin: 0;
 }
 
-.public-profile-passport {
+.profile-passport.public-profile-passport {
   gap: 12px;
   margin-top: -8px;
   padding: 0;
@@ -14212,7 +14212,7 @@ button.daily-calendar__day:active {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin: 6px 14px 14px;
+  margin: 6px 14px 0;
   padding: 12px 14px;
   border-radius: 16px;
 }
@@ -14266,7 +14266,7 @@ button.daily-calendar__day:active {
 .profile-customization-card {
   display: grid;
   gap: 14px;
-  margin: 6px 14px 14px;
+  margin: 6px 14px 0;
   padding: 16px;
   border-radius: 20px;
 }

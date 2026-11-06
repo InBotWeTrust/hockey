@@ -298,10 +298,13 @@ export function GameTable({
             pregame={!!view.ready}
           />
         )}
-        {game.kind !== 'battleship' && readyButton && (
+        {game.kind !== 'battleship' && game.kind !== 'checkers' && readyButton && (
           <div className="bar-game-ready-actions durak-ready-actions">{readyButton}</div>
         )}
       </div>
+      {game.kind === 'checkers' && (
+        <div className="bar-checkers-ready-actions durak-ready-actions">{readyButton}</div>
+      )}
     </>
   );
 }

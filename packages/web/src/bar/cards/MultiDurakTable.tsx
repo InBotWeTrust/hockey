@@ -1,3 +1,4 @@
+import { BarHelpIcon } from '../BarHelpIcon.js';
 import { FittedNotice } from '../../game/FittedNotice.js';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, LogOut, X } from 'lucide-react';
@@ -315,7 +316,7 @@ export function MultiDurakTable({
           )}
         </div>
         <button className="icon-btn durak-tool" aria-label="Правила" onClick={() => setHelp(true)}>
-          <span className="durak-tool__question">?</span>
+          <BarHelpIcon />
         </button>
       </section>
       )}
