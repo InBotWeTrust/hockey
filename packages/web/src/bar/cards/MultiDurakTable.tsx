@@ -1,4 +1,5 @@
 import { BarHelpIcon } from '../BarHelpIcon.js';
+import { gameInteractionProps } from '../../game/gameInteraction.js';
 import { FittedNotice } from '../../game/FittedNotice.js';
 import { useEffect, useRef, useState } from 'react';
 import { ArrowLeft, LogOut, X } from 'lucide-react';
@@ -110,7 +111,7 @@ export function MultiDurakTable({
             : `Нажми «${finishLabel}»`
           : 'Твой ход');
   return (
-    <main className="screen durak-screen durak-screen--online durak-screen--multi">
+    <main {...gameInteractionProps} className="screen durak-screen durak-screen--online durak-screen--multi">
       {error && (
         <p className="durak-network-error" role="alert">
           {error}

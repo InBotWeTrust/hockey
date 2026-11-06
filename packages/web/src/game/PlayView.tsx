@@ -1,4 +1,5 @@
 import { ShotSubmissionQueue } from './shotSubmissionQueue.js';
+import { gameInteractionProps } from './gameInteraction.js';
 import { formatMs } from './formatTime.js';
 export { formatMs } from './formatTime.js';
 import { scoredActiveDeltaMs } from '../components/duel/scoredClock.js';
@@ -2464,6 +2465,7 @@ export function PlayView<TState>({
 
   return (
     <main
+      {...gameInteractionProps}
       ref={playRootRef}
       className="screen"
       style={{

@@ -1,4 +1,5 @@
 import { visitorChanged } from '../visitorApi.js';
+import { gameInteractionProps } from '../../game/gameInteraction.js';
 import { POOL_STROKE_MS } from '@hockey/game-core';
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -78,6 +79,7 @@ export function BarGameScreen() {
   };
   return (
     <main
+      {...gameInteractionProps}
       className="bar-game-screen bar-game-screen--playing"
       data-game={view?.kind}
       data-character={view?.character}
