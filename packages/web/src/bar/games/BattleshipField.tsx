@@ -69,7 +69,7 @@ export function BattleshipField({
   const boardKey = `${game.phase}:${game.turn}:${animationStart}`;
   useEffect(() => {
     if (!setup) { setTarget(null); setSelected(null); setMode('shot'); onHint?.(null); }
-  }, [setup, game.turn, player, opponentImpact, onHint]);
+  }, [setup, game.turn, game.movesLeft, player, opponentImpact, onHint]);
   const showOwn = setup || (impactActive ? game.lastAction!.player !== player : (own?.key === boardKey ? own.value : game.turn !== player));
 
   const carrierOperational = sea.carrierReady(game.ownShips.find(s => s.kind === 'carrier'));
