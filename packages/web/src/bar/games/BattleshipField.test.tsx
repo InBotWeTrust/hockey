@@ -358,6 +358,28 @@ it('offers board-wide escape for a damaged modern submarine and renders its aban
  rerender(<BattleshipField game={sea.view(moved,0)} player={0} disabled locked={false} send={send}/>);
  expect(container.querySelector('.bar-naval-damage--abandoned')).not.toBeNull();
 });
+it('returns to shooting after a rescue without a turn change', () => {
+  const game = sea.start(sea.create(0, 4, true, true, true));
+  const submarine = game.fleets[0].find(ship => ship.kind === 'submarine')!;
+  submarine.hits = [sea.cells(submarine)[0]!];
+  game.shots[1] = [{ cell: submarine.hits[0]!, hit: true }];
+  game.maneuverAccess![0] = true;
+  const send = vi.fn();
+  const { rerender } = render(<BattleshipField game={sea.view(game, 0)} player={0} disabled={false} locked={false} send={send} animationStart={0} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Мой флот' }));
+  const board = screen.getByRole('group', { name: 'Твой флот' });
+  fireEvent.click(board.querySelectorAll('button')[sea.cells(submarine)[1]!]!);
+  const destination = sea.moves(sea.view(game, 0))[0]!;
+  fireEvent.click(board.querySelectorAll('button')[sea.cell(destination.x, destination.y)]!);
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
+  const moved = sea.move(game, 0, destination.x, destination.y, true);
+  rerender(<BattleshipField game={sea.view(moved, 0)} player={0} disabled={false} locked={false} send={send} animationStart={1000} />);
+  const enemy = screen.getByRole('group', { name: 'Поле противника' });
+  fireEvent.click(enemy.querySelectorAll('button')[0]!);
+  expect(screen.getByRole('button', { name: 'Подтвердить' })).toBeEnabled();
+  fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
+  expect(send).toHaveBeenLastCalledWith({ type: 'naval-attack', x: 0, y: 0, salvo: false, vertical: false });
+});
 it('uses filled dots around sunk ships in new-rule matches',()=>{
  const game=sea.start(sea.create(0,4,true,true));const victim=game.fleets[1].find(s=>s.w*s.h===1)!;
  const hit=sea.attack(game,0,victim.x,victim.y,false,false);

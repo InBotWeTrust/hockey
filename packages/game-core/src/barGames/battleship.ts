@@ -252,7 +252,7 @@ export function moves(v: View) {
 function active(g: State, p: 0 | 1) {
   if (g.phase !== 'battle' || g.winner !== null || g.turn !== p) throw Error('Not your turn');
 }
-export function move(g: State, p: 0 | 1, x: number, y: number): State {
+export function move(g: State, p: 0 | 1, x: number, y: number, keepTurn = false): State {
   active(g, p);
   if (!moves(view(g, p)).some((pos) => pos.x === x && pos.y === y)) throw Error('Invalid maneuver');
   const n = clone(g);
@@ -265,7 +265,7 @@ export function move(g: State, p: 0 | 1, x: number, y: number): State {
   Object.assign(submarine, { x, y });
   n.moves[p]++;
   if(n.maneuverAccess)n.maneuverAccess[p]=false;
-  n.turn = p === 0 ? 1 : 0;
+  n.turn = keepTurn ? p : p === 0 ? 1 : 0;
   n.lastAction = { player: p, type: 'move', cells: [] };
   return n;
 }
