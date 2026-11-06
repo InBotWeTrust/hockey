@@ -15,6 +15,20 @@
   display: none;
 }
 
+/* Include portalled game dialogs while a game is mounted. */
+body:has([data-game-interaction]) * {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+body:has([data-game-interaction]) :is(input, textarea, [contenteditable]:not([contenteditable="false"])),
+body:has([data-game-interaction]) [contenteditable]:not([contenteditable="false"]) * {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
 :root {
   color-scheme: only light;
   --app-viewport-height: 100dvh;

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pwaRegisterMock } from '../test/pwaRegisterMock.js';
 import { UpdatePrompt } from './UpdatePrompt.js';
@@ -12,6 +12,75 @@ describe('UpdatePrompt', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  function registerNotes(items?: string[]) {
+    vi.stubGlobal('MessageChannel', class {
+      port1 = { onmessage: null as ((event: { data: unknown }) => void) | null, close: vi.fn() };
+      port2 = { close: vi.fn(), postMessage: (data: unknown) => this.port1.onmessage?.({ data }) };
+    });
+    const postMessage = vi.fn((_message: unknown, ports: MessagePort[]) => {
+      if (items) ports[0]!.postMessage({ items });
+    });
+    pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
+      waiting: { postMessage },
+      update: vi.fn(() => Promise.resolve()),
+    } as unknown as ServiceWorkerRegistration);
+    return postMessage;
+  }
+
+  it('expands the notes supplied by the waiting update and collapses them', async () => {
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    const request = registerNotes(['Исправлены приглашения в игры бара.', 'Улучшены правила морского боя.']);
+    const toggle = screen.getByRole('button', { name: 'Что нового' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(request).not.toHaveBeenCalled();
+    fireEvent.click(toggle);
+    expect(await screen.findByText('Исправлены приглашения в игры бара.')).toBeVisible();
+    expect(screen.getByText('Улучшены правила морского боя.')).toBeVisible();
+    expect(toggle).toHaveAttribute('aria-expanded', 'true');
+    expect(request).toHaveBeenCalledWith({ type: 'HOCKEY_RELEASE_NOTES' }, expect.any(Array));
+    fireEvent.click(toggle);
+    expect(screen.queryByText('Улучшены правила морского боя.')).not.toBeInTheDocument();
+    expect(pwaRegisterMock.updateServiceWorkerCalls).toEqual([]);
+  });
+
+  it('keeps updating available when an older worker cannot supply notes', async () => {
+    vi.useFakeTimers();
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    registerNotes();
+    fireEvent.click(screen.getByRole('button', { name: 'Что нового' }));
+    await act(async () => { vi.advanceTimersByTime(5000); });
+    expect(screen.getByText('Описание обновления недоступно.')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Обновить приложение' })).toBeEnabled();
+    registerNotes(['Описание загружено.']);
+    fireEvent.click(screen.getByRole('button', { name: 'Повторить' }));
+    expect(screen.getByText('Описание загружено.')).toBeVisible();
+  });
+
+  it('replaces the description when a newer waiting update arrives', async () => {
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    registerNotes(['Предыдущее описание.']);
+    fireEvent.click(screen.getByRole('button', { name: 'Что нового' }));
+    expect(screen.getByText('Предыдущее описание.')).toBeVisible();
+    registerNotes(['Новое описание.']);
+    await act(async () => { pwaRegisterMock.options?.onNeedRefresh?.(); });
+    expect(screen.getByText('Новое описание.')).toBeVisible();
+    expect(screen.queryByText('Предыдущее описание.')).not.toBeInTheDocument();
+  });
+
+  it('cycles keyboard focus through the update and notes controls', () => {
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    const update = screen.getByRole('button', { name: 'Обновить приложение' });
+    const notes = screen.getByRole('button', { name: 'Что нового' });
+    fireEvent.keyDown(update, { key: 'Tab' });
+    expect(notes).toHaveFocus();
+    fireEvent.keyDown(notes, { key: 'Tab', shiftKey: true });
+    expect(update).toHaveFocus();
   });
 
   it('renders a manual update dialog and asks the service worker to update', () => {
