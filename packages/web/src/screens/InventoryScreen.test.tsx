@@ -454,7 +454,7 @@ describe('InventoryScreen', () => {
     );
   });
 
-  it('keeps department navigation decorative and preserves unique products', async()=>{mockInventoryFetch({...inventoryWithItems,items:{...inventoryWithItems.items,stick:[...inventoryWithItems.items.stick,{...inventoryWithItems.items.stick[0]!,id:'duplicate'}]}});renderInventory();await screen.findByText('Бронзовая клюшка');expect(screen.getAllByRole('button',{name:/Подробнее о Бронзовая клюшка/})).toHaveLength(1);for(const title of ['Клюшки','Коньки','Питание','Восстановление','Бар'])expect(screen.getByRole('tab',{name:title}).querySelector('img')).toHaveAttribute('alt','');});
+  it('keeps department navigation decorative and preserves unique products', async()=>{mockInventoryFetch({...inventoryWithItems,items:{...inventoryWithItems.items,stick:[...inventoryWithItems.items.stick,{...inventoryWithItems.items.stick[0]!,id:'duplicate'}]}});renderInventory();await screen.findByText('Бронзовая клюшка');expect(screen.getAllByRole('button',{name:/Подробнее о Бронзовая клюшка/})).toHaveLength(1);for(const title of ['Клюшки','Коньки','Питание','Восстановление','Бар'])expect(screen.getByRole('tab',{name:title}).querySelector('.section-scene__icon')).toHaveAttribute('aria-hidden','true');});
 
   it('lays out category cards in two columns with square artwork above the copy', () => {
     const grid = designSystemCss.match(/\.inventory-category-grid\s*\{([^}]+)\}/)?.[1];
@@ -478,7 +478,7 @@ describe('InventoryScreen', () => {
 
   it('uses a bank-specific heading when switching between bank and history',async()=>{renderInventory('/inventory?tab=bank');expect(screen.getByRole('heading',{name:'Банк'})).toBeInTheDocument();fireEvent.click(screen.getByRole('tab',{name:'История'}));expect(screen.getByRole('heading',{name:'История'})).toBeInTheDocument();expect(screen.queryByRole('tab',{name:'Товары'})).toBeNull();});
 
-  it('delivers one shared panorama and five lightweight department thumbnails',()=>{const {container}=renderInventory();expect(container.querySelector('.section-scene__panorama img')).toHaveAttribute('src','/section-panoramas/shop-v1.webp');const images=container.querySelectorAll('.section-scene__dock img');expect(images).toHaveLength(5);for(const image of images)expect(image.getAttribute('src')).toMatch(/section-panoramas\/shop-\d.webp$/);});
+  it('delivers one shared panorama and five department icons',()=>{const {container}=renderInventory();expect(container.querySelector('.section-scene__panorama img')).toHaveAttribute('src','/section-panoramas/shop-v1.webp');expect(container.querySelectorAll('.section-scene__dock img')).toHaveLength(0);expect(container.querySelectorAll('.section-scene__dock .section-scene__icon svg')).toHaveLength(5);});
 
   it('keeps all department circles accessible when the current department is empty',async()=>{renderInventory();expect(await screen.findByText('В разделе пока нет товаров')).toBeInTheDocument();expect(screen.getAllByRole('tab')).toHaveLength(5);expect(screen.getByRole('link',{name:'На карту'})).toBeInTheDocument();});
 
