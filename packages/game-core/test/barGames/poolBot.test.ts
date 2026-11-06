@@ -39,3 +39,16 @@ it('retains the previous bot policy for legacy matches',()=>{
  const g=board();
  expect(pool.shoot(g,pool.bot(g,false).shot).firstContact).toBe(8);
 });
+
+it('can miss long pots while keeping seeded aiming repeatable', () => {
+ const game:pool.Game={...pool.create(0),break:false,groups:['solids','stripes'],balls:[
+  {id:0,x:.75,y:1.5,pocketed:false},{id:1,x:.2,y:.4,pocketed:false},
+  {id:8,x:.85,y:1.8,pocketed:false},{id:9,x:.85,y:.8,pocketed:false}]};
+ const outcomes=Array.from({length:20},(_,i)=>{
+  const choice=pool.bot(game,true,i/19);
+  expect(choice).toEqual(pool.bot(game,true,i/19));
+  return pool.shoot(game,choice.shot).pocketed.includes(1);
+ });
+ expect(outcomes).toContain(true);
+ expect(outcomes).toContain(false);
+});

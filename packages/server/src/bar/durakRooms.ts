@@ -4,7 +4,7 @@ import { randomInt, randomUUID } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { type durak, durakTable } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
-import { assertFree, cardTransaction, clearNewGameWaiting } from './durakService.js';
+import { assertFree, cardTransaction, clearNewGameWaiting, inviteCards } from './durakService.js';
 
 type Room = {
   seats: string[];
@@ -433,7 +433,10 @@ export async function commandCardRoom(
         data.countdownAt = null;
         data.readyUntil = null;
         data.status = data.seats.length ? 'waiting' : 'ended';
-        data.owner = data.seats[0] ?? user;
+        if (data.owner === user) {
+          data.owner = data.seats[0] ?? user;
+          data.searchUntil = null;
+        }
         await client.query('delete from bar_card_room_players where user_id=$1 and room_id=$2', [
           user,
           id,
@@ -541,6 +544,10 @@ async function inviteToRoomInTransaction(pool: Pool, client: PoolClient, user: s
     return { id: inviteId };
 }
 export async function inviteCardsFromProfile(pool: Pool, user: string, target: string, capacity: number | number[]) {
+  const formats = [...new Set(Array.isArray(capacity) ? capacity : [capacity])];
+  if (formats.length === 1 && formats[0] === 2) {
+    return { ...(await inviteCards(pool, user, target)), roomId: null };
+  }
   return cardTransaction(pool, async (client, now) => {
     if (user === target) throw new AppError('card_self', 'Нельзя вызвать себя.', 400);
     const { roomId } = await joinCardRoomInTransaction(client, user, capacity, false, now, true);

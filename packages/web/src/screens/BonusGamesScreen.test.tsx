@@ -1936,10 +1936,31 @@ describe('BonusGamesScreen', () => {
   });
 });
 
+it('opens the ski resort in production', async () => {
+  vi.stubEnv('DEV',false);vi.stubEnv('VITE_CHALLENGES_ENABLED','false');localStorage.clear();
+  mockCatalog([card({title:'Курорт',slug:'challenge-ski-resort',skill_code:'challenge'})]);
+  try {
+    renderCatalog();fireEvent.click(await screen.findByRole('tab',{name:'Испытания'}));
+    fireEvent.click(await screen.findByRole('button',{name:'Играть'}));
+    expect(await screen.findByRole('dialog')).toBeInTheDocument();
+    expect(screen.queryByText('Локация в разработке')).not.toBeInTheDocument();
+  } finally {vi.unstubAllEnvs();}
+});
+
+it('opens completed game rankings after all attempts have been used', async () => {
+  localStorage.clear();
+  mockCatalog([card({state:'completed',is_completed:true})],{speedRemaining:0});
+  renderCatalog();fireEvent.click(await screen.findByRole('button',{name:'Попытки закончились'}));
+  const preview=await screen.findByRole('dialog');
+  expect(within(preview).getByRole('button',{name:'Попытки закончились'})).toBeDisabled();
+  fireEvent.click(within(preview).getByRole('button',{name:'Рейтинг игроков'}));
+  expect(await screen.findByRole('dialog',{name:/Рекорды:/})).toBeInTheDocument();
+});
+
 it('opens the challenges section but blocks unreleased locations in production', async () => {
   vi.stubEnv('DEV', false);
   localStorage.clear();
-  mockCatalog([card({ title: 'Закрытый курорт', slug: 'challenge-ski-resort', skill_code: 'challenge', state: 'sequence_locked' })]);
+  mockCatalog([card({ title: 'Закрытый двор', slug: 'challenge-cyberpunk-yard', skill_code: 'challenge', state: 'sequence_locked' })]);
   try {
     renderCatalog();
     fireEvent.click(await screen.findByRole('tab', { name: 'Испытания' }));

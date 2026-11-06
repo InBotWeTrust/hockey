@@ -1601,6 +1601,13 @@ export function duelParticipantPeriodRule(
   );
 }
 
+export function duelCumulativeShotsLimit(match: AmateurDuelMatch, participant: AmateurDuelMatch['me']): number {
+  const period = Math.max(1, Math.min(match.rules.totalPeriods, participant.current_period));
+  return Array.from({length: period}, (_, index) =>
+    match.rules.periodRules.find(rule => rule.periodNumber === index + 1)?.shotsLimit ?? match.rules.shotsPerPeriod,
+  ).reduce((sum, limit) => sum + limit, 0);
+}
+
 export function intermissionContinueDeadlineMs(participant: AmateurDuelMatch['me']): number {
   if (participant.state !== 'accepted' || participant.current_period <= 0) return 0;
   const readyAt = timestampMs(participant.ready_at);
@@ -1709,8 +1716,9 @@ export function duelEventTiming(match: AmateurDuelMatch, fallbackNow: number): D
   if (match.status === 'active' && match.opponent.state === 'period_active') {
     const opponentRule = duelParticipantPeriodRule(match, match.opponent);
     if (opponentRule.mode === 'quota' && opponentRule.shotsLimit !== null) {
-      const remaining = Math.max(0, opponentRule.shotsLimit - match.opponent.current_period_shots);
-      const value = `${remaining}/${opponentRule.shotsLimit}`;
+      const total = duelCumulativeShotsLimit(match, match.opponent);
+      const remaining = Math.max(0, total - match.opponent.shots_taken);
+      const value = `${remaining}/${total}`;
       return {
         activePeriod: match.opponent.current_period,
         ariaLabel: `Соперник играет ${match.opponent.current_period}-й период. Осталось бросков ${value}. Счёт ${score}`,

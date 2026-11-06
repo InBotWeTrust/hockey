@@ -76,3 +76,8 @@ it.each([null,'grigory'] as const)('keeps ochko cards and totals off the table u
  expect(screen.queryByRole('button',{name:'Готов'})).not.toBeInTheDocument();
  expect(send).not.toHaveBeenCalled();
 });
+
+it('places checkers readiness outside the board field',()=>{
+ const {container}=render(<GameTable view={snapshot('checkers')} now={0} disabled={false} send={()=>{}}/>);
+ expect(container.querySelector('.bar-game-field')).not.toContainElement(screen.getByRole('button',{name:'Готов'}));
+});

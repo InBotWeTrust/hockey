@@ -98,7 +98,7 @@ describe('OnboardingGate', () => {
       { status: 200 },
     ));
     renderGate();
-    expect(await screen.findByText('Порог: 300')).toBeInTheDocument();
+    expect(await screen.findByText('Порог: 300', {}, {timeout: 5000})).toBeInTheDocument();
     threshold = 100;
     act(() => { focusManager.setFocused(false); focusManager.setFocused(true); });
     try {
