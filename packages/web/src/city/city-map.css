@@ -116,3 +116,5 @@
 .district-novice-progress progress::-webkit-progress-value {background:var(--blue-accent);border-radius:999px;}
 .district-novice-progress progress::-moz-progress-bar {background:var(--blue-accent);border-radius:999px;}
 .district-novice-progress:focus-visible {outline:2px solid currentColor;outline-offset:3px;}
+
+.city-sky-light{position:absolute;top:3%;height:2.2%;aspect-ratio:1;border-radius:50%;pointer-events:none;background:#ffdda3;box-shadow:0 0 12px 3px #ffe0a34a}.city-sky-light.is-morning{left:8%}.city-sky-light.is-sunset{left:73%}.city-sky-light.is-night{left:64%;height:1.8%;background:#e6e8e7;box-shadow:0 0 10px 2px #e3e9f04a}
