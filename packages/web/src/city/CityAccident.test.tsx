@@ -36,11 +36,11 @@ it('flashes a small contact burst between the two fronts only at the impact inst
 it('keeps bus size and contact position through damage and supports legacy saved incidents',()=>{
  const event={...createAccident(1000,()=>.5),vehicleA:'bus' as const,vehicleB:'suv' as const};
  const view=render(<CityAccident incident={{event,phase:'approach',sampledAt:event.start}}/>);
- expect(screen.getByTestId('accident-sedan').style.width).toBe('7%');
+ expect(screen.getByTestId('accident-sedan').style.width).toBe('7.5%');
  expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-traffic-bus-');
  view.rerender(<CityAccident incident={{event,phase:'waiting',sampledAt:event.collisionAt}}/>);
  expect(screen.getByTestId('accident-sedan').querySelector('img')?.src).toContain('city-accident-bus-');
- expect(screen.getByTestId('accident-taxi').style.left).toBe(`${event.impact+7}%`);
+ expect(screen.getByTestId('accident-taxi').style.left).toBe(`${event.impact+7.5}%`);
  const {vehicleA,vehicleB,...legacy}=event;
  void vehicleA;void vehicleB;
  view.rerender(<CityAccident incident={{event:legacy,phase:'waiting',sampledAt:event.collisionAt}}/>);

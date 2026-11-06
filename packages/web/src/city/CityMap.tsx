@@ -25,26 +25,26 @@ import type {WeatherKind} from './weather.js';
 import type {SelectedCity,CityWeather} from './cityLocation.js';
 import {useCityImage} from './lighting.js';
 type Level='beginner'|'amateur'|'professional';
-type Props={exercisesAction?:ReactNode;weeklyPanel?:ReactNode;tourRequested?:boolean;tourPreviewApi?:CityTourApi;highlightTasks?:boolean;noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
+type Props={trafficPreview?:boolean;accidentPreview?:boolean;exercisesAction?:ReactNode;weeklyPanel?:ReactNode;tourRequested?:boolean;tourPreviewApi?:CityTourApi;highlightTasks?:boolean;noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
 const basePlaces=[
- {id:'profile',name:'Моя квартира',x:5.8,y:35,w:4,h:9},
- {id:'yard',name:'Дворовый каток',x:12.7,y:52,w:16,h:18,thumb:[8.6,47]},
- {id:'shop',name:'Магазин',x:25.6,y:39,w:7.5,h:12,thumb:[22.5,31]},
- {id:'tasks',name:'Задания',x:27,y:58.5,w:8,h:13,thumb:[24.8,59]},
- {id:'chat',name:'Лента',x:30.1,y:62,w:2.6,h:8.5,thumb:[27.9,70]},
- {id:'bank',name:'Банк',x:36.2,y:36.5,w:8,h:16,thumb:[34.7,28]},
- {id:'stadium',name:'Стадион «Центральный»',x:43.9,y:51,w:14,h:20,thumb:[43.9,52.6]},
- {id:'gym',name:'Спортзал',x:52.5,y:37,w:9.5,h:14,thumb:[54,28.9]},
- {id:'bar',name:'Бар "4-й период"',x:59.4,y:60,w:10.5,h:17,thumb:[60.3,62.6]},
- {id:'fame',name:'Зал славы',x:64.5,y:36,w:9,h:17,thumb:[66.2,26.1]},
- {id:'bonus',name:'Бонусные игры',x:72.3,y:59,w:8,h:17,thumb:[75.8,62.9]},
- {id:'pro',name:'Арена Ультимейт',x:87,y:42,w:25,h:34,thumb:[92,37]},
+ {id:'profile',name:'Моя квартира',x:7.2,y:36,w:3,h:8},
+ {id:'yard',name:'Дворовый каток',x:11,y:60,w:12,h:14,thumb:[11,60]},
+ {id:'shop',name:'Магазин',x:28.428,y:60.304,w:7.821,h:15.42,thumb:[28.428,60.304]},
+ {id:'tasks',name:'Задания',x:39.866,y:60.958,w:6.578,h:13.986,thumb:[39.866,60.958]},
+ {id:'chat',name:'Лента',x:20.006,y:48.145,w:3.591,h:7.182,thumb:[20.006,48.145]},
+ {id:'bank',name:'Банк',x:28.371,y:40.14,w:6.881,h:13.607,thumb:[28.371,40.14]},
+ {id:'stadium',name:'Стадион «Центральный»',x:44.327,y:37.152,w:16.89,h:26.1,thumb:[44.327,37.152]},
+ {id:'gym',name:'Спортзал',x:61.799,y:39.66,w:11.017,h:16.62,thumb:[61.799,39.66]},
+ {id:'bar',name:'Бар "4-й период"',x:67.173,y:59.658,w:10.459,h:20.931,thumb:[67.173,59.658]},
+ {id:'fame',name:'Зал славы',x:81.111,y:58.552,w:10.307,h:20.83,thumb:[81.111,58.552]},
+ {id:'bonus',name:'Бонусные игры',x:53.598,y:60.024,w:7.956,h:15.826,thumb:[53.598,60.024]},
+ {id:'pro',name:'Арена Ультимейт',x:88.63,y:40.573,w:22.279,h:33.876,thumb:[88.63,40.573]},
 ];
 const locationIcons:Record<string,typeof Shirt>={feed:Newspaper,yard:Fence,shop:Store,tasks:ClipboardList,bank:Landmark,stadium:Goal,gym:Dumbbell,bar:Beer,fame:Trophy,bonus:Gamepad2,pro:Shield,locker:Shirt};
 function LocationIcon({id}:{id:string}){const Icon=locationIcons[id]??MapIcon;return <span className="district-profile district-location-icon"><Icon size={24} strokeWidth={1.5} aria-hidden="true"/></span>;}
 const homeVenues = {beginner:'yard',amateur:'stadium',professional:'pro'} as const;
 const lockerPositions = {
- beginner: {x:15.5,y:70}, amateur: {x:49,y:57}, professional: {x:89,y:70},
+ beginner: {x:21.47,y:59.44}, amateur: {x:50,y:49}, professional: {x:93,y:57},
 } as const;
 export function CityMap(props:Props){
  useFunnelObservation('city_first_seen');
@@ -192,8 +192,8 @@ export function CityMap(props:Props){
    onPointerUp={()=>{if(drag.current?.moved)blockUntil.current=performance.now()+500;drag.current=null;}}
    onPointerCancel={()=>{blockUntil.current=performance.now()+500;drag.current=null;}}
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
-   <div ref={world} className="district-world">{props.city&&<CityWeatherWidget cityName={props.city.name} weather={props.currentWeather} stale={props.weatherStale??false} loading={props.weatherLoading??false} night={image.includes('city-night-')}/>}<CityBackground image={image}/><CityTraffic owner={owner} night={image.includes("city-night-")||image.includes("city-sunset-")}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
-    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':p.id==='locker'?' district-locker':''}${flash===p.id?' is-flashing':''}${p.id==='tasks'&&props.highlightTasks?' district-task-hint':''}`} style={{left:`${p.x}%`,top:`${p.y}%`,width:p.id==='locker'?44:`${p.w}%`,height:p.id==='locker'?44:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='locker'&&<Shirt size={22} aria-hidden="true"/>}</button>)}
+   <div ref={world} className="district-world">{props.city&&<CityWeatherWidget cityName={props.city.name} weather={props.currentWeather} stale={props.weatherStale??false} loading={props.weatherLoading??false} night={image.includes('city-night-')}/>}<CityBackground image={image}/><CityTraffic preview={import.meta.env.DEV&&Boolean(props.trafficPreview)} accidentPreview={import.meta.env.DEV&&Boolean(props.accidentPreview)} owner={owner} night={image.includes("city-night-")||image.includes("city-sunset-")}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
+    {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':p.id==='locker'?' district-locker':''}${flash===p.id?' is-flashing':''}${p.id==='tasks'&&props.highlightTasks?' district-task-hint':''}`} style={{zIndex:p.id==='pro'?1:2,left:`${p.x}%`,top:`${p.y}%`,width:p.id==='locker'?44:`${p.w}%`,height:p.id==='locker'?44:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='locker'&&<Shirt size={22} aria-hidden="true"/>}</button>)}
     {/* Keep the glass on the map layer: nested transformed buttons can prevent backdrop sampling. */}
     <span className="district-apartment-avatar" aria-hidden="true" style={{left:`${apartment.x}%`,top:`${apartment.y-apartment.h*.1}%`}}><User/></span>
    </div>

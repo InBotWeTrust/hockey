@@ -1,3 +1,5 @@
+import {advanceTraffic,roadSignal} from './trafficMotion.js';
+import {roadSignals} from './roadSignals.js';
 import {useCityAccident} from './useCityAccident.js';
 import {CityAccident} from './CityAccident.js';
 import {useEffect,useRef,useState,type CSSProperties} from 'react';
@@ -6,18 +8,31 @@ import './city-traffic.css';
 type Model=keyof typeof trafficAssets;
 const cars=(Object.keys(trafficAssets) as Model[]).filter(key=>!key.startsWith('bus'));
 const buses:Model[]=['bus','bus-red'];
-const bottoms=[19.5,17,13,8.5] as const;
+const bottoms=[18,14.5,10.5,7.2] as const;
 export const trafficDelay=(random:()=>number=Math.random)=>40_000+random()*50_000+(random()>.88?60_000:0);
 export function trafficChoice(random:()=>number=Math.random){
  const lane=Math.min(3,Math.floor(random()*4));
  const models=random()<.16?buses:cars;
  const model=models[Math.min(models.length-1,Math.floor(random()*models.length))]!;
- return {lane,leftward:lane>=2,bottom:bottoms[lane]!,duration:28+random()*22,model};
+ return {lane,leftward:lane<2,bottom:bottoms[lane]!,duration:28+random()*22,model};
 }
-type Vehicle=ReturnType<typeof trafficChoice>&{id:number};
+type Vehicle=ReturnType<typeof trafficChoice>&{id:number;x:number;width:number;speed:number};
 export function CityTraffic({night,preview=false,owner,accidentPreview=false}:{night:boolean;preview?:boolean;owner?:string|undefined;accidentPreview?:boolean}){
  const [vehicles,setVehicles]=useState<Vehicle[]>([]),[plane,setPlane]=useState(false),[paused,setPaused]=useState(document.hidden);
  const serial=useRef(0);
+ const [signal,setSignal]=useState(roadSignal(0));
+ const signalClock=useRef(0);
+ useEffect(()=>{
+  let previous=performance.now();
+  const timer=setInterval(()=>{
+   const now=performance.now(),delta=Math.min((now-previous)/1000,.15);previous=now;
+   if(document.hidden||window.matchMedia?.('(prefers-reduced-motion: reduce)').matches)return;
+   signalClock.current+=delta;
+   const phase=roadSignal(signalClock.current);setSignal(phase);
+   setVehicles(cars=>cars.length?advanceTraffic(cars,delta,phase):cars);
+  },50);
+  return()=>clearInterval(timer);
+ },[]);
  const incident=useCityAccident(owner,vehicles.some(vehicle=>vehicle.lane<2),accidentPreview);
  const incidentActive=useRef(Boolean(incident));incidentActive.current=Boolean(incident);
  const incidentStart=incident?.event.start;
@@ -27,7 +42,7 @@ export function CityTraffic({night,preview=false,owner,accidentPreview=false}:{n
   let stopped=false,carTimer:ReturnType<typeof setTimeout>|undefined,planeTimer:ReturnType<typeof setTimeout>|undefined;
   const enabled=()=>!document.hidden&&!motion?.matches;
   const spawn=()=>{if(stopped)return;if(enabled()){
-   const choice=trafficChoice();setVehicles(previous=>(choice.lane<2&&incidentActive.current)||previous.some(v=>v.lane===choice.lane)?previous:[...previous,{...choice,id:++serial.current}]);
+   const choice=trafficChoice();setVehicles(previous=>(choice.lane<2&&incidentActive.current)||previous.some(v=>v.lane===choice.lane)?previous:[...previous,{...choice,id:++serial.current,x:choice.leftward?110:-10,width:choice.model.startsWith('bus')?7.5:4.5,speed:120/choice.duration}]);
   }carTimer=setTimeout(spawn,preview?6000:trafficDelay());};
   const fly=()=>{if(stopped)return;if(enabled())setPlane(true);planeTimer=setTimeout(fly,(480+Math.random()*420)*1000);};
   const visibility=()=>setPaused(!enabled());
@@ -35,11 +50,11 @@ export function CityTraffic({night,preview=false,owner,accidentPreview=false}:{n
   carTimer=setTimeout(spawn,preview?100:trafficDelay());planeTimer=setTimeout(fly,preview?100:(480+Math.random()*420)*1000);
   return()=>{stopped=true;clearTimeout(carTimer);clearTimeout(planeTimer);document.removeEventListener('visibilitychange',visibility);motion?.removeEventListener('change',visibility);};
  },[preview]);
- return <div className={`city-traffic${night?' is-night':''}${paused?' is-paused':''}`} aria-hidden="true">
-  {vehicles.map(vehicle=><div key={vehicle.id} data-testid="city-vehicle" className={`city-vehicle${vehicle.leftward?' is-leftward':''}${vehicle.model.startsWith('bus')?' is-bus':''}`} style={{'--lane-bottom':`${vehicle.bottom}%`,'--travel':`${vehicle.duration}s`,zIndex:vehicle.lane+1} as CSSProperties} onAnimationEnd={event=>{if(event.target===event.currentTarget)setVehicles(previous=>previous.filter(v=>v.id!==vehicle.id));}}>
+ return <><div className={`city-traffic${night?' is-night':''}${paused?' is-paused':''}`} aria-hidden="true">
+  {vehicles.map(vehicle=><div key={vehicle.id} data-testid="city-vehicle" className={`city-vehicle${vehicle.leftward?' is-leftward':''}${vehicle.model.startsWith('bus')?' is-bus':''}`} style={{left:`${vehicle.x}%`,width:`${vehicle.width}%`,animation:'none','--lane-bottom':`${vehicle.bottom}%`,'--travel':`${vehicle.duration}s`,zIndex:vehicle.lane+1} as CSSProperties} onAnimationEnd={event=>{if(event.target===event.currentTarget)setVehicles(previous=>previous.filter(v=>v.id!==vehicle.id));}}>
    <img src={trafficAssets[vehicle.model]} alt="" draggable={false}/><i className="city-headlights"/><i className="city-taillights"/><span className="city-exhaust"><i/><i/><i/></span>
   </div>)}
   {incident&&<CityAccident incident={incident}/>}
   {plane&&<div className="city-plane" onAnimationEnd={()=>setPlane(false)}><img src="/sprites/city-plane-687338bfb4c3.webp" alt="" draggable={false}/></div>}
- </div>;
+ </div><div className="city-road-signals" data-signal={signal} aria-hidden="true">{roadSignals.map((item,index)=><span key={index} className="city-road-signal" style={{left:`${item.x}%`,top:`${item.y}%`,width:`${item.w}%`,height:`${item.h}%`}}><img src={item.src} alt="" draggable={false}/>{item.front&&<i className={`city-signal-lens is-${signal}`}/>}</span>)}</div></>;
 }

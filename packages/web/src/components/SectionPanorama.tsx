@@ -1,3 +1,4 @@
+import { SectionNavigationIcon } from './SectionNavigationIcon.js';
 import {useHorizontalPan} from '../bar/useHorizontalPan.js';
 import {saveSectionTab} from '../city/sectionEntry.js';
 import { MapExitLink } from './MapExitLink.js';
@@ -289,7 +290,7 @@ export function SectionPanorama({
                   (event.currentTarget.parentElement?.children[next] as HTMLButtonElement)?.focus();
                 }}
               >
-                <img src={page.image} alt="" draggable={false} />
+                <SectionNavigationIcon id={page.id} label={page.label}/>
                 <span>{page.label}</span>
                 {Number(page.attention) > 0 && (
                   <span className="section-scene__attention" aria-label="Есть награда">

@@ -27,8 +27,10 @@ export function CityBackground({image}: {image: string}) {
     const timer = window.setTimeout(() => setLayers(old => ({...old, previous: null})), 1000);
     return () => window.clearTimeout(timer);
   }, [layers.current, layers.previous]);
+  const phase = image.includes('city-morning-') ? 'morning' : image.includes('city-sunset-') ? 'sunset' : image.includes('city-night-') ? 'night' : null;
   return <>
     {layers.previous && <img src={layers.previous} alt="" aria-hidden="true" draggable={false} decoding="sync"/>}
     {layers.current && <img key={layers.current} className={layers.previous ? 'district-light-enter' : undefined} src={layers.current} alt="Зимний хоккейный район" draggable={false} decoding="sync"/>}
+    {phase && <span className={`city-sky-light is-${phase}`} aria-hidden="true"/>}
   </>;
 }

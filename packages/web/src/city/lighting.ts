@@ -10,10 +10,10 @@ export function cityTimeOfDay(date: Date, city?:SolarCity|null): CityTimeOfDay {
  return hour >= 18 && (hour < 19 || (hour === 19 && date.getMinutes() < 30)) ? 'sunset' : 'night';
 }
 const images = {
- morning: ['/maps/city-morning-4096-6c51c36a5e7c.webp', '/maps/city-morning-6144-827e19348fd3.webp'],
- day: ['/maps/city-day-4096-76504717105e.webp', '/maps/city-day-6144-dfce58fc1431.webp'],
- sunset: ['/maps/city-sunset-4096-feaa739ef876.webp', '/maps/city-sunset-6144-ec5c4b307955.webp'],
- night: ['/maps/city-night-4096-658017a820ba.webp', '/maps/city-night-6144-32a760b2628a.webp'],
+ morning: ["/maps/city-morning-4096-599182173a15.webp", "/maps/city-morning-6144-6f47bdadf155.webp"],
+ day: ["/maps/city-day-4096-819ac2d8ab57.webp", "/maps/city-day-6144-851ba4168a45.webp"],
+ sunset: ["/maps/city-sunset-4096-c57a2c05d161.webp", "/maps/city-sunset-6144-7b487af7dc7e.webp"],
+ night: ["/maps/city-night-4096-a454ebb1180e.webp", "/maps/city-night-6144-946bbdb0194a.webp"],
 } as const;
 export function chooseCityImageSize(input: {width:number;height:number;dpr:number;saveData?:boolean|undefined;deviceMemory?:number|undefined}): 4096 | 6144 {
  if(input.saveData || (input.deviceMemory !== undefined && input.deviceMemory <= 4))return 4096;

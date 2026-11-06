@@ -4,7 +4,7 @@ import {accidentAssets} from './accidentAssets.js';
 import {trafficAssets} from './trafficAssets.js';
 import type {VisibleAccident} from './useCityAccident.js';
 import './city-accident.css';
-const bottoms=[19.5,17] as const;
+const bottoms=[18,14.5] as const;
 export function CityAccident({incident}:{incident:VisibleAccident}){
  const {event,phase,sampledAt}=incident;
  useEffect(()=>{
