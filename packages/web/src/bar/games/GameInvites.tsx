@@ -1,13 +1,16 @@
 import {useBarMenuStore} from '../barMenuStore.js';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { isOpenRinkRoute } from '../../components/BottomNav.js';
 import { useGameInvites } from './gameInviteStore.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { gameApi } from './api.js';
 import { InvitationToast } from '../../components/InvitationToast.js';
-export function GameInvites() {
+export function GameInvites({suppressed=false}:{suppressed?:boolean}) {
   const user = useAuthStore((s) => s.user?.id);
   const navigate = useNavigate();
+  const location = useLocation();
+  const blocked = suppressed || isOpenRinkRoute(location) || location.pathname.startsWith('/duel/');
   const invite = useGameInvites(state => state.owner === user ? state.incoming[0] ?? null : null);
   const [error, setError] = useState<string | null>(null),
     [busy, setBusy] = useState(false);
@@ -48,7 +51,7 @@ export function GameInvites() {
       document.removeEventListener('visibilitychange', onReturn);
       window.removeEventListener('focus', onReturn);
     };
-  }, [user]);
+  }, [user, blocked]);
   const respond = async (action: 'accept' | 'decline') => {
     if (!invite || !user || lock.current) return;
     lock.current = true;
@@ -67,7 +70,7 @@ export function GameInvites() {
       setBusy(false);
     }
   };
-  if (!invite) return null;
+  if (blocked || !invite) return null;
   const label = {battleship:'морской бой',billiards:'бильярд',darts:'дартс',armwrestling:'армрестлинг',ochko:'очко',checkers:'шашки'}[invite.kind];
   return (
     <InvitationToast name={invite.senderName} avatarUrl={invite.senderAvatarUrl} description={`Приглашает сыграть в ${label}`}>

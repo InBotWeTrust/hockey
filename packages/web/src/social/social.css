@@ -121,3 +121,10 @@
   color: #fff;
   text-shadow: 0 1px 3px #07111ee6, 0 2px 8px #07111eb3;
 }
+
+.public-profile-passport .public-profile-trophies {
+  margin-top: 12px;
+  margin-bottom: 0;
+  padding: 0;
+  border: 0;
+}

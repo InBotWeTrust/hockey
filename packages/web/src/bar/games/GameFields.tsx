@@ -799,18 +799,15 @@ export function PoolField({
             <stop offset="1" stopColor="black" stopOpacity=".35" />
           </radialGradient>
         </defs>
-        {/* Register the artwork using its corner pocket centers: (102, 88) and (830, 1577). */}
+        {/* Align the physical playing surface with the inner cushion edges of the artwork. */}
         <image
           href="/bar/games/billiards-table-v2.webp"
-          x={-102 / 728}
-          y={-88 / 744.5}
-          width={933 / 728}
-          height={1685 / 744.5}
+          x={-118 / 697}
+          y={-103 / 725.5}
+          width={933 / 697}
+          height={1685 / 725.5}
           preserveAspectRatio="none"
         />
-        {barPool.POCKETS.map((p, i) => (
-          <circle key={i} cx={p.x} cy={p.y} r=".059" fill="#080b09" />
-        ))}
         {!game.ballInHand && !stroking && (!disabled || (opponent && !!remoteAim)) && (
           <g
             stroke="#f4eac9"

@@ -2120,6 +2120,29 @@ describe('DailyScreen', () => {
     );
   });
 
+  it.each([[1,1,'01/30'],[2,31,'31/60'],[3,61,'61/90']] as const)('shows cumulative classic duel shots in period %s', async (period,total,label) => {
+    let props:PlayViewModule.PlayViewProps<AmateurDuelMatchState>|undefined;
+    vi.spyOn(PlayViewModule,'PlayView').mockImplementation(value=>{props=value as PlayViewModule.PlayViewProps<AmateurDuelMatchState>;return <div data-testid="classic-duel-score"/>;});
+    const now=Date.now();
+    const snapshot:AmateurDuelMatchState={...settledDuelMatch,status:'active',outcome:null,settled_at:null,
+      rules:{...settledDuelMatch.rules,duelKind:'classic',totalPeriods:3,shotsPerPeriod:30,
+        periodRules:[1,2,3].map(periodNumber=>({periodNumber,mode:'quota',shotsLimit:30,durationMs:1200000}))},
+      starts_at:new Date(now-1000).toISOString(),ends_at:new Date(now+3600000).toISOString(),
+      server_now:new Date(now).toISOString(),period_started_at:new Date(now).toISOString(),
+      period_ends_at:new Date(now+1200000).toISOString(),current_period_shots:1,current_period_goals:1,
+      me:{...settledDuelMatch.me,state:'period_active',current_period:period,current_period_shots:1,shots_taken:total},
+      opponent:{...settledDuelMatch.opponent,state:'period_active',current_period:period,current_period_shots:1,shots_taken:total}};
+    vi.spyOn(globalThis,'fetch').mockImplementation(async input=>new Response(JSON.stringify(
+      String(input).includes('/matches/')?{match:snapshot}:{sticks:[],skates:[],nutrition:[],inventory:[],items:[]}),
+      {status:200,headers:{'content-type':'application/json'}}));
+    const client=new QueryClient({defaultOptions:{queries:{retry:false}}});
+    render(<QueryClientProvider client={client}><MemoryRouter><AmateurDuelPlayView matchId={snapshot.id} tournamentId={null} tournamentFixtureId={null} onBack={()=>{}}/></MemoryRouter></QueryClientProvider>);
+    await screen.findByTestId('classic-duel-score');
+    expect(props!.scoreboardShots).toBe(total);
+    expect(props!.scoreboardShotsTotal).toBe(period*30);
+    expect(duelScoreboardOpponent(snapshot).shotsLabel).toBe(label);
+  });
+
   it.each([
     ['daily', 'period_active', 1, 0, 0, '00/30'],
     ['daily', 'period_active', 2, 0, 30, '30/60'],
@@ -8781,7 +8804,7 @@ describe('DailyScreen', () => {
     expect(duelScoreboardOpponent(activeMatch)).toMatchObject({
       goals: 19,
       shots: 37,
-      shotsLabel: '07/30',
+      shotsLabel: '37/60',
       time: 'играет 2/3',
       timeTone: 'active',
     });
@@ -8866,6 +8889,7 @@ describe('DailyScreen', () => {
 
     expect(await screen.findByText('СЧЁТ')).toBeInTheDocument();
     expect(screen.getByText('20:19')).toBeInTheDocument();
+    expect(screen.getByLabelText('Игровое табло')).toHaveTextContent('БРОСКИ42/60');
     const scoreboardText = screen.getByLabelText('Игровое табло').textContent ?? '';
     expect(scoreboardText.indexOf('СЧЁТ')).toBeGreaterThan(scoreboardText.indexOf('ПЕРИОД'));
     expect(scoreboardText.indexOf('БРОСКИ')).toBeGreaterThan(scoreboardText.indexOf('СЧЁТ'));
@@ -8873,7 +8897,7 @@ describe('DailyScreen', () => {
     const opponentLine = screen.getByLabelText('Соперник: Duel Opponent');
     expect(opponentLine).toHaveClass('game-scoreboard__status-line--active');
     expect(within(opponentLine).getByText('Duel Opponent')).toBeInTheDocument();
-    expect(within(opponentLine).getByText('07/30 · ИГРАЕТ 2/3')).toBeInTheDocument();
+    expect(within(opponentLine).getByText('37/60 · ИГРАЕТ 2/3')).toBeInTheDocument();
   });
 
   it.each(['offered','resolved'] as const)('ignores stale duel fight state %s and keeps hockey playable', async status => {

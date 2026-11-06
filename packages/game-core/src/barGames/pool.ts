@@ -1,4 +1,5 @@
 import type { Player, Winner, Point } from './darts.js';
+import { createRng } from '../rng.js';
 export const R = 0.026;
 export const POCKETS: Point[] = [
   { x: 0, y: 0 },
@@ -323,11 +324,32 @@ function clearPath(g: Game, a: Point, b: Point, ignored: number[]): boolean {
     return Math.hypot(ball.x-a.x-t*dx,ball.y-a.y-t*dy)>2*R+.002;
   });
 }
-export function bot(g: Game, smart = true): {placement: Point|null; shot: Shot} {
+export function bot(g: Game, smart = true, accuracyRoll?: number, strategySeed?: number): {placement: Point|null; shot: Shot} {
   const fallback=legacyBot(g);
-  if(!smart||g.break)return fallback;
+  if(!smart)return fallback;
+  const variation = strategySeed === undefined ? null : createRng(String(strategySeed));
+  const strategy = variation ? Math.floor(variation.next() * 3) : 0;
   const state=fallback.placement?place(g,fallback.placement):g;
   const cue=state.balls.find(b=>b.id===0)!;
+  if (g.break) {
+    const apex = state.balls.find(ball => ball.id === 1 && !ball.pocketed);
+    if (!variation || !apex) return fallback;
+    const breaks = [
+      { offset: 0, power: 1 },
+      { offset: -.038, power: 1 },
+      { offset: -.06, power: .8 },
+      { offset: .06, power: .8 },
+      { offset: .1, power: 1 },
+      { offset: -.08, power: .8 },
+      { offset: .08, power: .9 },
+      { offset: -.15, power: .9 },
+    ];
+    const opening = breaks[Math.floor(variation.next() * breaks.length)]!;
+    return {
+      placement: fallback.placement,
+      shot: { angle: Math.atan2(apex.y - cue.y, apex.x + opening.offset - cue.x), power: opening.power },
+    };
+  }
   const own=state.groups[state.turn];
   let targets=state.balls.filter(b=>!b.pocketed&&b.id>0&&b.id!==8&&(!own||group(b.id)===own));
   if(own&&!targets.length)targets=state.balls.filter(b=>!b.pocketed&&b.id===8);
@@ -353,18 +375,41 @@ export function bot(g: Game, smart = true): {placement: Point|null; shot: Shot} 
       pots.push({shot:{angle:Math.atan2(ghost.y-cue.y,ghost.x-cue.x),power:Math.max(.15,Math.min(.9,(d+travel)*.28+.15))},cost:d+travel+(1-alignment)*1.5});
     }
   }
-  let best=fallback.shot,bestValue=-Infinity;
-  const evaluate=(shot:Shot)=>{
+  let best = fallback.shot;
+  let bestValue = -Infinity;
+  let bestDifficulty = 0;
+  const evaluate=(shot:Shot,difficulty:number)=>{
     const sim=shoot(state,shot,'responsive',false);
     const legalPocket=(id:number)=>id>0&&id!==8&&(!own||group(id)===own);
-    const value=sim.game.winner===state.turn?10000:sim.game.winner!==null?-10000:
+    let value=sim.game.winner===state.turn?10000:sim.game.winner!==null?-10000:
       (sim.game.lastFoul?-1000:5)+(sim.scratch?-1000:0)+sim.pocketed.filter(legalPocket).length*100-
       sim.pocketed.filter(id=>id>0&&id!==8&&!legalPocket(id)).length*10+(sim.game.turn===state.turn?2:0)-shot.power;
-    if(value>bestValue){bestValue=value;best=shot;}
+    if (variation) {
+      const nextCue = sim.game.balls.find(ball => ball.id === 0)!;
+      const remaining = sim.game.balls.filter(ball => !ball.pocketed && ball.id > 0 && ball.id !== 8);
+      const ownDistances = remaining.filter(ball => !own || group(ball.id) === own)
+        .map(ball => Math.hypot(ball.x - nextCue.x, ball.y - nextCue.y));
+      const enemyDistances = remaining.filter(ball => !own || group(ball.id) !== own)
+        .map(ball => Math.hypot(ball.x - nextCue.x, ball.y - nextCue.y));
+      // Preserve the preference for legal pots, varying position and defensive priorities within that tier.
+      if (strategy === 1 && ownDistances.length) value += (2 - Math.min(...ownDistances)) * 6;
+      if (strategy === 2 && enemyDistances.length) value += Math.min(...enemyDistances) * 4;
+      value += variation.next() * 4;
+    }
+    if (value > bestValue) {
+      bestValue = value;
+      best = shot;
+      bestDifficulty = difficulty;
+    }
   };
   // Bound work per decision: 12 pot simulations, then at most 6 safety simulations.
   for(const candidate of pots.sort((a,b)=>a.cost-b.cost).slice(0,4))
-    for(const factor of [.8,1,1.2])evaluate({...candidate.shot,power:Math.min(1,candidate.shot.power*factor)});
-  if(bestValue<90)for(const candidate of safeties.sort((a,b)=>a.cost-b.cost).slice(0,6))evaluate(candidate.shot);
+    for(const factor of [.8,1,1.2])evaluate({...candidate.shot,power:Math.min(1,candidate.shot.power*factor)},candidate.cost);
+  if(bestValue<90)for(const candidate of safeties.sort((a,b)=>a.cost-b.cost).slice(0,6))evaluate(candidate.shot,candidate.cost);
+  if (accuracyRoll !== undefined) {
+    // Longer routes and thin cuts amplify a seeded human aiming error.
+    const spread = .006 + Math.min(.08, bestDifficulty * .025);
+    best = {...best, angle: best.angle + (accuracyRoll - .5) * spread};
+  }
   return {placement:fallback.placement,shot:best};
 }

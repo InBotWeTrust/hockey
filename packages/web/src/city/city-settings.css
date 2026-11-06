@@ -3,6 +3,9 @@
   display: grid;
   gap: 8px;
 }
+.profile-city-section > .section-label {
+  padding-inline: 14px;
+}
 .profile-city-settings {
   margin: 0 14px;
   padding: 14px;

@@ -194,7 +194,7 @@ export function PublicSportingPassport({
           <span>В игре</span>
         </div>
       </div>
-      <section className="profile-trophy-showcase" aria-label="Витрина наград">
+      <section className="profile-trophy-showcase public-profile-trophies" aria-label="Витрина наград">
         {trophies.map(([section, label, value, Icon]) => {
           const content = (
             <>
@@ -424,6 +424,9 @@ function UserProfileSheetContent({
             className="glass"
             style={{
               minHeight: 74,
+              gap: 12,
+              padding: 12,
+              flexWrap: 'wrap',
               borderRadius: 16,
               display: 'flex',
               alignItems: 'center',

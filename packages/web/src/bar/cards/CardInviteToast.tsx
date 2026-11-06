@@ -1,7 +1,8 @@
 import {useBarMenuStore} from '../barMenuStore.js';
 import { InvitationToast } from '../../components/InvitationToast.js';
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { isOpenRinkRoute } from '../../components/BottomNav.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import { lobby, respond } from './onlineApi.js';
 import { incomingInvites, useCardInvites } from './cardInvites.js';
@@ -16,6 +17,8 @@ export function CardInviteToast({
   const userId = previewUserId ?? actualUserId;
   const incoming = useCardInvites((s) => s.incoming);
   const navigate = useNavigate();
+  const location = useLocation();
+  const blocked = suppressed || isOpenRinkRoute(location) || location.pathname.startsWith('/duel/');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const generation = useRef(0);
@@ -62,7 +65,7 @@ export function CardInviteToast({
       document.removeEventListener('visibilitychange', refresh);
       if (generation.current === epoch) generation.current++;
     };
-  }, [userId]);
+  }, [userId, blocked]);
   const invitation = incoming[0];
   const answer = async (action: 'accept' | 'decline') => {
     if (!invitation || pending.current) return;
@@ -84,7 +87,7 @@ export function CardInviteToast({
       setBusy(false);
     }
   };
-  if (suppressed || !invitation) return null;
+  if (blocked || !invitation) return null;
   return (
     <InvitationToast name={invitation.sender_name} avatarUrl={invitation.sender_avatar_url} description={`Приглашает сыграть в карты${invitation.capacities?.length ? ` · стол на ${invitation.capacities.join(' / ')}` : invitation.capacity ? ` · стол на ${invitation.capacity}` : ''}`}>
         {error && <p role="alert">{error}</p>}

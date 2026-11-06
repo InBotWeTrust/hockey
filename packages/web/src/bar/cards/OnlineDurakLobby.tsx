@@ -14,6 +14,7 @@ import { UserAvatar } from '../../chat/components/UserAvatar.js';
 import { useAuthStore } from '../../auth/authStore.js';
 import {
   lobby,
+  invite,
   queue,
   respond,
   searchPlayers,
@@ -533,6 +534,7 @@ export function OnlineDurakLobby({ embedded = false, meetingTab, onMeetingTabCha
                   onClick={() =>
                     selectedPlayer &&
                     void run(async () => {
+                      if (capacity === 2) return invite(selectedPlayer.userId);
                       const result = await joinRoom(capacity, false);
                       await roomInvite(result.roomId, selectedPlayer.userId);
                       return result;
