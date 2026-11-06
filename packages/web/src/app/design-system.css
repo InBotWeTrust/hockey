@@ -15590,9 +15590,20 @@ button.daily-calendar__day:active {
 }
 .android-app-card,
 .android-update-banner {
+  position: fixed;
+  z-index: 800;
+  top: calc(env(safe-area-inset-top) + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: calc(100% - 24px);
+  max-width: 430px;
+  max-height: calc(100dvh - env(safe-area-inset-top) - 24px);
+  overflow-y: auto;
+  border-radius: 22px;
   padding: 16px;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   justify-content: space-between;
   gap: 14px;
 }
@@ -15637,6 +15648,11 @@ button.daily-calendar__day:active {
   display: flex;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.android-update-banner > div {
+  min-width: 0;
+  width: 100%;
 }
 
 @media (max-width: 380px) {

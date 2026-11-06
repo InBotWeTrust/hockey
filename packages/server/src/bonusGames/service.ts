@@ -1,6 +1,6 @@
 import {BONUS_RHYTHM_SETTLEMENT_GRACE_MS} from './rhythm.js';
 import { countRhythmBoardContacts, projectRhythm } from '@hockey/game-core';
-import { bonusLocationCompletedSql } from './challengeLevels.js';
+import { bonusLocationPrerequisiteSql } from './challengeLevels.js';
 import { getBonusRecordResult, settleBonusRecord } from './records.js';
 import { challengeLevelPreview, buildChallengeLevelEnvironment, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
 import {cyberpunkEarliestTap,cyberpunkEnvironmentForHistory,cyberpunkShooterMotion} from '@hockey/game-core';
@@ -534,7 +534,7 @@ async function fetchStartableGame(
             arena.artwork_url as arena_artwork_url,
             arena.thumbnail_url as arena_thumbnail_url,
             predecessor.id as predecessor_id,
-            ${bonusLocationCompletedSql('predecessor', 'predecessor_completion')} as predecessor_completed,
+            ${bonusLocationPrerequisiteSql('predecessor', 'predecessor_completion')} as predecessor_completed,
             unlock.id as unlock_id, completion.id as completion_id,
             preview_preference.dismissed_revision as preview_dismissed_revision
        from bonus_game game

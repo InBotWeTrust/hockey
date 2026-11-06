@@ -1,4 +1,5 @@
 import {useAmateurAccess} from '../amateur/useAmateurAccess.js';
+import { isReleasedBonusChallenge } from '@hockey/game-core';
 import {SectionLoading} from '../components/SectionLoading.js';
 import { CurrencyAmount, PurchaseAction } from '../shop/PurchaseAction.js';
 import { SectionPanorama } from '../components/SectionPanorama.js';
@@ -50,7 +51,7 @@ const SAFE_UI_ERROR_MESSAGE = 'Не удалось выполнить запро
 const LAST_SKILL_STORAGE_KEY = 'bonus-games:last-skill';
 
 function isUnreleasedChallenge(game: BonusGameCard): boolean {
-  return game.skill_code === 'challenge' && !['challenge-beach', 'challenge-ski-resort'].includes(game.slug) &&
+  return game.skill_code === 'challenge' && !isReleasedBonusChallenge(game.slug) &&
     !(import.meta.env.DEV || import.meta.env.VITE_CHALLENGES_ENABLED === true);
 }
 

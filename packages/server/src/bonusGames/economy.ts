@@ -1,4 +1,4 @@
-import { bonusLocationCompletedSql } from './challengeLevels.js';
+import { bonusLocationPrerequisiteSql } from './challengeLevels.js';
 import type { Pool, PoolClient } from 'pg';
 import type { ChallengeLevel } from './challengeLevels.js';
 import { AppError } from '../plugins/errors.js';
@@ -116,7 +116,7 @@ async function fetchPurchasableGame(
     `select game.id, game.slug, game.status, game.access_type,
             game.unlock_price_stars, game.revision,
             predecessor.id as predecessor_id,
-            ${bonusLocationCompletedSql('predecessor', 'predecessor_completion')} as predecessor_completed,
+            ${bonusLocationPrerequisiteSql('predecessor', 'predecessor_completion')} as predecessor_completed,
             unlock.id as unlock_id,
             completion.id as completion_id,
             active_attempt.id as active_attempt_id

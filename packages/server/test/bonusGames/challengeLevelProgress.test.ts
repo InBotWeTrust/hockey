@@ -95,7 +95,7 @@ describe.skipIf(!hasIntegrationEnv)('challenge level progress and economy', () =
     const rewards = (await pool.query('select count(*)::int n from bonus_game_economy_event where user_id=$1',[user.id])).rows[0];
     expect(rewards.n).toBe(1);
   });
-  it('requires all three levels before completing a challenge and opening its successor', async () => {
+  it('opens the successor after level one while full completion still requires all three levels', async () => {
     const user = await findOrCreateTelegramUser(pool, { providerUid: 'partial-level-progress', displayName: 'Progress Test' });
     await pool.query('update users set level=2 where id=$1', [user.id]);
     const games = await pool.query<{ id: string; slug: string }>("select id,slug from bonus_game where slug in ('challenge-beach','challenge-ski-resort')");
@@ -117,12 +117,38 @@ describe.skipIf(!hasIntegrationEnv)('challenge level progress and economy', () =
       const ski = cards.find(card => card.id === skiId)!;
       expect(beach.is_completed, `after level ${level}`).toBe(level === 3);
       expect(beach.state).toBe(level === 3 ? 'completed' : 'available');
-      expect(ski.state).toBe(level === 3 ? 'available' : 'sequence_locked');
-      if (level < 3) {
-        await expect(startOrResumeBonusAttempt(pool, { userId: user.id, gameId: skiId, now, seedSecret: 'partial-level-progress' }))
-          .rejects.toMatchObject({ code: 'bonus_previous_game_required' });
-        await expect(purchaseBonusGame(pool, { userId: user.id, gameId: skiId, expectedPriceStars: 0, now }))
-          .rejects.toMatchObject({ code: 'bonus_previous_game_required' });
+      expect(ski.state).toBe('available');
+      expect(ski.levels?.[0]?.is_unlocked).toBe(true);
+      await expect(purchaseBonusGame(pool, { userId: user.id, gameId: skiId, expectedPriceStars: 0, now }))
+        .resolves.toMatchObject({ unlocked: true });
+      if (level === 1) {
+        const { default: Fastify } = await import('fastify');
+        const { bonusGameRoutes } = await import('../../src/bonusGames/routes.js');
+        const app = Fastify();
+        app.decorate('pg', pool);
+        app.decorate('authenticate', async (request: { user: { id: string; role: string } }) => {
+          request.user = { id: user.id, role: 'player' };
+        });
+        await app.register(bonusGameRoutes, { bonusSeedSecret: 'release-acceptance', dailyAttemptLimit: 100, challengesEnabled: false });
+        try {
+          const launched = await app.inject({ method: 'POST', url: `/bonus-games/${skiId}/attempts`, payload: { level: 1 } });
+          expect(launched.statusCode, launched.body).toBe(201);
+          const attemptId = launched.json().attempt.id;
+          const resumed = await app.inject({ method: 'POST', url: `/bonus-games/${skiId}/attempts`, payload: { level: 1 } });
+          expect(resumed.statusCode).toBe(200);
+          expect(resumed.json().attempt.id).toBe(attemptId);
+          const restored = await app.inject({ method: 'GET', url: `/bonus-games/attempts/${attemptId}` });
+          expect(restored.statusCode).toBe(200);
+          const acknowledged = await app.inject({ method: 'POST', url: `/bonus-games/attempts/${attemptId}/preview/acknowledge`, payload: {} });
+          expect(acknowledged.statusCode, acknowledged.body).toBe(200);
+          const playable = await app.inject({ method: 'POST', url: `/bonus-games/attempts/${attemptId}/period/start`, payload: {} });
+          expect(playable.statusCode, playable.body).toBe(200);
+          expect(playable.json().attempt.state).toBe('period_active');
+          const other = (await pool.query<{ id: string }>("select id from bonus_game where slug='challenge-cyberpunk-yard'")).rows[0]!;
+          const blocked = await app.inject({ method: 'POST', url: `/bonus-games/${other.id}/attempts`, payload: { level: 1 } });
+          expect(blocked.statusCode).toBe(403);
+          await pool.query("update bonus_game_attempt set status='abandoned', state='closed', closed_at=$2 where id=$1", [attemptId, now]);
+        } finally { await app.close(); }
       }
     }
   });

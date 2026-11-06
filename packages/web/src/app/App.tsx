@@ -31,6 +31,8 @@ import { isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
+import { InstalledReleaseNotes } from '../components/InstalledReleaseNotes.js';
+import { AndroidUpdateBanner } from '../components/AndroidUpdateBanner.js';
 import { WeeklyChallengeStartModal } from '../components/WeeklyChallengeStartModal.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
 import { useChatSocket } from '../chat/useChatSocket.js';
@@ -385,6 +387,7 @@ function AppScene(): JSX.Element {
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
       {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
+      {androidReleaseAccess && <AndroidUpdateBanner />}
       <div
         className={`app-shell ${surfaceClassName}${appThemeColor(location.pathname,location.search)==='#9cbfdf' ? ' app-shell--gameplay' : ''}${backdropClassName ? ` ${backdropClassName}` : ''}${levelBackdropClassName ? ` ${levelBackdropClassName}` : ''}`}
         style={{
@@ -726,7 +729,7 @@ export function App(): JSX.Element {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppFrame />
-        {!isNativeAndroid() && <UpdatePrompt />}
+        {isNativeAndroid() ? <InstalledReleaseNotes /> : <UpdatePrompt />}
       </BrowserRouter>
     </QueryClientProvider>
   );
