@@ -1,4 +1,4 @@
-import { bonusLocationCompletedSql, challengeLevelPreview, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
+import { bonusLocationPrerequisiteSql, challengeLevelPreview, supportsChallengeLevels, type ChallengeLevel } from './challengeLevels.js';
 import type { Pool, PoolClient } from 'pg';
 import { assertFullAmateurAccess, resolveAmateurAccess } from '../profile/amateurAccess.js';
 import { normalizeBonusQualificationRules, type BonusQualificationRules } from './qualification.js';
@@ -285,7 +285,7 @@ export async function listBonusGameCards(
             arena.thumbnail_url as arena_thumbnail_url,
             game.predecessor_id,
             game.predecessor_title,
-            ${bonusLocationCompletedSql('predecessor_game', 'predecessor_completion')} as predecessor_completed,
+            ${bonusLocationPrerequisiteSql('predecessor_game', 'predecessor_completion')} as predecessor_completed,
             unlock.id as unlock_id,
             completion.id as completion_id,
             attempt.id as attempt_id,
