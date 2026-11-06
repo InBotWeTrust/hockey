@@ -1,6 +1,7 @@
 import { useStore } from 'zustand';
 import { androidUpdateStore } from '../mobileUpdate/store.js';
 import { nativeUpdater } from '../mobileUpdate/nativeUpdater.js';
+import { ReleaseNotesDisclosure } from './ReleaseNotesDisclosure.js';
 
 export function AndroidUpdateBanner(): JSX.Element | null {
   const state = useStore(androidUpdateStore);
@@ -19,7 +20,7 @@ export function AndroidUpdateBanner(): JSX.Element | null {
     <aside className="glass android-update-banner">
       <div>
         <strong>Доступно обновление {state.manifest.versionName}</strong>
-        <span>{state.manifest.releaseNotes || 'Улучшения и исправления'}</span>
+        <ReleaseNotesDisclosure items={state.manifest.releaseNotes.split(/\r?\n/).filter(Boolean)} />
       </div>
       <div className="android-update-banner__actions">
         <button

@@ -1,4 +1,5 @@
 import type { Pool } from 'pg';
+import { isReleasedBonusChallenge } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
 
 /** Read-only preflight: production only exposes released challenge locations, including direct URLs. */
@@ -11,5 +12,5 @@ export async function assertBonusChallengeRouteAccess(
     : await pool.query<{ skill_code: string; slug: string }>(
       'select game.skill_code, game.slug from bonus_game_attempt attempt join bonus_game game on game.id = attempt.bonus_game_id where attempt.id = $1 and attempt.user_id = $2',
       [params.attemptId, userId]);
-  if (rows[0]?.skill_code === 'challenge' && rows[0].slug !== 'challenge-beach') throw new AppError('bonus_game_in_development', 'Локация в разработке', 403);
+  if (rows[0]?.skill_code === 'challenge' && !isReleasedBonusChallenge(rows[0].slug)) throw new AppError('bonus_game_in_development', 'Локация в разработке', 403);
 }
