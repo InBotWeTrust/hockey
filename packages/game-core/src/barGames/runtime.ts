@@ -34,7 +34,7 @@ export type BarGameAction =
   | { type: 'naval-attack'; x: number; y: number; salvo: boolean; vertical: boolean }
   | { type: 'naval-move'; x: number; y: number }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 21;
+export const ENGINE_VERSION = 22;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -64,6 +64,7 @@ function supportedVersion(version: number): boolean {
     version === 18 ||
     version === 19 ||
     version === 20 ||
+    version === 21 ||
     version === ENGINE_VERSION
   );
 }
@@ -305,7 +306,7 @@ export function command(
       if (now >= m.deadline || now < m.animationUntil) throw Error('Not your turn');
       if (action.type === 'naval-attack')
         game = sea.attack(g, player, action.x, action.y, action.salvo, action.vertical, m.engineVersion >= 13);
-      else if (action.type === 'naval-move') game = sea.move(g, player, action.x, action.y);
+      else if (action.type === 'naval-move') game = sea.move(g, player, action.x, action.y, m.engineVersion >= 22);
       else throw Error('Wrong game action');
     }
     const missed: [number, number] = [...m.missed];
@@ -329,7 +330,9 @@ export function command(
           }
         : {}),
       revision: m.revision + 1,
-      deadline: now + (m.engineVersion >= 14 ? 30000 : TURN_MS),
+      deadline: action.type === 'naval-move' && m.engineVersion >= 22
+        ? m.deadline
+        : now + (m.engineVersion >= 14 ? 30000 : TURN_MS),
       animationUntil: now + (m.computer && game.turn === 1 ? 3000 : 0),
       reason: game.winner !== null ? 'played' : null,
     };
@@ -651,8 +654,15 @@ function ochkoRuntime(m: Runtime, game: ochko.OchkoState, now: number): Runtime 
   };
 }
 export function publicRuntime(m: Runtime, player: darts.Player, now = 0): Runtime {
-  if (m.game.kind === 'battleship')
-    return { ...m, seed: 0, game: sea.view(privateSea(m.game), player) };
+  if (m.game.kind === 'battleship') {
+    const game = sea.view(privateSea(m.game), player);
+    const result = { ...m, seed: 0, game };
+    if (m.engineVersion >= 22 && game.lastAction?.type === 'move' && game.lastAction.player !== player) {
+      game.lastAction = null;
+      if (result.feedback?.type === 'naval-move') delete result.feedback;
+    }
+    return result;
+  }
   if (m.game.kind === 'ochko')
     return {
       ...m,
