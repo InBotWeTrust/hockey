@@ -25,13 +25,14 @@ export function drawBlizzard(ctx:CanvasRenderingContext2D,s:BlizzardState,time:n
  }
  if(wind.strength>0){
   const magnitude=Math.hypot(wind.x,wind.y)||1,dx=wind.x/magnitude,dy=wind.y/magnitude;
-  for(let i=0;i<72;i++){
+  for(let i=0;i<(s.stormRevision===1?100:72);i++){
    const travel=reduced?.5:((time/420+i*.173)%1);
+   const curl=s.stormRevision===1?Math.sin(time/350+i*.8)*18:0;
    const x=40+((i*137+travel*500*dx)%520+520)%520;
    const y=80+((i*79+travel*500*dy)%650+650)%650;
    const length=45+(i%4)*22;
    ctx.strokeStyle=ventilation?`rgba(184,215,230,${Math.min(.5,(.18+(i%3)*.07)*wind.strength)})`:`rgba(237,249,255,${Math.min(.65,(.22+(i%3)*.09)*wind.strength)})`;
-   ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x-dx*length,y-dy*length);ctx.lineTo(x,y);ctx.stroke();
+   ctx.lineWidth=2.5;ctx.beginPath();ctx.moveTo(x-dx*length,y-dy*length);ctx.quadraticCurveTo(x-dx*length*.5-dy*curl,y-dy*length*.5+dx*curl,x,y);ctx.stroke();
    if(!ventilation){ctx.fillStyle='#ecf6ff80';ctx.beginPath();ctx.arc(x-7*dx,y-7*dy,1.5+i%3,0,Math.PI*2);ctx.fill();}
   }
  }

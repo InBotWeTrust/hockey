@@ -75,22 +75,6 @@ export function CityMap(props:Props){
  const [flash,setFlash]=useState<string|null>(null);
  const viewport=useRef<HTMLDivElement>(null),world=useRef<HTMLDivElement>(null),dock=useRef<HTMLElement>(null);
  const dockPan=useHorizontalPan(dock);
- useLayoutEffect(()=>{
-  const root=district.current,scroll=viewport.current;
-  const widget=world.current?.querySelector<HTMLElement>('.city-weather-widget');
-  if(!root||!scroll||!widget)return;
-  const update=()=>{
-   const r=root.getBoundingClientRect(),w=widget.getBoundingClientRect();
-   const overlaps=w.left<r.right&&w.right>r.right-82;
-   root.style.setProperty('--map-weather-clearance',overlaps?`${Math.ceil(w.bottom-r.top+8)}px`:'0px');
-  };
-  update();
-  scroll.addEventListener('scroll',update,{passive:true});
-  window.addEventListener('resize',update);
-  const observer=typeof ResizeObserver==='undefined'?null:new ResizeObserver(update);
-  observer?.observe(widget);observer?.observe(root);
-  return()=>{scroll.removeEventListener('scroll',update);window.removeEventListener('resize',update);observer?.disconnect();root.style.removeProperty('--map-weather-clearance');};
- },[props.city,props.currentWeather,props.weatherLoading,props.weatherStale]);
  const previousCollapse=useRef(navigationCollapsed);
  useLayoutEffect(()=>{const reopening=previousCollapse.current&&!navigationCollapsed;previousCollapse.current=navigationCollapsed;if(!reopening)return;const menu=dock.current,active=menu?.querySelector<HTMLElement>('[aria-pressed="true"]');if(menu&&active)menu.scrollTo?.({left:active.offsetLeft-menu.offsetLeft-menu.clientWidth/2+active.offsetWidth/2,behavior:'auto'});},[navigationCollapsed]);
  const timer=useRef<ReturnType<typeof setTimeout>>();
@@ -219,10 +203,10 @@ export function CityMap(props:Props){
   <aside className="map-action-rail" hidden={tourFocus} aria-label="Игровые режимы">
    <div className="map-game-actions-host" ref={setMapHost}/>
    {props.exercisesAction}
+   {!tourFocus&&props.weeklyPanel}
    {tour.mode==='resume'&&tour.state&&<MapActionButton label="Знакомство" note={`${tour.state.viewed.length}/${cityTourPlaces.length}`} icon={<MapIcon/>} onClick={explore}/>}
    <MapActionButton label="Сообщения" icon={<MessageCircle/>} count={props.chatCount??0} onClick={()=>{rememberChatReturn(props.owner,'/sections');onNavigate(chatResumeRoute(props.owner));}}/>
   </aside>
-  {!tourFocus&&props.weeklyPanel}
   {tourFocus&&<div className="city-tour-spotlight" aria-hidden="true"><div className="city-tour-spotlight__hole"/><svg className="city-tour-pointer-layer"><path className="city-tour-pointer"/></svg></div>}
   {props.noviceProgress&&props.noviceProgress.status!=='complete'&&<button type="button" className="district-novice-progress" onClick={()=>onNavigate('/daily')}>
    <strong><Target aria-hidden="true"/>Путь в Любители</strong>

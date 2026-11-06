@@ -3,8 +3,8 @@ type Point={x:number;y:number};
 function read(key:string):Point|null {
  try {const p=JSON.parse(localStorage.getItem(key)??'null');return p&&Number.isFinite(p.x)&&Number.isFinite(p.y)?p:null;}catch{return null;}
 }
-export function useGameWindowPosition(owner:string|undefined,open:boolean){
- const key=`floating-games-window-v1:${owner??'anonymous'}`;
+export function useGameWindowPosition(owner:string|undefined,open:boolean,storagePrefix='floating-games-window-v1'){
+ const key=`${storagePrefix}:${owner??'anonymous'}`;
  const [point,setPoint]=useState<Point|null>(()=>read(key));
  const handle=useRef<HTMLButtonElement>(null);
  const current=useRef(point);current.current=point;
