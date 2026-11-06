@@ -8,17 +8,17 @@ describe('GAME_CORE_VERSION', () => {
   });
 
   it('is bumped for caretaker drift physics', () => {
-    expect(GAME_CORE_VERSION).toBe(126);
+    expect(GAME_CORE_VERSION).toBe(127);
   });
 });
 
 describe('shot core compatibility', () => {
   it('preserves sessions from the bar-only releases', () => {
-    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125])
+    for (const version of [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126])
       expect(isShotCoreVersionCompatible(version)).toBe(true);
   });
   it('rejects other physics versions', () => {
-    for (const version of [77, 87, 127, NaN])
+    for (const version of [77, 87, 128, NaN])
       expect(isShotCoreVersionCompatible(version)).toBe(false);
   });
 });
