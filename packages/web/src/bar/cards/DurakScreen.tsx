@@ -1,4 +1,5 @@
 import { BarHelpIcon } from '../BarHelpIcon.js';
+import { gameInteractionProps } from '../../game/gameInteraction.js';
 import { FittedNotice } from '../../game/FittedNotice.js';
 import { ArrowLeft, LogOut, X } from 'lucide-react';
 import { AccessibleModal } from '../../components/AccessibleModal.js';
@@ -175,7 +176,7 @@ export function DurakTable({
                   : 'Нажми «Бито»'
                 : 'Твой ход')));
   return (
-    <main className={`screen durak-screen${online ? ' durak-screen--online' : ''}`}>
+    <main {...gameInteractionProps} className={`screen durak-screen${online ? ' durak-screen--online' : ''}`}>
       {error && (
         <p className="durak-network-error" role="alert">
           {error}

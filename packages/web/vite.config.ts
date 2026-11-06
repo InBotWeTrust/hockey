@@ -1,15 +1,37 @@
 import { criticalPwaAssets } from './src/performance/pwaCachePolicy.js';
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
 let criticalAssets = new Set<string>();
+const releaseNotes = JSON.parse(readFileSync(new URL('./release-notes.json', import.meta.url), 'utf8')) as { items: string[] };
+if (!Array.isArray(releaseNotes.items) || !releaseNotes.items.length || releaseNotes.items.some(item => typeof item !== 'string' || !item.trim())) {
+  throw new Error('release-notes.json must contain non-empty release notes');
+}
+const notesJson = JSON.stringify({ items: releaseNotes.items });
+const notesWorker = `release-notes-${createHash('sha256').update(notesJson).digest('hex').slice(0, 16)}.js`;
 
 export default defineConfig({
   define: { 'import.meta.env.VITE_BAR_MAP_ENABLED': JSON.stringify(true), 'import.meta.env.VITE_PAGE_INTRODUCTIONS_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_TRAINING_EXERCISES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
   plugins: [
     react(),
     { name: 'hockey-critical-pwa', generateBundle(_options, bundle) { criticalAssets = criticalPwaAssets(bundle); } },
+    {
+      name: 'hockey-release-notes',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: notesWorker,
+          source: `self.addEventListener('message', event => {
+  if (event.data?.type === 'HOCKEY_RELEASE_NOTES' && event.ports[0]) {
+    event.ports[0].postMessage(${notesJson});
+  }
+});`,
+        });
+      },
+    },
     VitePWA({
       registerType: 'prompt',
       includeAssets: [
@@ -38,7 +60,7 @@ export default defineConfig({
       workbox: {
         cleanupOutdatedCaches: true,
         clientsClaim: true,
-        importScripts: ['/push-sw.js'],
+        importScripts: ['/push-sw.js', `/${notesWorker}`],
         globPatterns: ['**/*.{js,css,html,ico,woff2,webmanifest}'],
         globIgnores: ['**/icons/app-logo.png'],
         manifestTransforms: [async entries => ({

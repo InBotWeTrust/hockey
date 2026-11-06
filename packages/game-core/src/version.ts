@@ -1,10 +1,10 @@
-export const GAME_CORE_VERSION = 118 as const;
+export const GAME_CORE_VERSION = 120 as const;
 
-// Versions 89–118 add bar games, Rhythm and seeded billiards aiming errors; existing hockey shot simulation is identical to 88.
+// Versions 89–120 add bar games, Rhythm, private submarine rescues and billiards bot updates. Hockey shot simulation remains identical to 88.
 // Reassess this compatibility explicitly on the next engine version bump.
 export function isShotCoreVersionCompatible(version: number): boolean {
   return (
     version === GAME_CORE_VERSION ||
-    (GAME_CORE_VERSION === 118 && [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117].includes(version))
+    (GAME_CORE_VERSION === 120 && [88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119].includes(version))
   );
 }
