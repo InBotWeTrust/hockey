@@ -216,7 +216,7 @@ const url = process.env.TEST_CARD_DATABASE_URL;
     const [owner,one,two,stranger]=users as [string,string,string,string,...string[]];
     const invitation=await inviteCardsFromProfile(pool,owner,one,4);
     expect((await inviteCardsFromProfile(pool,owner,one,4)).id).toBe(invitation.id);
-    await inviteToRoom(pool,owner,invitation.roomId,two);
+    await inviteToRoom(pool,owner,invitation.roomId!,two);
     const cards=(await pool.query("select metadata from messages where metadata->>'type'='bar_game_invite' and metadata->>'status'='pending'")).rows;
     expect(cards).toHaveLength(2);
     expect(cards.every(r=>r.metadata.capacity===4 && r.metadata.roomId===invitation.roomId)).toBe(true);
@@ -232,14 +232,40 @@ const url = process.env.TEST_CARD_DATABASE_URL;
 
   it('preserves multiple sizes selected in a profile invitation', async () => {
     const first=await inviteCardsFromProfile(pool,users[0]!,users[1]!,[2,4,6]);
-    const room=await readCardRoom(pool,users[0]!,first.roomId);
+    const room=await readCardRoom(pool,users[0]!,first.roomId!);
     expect(room.formats).toEqual([2,4,6]);
     const message=(await pool.query("select metadata from messages where metadata->>'inviteId'=$1",[first.id])).rows[0];
     expect(message.metadata.capacities).toEqual([2,4,6]);
     expect((await inviteCardsFromProfile(pool,users[0]!,users[1]!,[2,4,6])).id).toBe(first.id);
     expect((await pool.query('select id from messages')).rows).toHaveLength(1);
-    await inviteToRoom(pool,users[0]!,first.roomId,users[2]!);
-    expect((await readCardRoom(pool,users[0]!,first.roomId)).formats).toEqual([2,4,6]);
+    await inviteToRoom(pool,users[0]!,first.roomId!,users[2]!);
+    expect((await readCardRoom(pool,users[0]!,first.roomId!)).formats).toEqual([2,4,6]);
+  });
+
+  it.each([2, [2], [2, 2]])('sends a two-player profile challenge without reserving a table and releases it after refusal (%j)', async capacity => {
+    const invitation = await inviteCardsFromProfile(pool, users[0]!, users[1]!, capacity);
+    expect(invitation.roomId).toBeNull();
+    expect((await pool.query('select id from bar_card_rooms')).rows).toHaveLength(0);
+    await respondCards(pool, users[1]!, invitation.id, 'decline');
+    const next = await inviteCardsFromProfile(pool, users[0]!, users[2]!, 2);
+    const accepted = await respondCards(pool, users[2]!, next.id, 'accept');
+    expect(accepted.matchId).toBeTruthy();
+    expect(accepted.roomId).toBeNull();
+  });
+  it('stops the search and transfers ownership when the host leaves a waiting table', async () => {
+    const {roomId} = await joinCardRoom(pool, users[0]!, 3);
+    await joinCardRoom(pool, users[1]!, 3);
+    const invitation = await inviteToRoom(pool, users[0]!, roomId, users[2]!);
+    const before = await readCardRoom(pool, users[0]!, roomId);
+    const left = await commandCardRoom(pool, users[0]!, roomId, before.revision, {type:'leave'});
+    expect(left.left).toBe(true);
+    const remaining = await readCardRoom(pool, users[1]!, roomId);
+    expect(remaining.owner).toBe(users[1]);
+    expect(remaining.searchUntil).toBeNull();
+    expect((await pool.query('select status from bar_card_invites where id=$1', [invitation.id])).rows[0].status).toBe('cancelled');
+    await inviteCards(pool, users[0]!, users[3]!);
+    await commandCardRoom(pool, users[1]!, roomId, remaining.revision, {type:'leave'});
+    expect((await pool.query('select user_id from bar_card_room_players where room_id=$1',[roomId])).rows).toHaveLength(0);
   });
 
 });

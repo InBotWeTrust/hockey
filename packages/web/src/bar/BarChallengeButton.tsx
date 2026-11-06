@@ -28,8 +28,10 @@ export function BarChallengeButton({ userId, name, avatarUrl }: { userId: string
     pending.current=true;setBusy(true);setError(null);
     try {
       if (kind === 'cards') {
-        const result = await apiFetch<{roomId:string}>('/bar/cards/profile-invites', {method:'POST',body:JSON.stringify({userId,capacity:capacities})});
-        setOpen(false);navigate(`/bar/cards/room/${encodeURIComponent(result.roomId)}`);
+        const result = await apiFetch<{roomId:string|null}>('/bar/cards/profile-invites', {method:'POST',body:JSON.stringify({userId,capacity:capacities})});
+        setOpen(false);
+        if (result.roomId) navigate(`/bar/cards/room/${encodeURIComponent(result.roomId)}`);
+        else setSent(true);
       } else {
         await gameApi.invite(kind,userId);setOpen(false);setSent(true);
       }
@@ -67,6 +69,6 @@ export function BarChallengeButton({ userId, name, avatarUrl }: { userId: string
       {error && <p role="alert" className="modal-copy">{error}</p>}
       <div className="modal-actions"><button className="modal-primary btn btn--cta" style={{fontSize:14,letterSpacing:0}} disabled={busy||!selected||(selected==='cards'&&!capacities.length)} onClick={()=>{if(selected)void send(selected);}}>{busy?'Отправляем…':'Предложить'}</button></div>
     </AccessibleModal>}
-    {sent && <AppToast message="Приглашение отправлено" onDismiss={()=>setSent(false)} variant="reward"/>}
+    {sent && <AppToast message="Приглашение отправлено" onDismiss={()=>setSent(false)} variant="reward" status="Игры бара"/>}
   </>;
 }
