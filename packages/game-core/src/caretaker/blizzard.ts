@@ -11,6 +11,7 @@ export interface BlizzardFlake {
   pickupAfter?: number;
 }
 export interface BlizzardState extends DriftState {
+  stormRevision?: 1;
   variant: 'blizzard'; flakes: BlizzardFlake[]; windSign: number;
   spilled: number; spillUntil: number;
 }
@@ -25,7 +26,7 @@ const phases = [
 export function blizzardWind(state: BlizzardState) {
   const phase = phases.find(p=>state.ticks>=p.start && state.ticks<p.end);
   const next = phases.find(p=>p.start>state.ticks);
-  return {x:(phase?.x??0)*state.windSign,y:phase?.y??0,strength:phase?.strength??0,
+  return {x:(phase?.x??0)*state.windSign,y:phase?.y??0,strength:(phase?.strength??0)*(state.stormRevision===1?1.35:1),
     gust:phase?phases.indexOf(phase):-1,
     warning:!!next && next.start-state.ticks<=42,
     nextX:(next?.x??0)*state.windSign,nextY:next?.y??0,
@@ -36,10 +37,10 @@ export function createBlizzard(seed: string): BlizzardState {
   for(let wave=0;wave<3;wave++) for(let band=0;band<(wave===0?2:3);band++) {
     const y=180+band*180+(wave===0?90:0);
     const x=130+rng.next()*270;
-    for(let i=0;i<20;i++) flakes.push({x:x+(i-10)*10,y:y+(rng.next()-.5)*30,
+    for(let i=0;i<28;i++) flakes.push({x:x+(i-14)*8,y:y+(rng.next()-.5)*30,
       wave,speed:0.8+rng.next()*0.4,status:wave===0?1:0});
   }
-  return {...createDrift(seed),variant:'blizzard',snow:Array<number>(3072).fill(0),
+  return {...createDrift(seed),stormRevision:1,variant:'blizzard',snow:Array<number>(3072).fill(0),
     initialSnow:flakes.length,cleared:0,spilled:0,spillUntil:0,flakes,windSign:rng.next()<0.5?-1:1};
 }
 export function isBlizzard(state: DriftState): state is BlizzardState {
@@ -94,6 +95,9 @@ export function stepBlizzard(previous: BlizzardState, input: DriftControl): Bliz
     if(f.status===0&&f.wave<=wave)f.status=1;
     if(f.status===1){
       if(wind.gust!==previousWind.gust){f.bounceX=1;f.bounceY=1;}
+      const swirl=s.stormRevision===1?Math.sin(s.ticks*.045+f.speed*9+f.wave*2)*95*wind.strength:0;
+      f.x+=-wind.y*swirl*DRIFT_DT;
+      f.y+=wind.x*swirl*DRIFT_DT;
       f.x+=wind.x*wind.strength*210*f.speed*DRIFT_DT*(f.bounceX??1);
       f.y+=wind.y*wind.strength*210*f.speed*DRIFT_DT*(f.bounceY??1);
       // Wind curls back from the boards instead of collapsing every flake into one corner.

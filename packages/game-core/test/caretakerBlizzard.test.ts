@@ -93,3 +93,17 @@ it('a strong new crosswind sheds cargo once without undoing delivered snow',()=>
  const next=stepBlizzard(after,{x:0,y:-1,held:true});
  expect(next.flakes.filter(f=>f.status===2)).toHaveLength(15);
 });
+
+it('adds more snow and stronger gusts to new storms while preserving saved storms', () => {
+ const current=createBlizzard('harder');
+ const { stormRevision: _revision, ...legacy } = current;
+ expect(current.flakes).toHaveLength(224);
+ expect(blizzardWind({...current,ticks:200}).strength).toBeCloseTo(.945);
+ expect(blizzardWind({...legacy,ticks:200}).strength).toBe(.7);
+});
+it('swirls loose snow across the gust direction in new storms', () => {
+ const base=createBlizzard('swirl');
+ const state={...base,ticks:200,flakes:[{x:300,y:400,wave:0,speed:1,status:1}]};
+ const next=stepBlizzard(state,idle);
+ expect(next.flakes[0]!.y).not.toBe(400);
+});
