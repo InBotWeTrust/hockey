@@ -2,6 +2,7 @@ import { useStore } from 'zustand';
 import { AccessibleModal } from './AccessibleModal.js';
 import { androidUpdateStore } from '../mobileUpdate/store.js';
 import { nativeUpdater } from '../mobileUpdate/nativeUpdater.js';
+import { ReleaseNotesDisclosure } from './ReleaseNotesDisclosure.js';
 
 export function MandatoryAndroidUpdateModal(): JSX.Element | null {
   const state = useStore(androidUpdateStore);
@@ -18,6 +19,7 @@ export function MandatoryAndroidUpdateModal(): JSX.Element | null {
       closeBlocked
     >
       {state.status === 'downloading' && <p>Загрузка: {state.progress}%</p>}
+      <ReleaseNotesDisclosure items={state.manifest.releaseNotes.split(/\r?\n/).filter(Boolean)} />
       {state.error !== null && <p className="modal-error">Не удалось скачать обновление</p>}
       <div className="modal-actions">
         <button
