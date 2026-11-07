@@ -31,7 +31,6 @@ import { isOpenRinkRoute } from '../components/BottomNav.js';
 import { DuelInviteToast } from '../components/DuelInviteToast.js';
 import { AmateurAccessToast } from '../amateur/AmateurAccessToast.js';
 import { UpdatePrompt } from '../components/UpdatePrompt.js';
-import { InstalledReleaseNotes } from '../components/InstalledReleaseNotes.js';
 import { AndroidUpdateBanner } from '../components/AndroidUpdateBanner.js';
 import { WeeklyChallengeStartModal } from '../components/WeeklyChallengeStartModal.js';
 import { OfflineBanner } from '../chat/components/OfflineBanner.js';
@@ -729,7 +728,7 @@ export function App(): JSX.Element {
     <QueryClientProvider client={queryClient}>
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
         <AppFrame />
-        {isNativeAndroid() ? <InstalledReleaseNotes /> : <UpdatePrompt />}
+        {!isNativeAndroid() && <UpdatePrompt />}
       </BrowserRouter>
     </QueryClientProvider>
   );

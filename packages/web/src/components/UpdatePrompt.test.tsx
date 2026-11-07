@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { pwaRegisterMock } from '../test/pwaRegisterMock.js';
 import { UpdatePrompt } from './UpdatePrompt.js';
@@ -15,16 +15,12 @@ describe('UpdatePrompt', () => {
     vi.unstubAllGlobals();
   });
 
-  it('shows the installed release notes after upgrading from an old prompt', async () => {
+  it.each([null, 'previous-release'])('shows no modal after updating with stored release %s', seenRelease => {
     vi.stubGlobal('navigator', { serviceWorker: { controller: {} } });
-    const first = render(<UpdatePrompt />);
-    await waitFor(() => expect(screen.getByRole('dialog', { name: 'Приложение обновлено' })).toBeVisible());
-    expect(screen.getByRole('button', { name: 'Что нового' })).toHaveAttribute('aria-expanded', 'true');
-    fireEvent.click(screen.getByRole('button', { name: 'Продолжить' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    first.unmount();
+    if (seenRelease) localStorage.setItem('hockey.release-notes.seen', seenRelease);
     render(<UpdatePrompt />);
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Что нового' })).not.toBeInTheDocument();
   });
 
   it('does not show an installed-update receipt on a fresh browser visit', () => {
