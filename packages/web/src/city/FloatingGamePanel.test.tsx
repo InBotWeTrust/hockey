@@ -91,3 +91,15 @@ it('pulses only for a started duel, including waiting, until it completes', () =
  show({entries:[{...duel,dockState:'done'}]});
  expect(screen.queryByLabelText('Незавершённых игр: 1')).toBeNull();
 });
+
+it.each(['/bar/games/match/current', '/bar/cards/match/current', '/?view=training&play=1'])(
+ 'closes the game window when returning to the already open game on %s', route => {
+  const enter = vi.fn();
+  const entry: ArenaEntry = { ...daily, id: 'current', kind: 'bar', ctaLabel: 'Вернуться', onEnter: enter };
+  render(<MemoryRouter initialEntries={[route]}><FloatingGamePanel {...props} entries={[entry]}
+    renderActions={game => <button onClick={game.onEnter}>{game.ctaLabel}</button>} /></MemoryRouter>);
+  fireEvent.click(screen.getByRole('button', { name: 'Открыть игры' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Вернуться' }));
+  expect(enter).toHaveBeenCalledOnce();
+  expect(screen.queryByRole('dialog', { name: 'Игры' })).not.toBeInTheDocument();
+ });

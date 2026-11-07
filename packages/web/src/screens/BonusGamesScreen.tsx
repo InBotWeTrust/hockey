@@ -294,9 +294,7 @@ export function BonusGamesScreen(): JSX.Element {
   const futureGames = games.filter(
     (game) =>
       game.id !== focusGame?.id &&
-      game.state !== 'completed' &&
-      game.state !== 'available' &&
-      game.state !== 'in_progress',
+      game.state !== 'completed',
   );
   useEffect(() => {
     if (allGames.length === 0) return;

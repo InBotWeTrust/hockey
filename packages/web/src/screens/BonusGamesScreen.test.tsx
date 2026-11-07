@@ -328,6 +328,22 @@ describe('BonusGamesScreen', () => {
     useAmateurAccessToastStore.setState({ toast: null, sequence: 0 });
   });
 
+  it('keeps the available resort visible beside the unfinished beach and opens its preview', async () => {
+    localStorage.setItem('bonus-games:last-skill', 'challenge');
+    mockCatalog([
+      card({ id: 'beach', slug: 'challenge-beach', skill_code: 'challenge', title: 'Пляж' }),
+      card({ id: 'ski', slug: 'challenge-ski-resort', skill_code: 'challenge', title: 'Курорт', sort_order: 2 }),
+      card({ id: 'cyber', slug: 'challenge-cyberpunk-yard', skill_code: 'challenge', title: 'Киберпанк-двор', sort_order: 3, state: 'sequence_locked' }),
+    ]);
+    renderCatalog();
+    await screen.findByRole('heading', { name: 'Пляж' });
+    const resort = screen.getByRole('heading', { name: 'Курорт' }).closest('article')!;
+    expect(screen.getAllByRole('heading', { name: 'Пляж' })).toHaveLength(1);
+    expect(screen.getByRole('heading', { name: 'Киберпанк-двор' })).toBeInTheDocument();
+    fireEvent.click(within(resort).getByRole('button', { name: 'Играть' }));
+    await waitFor(() => expect(screen.getByRole('dialog')).toBeVisible());
+  });
+
   it('places all six skill circles in persistent panorama navigation', () => {
     mockCatalog([]);renderCatalog();
     expect(screen.getByRole('region',{name:'Навигация: Бонусные игры'})).toBeInTheDocument();
