@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import { InstalledReleaseNotes } from './InstalledReleaseNotes.js';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
@@ -123,7 +122,7 @@ export function UpdatePrompt(): JSX.Element | null {
     void updateServiceWorker(true).catch(reload);
   };
 
-  if (!needRefresh) return <InstalledReleaseNotes />;
+  if (!needRefresh) return null;
 
   return createPortal(
     <div
