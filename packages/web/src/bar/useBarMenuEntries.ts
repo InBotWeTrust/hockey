@@ -33,10 +33,9 @@ export function useBarMenuEntries(){
  const add=(id:string,kind:'cards'|'games',label:string,name:string,avatar:string|null|undefined,expires:number,incoming:boolean)=>{
  const entryId=kind==='cards'?`bar-card-invite-${id}`:`bar-invite-${id}`;
  const previous=entries.findIndex(e=>e.id===entryId);if(previous>=0)entries.splice(previous,1);
- entries.push({id:entryId,kind:'bar',eyebrow:label,title:name,opponentName:name,opponentAvatarUrl:avatar??null,subtitle:incoming?'Вас вызывают на игру':'Ждём ответ соперника',meta:'',dockState:'ready',attention:incoming,deadlineAt:expires,mapExpiresAt:expires,ctaLabel:'',onEnter:()=>{},secondaryActions:createElement(BarMapInviteActions,{id,kind,owner,incoming})} satisfies ArenaEntry);
+ entries.push({id:entryId,kind:'bar',eyebrow:label,title:name,opponentName:name,opponentAvatarUrl:avatar??null,subtitle:incoming?'Вас вызывают на игру':'Ждём ответ соперника',meta:'',dockState:'ready',attention:incoming,deadlineAt:expires,ctaLabel:'',onEnter:()=>{},secondaryActions:createElement(BarMapInviteActions,{id,kind,owner,incoming})} satisfies ArenaEntry);
  const added=entries.at(-1)!;
- added.mapLabel=`${incoming?'Ответ':'Ждём'} ${Math.floor(Math.max(0,expires-now)/60000)}:${String(Math.floor(Math.max(0,expires-now)/1000)%60).padStart(2,'0')}`;
- added.meta=added.mapLabel;
+ added.meta=`${incoming?'Ответ':'Ждём'} ${Math.floor(Math.max(0,expires-now)/60000)}:${String(Math.floor(Math.max(0,expires-now)/1000)%60).padStart(2,'0')}`;
  };
  for(const i of incomingInvites(cardIncoming,owner,now))add(i.id,'cards','Карты',i.sender_name,i.sender_avatar_url,Date.parse(i.expires_at),true);
  for(const i of gameOwner===owner?incomingGameInvites(gameIncoming,owner,now):[])add(i.id,'games',labels[i.kind]??'Бар',i.senderName,i.senderAvatarUrl,i.expiresAt,true);
