@@ -16,10 +16,11 @@ vi.mock('../api/weeklyChallenge.js', async (importOriginal) => ({
   claimWeeklyChallengeReward: vi.fn(),
 }));
 
-function renderScreen(): void {
+function renderScreen(initialCatalog?: api.WeeklyChallengeCatalogResponse): void {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  if (initialCatalog) client.setQueryData(api.weeklyChallengeKeys.catalog, initialCatalog);
   render(
     <QueryClientProvider client={client}>
       <MemoryRouter>
@@ -128,7 +129,7 @@ describe('WeeklyChallengeScreen', () => {
   });
 
   it('filters future, active and completed personal challenges with counts', async () => {
-    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue({
+    const catalog: api.WeeklyChallengeCatalogResponse = {
       future: [
         challenge({
           id: '22222222-2222-2222-2222-222222222222',
@@ -147,10 +148,11 @@ describe('WeeklyChallengeScreen', () => {
           tasks: [{ ...challenge().tasks[0]!, progress: 500, completed: true }],
         }),
       ],
-    });
+    };
+    vi.mocked(api.fetchWeeklyChallengeCatalog).mockResolvedValue(catalog);
 
-    // Flush the resolved catalog and its initial filter effect before clicking tabs.
-    await act(async () => { renderScreen(); });
+    // Seed this filter-only test so deferred query initialization cannot overwrite a click.
+    renderScreen(catalog);
 
     expect(await screen.findByText('Неделя снайпера')).toBeInTheDocument();
     const filters = screen.getByRole('tablist', { name: 'Фильтры челленджей' });
