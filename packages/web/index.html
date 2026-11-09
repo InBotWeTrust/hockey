@@ -25,6 +25,19 @@
         </div>
       </main>
     </div>
+    <script>
+      window.setTimeout(function () {
+        var root = document.getElementById('root');
+        var loading = root && root.querySelector('[aria-label="Загрузка приложения"]');
+        if (!loading) return;
+        loading.innerHTML = '<div style="display:grid;justify-items:center;gap:14px;padding:24px;text-align:center;font-size:16px">' +
+          '<span>Не удалось загрузить приложение. Проверьте соединение и попробуйте ещё раз.</span>' +
+          '<button type="button" style="padding:12px 20px;border:0;border-radius:10px;font:inherit;color:#08182b;background:#d9edff;cursor:pointer">Повторить загрузку</button></div>';
+        loading.querySelector('button').addEventListener('click', function () {
+          window.location.reload();
+        });
+      }, 15000);
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
