@@ -88,8 +88,8 @@ export function BattleshipField({
     const priorWater=new Set(sea.surroundingWater(priorShips.filter(s=>sea.cells(s).every(c=>s.hits.includes(c)))));
     game.lastAction!.cells.forEach((m,i)=>{if(now<animationStart+i*NAVAL_BOMB_STEP_MS&&!priorWater.has(m.cell))inferredWater.delete(m.cell);});
   }
-  const wrecks=showOwn?game.ownShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]):game.enemyWrecks??[];
   const sunkWrecks=destroyedShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]);
+  const wrecks=showOwn?game.ownShips.flatMap(s=>s.wreck===undefined?[]:[s.wreck]):sunkWrecks;
   const visibleImpact = impactActive && game.lastAction?.player === (showOwn ? 1 - player : player);
   const impactAirstrike = visibleImpact && game.lastAction!.cells.length > 1;
   const impactSunk = visibleImpact && ships.some(s => sea.cells(s).every(c=>s.hits.includes(c)) && game.lastAction!.cells.some(m=>m.hit && sea.cells(s).includes(m.cell)));
@@ -246,7 +246,7 @@ export function BattleshipField({
         {[true,false].map(self=><div key={String(self)} data-side={self?'self':'enemy'} aria-label={self?'Твой флот: остаток':'Флот противника: остаток'}><div className="bar-naval-fleet-rows">{sea.shipTypes().filter((t,i,all)=>all.findIndex(s=>shipColor(s)===shipColor(t))===i).map(type=><div className="bar-naval-fleet-row" key={shipColor(type)} aria-label={shipName(type)}>{sea.shipTypes().filter(t=>shipColor(t)===shipColor(type)).map(template=>{
           const ship=(self?game.ownShips:game.enemySunk).find(s=>s.id===template.id);
           const destroyed=!!ship&&sea.cells(ship).every(c=>ship.hits.includes(c));
-          const split=template.kind==='submarine' && (!!ship?.hits.length || (self ? ship?.wreck!==undefined : !!game.enemyWrecks?.length));
+          const split=template.kind==='submarine' && (self ? !!ship?.hits.length || ship?.wreck!==undefined : destroyed);
           return <span key={template.id} className={`bar-naval-fleet-icon${split?' bar-naval-fleet-icon--split':''}`} data-sunk={destroyed} data-ship-color={shipColor(template)} style={{width:split?40:template.kind==='carrier'?32:10+Math.max(template.w,template.h)*5}} title={`${shipName(template)}${destroyed?' — потоплен':''}`}><>{split ? <SubmarineParts destroyed={destroyed}/> : <ShipGraphic ship={template}/>}</>{!self && game.maneuverAvailable===undefined && template.kind === 'submarine' && !destroyed && !!game.enemyMovesLeft && <b className="bar-naval-moves-left" aria-label={`Манёвров соперника осталось: ${game.enemyMovesLeft}`}>{game.enemyMovesLeft}</b>}</span>;
         })}</div>)}</div></div>)}
       </div>}
@@ -398,7 +398,7 @@ export function BattleshipField({
                   select(x, y);
                 }}
               >
-                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ' bar-naval-damage--burning'}${!destroyed&&wrecks.includes(c)?' bar-naval-damage--abandoned':''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className={game.mobileSubmarines?"bar-naval-miss":"bar-naval-water"} aria-hidden="true" /> : null}
+                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : showOwn ? ' bar-naval-damage--burning' : ' bar-naval-damage--hit'}${!destroyed&&wrecks.includes(c)?' bar-naval-damage--abandoned':''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className={game.mobileSubmarines?"bar-naval-miss":"bar-naval-water"} aria-hidden="true" /> : null}
                 {impact && <NavalImpact key={`${animationStart}-${c}`} at={impactAt} now={now}/>}
               </button>
             );

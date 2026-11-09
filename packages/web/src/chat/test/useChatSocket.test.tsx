@@ -210,6 +210,19 @@ describe('useChatSocket dispatch', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each([null, 'c1'])('refreshes persistent duel notifications on an incoming invite while chat %s is open', async activeChatId => {
+    useChatStore.setState({ activeChatId });
+    const invalidate = vi.spyOn(qc, 'invalidateQueries');
+    const message = {
+      ...fixtureMsg('invite', 'c1', OTHER),
+      metadata: { type: 'amateur_duel_invite', matchId: 'match', challengerName: 'Other', templateTitle: 'Express' },
+    } as ChatMessageDTO;
+    await act(async () => {
+      MockWebSocket.instances[0]!.fireMessage({ v: 1, event: { type: 'message:new', chatId: 'c1', message } });
+    });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['amateur-duel', 'events'] });
+  });
+
   it('message:new on a non-active chat: prepends to messages cache, increments unread, invalidates list', async () => {
     const invalSpy = vi.spyOn(qc, 'invalidateQueries');
     qc.setQueryData<ChatDTO[]>(chatKeys.list(), [

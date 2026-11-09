@@ -63,3 +63,21 @@ it('lets Timofey rescue and then shoot without passing the turn between actions'
   expect((fired.game as unknown as sea.State).shots[1].length).toBeGreaterThan(0);
   expect(publicRuntime(fired, 0).feedback?.type).toBe('naval-attack');
 });
+
+it.each([0, 1] as const)('keeps player %i submarine damage private until the remaining section sinks', player => {
+  const runtime = rescueTurn(player);
+  const opponent = player === 0 ? 1 : 0;
+  const destination = sea.moves(publicRuntime(runtime, player).game as sea.View)[0]!;
+  const moved = command(runtime, player, { type: 'naval-move', x: destination.x, y: destination.y }, runtime.animationUntil + 1);
+  const enemy = publicRuntime(moved, opponent).game as sea.View;
+  expect(enemy.enemyWrecks).toEqual([]);
+  expect(enemy.enemyMovesLeft).toBeUndefined();
+  const own = publicRuntime(moved, player).game as sea.View;
+  expect(own.ownShips.find(ship => ship.kind === 'submarine')?.wreck).toBeDefined();
+  const state = moved.game as unknown as sea.State;
+  const submarine = state.fleets[player].find(ship => ship.kind === 'submarine')!;
+  submarine.hits = sea.cells(submarine);
+  const revealed = publicRuntime(moved, opponent).game as sea.View;
+  expect(revealed.enemyWrecks).toEqual([submarine.wreck]);
+  expect(revealed.enemySunk.find(ship => ship.id === submarine.id)).toBeDefined();
+});

@@ -659,6 +659,10 @@ export function publicRuntime(m: Runtime, player: darts.Player, now = 0): Runtim
   if (m.game.kind === 'battleship') {
     const game = sea.view(privateSea(m.game), player);
     const result = { ...m, seed: 0, game };
+    if (m.engineVersion >= 22 && game.winner === null) {
+      game.enemyWrecks = game.enemySunk.flatMap(ship => ship.wreck === undefined ? [] : [ship.wreck]);
+      delete game.enemyMovesLeft;
+    }
     if (m.engineVersion >= 22 && game.lastAction?.type === 'move' && game.lastAction.player !== player) {
       game.lastAction = null;
       if (result.feedback?.type === 'naval-move') delete result.feedback;
