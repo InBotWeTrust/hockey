@@ -34,7 +34,7 @@ export type BarGameAction =
   | { type: 'naval-attack'; x: number; y: number; salvo: boolean; vertical: boolean }
   | { type: 'naval-move'; x: number; y: number }
   | { type: 'surrender' };
-export const ENGINE_VERSION = 23;
+export const ENGINE_VERSION = 24;
 export const CHECKERS_STEP_MS = 450;
 export const TURN_MS = 40000;
 export const DART_FLIGHT_MS = 700;
@@ -66,6 +66,7 @@ function supportedVersion(version: number): boolean {
     version === 20 ||
     version === 21 ||
     version === 22 ||
+    version === 23 ||
     version === ENGINE_VERSION
   );
 }
@@ -483,7 +484,8 @@ export function advance(m: Runtime, now: number): Runtime {
           n = perform(n, { ...n.poolAim, type: 'shot' }, at, false);
         } else {
           const decision = { ...n };
-          const roll = n.engineVersion >= 21 ? random(decision) : undefined;
+          let roll = n.engineVersion >= 21 ? random(decision) : undefined;
+          if (roll !== undefined && n.engineVersion >= 24) roll = .5 + (roll - .5) * .9;
           const strategySeed = n.engineVersion >= 23 ? Math.floor(random(decision) * 0x100000000) : undefined;
           const b = pool.bot(n.game, n.engineVersion >= 10, roll, strategySeed);
           n = decision;
