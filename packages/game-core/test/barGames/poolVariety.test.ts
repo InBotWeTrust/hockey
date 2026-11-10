@@ -67,3 +67,46 @@ it('varies new runtime openings and preserves the version-22 opening', () => {
   }
   expect(openings.size).toBeGreaterThanOrEqual(4);
 });
+
+it('reduces Veronika aiming error slightly in new matches while preserving version 23', () => {
+  const game: pool.Game = {
+    ...pool.create(1), break: false, groups: ['stripes', 'solids'],
+    balls: [
+      { id: 0, x: .75, y: 1.5, pocketed: false },
+      { id: 1, x: .2, y: .4, pocketed: false },
+      { id: 8, x: .85, y: 1.8, pocketed: false },
+      { id: 9, x: .85, y: .8, pocketed: false },
+    ],
+  };
+  for (let seed = 1; seed <= 12; seed++) {
+    const legacy = createMatch('billiards', 1, 0, true, seed, 23);
+    const current = createMatch('billiards', 1, 0, true, seed);
+    legacy.game = structuredClone(game);
+    current.game = structuredClone(game);
+    const previousAim = advance(legacy, legacy.animationUntil);
+    const newAim = advance(current, current.animationUntil);
+    const ideal = pool.bot(game, true, .5, previousAim.seed).shot;
+    expect(newAim.seed).toBe(previousAim.seed);
+    expect(newAim.poolAim!.power).toBe(previousAim.poolAim!.power);
+    expect(newAim.poolAim!.angle - ideal.angle).toBeCloseTo((previousAim.poolAim!.angle - ideal.angle) * .9, 12);
+    expect(Math.abs(newAim.poolAim!.angle - ideal.angle)).toBeLessThan(Math.abs(previousAim.poolAim!.angle - ideal.angle));
+    expect(newAim).toEqual(advance(current, current.animationUntil));
+  }
+});
+
+it('preserves the version-23 aiming choice for an existing match', () => {
+  const runtime = createMatch('billiards', 1, 0, true, 4, 23);
+  runtime.game = {
+    ...pool.create(1), break: false, groups: ['stripes', 'solids'],
+    balls: [
+      { id: 0, x: .75, y: 1.5, pocketed: false },
+      { id: 1, x: .2, y: .4, pocketed: false },
+      { id: 8, x: .85, y: 1.8, pocketed: false },
+      { id: 9, x: .85, y: .8, pocketed: false },
+    ],
+  };
+  const aim = advance(runtime, runtime.animationUntil).poolAim!;
+  expect(aim.actor).toBe(1);
+  expect(aim.angle).toBeCloseTo(-2.027851821278933, 12);
+  expect(aim.power).toBeCloseTo(.6050142752749559, 12);
+});
