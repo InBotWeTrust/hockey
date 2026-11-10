@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { signalPhase, createVehicles, stepVehicles } from '../../public/maps/studio-20261110/traffic-variety-4aa4e0c869a3.mjs';
+import { signalPhase, createVehicles, stepVehicles } from '../../public/maps/studio-20261110/traffic-variety-34cd028b9994.mjs';
 
 test('both directions share green, yellow and red cycle', () => {
   assert.equal(signalPhase(0), 'green');
@@ -36,7 +36,7 @@ test('vehicles already past the stop line clear the crossing on red', () => {
 });
 
 test('near lanes cover far incident actors and lower-lane wheels stay above curb', async () => {
-  const { laneBaselines, vehiclePaintOrder } = await import('../../public/maps/studio-20261110/traffic-variety-4aa4e0c869a3.mjs');
+  const { laneBaselines, vehiclePaintOrder } = await import('../../public/maps/studio-20261110/traffic-variety-34cd028b9994.mjs');
   const actors = [{id:'bus',baseline:laneBaselines[1]}, {id:'incident-taxi',baseline:laneBaselines[0]}, {id:'taxi',baseline:laneBaselines[3]}];
   assert.deepEqual(vehiclePaintOrder(actors).map(actor=>actor.id), ['incident-taxi','bus','taxi']);
   assert.ok(laneBaselines[2] >= 91 && laneBaselines[2] < 92);
@@ -50,7 +50,7 @@ test('incoming cars waiting outside viewport do not wrap repeatedly away from ma
 });
 
 test('bus tires, rather than sprite shadows, sit on the lane baseline',async()=>{
- const {vehicleWheelAnchor}=await import('../../public/maps/studio-20261110/traffic-variety-4aa4e0c869a3.mjs');
+ const {vehicleWheelAnchor}=await import('../../public/maps/studio-20261110/traffic-variety-34cd028b9994.mjs');
  assert.equal(vehicleWheelAnchor('traffic-bus-red'),.84);
  assert.equal(vehicleWheelAnchor('traffic-bus'),.93);
  assert.equal(vehicleWheelAnchor('traffic-sedan'),1);
