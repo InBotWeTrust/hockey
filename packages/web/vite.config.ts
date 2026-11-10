@@ -69,6 +69,15 @@ export default defineConfig({
         })],
         runtimeCaching: [
           {
+            urlPattern: ({url}) => url.origin === self.location.origin && url.pathname.startsWith('/maps/studio-20261110/'),
+            handler: 'CacheFirst',
+            options: {
+              cacheName: 'hockey-city-studio-v1',
+              cacheableResponse: {statuses: [200]},
+              expiration: {maxEntries: 96, maxAgeSeconds: 60 * 60 * 24 * 365},
+            },
+          },
+          {
             // Pixi loads textures with fetch, whose destination is not "image".
             urlPattern: ({ url }) => url.origin === self.location.origin && /^\/(?:caretaker|sprites)\/.+\.webp$/.test(url.pathname),
             handler: 'CacheFirst',

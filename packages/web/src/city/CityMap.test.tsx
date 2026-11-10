@@ -194,7 +194,7 @@ it('keeps vehicle lights on at sunset and night, and off in daylight',()=>{
   for(const hour of [12,19,23]){
    vi.setSystemTime(new Date(2026,9,18,hour));
    const view=render(<CityMap {...base} level="beginner"/>);
-   expect(view.container.querySelector('.city-traffic')?.classList.contains('is-night')).toBe(hour!==12);
+   expect(['sunset','night'].includes(view.container.querySelector('[data-testid="studio-city-motion"]')?.getAttribute('data-phase')??'')).toBe(hour!==12);
    view.unmount();
   }
  }finally{vi.useRealTimers();}
@@ -261,7 +261,7 @@ it.each([['beginner','Дворовый каток'],['amateur','Стадион �
 });
 it('places the amateur locker on the stadium facade instead of the street',()=>{
  render(<CityMap {...base} level="amateur"/>);
- expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'50%',top:'49%'});
+ expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'44.49%',top:'46%'});
 });
 
 it('anchors the game menu outside the horizontally scrolling map',()=>{

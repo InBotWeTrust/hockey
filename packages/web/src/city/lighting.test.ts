@@ -5,11 +5,11 @@ import {cityImage, cityTimeOfDay, useCityImage} from './lighting.js';
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 
 it('uses the layered night export at both resolutions and preserves the other phases',()=>{
- expect(cityImage(new Date(2026,10,6,23),1)).toBe('/maps/city-night-4096-9da9745a1af1.webp');
- expect(cityImage(new Date(2026,10,6,23),2)).toBe('/maps/city-night-6144-d693d3ecf94c.webp');
- expect(cityImage(new Date(2026,10,6,8),1)).toBe('/maps/city-morning-4096-599182173a15.webp');
- expect(cityImage(new Date(2026,10,6,12),1)).toBe('/maps/city-day-4096-819ac2d8ab57.webp');
- expect(cityImage(new Date(2026,10,6,18),1)).toBe('/maps/city-sunset-4096-c57a2c05d161.webp');
+ expect(cityImage(new Date(2026,10,6,23),1)).toBe('/maps/studio-20261110/city-night-4096-0960b818dff0.webp');
+ expect(cityImage(new Date(2026,10,6,23),2)).toBe('/maps/studio-20261110/city-night-6144-ad25bcf5b90b.webp');
+ expect(cityImage(new Date(2026,10,6,8),1)).toBe('/maps/studio-20261110/city-morning-4096-79eb94c52183.webp');
+ expect(cityImage(new Date(2026,10,6,12),1)).toBe('/maps/studio-20261110/city-day-4096-7a98b4bc10be.webp');
+ expect(cityImage(new Date(2026,10,6,18),1)).toBe('/maps/studio-20261110/city-sunset-4096-eaaeb50e5c24.webp');
 });
 
 describe('device-local city lighting',()=>{
