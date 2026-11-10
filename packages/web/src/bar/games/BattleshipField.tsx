@@ -398,7 +398,7 @@ export function BattleshipField({
                   select(x, y);
                 }}
               >
-                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : showOwn ? ' bar-naval-damage--burning' : ' bar-naval-damage--hit'}${!destroyed&&wrecks.includes(c)?' bar-naval-damage--abandoned':''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className={game.mobileSubmarines?"bar-naval-miss":"bar-naval-water"} aria-hidden="true" /> : null}
+                {hit ? <span className={`bar-naval-damage${destroyed ? ' bar-naval-damage--sunk' : ' bar-naval-damage--burning'}${!destroyed&&wrecks.includes(c)?' bar-naval-damage--abandoned':''}`} aria-hidden="true" /> : mark ? <span className="bar-naval-miss" aria-hidden="true" /> : inferredWater.has(c) ? <span className={game.mobileSubmarines?"bar-naval-miss":"bar-naval-water"} aria-hidden="true" /> : null}
                 {impact && <NavalImpact key={`${animationStart}-${c}`} at={impactAt} now={now}/>}
               </button>
             );
