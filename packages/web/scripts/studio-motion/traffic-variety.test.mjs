@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {createVehicles,stepVehicles} from '../../public/maps/studio-20261110/traffic-variety-4aa4e0c869a3.mjs';
+import {createVehicles,stepVehicles} from '../../public/maps/studio-20261110/traffic-variety-34cd028b9994.mjs';
 const seeded=()=>{let n=271;return()=>{n=(n*1664525+1013904223)>>>0;return n/4294967296;};};
 test('fleet is moderately smaller, has varied drivers, gaps and vehicle types',()=>{
  const fleet=createVehicles(seeded());
- assert.equal(fleet.length,14);
+ assert.equal(fleet.length,18);
  assert.ok(new Set(fleet.map(c=>c.speed.toFixed(2))).size>8);
  assert.ok(new Set(fleet.map(c=>c.launchDelay.toFixed(2))).size>8);
  assert.ok(new Set(fleet.map(c=>c.model)).size>8);
@@ -35,4 +35,11 @@ test('mixed fast and slow traffic never overlaps, and red queues stay behind bot
    for(let j=1;j<cars.length;j++)assert.ok(cars[j].x>=cars[j-1].x+cars[j-1].width+1.19);
   }
  }
+});
+test('steady-state density is modestly lower, without turning the road empty',async()=>{
+ const old=await import('../../public/maps/studio-20261110/traffic-preview-state.mjs');
+ function mean(create,step){const random=seeded();let fleet=create(random),total=0,count=0;for(let i=0;i<10000;i++){const phase=i%250<120?'green':i%250<150?'yellow':'red';fleet=step(fleet,.1,phase,undefined,random);if(i>2000){total+=fleet.filter(c=>c.x<100&&c.x+c.width>0).length;count++;}}return total/count;}
+ const before=mean(old.createVehicles,old.stepVehicles),after=mean(createVehicles,stepVehicles);
+ assert.ok(after<before*.9,'traffic should be visibly less dense');
+ assert.ok(after>before*.65,'traffic should not fall to half its former density');
 });
