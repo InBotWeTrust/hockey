@@ -56,11 +56,20 @@ describe('ordinary duel rewards', () => {
 });
 
 describe('inventory star price', () => {
-  it('exposes the admin divisor and uses 25 by default', async () => {
+  it('exposes the admin divisor and uses the approved 50 coins per star by default', async () => {
     const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
-    expect(settings.amateur.starInventoryPriceDivisor).toBe(25);
+    expect(settings.amateur.starInventoryPriceDivisor).toBe(50);
     expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key))
       .toContain('amateur.star_inventory_price_divisor');
+  });
+});
+
+describe('inventory star price overrides', () => {
+  it('preserves an explicitly configured custom divisor', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [
+      { key: 'amateur.star_inventory_price_divisor', value: 75 },
+    ] }) } as never);
+    expect(settings.amateur.starInventoryPriceDivisor).toBe(75);
   });
 });
 
