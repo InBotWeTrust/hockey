@@ -11,6 +11,7 @@ export interface TournamentEconomyPreset {
   regularRewards: TournamentEconomyReward[];
   playoffRewards: TournamentEconomyReward[];
   payoutValueCoins: number;
+  /** Negative when the game subsidizes prizes beyond the entry-fee fund. */
   sinkValueCoins: number;
 }
 
@@ -41,23 +42,36 @@ function entryFeeForParticipantLimit(participantLimit: number): number {
   );
 }
 
+const APPROVED_PODIUM = [
+  { coins: 110_000, stars: 600 },
+  { coins: 50_000, stars: 300 },
+  { coins: 25_000, stars: 150 },
+] as const;
+
 function buildRewards(
   fundCoins: number,
   percentages: ReadonlyArray<{ place: number; percentage: number }>,
+  stageShare: number,
 ): TournamentEconomyReward[] {
   return percentages.map(({ place, percentage }) => {
-    const placeValueCoins = (fundCoins * percentage) / 100;
-    const coins = Math.floor(placeValueCoins / 2);
-    const stars = Math.floor(placeValueCoins / 100);
-    return { place, coins, stars, experience: stars };
+    // Experience retains its existing fund-based calculation independently of stars.
+    const experience = Math.floor((fundCoins * percentage) / 10_000);
+    const podium = APPROVED_PODIUM[place - 1];
+    if (!podium) return { place, coins: 4_000, stars: 80, experience };
+    return {
+      place,
+      coins: podium.coins * stageShare,
+      stars: podium.stars * stageShare,
+      experience,
+    };
   });
 }
 
 export function buildTournamentEconomyPreset(participantLimit: number): TournamentEconomyPreset {
   const entryFeeCoins = entryFeeForParticipantLimit(participantLimit);
   const fundCoins = participantLimit * entryFeeCoins;
-  const regularRewards = buildRewards(fundCoins, REGULAR_REWARD_PERCENTAGES);
-  const playoffRewards = buildRewards(fundCoins, PLAYOFF_REWARD_PERCENTAGES);
+  const regularRewards = buildRewards(fundCoins, REGULAR_REWARD_PERCENTAGES, 0.2);
+  const playoffRewards = buildRewards(fundCoins, PLAYOFF_REWARD_PERCENTAGES, 0.8);
   const payoutValueCoins = [...regularRewards, ...playoffRewards].reduce(
     (total, reward) => total + reward.coins + reward.stars * 50,
     0,
