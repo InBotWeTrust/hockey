@@ -73,6 +73,16 @@ describe('inventory star price overrides', () => {
   });
 });
 
+describe('approved competition rewards', () => {
+  it('uses the approved overall podium without changing experience, tokens or format prizes', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
+    expect(settings.amateur.monthlyRating.overall.first).toEqual({ coins: 110000, stars: 600, experience: 0, tokens: 10 });
+    expect(settings.amateur.monthlyRating.overall.second).toEqual({ coins: 50000, stars: 300, experience: 0, tokens: 7 });
+    expect(settings.amateur.monthlyRating.overall.third).toEqual({ coins: 25000, stars: 150, experience: 0, tokens: 5 });
+    expect(settings.amateur.monthlyRating.classic.first).toEqual({ coins: 0, stars: 30, experience: 30, tokens: 0 });
+  });
+});
+
 describe('monthly rating admin settings', () => {
   it('exposes payouts without match thresholds and ignores legacy threshold values', async () => {
     const settings = await getGameSettings({ query: async () => ({ rows: [

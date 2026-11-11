@@ -44,9 +44,9 @@ const format = (): RatingScopeSettings => ({
 export const DEFAULT_MONTHLY_RATING_SETTINGS: MonthlyRatingSettings = {
   overall: {
     enabled: true,
-    first: { coins: 15_000, stars: 300, experience: 0, tokens: 10 },
-    second: { coins: 10_000, stars: 200, experience: 0, tokens: 7 },
-    third: { coins: 7_500, stars: 150, experience: 0, tokens: 5 },
+    first: { coins: 110_000, stars: 600, experience: 0, tokens: 10 },
+    second: { coins: 50_000, stars: 300, experience: 0, tokens: 7 },
+    third: { coins: 25_000, stars: 150, experience: 0, tokens: 5 },
     fourToTen: { coins: 0, stars: 50, experience: 0, tokens: 3 },
     elevenToFifty: { coins: 0, stars: 15, experience: 0, tokens: 1 },
   },
