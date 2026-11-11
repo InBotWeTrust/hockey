@@ -507,7 +507,7 @@ export const GAME_SETTING_DEFINITIONS: readonly GameSettingDefinition[] = [
     label: 'Монет цены за одну звезду инвентаря',
     description: 'Цена за звёзды = монетная цена, делённая на это число с округлением вверх.',
     type: 'number',
-    defaultValue: 25,
+    defaultValue: 50,
     min: 1,
     max: 100_000,
     step: 1,
