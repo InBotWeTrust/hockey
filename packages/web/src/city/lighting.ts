@@ -11,20 +11,20 @@ export function cityTimeOfDay(date: Date, city?:SolarCity|null): CityTimeOfDay {
 }
 const images = {
   "day": [
-    "/maps/studio-20261110/city-day-4096-bd8a668845a0.webp",
-    "/maps/studio-20261110/city-day-6144-5871c26999b2.webp"
+    "/maps/studio-20261110/city-day-4096-ffa73aa4fffe.webp",
+    "/maps/studio-20261110/city-day-6144-934d88cd7d91.webp"
   ],
   "morning": [
-    "/maps/studio-20261110/city-morning-4096-e4717f778375.webp",
-    "/maps/studio-20261110/city-morning-6144-fd983e94f12a.webp"
+    "/maps/studio-20261110/city-morning-4096-1b6026b09a73.webp",
+    "/maps/studio-20261110/city-morning-6144-14834f079cec.webp"
   ],
   "sunset": [
-    "/maps/studio-20261110/city-sunset-4096-66dd5a9094dd.webp",
-    "/maps/studio-20261110/city-sunset-6144-6ecba952aa9e.webp"
+    "/maps/studio-20261110/city-sunset-4096-7768daa4477f.webp",
+    "/maps/studio-20261110/city-sunset-6144-d2a48b180135.webp"
   ],
   "night": [
-    "/maps/studio-20261110/city-night-4096-0ebfd5bf09b9.webp",
-    "/maps/studio-20261110/city-night-6144-5c1ba0e818ac.webp"
+    "/maps/studio-20261110/city-night-4096-af4209a6dbd5.webp",
+    "/maps/studio-20261110/city-night-6144-e20db63ae913.webp"
   ]
 } as const;
 export function chooseCityImageSize(input: {width:number;height:number;dpr:number;saveData?:boolean|undefined;deviceMemory?:number|undefined}): 4096 | 6144 {
