@@ -33,6 +33,13 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
  const show=()=>{if(notices.firstIndex!==null)onActiveIndexChange(notices.firstIndex);setOpen(true);};
  useEffect(()=>{if(openRequest!==handledOpen.current){handledOpen.current=openRequest;setOpen(true);}},[openRequest]);
  useEffect(()=>{const route=location.pathname+location.search;if(lastRoute.current!==route){lastRoute.current=route;setOpen(false);}},[location.pathname,location.search]);
+ const renderEntryActions = (entry: ArenaEntry) => renderActions({
+  ...entry,
+  onEnter: () => {
+   setOpen(false);
+   entry.onEnter();
+  },
+ });
  const playing=isOpenRinkRoute(location)||location.pathname.startsWith('/duel/');
  const allowed=!(onMap&&guideActive)&&!/^\/(?:login|auth|mobile-auth)(?:\/|$)/.test(location.pathname)&&!chatOpen;
  return <>
@@ -44,7 +51,7 @@ export function FloatingGamePanel({owner,entries,activeIndex,onActiveIndexChange
     <section role="dialog" aria-modal="false" aria-label="Игры" className="city-game-panel glass is-expanded floating-games-window" style={cardStyle} onKeyDown={event=>{if(event.key==='Escape'){event.stopPropagation();setOpen(false);}}}>
      <button {...handleProps} type="button" className="floating-games-window__handle" aria-label="Переместить окно игр"><span aria-hidden="true"/></button>
      <div className="floating-games-window__header"><button ref={minimizedButton} type="button" className="icon-btn" aria-label="Закрыть игры" onClick={()=>setOpen(false)}><X size={18}/></button></div>
-     <CityGameDetails entries={shownEntries} activeIndex={shownIndex} onActiveIndexChange={changeIndex} renderFace={renderFace} renderActions={renderActions}/>
+     <CityGameDetails entries={shownEntries} activeIndex={shownIndex} onActiveIndexChange={changeIndex} renderFace={renderFace} renderActions={renderEntryActions}/>
     </section>
     <WindowHandleHint owner={owner} kind="games" anchorRef={minimizedButton}/>
    </div>,document.body)}

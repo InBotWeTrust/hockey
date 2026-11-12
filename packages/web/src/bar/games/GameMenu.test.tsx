@@ -1,6 +1,6 @@
 import { render, screen, within } from '@testing-library/react';
 import { expect, it } from 'vitest';
-import { createMatch, type BarGameSnapshot } from '@hockey/game-core';
+import { barBattleship as sea, command, createMatch, publicRuntime, type BarGameSnapshot } from '@hockey/game-core';
 import { GameTable } from './BarGameScreen.js';
 const view = (): BarGameSnapshot => ({
   id: 'test',
@@ -14,6 +14,26 @@ const view = (): BarGameSnapshot => ({
   runtime: createMatch('darts', 0, 0, false, 1),
   ready: null,
   serverNow: 0,
+});
+it.each([0, 1] as const)('shows a rescue notice only to its owner, viewer %i', player => {
+  const snapshot = view();
+  const runtime = createMatch('battleship', 0, 0, false, 4);
+  const game = sea.start(runtime.game as unknown as sea.State);
+  const submarine = game.fleets[0].find(ship => ship.kind === 'submarine')!;
+  submarine.hits = [sea.cells(submarine)[0]!];
+  game.shots[1] = [{ cell: submarine.hits[0]!, hit: true }];
+  game.maneuverAccess![0] = true;
+  runtime.game = game as unknown as sea.View;
+  const destination = sea.moves(sea.view(game, 0))[0]!;
+  const moved = command(runtime, 0, { type: 'naval-move', ...destination }, 1);
+  snapshot.kind = 'battleship';
+  snapshot.character = null;
+  snapshot.player = player;
+  snapshot.runtime = publicRuntime(moved, player);
+  render(<GameTable view={snapshot} now={2} disabled={false} send={() => {}} />);
+  const notice = within(screen.getByRole('region', { name: 'Меню игры' })).getByRole('status');
+  if (player === 0) expect(notice).toHaveTextContent('Подлодка перемещена');
+  else expect(notice).not.toHaveTextContent(/подлодк|перемест/i);
 });
 it('uses the card menu with two avatars, a central timer and feedback above the field', () => {
   const v = view();

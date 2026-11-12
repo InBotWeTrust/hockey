@@ -179,3 +179,7 @@ GLM запрещён для этого проекта. Не запускать G
 - Спек MVP: `docs/superpowers/specs/2026-04-12-ultimate-hockey-pwa-mvp-design.md`
 - Планы: `docs/superpowers/plans/`
 - README — краткая инструкция по запуску и API auth
+
+## Release notes approval
+
+- Before every deployment to dev or production, prepare the Russian “Что нового” text for the exact release scope and environment, send it to the user for review, and obtain explicit approval of that text before any push, merge or workflow dispatch that triggers deployment. Keep the approved text in `packages/web/release-notes.json`. If the release scope changes, update the text and obtain approval again.

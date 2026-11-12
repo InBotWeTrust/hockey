@@ -31,6 +31,6 @@ export function CityBackground({image}: {image: string}) {
   return <>
     {layers.previous && <img src={layers.previous} alt="" aria-hidden="true" draggable={false} decoding="sync"/>}
     {layers.current && <img key={layers.current} className={layers.previous ? 'district-light-enter' : undefined} src={layers.current} alt="Зимний хоккейный район" draggable={false} decoding="sync"/>}
-    {phase && <span className={`city-sky-light is-${phase}`} aria-hidden="true"/>}
+    {phase && !image.includes("/studio-20261110/") && <span className={`city-sky-light is-${phase}`} aria-hidden="true"/>}
   </>;
 }

@@ -19,6 +19,7 @@ import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
 export function ProfileSettingsScreen(): JSX.Element {
   const navigate = useNavigate();
+  const isAdmin = useAuthStore(state => state.user?.role === 'admin');
   const owner = useAuthStore(state => state.user?.id);
   const queryClient = useQueryClient();
   const logout = useLogout();
@@ -202,7 +203,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         <SectionLoading />
       ) : (
         <>
-          <button className="btn btn--ghost" onClick={()=>navigate('/sections?tour=1')}>Знакомство с городом</button>
+          {isAdmin && <button className="btn btn--ghost" onClick={()=>navigate('/sections?tour=1')}>Знакомство с городом</button>}
           <div className="section-label">Аккаунт</div>
           <div
             className="profile-registration-account glass"

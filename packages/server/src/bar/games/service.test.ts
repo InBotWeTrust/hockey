@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { Pool } from 'pg';
-import type { barBattleship as sea } from '@hockey/game-core';
-import { createMatch, type BarGameId } from '@hockey/game-core';
+import { barBattleship as sea } from '@hockey/game-core';
+import { ENGINE_VERSION, createMatch, type BarGameId } from '@hockey/game-core';
 import { readGame, actGame, startComputer, searchGamePlayers } from './service.js';
 import { defaultVisitorSettings } from '../visitorRules.js';
 afterEach(() => {
@@ -57,6 +57,31 @@ it('rejects nonparticipants and stale revisions without applying an action', asy
     }),
   ).rejects.toMatchObject({ statusCode: 409 });
   expect(row.data.runtime.game.turn).toBe(0);
+});
+it('persists a private rescue once and accepts the same player shot afterwards', async () => {
+  const { pool, row } = fixture('battleship');
+  const game = sea.start(row.data.runtime.game as unknown as sea.State);
+  const submarine = game.fleets[0].find(ship => ship.kind === 'submarine')!;
+  submarine.hits = [sea.cells(submarine)[0]!];
+  game.shots[1] = [{ cell: submarine.hits[0]!, hit: true }];
+  game.maneuverAccess![0] = true;
+  row.data.runtime.game = game as unknown as sea.View;
+  const destination = sea.moves(sea.view(game, 0))[0]!;
+  const request = { requestId: 'rescue', revision: 0, action: { type: 'naval-move' as const, ...destination } };
+  const moved = await actGame(pool, 'a', 'match', request);
+  expect(moved.runtime.game.turn).toBe(0);
+  expect(moved.runtime.game).toMatchObject({ lastAction: { type: 'move' } });
+  const retry = await actGame(pool, 'a', 'match', request);
+  expect(retry.runtime.revision).toBe(moved.runtime.revision);
+  const opponent = await readGame(pool, 'b', 'match');
+  expect(opponent.runtime.game).toMatchObject({ lastAction: null });
+  expect(opponent.runtime.feedback).toBeUndefined();
+  expect(opponent.runtime.game).not.toHaveProperty('fleets');
+  const shot = await actGame(pool, 'a', 'match', {
+    requestId: 'after-rescue', revision: moved.runtime.revision,
+    action: { type: 'naval-attack', x: 0, y: 0, salvo: false, vertical: false },
+  });
+  expect(shot.runtime.feedback?.type).toBe('naval-attack');
 });
 it('applies an identical retried command once and rejects key reuse with a changed payload', async () => {
   const { pool, row } = fixture();
@@ -175,7 +200,7 @@ it('preserves the current round pause when starting a private character game', a
   });
   const pool = { connect: async () => ({ query, release: vi.fn() }) } as unknown as Pool;
   await startComputer(pool, 'a', 'grigory', 'new-private-match');
-  expect(stored?.runtime.engineVersion).toBe(20);
+  expect(stored?.runtime.engineVersion).toBe(ENGINE_VERSION);
   expect(stored?.runtime.game.roundPauseMs).toBe(3000);
 });
 it('keeps enemy placement private in the API until completion, then reveals it to either player', async () => {

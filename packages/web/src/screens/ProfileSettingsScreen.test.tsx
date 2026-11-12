@@ -201,6 +201,13 @@ describe('ProfileSettingsScreen', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['player','admin'] as const)('only shows city introduction to admin (%s)', async role => {
+    useAuthStore.getState().updateUser({role});
+    mockSettingsFetch();renderProfileSettings();
+    await screen.findByText('Профиль игрока');
+    expect(Boolean(screen.queryByRole('button',{name:'Знакомство с городом'}))).toBe(role==='admin');
+  });
+
   it('shows communities below notifications', async () => {
     mockSettingsFetch(); renderProfileSettings();
     const communities = await screen.findByRole('region', {name:'Сообщества'});

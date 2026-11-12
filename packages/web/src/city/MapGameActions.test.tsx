@@ -23,3 +23,9 @@ it('keeps only a completion check for completed activities',()=>{
  expect(screen.queryByText('90/90')).toBeNull();
  expect(screen.getByRole('button',{name:'Ежедневная – завершено'})).toBeVisible();
 });
+it.each(['duel', 'bar'] as const)('keeps one pending %s invitation visible in the red event counter', kind => {
+ const invite: ArenaEntry = { id: 'invite', kind, eyebrow: kind === 'bar' ? 'Бильярд' : 'Дуэль', title: 'Opponent', subtitle: '', meta: '', ctaLabel: '', dockState: 'ready', attention: true, mapExpiresAt: 60000, onEnter: vi.fn() };
+ render(<MapGameActions entries={[invite]} onOpen={vi.fn()} now={1000} />);
+ const button = screen.getByRole('button', { name: /событий: 1/ });
+ expect(within(button).getByText('1')).toBeVisible();
+});

@@ -10,7 +10,7 @@ function setup(ballInHand = false) {
     <PoolField game={game} balls={game.balls} disabled={false} send={send} />,
   );
   const table = screen.getByRole('img', { name: 'Бильярдный стол' });
-  Object.assign(table, {
+  const geometry = {
     getScreenCTM: () => ({ inverse: () => ({}) }),
     setPointerCapture: vi.fn(),
     createSVGPoint: () => ({
@@ -20,7 +20,8 @@ function setup(ballInHand = false) {
         return { x: this.x / 100, y: this.y / 100 };
       },
     }),
-  });
+  };
+  for (const layer of container.querySelectorAll('svg')) Object.assign(layer, geometry);
   send.mockClear();
   return { container, table, send };
 }
@@ -69,11 +70,38 @@ it('reduces cue rotation for a broad finger movement without jumping on pickup',
  pointer('pointerUp',table,98,200);
  expect(send.mock.lastCall?.[0].angle-initial).toBeCloseTo(-Math.PI/4*0.35,6);
 });
-it('renders the cue in a separate decorative layer sharing the table proportions',()=>{
+it('renders the cue in a separate overlay sharing the table proportions',()=>{
  const {container,table}=setup();
  const overlay=container.querySelector('.bar-pool-cue-overlay')!;
  expect(overlay).not.toBeNull();
  expect(overlay.getAttribute('aria-hidden')).toBe('true');
  expect(overlay.getAttribute('viewBox')).toBe(table.getAttribute('viewBox'));
  expect(overlay.querySelector('.bar-pool-cue')).not.toBeNull();
+});
+
+it('rotates from the visible overlay cue without starting a power pull', () => {
+  const {container,table,send}=setup();
+  const overlay=container.querySelector('.bar-pool-cue-overlay')!;
+  Object.assign(overlay, {
+    getScreenCTM: (table as unknown as SVGSVGElement).getScreenCTM,
+    createSVGPoint: (table as unknown as SVGSVGElement).createSVGPoint,
+    setPointerCapture: vi.fn(),
+  });
+  const handle=overlay.querySelector('.bar-pool-cue-handle')!;
+  pointer('pointerDown',handle,50,200);
+  pointer('pointerMove',overlay,75,180);
+  pointer('pointerUp',overlay,75,180);
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({type:'aim'}));
+  expect(screen.getByRole('slider',{name:'Сила удара'})).toHaveValue('0');
+  expect(send.mock.calls.some(([action])=>action.type==='shot')).toBe(false);
+});
+
+it('can reach full pullback from the middle of the available power track', () => {
+  const {send}=setup();
+  const slider=screen.getByRole('slider',{name:'Сила удара'});
+  Object.assign(slider,{setPointerCapture:vi.fn(),getBoundingClientRect:()=>({left:0,width:200})});
+  pointer('pointerDown',slider,100,220);
+  pointer('pointerMove',slider,0,220);
+  pointer('pointerUp',slider,0,220);
+  expect(send).toHaveBeenCalledWith(expect.objectContaining({type:'shot',power:1}));
 });

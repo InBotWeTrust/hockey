@@ -1,3 +1,4 @@
+import { BarHelpIcon } from '../BarHelpIcon.js';
 import { useRef } from 'react';
 import { useOchkoReveal } from './useResultReady.js';
 import { LogOut } from 'lucide-react';
@@ -388,7 +389,7 @@ export function GameMenu({
         </FittedNotice>
         {onRules && (
           <button className="icon-btn" aria-label="Правила игры" onClick={onRules}>
-            <span className="durak-tool__question" aria-hidden="true">?</span>
+            <BarHelpIcon />
           </button>
         )}
       </div>

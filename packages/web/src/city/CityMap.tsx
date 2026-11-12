@@ -12,7 +12,7 @@ import {rememberChatReturn} from '../chat/chatReturn.js';
 import {sectionEntryRoute} from './sectionEntry.js';
 import '../components/navigation-geometry.css';
 import {useHorizontalPan} from '../bar/useHorizontalPan.js';
-import {CityTraffic} from './CityTraffic.js';
+import {StudioCityMotion} from './StudioCityMotion.js';
 import {CityCaretaker,useCaretakerVisit} from './CityCaretaker.js';
 import type {CaretakerKind} from './caretakerSchedule.js';
 import type {GameDockStatus} from './gameDockStatus.js';
@@ -28,23 +28,23 @@ type Level='beginner'|'amateur'|'professional';
 type Props={trafficPreview?:boolean;accidentPreview?:boolean;exercisesAction?:ReactNode;weeklyPanel?:ReactNode;tourRequested?:boolean;tourPreviewApi?:CityTourApi;highlightTasks?:boolean;noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
 const basePlaces=[
  {id:'profile',name:'Моя квартира',x:7.2,y:36,w:3,h:8},
- {id:'yard',name:'Дворовый каток',x:11,y:60,w:12,h:14,thumb:[11,60]},
- {id:'shop',name:'Магазин',x:28.428,y:60.304,w:7.821,h:15.42,thumb:[28.428,60.304]},
- {id:'tasks',name:'Задания',x:39.866,y:60.958,w:6.578,h:13.986,thumb:[39.866,60.958]},
- {id:'chat',name:'Лента',x:20.006,y:48.145,w:3.591,h:7.182,thumb:[20.006,48.145]},
- {id:'bank',name:'Банк',x:28.371,y:40.14,w:6.881,h:13.607,thumb:[28.371,40.14]},
- {id:'stadium',name:'Стадион «Центральный»',x:44.327,y:37.152,w:16.89,h:26.1,thumb:[44.327,37.152]},
- {id:'gym',name:'Спортзал',x:61.799,y:39.66,w:11.017,h:16.62,thumb:[61.799,39.66]},
- {id:'bar',name:'Бар "4-й период"',x:67.173,y:59.658,w:10.459,h:20.931,thumb:[67.173,59.658]},
- {id:'fame',name:'Зал славы',x:81.111,y:58.552,w:10.307,h:20.83,thumb:[81.111,58.552]},
- {id:'bonus',name:'Бонусные игры',x:53.598,y:60.024,w:7.956,h:15.826,thumb:[53.598,60.024]},
- {id:'pro',name:'Арена Ультимейт',x:88.63,y:40.573,w:22.279,h:33.876,thumb:[88.63,40.573]},
+ {id:'yard',name:'Дворовый каток',x:8.847243271396138,y:58.50103286269475,w:17.674288443740622,h:20.650549481232634,thumb:[8.847243271396138,58.50103286269475]},
+ {id:'shop',name:'Магазин',x:28.67103429185496,y:61.139598994525066,w:6.815514038689457,h:13.929249969937496,thumb:[28.67103429185496,61.139598994525066]},
+ {id:'tasks',name:'Задания',x:39.395719929442386,y:60.39220355130808,w:6.901796434545493,h:15.082196893974787,thumb:[39.395719929442386,60.39220355130808]},
+ {id:'chat',name:'Лента',x:20.866899807993367,y:47.145508124081516,w:1.6455989669652167,h:7.518182021471064,thumb:[20.866899807993367,47.145508124081516]},
+ {id:'bank',name:'Банк',x:27.57693297769382,y:39.92718850497972,w:7.888254638020582,h:19.211703184613686,thumb:[27.57693297769382,39.92718850497972]},
+ {id:'stadium',name:'Стадион «Центральный»',x:44.49462391527922,y:42.84123317686651,w:13.67187666666667,h:21.50378669500528,thumb:[44.49462391527922,42.84123317686651]},
+ {id:'gym',name:'Спортзал',x:61.215532604721126,y:40.29530283733615,w:10.20077269774792,h:15.348634010695134,thumb:[61.215532604721126,40.29530283733615]},
+ {id:'bar',name:'Бар "4-й период"',x:66.64332491379264,y:61.649587268095345,w:9.36103334576009,h:16.947858384634266,thumb:[66.64332491379264,61.649587268095345]},
+ {id:'fame',name:'Зал славы',x:80.11399620239426,y:58.23904816408926,w:10.295012869199732,h:21.455075824638254,thumb:[80.11399620239426,58.23904816408926]},
+ {id:'bonus',name:'Бонусные игры',x:53.299677664227445,y:59.07352311638164,w:7.255788510392937,h:17.72655670281085,thumb:[53.299677664227445,59.07352311638164]},
+ {id:'pro',name:'Арена Ультимейт',x:86.62486113391556,y:40.25314452946448,w:26.297311759692978,h:34.68491373685769,thumb:[86.62486113391556,40.25314452946448]},
 ];
 const locationIcons:Record<string,typeof Shirt>={feed:Newspaper,yard:Fence,shop:Store,tasks:ClipboardList,bank:Landmark,stadium:Goal,gym:Dumbbell,bar:Beer,fame:Trophy,bonus:Gamepad2,pro:Shield,locker:Shirt};
 function LocationIcon({id}:{id:string}){const Icon=locationIcons[id]??MapIcon;return <span className="district-profile district-location-icon"><Icon size={24} strokeWidth={1.5} aria-hidden="true"/></span>;}
 const homeVenues = {beginner:'yard',amateur:'stadium',professional:'pro'} as const;
 const lockerPositions = {
- beginner: {x:21.47,y:59.44}, amateur: {x:50,y:49}, professional: {x:93,y:57},
+ beginner: {x:21.21965028706964,y:59.78234381487841}, amateur: {x:44.49,y:46}, professional: {x:85.77,y:50},
 } as const;
 export function CityMap(props:Props){
  useFunnelObservation('city_first_seen');
@@ -192,7 +192,7 @@ export function CityMap(props:Props){
    onPointerUp={()=>{if(drag.current?.moved)blockUntil.current=performance.now()+500;drag.current=null;}}
    onPointerCancel={()=>{blockUntil.current=performance.now()+500;drag.current=null;}}
    onClickCapture={e=>{if(e.detail!==0&&(drag.current?.moved||performance.now()<blockUntil.current)){e.preventDefault();e.stopPropagation();}}}>
-   <div ref={world} className="district-world">{props.city&&<CityWeatherWidget cityName={props.city.name} weather={props.currentWeather} stale={props.weatherStale??false} loading={props.weatherLoading??false} night={image.includes('city-night-')}/>}<CityBackground image={image}/><CityTraffic preview={import.meta.env.DEV&&Boolean(props.trafficPreview)} accidentPreview={import.meta.env.DEV&&Boolean(props.accidentPreview)} owner={owner} night={image.includes("city-night-")||image.includes("city-sunset-")}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
+   <div ref={world} className="district-world">{props.city&&<CityWeatherWidget cityName={props.city.name} weather={props.currentWeather} stale={props.weatherStale??false} loading={props.weatherLoading??false} night={image.includes('city-night-')}/>}<CityBackground image={image}/><StudioCityMotion phase={image.includes('city-night-')?'night':image.includes('city-sunset-')?'sunset':image.includes('city-morning-')?'morning':'day'} owner={owner} preview={import.meta.env.DEV&&Boolean(props.trafficPreview)} accidentPreview={import.meta.env.DEV&&Boolean(props.accidentPreview)} flood={!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)==='flood'}/>{!props.maintenanceBlocked&&(props.caretakerPreview??caretaker)==="scrape"&&<CityCaretaker kind={(props.caretakerPreview??caretaker)!} venue={dailyId as 'yard'|'stadium'|'pro'}/> }
     {places.map(p=><button key={p.id} aria-label={`На карте: ${p.name}`} className={`district-hit${p.id==='profile'?' district-apartment':p.id==='locker'?' district-locker':''}${flash===p.id?' is-flashing':''}${p.id==='tasks'&&props.highlightTasks?' district-task-hint':''}`} style={{zIndex:p.id==='pro'?1:2,left:`${p.x}%`,top:`${p.y}%`,width:p.id==='locker'?44:`${p.w}%`,height:p.id==='locker'?44:`${p.h}%`}} onClick={()=>openBuilding(p)}>{p.id==='locker'&&<Shirt size={22} aria-hidden="true"/>}</button>)}
     {/* Keep the glass on the map layer: nested transformed buttons can prevent backdrop sampling. */}
     <span className="district-apartment-avatar" aria-hidden="true" style={{left:`${apartment.x}%`,top:`${apartment.y-apartment.h*.1}%`}}><User/></span>

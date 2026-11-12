@@ -1,6 +1,5 @@
 import {createElement,useEffect,useState} from 'react';
 import {BarMapInviteActions} from './BarMapInviteActions.js';
-import {useLocation} from 'react-router-dom';
 import {useCardInvites,incomingInvites} from './cards/cardInvites.js';
 import {useGameInvites,incomingGameInvites} from './games/gameInviteStore.js';
 import type {ArenaEntry} from '../city/GameHub.js';
@@ -13,9 +12,8 @@ import {readRoom} from './cards/roomApi.js';
 import {gameApi} from './games/api.js';
 import {barMenuEntries} from './barMenuEntries.js';
 export function useBarMenuEntries(){
- const onMap=useLocation().pathname==='/sections';
  const [now,setNow]=useState(Date.now());
- useEffect(()=>{if(!onMap)return;const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[onMap]);
+ useEffect(()=>{const timer=setInterval(()=>setNow(Date.now()),1000);return()=>clearInterval(timer);},[]);
  const cardIncoming=useCardInvites(s=>s.incoming);
  const gameIncoming=useGameInvites(s=>s.incoming);
  const gameOwner=useGameInvites(s=>s.owner);
@@ -31,7 +29,6 @@ export function useBarMenuEntries(){
  if(!owner)return [];
 
  const entries=barMenuEntries(owner,cardData??null,gameData??null,room.data,match.data,navigate,now,localCards,cardMatch.data);
- if(!onMap)return entries;
  const labels:Record<string,string>={darts:'Дартс',billiards:'Бильярд',armwrestling:'Армрестлинг',ochko:'Очко',checkers:'Шашки',battleship:'Морской бой'};
  const add=(id:string,kind:'cards'|'games',label:string,name:string,avatar:string|null|undefined,expires:number,incoming:boolean)=>{
  const entryId=kind==='cards'?`bar-card-invite-${id}`:`bar-invite-${id}`;

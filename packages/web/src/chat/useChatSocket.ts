@@ -247,10 +247,12 @@ export function useChatSocket(): ChatSocketStatus {
             applyMessageNew(qc, event.chatId, event.message);
             if (
               event.message.senderId !== meId &&
-              useChatStore.getState().activeChatId !== event.chatId &&
               isDuelInviteMessage(event.message)
             ) {
-              emitDuelInviteReceived(event.chatId, event.message);
+              void qc.invalidateQueries({ queryKey: ['amateur-duel', 'events'] });
+              if (useChatStore.getState().activeChatId !== event.chatId) {
+                emitDuelInviteReceived(event.chatId, event.message);
+              }
             }
             return;
           case 'message:deleted':

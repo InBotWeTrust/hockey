@@ -233,6 +233,7 @@ export { countRhythmBoardContacts, projectRhythm, compareRhythmSeries, createRhy
 export type { RhythmShot, RhythmProjection, RhythmFlightPause } from './rhythm.js';
 
 export * from './visitorCard.js';
+export { isReleasedBonusChallenge } from './bonusChallengeRelease.js';
 export * from './visitorPhrases.js';
 export * from './caretaker/drift.js';
 export * from './caretaker/blizzard.js';
