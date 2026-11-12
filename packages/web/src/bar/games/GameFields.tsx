@@ -745,6 +745,44 @@ export function PoolField({
           </g>
         )
   );
+  const cuePointerHandlers = {
+    onPointerDown: (e: PointerEvent<SVGSVGElement>) => {
+      if (disabled) return;
+      if (game.ballInHand) {
+        select(e);
+        return;
+      }
+      if (!(e.target instanceof Element) || !e.target.closest('.bar-pool-cue-body')) return;
+      const matrix = e.currentTarget.getScreenCTM();
+      if (!matrix) return;
+      const point = e.currentTarget.createSVGPoint();
+      point.x = e.clientX;
+      point.y = e.clientY;
+      const { x, y } = point.matrixTransform(matrix.inverse());
+      dragging.current = {
+        id: e.pointerId,
+        pointerAngle: Math.atan2(y - cue.y, x - cue.x),
+        angle,
+      };
+      e.currentTarget.setPointerCapture(e.pointerId);
+      e.preventDefault();
+    },
+    onPointerMove: (e: PointerEvent<SVGSVGElement>) => {
+      if (dragging.current?.id === e.pointerId && !game.ballInHand) select(e);
+    },
+    onPointerUp: (e: PointerEvent<SVGSVGElement>) => {
+      const drag = dragging.current;
+      if (!drag || drag.id !== e.pointerId) return;
+      if (!disabled && !game.ballInHand) {
+        select(e);
+        send({ type: 'aim', angle: drag.angle, power: Math.max(0.03, power), spin });
+      }
+      dragging.current = null;
+    },
+    onPointerCancel: () => {
+      dragging.current = null;
+    },
+  };
   return (
     <div className="bar-pool-field" data-pregame={pregame}
       onContextMenu={event => event.preventDefault()}
@@ -755,42 +793,7 @@ export function PoolField({
         viewBox="-.15 -.13 1.3 2.28"
         role="img"
         aria-label="Бильярдный стол"
-        onPointerDown={(e) => {
-          if (disabled) return;
-          if (game.ballInHand) {
-            select(e);
-            return;
-          }
-          if (!(e.target instanceof Element) || !e.target.closest('.bar-pool-cue-body')) return;
-          const matrix = e.currentTarget.getScreenCTM();
-          if (!matrix) return;
-          const point = e.currentTarget.createSVGPoint();
-          point.x = e.clientX;
-          point.y = e.clientY;
-          const { x, y } = point.matrixTransform(matrix.inverse());
-          dragging.current = {
-            id: e.pointerId,
-            pointerAngle: Math.atan2(y - cue.y, x - cue.x),
-            angle,
-          };
-          e.currentTarget.setPointerCapture(e.pointerId);
-          e.preventDefault();
-        }}
-        onPointerMove={(e) => {
-          if (dragging.current?.id === e.pointerId && !game.ballInHand) select(e);
-        }}
-        onPointerUp={(e) => {
-          const drag = dragging.current;
-          if (!drag || drag.id !== e.pointerId) return;
-          if (!disabled && !game.ballInHand) {
-            select(e);
-            send({ type: 'aim', angle: drag.angle, power: Math.max(0.03, power), spin });
-          }
-          dragging.current = null;
-        }}
-        onPointerCancel={() => {
-          dragging.current = null;
-        }}
+        {...cuePointerHandlers}
       >
         <defs>
           <radialGradient id="ball-shine" cx="30%" cy="25%">
@@ -850,9 +853,8 @@ export function PoolField({
               <circle className="bar-pool-impact-flash" r=".02" fill="#fff6db" />
             </g>
           )}
-        {cueGraphic}
       </svg>
-      <svg className="bar-pool-cue-overlay" viewBox="-.15 -.13 1.3 2.28" aria-hidden="true">{cueGraphic}</svg>
+      <svg className="bar-pool-cue-overlay" viewBox="-.15 -.13 1.3 2.28" aria-hidden="true" {...cuePointerHandlers}>{cueGraphic}</svg>
       </div>
       <div className="bar-pool-controls" aria-hidden={pregame || undefined}>
         <label className="bar-pool-power bar-pool-power--pull">
@@ -874,7 +876,7 @@ export function PoolField({
               e.currentTarget.setPointerCapture(e.pointerId);
               powerDrag.current = {
                 x: e.clientX,
-                width: e.currentTarget.getBoundingClientRect().width,
+                width: Math.max(24, e.clientX - e.currentTarget.getBoundingClientRect().left),
                 id: e.pointerId,
               };
               fired.current = false;
