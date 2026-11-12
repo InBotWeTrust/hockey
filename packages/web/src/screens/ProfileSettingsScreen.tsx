@@ -2,7 +2,8 @@ import {SectionLoading} from '../components/SectionLoading.js';
 import { ChatPositionSettings } from '../components/ChatPositionSettings.js';
 import {CitySettings} from '../city/CitySettings.js';
 import { ThemeSettings } from '../components/ThemeSettings.js';
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useRef, useState } from 'react';
+import { ApartmentSettingsContext, ApartmentSettingsGroup } from '../profile/home/ApartmentSettingsContext.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowLeft, Check, Info, LogOut, RotateCcw, X } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -18,6 +19,7 @@ import type { ProfileData } from './profileTypes.js';
 import { lockerRoomBackgroundClass } from './lockerRoomBackground.js';
 
 export function ProfileSettingsScreen(): JSX.Element {
+  const apartmentSection = useContext(ApartmentSettingsContext);
   const navigate = useNavigate();
   const isAdmin = useAuthStore(state => state.user?.role === 'admin');
   const owner = useAuthStore(state => state.user?.id);
@@ -203,6 +205,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         <SectionLoading />
       ) : (
         <>
+          <ApartmentSettingsGroup section="help">
           {isAdmin && <button className="btn btn--ghost" onClick={()=>navigate('/sections?tour=1')}>Знакомство с городом</button>}
           <div className="section-label">Аккаунт</div>
           <div
@@ -235,6 +238,8 @@ export function ProfileSettingsScreen(): JSX.Element {
             )}
           </div>
 
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section="profile">
           <div className="section-label">Профиль игрока</div>
           <section className="profile-customization-card glass">
             <div className="profile-customization-card__avatar-row">
@@ -320,6 +325,8 @@ export function ProfileSettingsScreen(): JSX.Element {
             </button>
           </section>
 
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section="legacy">
           <div className="section-label profile-settings-grip-label">
             <span>Хват игрока</span>
             <button
@@ -352,10 +359,18 @@ export function ProfileSettingsScreen(): JSX.Element {
             />
           </div>
 
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section="app">
           <ChatPositionSettings owner={owner} />
           <ThemeSettings />
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section="city">
           <CitySettings key={owner??data?.id} owner={owner??data?.id} />
-          <ProfileSupportSections profileReady={data !== undefined} />
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section={apartmentSection === 'notifications' ? 'notifications' : 'help'}>
+          <ProfileSupportSections profileReady={data !== undefined} section={apartmentSection === 'notifications' ? 'notifications' : apartmentSection === 'help' ? 'help' : 'all'} />
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section="help">
 
           <div className="profile-logout-wrap">
             <button
@@ -367,6 +382,7 @@ export function ProfileSettingsScreen(): JSX.Element {
               Выйти
             </button>
           </div>
+          </ApartmentSettingsGroup>
         </>
       )}
 

@@ -9,10 +9,11 @@ import {
 } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ApartmentSettingsContext, type ApartmentSettingsSection } from '../profile/home/ApartmentSettingsContext.js';
 import { ProfileSettingsScreen } from './ProfileSettingsScreen.js';
 import { useAuthStore } from '../auth/authStore.js';
 
-function renderProfileSettings(): RenderResult & { queryClient: QueryClient } {
+function renderProfileSettings(section: ApartmentSettingsSection | null = null): RenderResult & { queryClient: QueryClient } {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
@@ -20,7 +21,7 @@ function renderProfileSettings(): RenderResult & { queryClient: QueryClient } {
     render(
       <QueryClientProvider client={qc}>
         <MemoryRouter initialEntries={['/profile/settings']}>
-          <ProfileSettingsScreen />
+          <ApartmentSettingsContext.Provider value={section}><ProfileSettingsScreen /></ApartmentSettingsContext.Provider>
         </MemoryRouter>
       </QueryClientProvider>,
     ),
@@ -208,6 +209,20 @@ describe('ProfileSettingsScreen', () => {
     expect(Boolean(screen.queryByRole('button',{name:'Знакомство с городом'}))).toBe(role==='admin');
   });
 
+  it('isolates profile editing from unrelated apartment settings', async () => {
+    mockSettingsFetch(); renderProfileSettings('profile');
+    await screen.findByRole('button', {name:'Сохранить профиль'});
+    expect(screen.getByLabelText('Имя')).toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:'О хвате'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', {name:'Тема приложения'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('region', {name:'Сообщества'})).not.toBeInTheDocument();
+  });
+  it('keeps the apartment menu free of editable forms', async () => {
+    mockSettingsFetch(); renderProfileSettings('menu');
+    await waitFor(() => expect(screen.queryByText('Загружаем…')).not.toBeInTheDocument());
+    expect(screen.queryByRole('textbox', {name:'Имя'})).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', {name:'Сохранить профиль'})).not.toBeInTheDocument();
+  });
   it('shows communities below notifications', async () => {
     mockSettingsFetch(); renderProfileSettings();
     const communities = await screen.findByRole('region', {name:'Сообщества'});

@@ -1,3 +1,4 @@
+import { LocalPreviewThemeSwitch } from './LocalPreviewThemeSwitch.js';
 import { ownProfileSummaryKey } from '../profile/useOwnProfileSummary.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { UserProfileScreen } from '../chat/screens/UserProfileScreen.js';
@@ -327,7 +328,7 @@ function MapNavigationPreview() {
         weatherLoading={weather.isPending}
         weatherStale={params.get('weatherStale')==='1'}
         level={level}
-        owner="navigation-labels-qa"
+        owner={params.get('owner') ?? 'navigation-labels-qa'}
         startAtDaily
         gamePanel={<GameHub presentation="city" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}} />}
         daily="0/90 бросков"
@@ -365,6 +366,8 @@ const initial =
                   ? `/inventory?tab=${params.get('tab') ?? 'bank'}`
                   : `/inventory?category=${params.get('category') ?? 'stick'}`;
 const previewClient = new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+// Keep the synthetic summary available when a preview section is opened after several minutes.
+previewClient.setQueryDefaults(ownProfileSummaryKey(useAuthStore.getState().user?.id), {gcTime: Infinity});
 // The preview has synthetic data and deliberately does not create an auth session.
 previewClient.setQueryData(ownProfileSummaryKey(useAuthStore.getState().user?.id), {...apartmentProfile, competitionLevel: level});
 previewClient.setQueryData(userKeys.summary(useAuthStore.getState().user?.id ?? null, 'public-profile-fixture'), {
@@ -379,13 +382,17 @@ createRoot(document.getElementById('root')!).render(
   <QueryClientProvider
     client={previewClient}
   >
+    <LocalPreviewThemeSwitch />
     <SocialProvider value={{viewerId:apartmentProfile.id,api:socialApi}}>
     <MemoryRouter initialEntries={[initial]}>
       <div
         className="app-shell app-shell--unified-glass"
         style={
           {
-            height: '100dvh',
+            height: 'calc(100dvh - 36px)',
+            minHeight: 0,
+            position: 'relative',
+            overflow: 'hidden',
             width: '100%',
             maxWidth: 430,
             margin: '0 auto',

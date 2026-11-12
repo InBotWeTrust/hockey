@@ -1,3 +1,4 @@
+import { ApartmentHome } from '../profile/home/ApartmentHome.js';
 import {useNavigationActivity} from './useNavigationActivity.js';
 import { AppToast } from './AppToast.js';
 import { ApartmentReferralAttention } from './ApartmentRoom.js';
@@ -66,6 +67,11 @@ export function VenuePanorama({
     if (scene?.redirect) navigate(scene.redirect, { replace: true });
   }, [scene?.redirect, navigate, exercisesEnabled, location.pathname, location.search]);
   if (!scene) return <>{children}</>;
+  if (import.meta.env.DEV && scene.id === 'apartment') {
+    return <VenueContext.Provider value={context}>
+      <ApartmentHome key={owner ?? 'guest'} owner={owner}>{children}</ApartmentHome>
+    </VenueContext.Provider>;
+  }
   return (
     <VenueContext.Provider value={context}>
       {developmentToast && <AppToast message="В разработке" onDismiss={() => setDevelopmentToast(false)}/>}

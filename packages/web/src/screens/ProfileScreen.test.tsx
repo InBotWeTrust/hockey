@@ -330,8 +330,10 @@ describe('ProfileScreen', () => {
 
   it('keeps personal data but removes duplicate apartment destination cards',async()=>{
     mockProfileRequest();renderProfile(true);
+    fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
     await screen.findByRole('region',{name:'Спортивный паспорт'});
-    expect(screen.getByRole('heading',{name:'Профиль'})).toBeVisible();
+    expect(screen.queryByRole('heading',{name:'Профиль'})).toBeNull();
+    await waitFor(()=>expect(screen.getByRole('region',{name:'Спортивный паспорт'})).toBeVisible());
     expect(screen.queryByRole('button',{name:/^Настройки$/})).toBeNull();
     expect(screen.queryByRole('button',{name:'Открыть раздел «Сюжет»'})).toBeNull();
     expect(screen.queryByLabelText('Витрина наград')).toBeNull();

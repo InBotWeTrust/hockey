@@ -499,7 +499,7 @@ function OfficialMessageModal({ onClose }: { onClose: () => void }): JSX.Element
   );
 }
 
-export function ProfileSupportSections({ profileReady }: { profileReady: boolean }): JSX.Element {
+export function ProfileSupportSections({ profileReady, section = 'all' }: { profileReady: boolean; section?: 'all' | 'notifications' | 'help' }): JSX.Element {
   const queryClient = useQueryClient();
   const isTelegramMiniApp = getTelegramMiniApp() !== null;
   const nativeAndroid = isNativeAndroid();
@@ -738,6 +738,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
 
   return (
     <>
+      {section !== 'help' && <>
       {!isTelegramMiniApp && (
         <>
           <div className="section-label" style={{ marginBottom: 8 }}>
@@ -877,6 +878,8 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
         </>
       </AdminAndroidReleaseOnly>
 
+      </>}
+      {section !== 'notifications' && <>
       <div className="section-label" style={{ marginBottom: 8 }}>
         Обратная связь
       </div>
@@ -968,6 +971,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
       </div>
 
       <CommunitySection />
+      </>}
 
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
       {officialMessageOpen && (

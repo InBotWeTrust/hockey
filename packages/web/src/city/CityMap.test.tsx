@@ -1,4 +1,4 @@
-import {render,screen,fireEvent} from '@testing-library/react';
+import {act,render,screen,fireEvent} from '@testing-library/react';
 import {expect,it,vi} from 'vitest';
 import {CityMap} from './CityMap.js';
 // Navigation tests must not depend on the clock-selected animated weather.
@@ -342,4 +342,15 @@ it('shows server qualification above navigation and opens the real daily state',
  expect(screen.getByRole('button',{name:/Путь в Любители.*100\/100/})).toHaveTextContent('осталось шайб: 0');
  view.rerender(<CityMap {...base} level="amateur" noviceProgress={{goals:101,target:100,status:'complete'}}/>);
  expect(screen.queryByRole('button',{name:/Путь в Любители/})).toBeNull();
+});
+
+it('defaults map icons to the right and updates the whole map per owner', async () => {
+ const {setMapIconPosition}=await import('../app/mapIconPosition.js');
+ const view=render(<CityMap {...base} owner="icon-side-a" level="amateur"/>);
+ expect(screen.getByRole('region',{name:'Хоккейный район'})).toHaveClass('district--icons-right');
+ act(()=>setMapIconPosition('icon-side-a','left'));
+ expect(screen.getByRole('region',{name:'Хоккейный район'})).toHaveClass('district--icons-left');
+ view.rerender(<CityMap {...base} owner="icon-side-b" level="amateur"/>);
+ expect(screen.getByRole('region',{name:'Хоккейный район'})).toHaveClass('district--icons-right');
+ localStorage.removeItem('map-icon-position-v1:icon-side-a');
 });

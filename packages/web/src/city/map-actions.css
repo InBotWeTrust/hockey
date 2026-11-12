@@ -52,3 +52,9 @@
 .map-action-art:has(.map-action-progress) > svg { transform: translateY(-3px); }
 .map-action:has(.map-action-progress) .map-action-title { margin-top: 6px; }
 [data-theme=dark] .map-action-progress { background: #26364a; color: #e3eefb; border-color: #8b9bab; }
+
+/* The entire rail swaps sides, including its portaled game actions. */
+.district--icons-left .map-action-rail {
+  left: 8px;
+  right: auto;
+}
