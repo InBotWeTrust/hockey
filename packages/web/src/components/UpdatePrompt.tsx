@@ -4,7 +4,8 @@ import { createPortal } from 'react-dom';
 import { useRegisterSW } from 'virtual:pwa-register/react';
 
 const UPDATE_CHECK_INTERVAL_MS = 5 * 60 * 1000;
-const UPDATE_ACTIVATION_TIMEOUT_MS = 5_000;
+const UPDATE_ACTIVATION_TIMEOUT_MS = 15_000;
+const RELEASE_NOTES_TIMEOUT_MS = 5_000;
 
 let updateCheckTimer: number | null = null;
 let activeRegistration: ServiceWorkerRegistration | null = null;
@@ -40,12 +41,13 @@ export function UpdatePrompt(): JSX.Element | null {
   const updateButtonRef = useRef<HTMLButtonElement | null>(null);
   const notesId = useId();
   const [expanded, setExpanded] = useState(false);
+  const [applyingUpdate, setApplyingUpdate] = useState(false);
+  const [updateError, setUpdateError] = useState(false);
   const [notes, setNotes] = useState<string[] | null>(null);
   const [notesError, setNotesError] = useState(false);
   const [notesAttempt, setNotesAttempt] = useState(0);
   const {
     needRefresh: [needRefresh],
-    updateServiceWorker,
   } = useRegisterSW({
     onNeedRefresh() {
       setNotesAttempt(value => value + 1);
@@ -79,7 +81,7 @@ export function UpdatePrompt(): JSX.Element | null {
     const timeout = window.setTimeout(() => {
       channel.port1.close();
       setNotesError(true);
-    }, UPDATE_ACTIVATION_TIMEOUT_MS);
+    }, RELEASE_NOTES_TIMEOUT_MS);
     channel.port1.onmessage = (event: MessageEvent<unknown>) => {
       window.clearTimeout(timeout);
       channel.port1.close();
@@ -103,23 +105,39 @@ export function UpdatePrompt(): JSX.Element | null {
   }, [needRefresh, expanded, notesAttempt]);
 
   const applyUpdate = (): void => {
-    if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
-    let reloadRequested = false;
-    const reload = (): void => {
-      if (reloadRequested) return;
-      reloadRequested = true;
-      if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
-      fallbackTimerRef.current = null;
+    if (fallbackTimerRef.current !== null) return;
+    const worker = activeRegistration?.waiting;
+    setUpdateError(false);
+    if (!worker) {
       window.location.reload();
-    };
-
-    if (!activeRegistration?.waiting) {
-      reload();
       return;
     }
 
-    fallbackTimerRef.current = window.setTimeout(reload, UPDATE_ACTIVATION_TIMEOUT_MS);
-    void updateServiceWorker(true).catch(reload);
+    setApplyingUpdate(true);
+    const fail = (): void => {
+      if (fallbackTimerRef.current !== null) window.clearTimeout(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+      setApplyingUpdate(false);
+      setUpdateError(true);
+    };
+    fallbackTimerRef.current = window.setTimeout(() => {
+      fallbackTimerRef.current = null;
+      // Workbox normally reloads on control change. If that callback did not reload,
+      // only use the fallback after this exact worker has actually activated.
+      if (worker.state === 'activated' &&
+          (activeRegistration?.active === worker || navigator.serviceWorker?.controller === worker)) {
+        window.location.reload();
+      } else {
+        fail();
+      }
+    }, UPDATE_ACTIVATION_TIMEOUT_MS);
+
+    try {
+      // Send activation to the waiting worker captured for this user action.
+      worker.postMessage({ type: 'SKIP_WAITING' });
+    } catch {
+      fail();
+    }
   };
 
   if (!needRefresh) return null;
@@ -177,7 +195,7 @@ export function UpdatePrompt(): JSX.Element | null {
           Доступно обновление
         </div>
         <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.6 }}>
-          Перезагрузим приложение, чтобы открыть свежую версию.
+          {applyingUpdate ? 'Применяем обновление…' : 'Перезагрузим приложение, чтобы открыть свежую версию.'}
         </div>
         <button
           type="button"
@@ -221,11 +239,18 @@ export function UpdatePrompt(): JSX.Element | null {
             )}
           </div>
         )}
+        {updateError && (
+          <div role="alert" style={{ fontSize: 13, color: 'var(--muted)', marginTop: 12 }}>
+            Не удалось применить обновление. Попробуйте ещё раз.
+          </div>
+        )}
         <button
           ref={updateButtonRef}
           type="button"
           className="btn btn--cta"
           onClick={applyUpdate}
+          disabled={applyingUpdate}
+          aria-busy={applyingUpdate}
           style={{
             marginTop: 18,
             width: '100%',

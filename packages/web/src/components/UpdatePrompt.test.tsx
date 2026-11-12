@@ -102,15 +102,16 @@ describe('UpdatePrompt', () => {
     pwaRegisterMock.needRefresh = true;
 
     render(<UpdatePrompt />);
+    const postMessage = vi.fn();
     pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
-      waiting: {} as ServiceWorker,
+      waiting: { postMessage } as unknown as ServiceWorker,
       update: vi.fn(() => Promise.resolve()),
     } as unknown as ServiceWorkerRegistration);
 
     expect(screen.getByRole('dialog', { name: 'Доступно обновление' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Обновить приложение' }));
 
-    expect(pwaRegisterMock.updateServiceWorkerCalls).toEqual([true]);
+    expect(postMessage).toHaveBeenCalledWith({ type: 'SKIP_WAITING' });
   });
 
   it('keeps the update button outside the inert app background when a game modal is open', () => {
@@ -181,22 +182,104 @@ describe('UpdatePrompt', () => {
     expect(reload).toHaveBeenCalledTimes(1);
   });
 
-  it('reloads if a waiting worker does not take control after the update request', () => {
+  it('does not reload the old app when activation times out and allows retry', async () => {
     vi.useFakeTimers();
     const reload = vi.fn();
     vi.stubGlobal('location', { reload });
+    const container = Object.assign(new EventTarget(), { controller: {} });
+    vi.stubGlobal('navigator', { serviceWorker: container });
+    const worker = Object.assign(new EventTarget(), { state: 'installed', postMessage: vi.fn() });
     pwaRegisterMock.needRefresh = true;
-
     render(<UpdatePrompt />);
     pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
-      waiting: {} as ServiceWorker,
+      waiting: worker,
       update: vi.fn(() => Promise.resolve()),
     } as unknown as ServiceWorkerRegistration);
     fireEvent.click(screen.getByRole('button', { name: 'Обновить приложение' }));
-
+    await act(async () => { vi.advanceTimersByTime(15_000); });
     expect(reload).not.toHaveBeenCalled();
-    vi.advanceTimersByTime(5_000);
+    expect(screen.getByRole('alert')).toHaveTextContent('Не удалось применить обновление');
+    expect(screen.getByRole('button', { name: 'Обновить приложение' })).toBeEnabled();
+  });
+
+  it('reloads after confirmed activation even if Workbox misses the control event', async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+    const worker = { state: 'installed', postMessage: vi.fn() };
+    const registration = { waiting: worker, active: null as unknown, update: vi.fn(() => Promise.resolve()) };
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', registration as unknown as ServiceWorkerRegistration);
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить приложение' }));
+    expect(screen.getByRole('button', { name: 'Обновить приложение' })).toBeDisabled();
+    worker.state = 'activated';
+    registration.active = worker;
+    await act(async () => { vi.advanceTimersByTime(15_000); });
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not accept activation of another worker as successful activation of the requested update', async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+    vi.stubGlobal('navigator', { serviceWorker: { controller: {} } });
+    const worker = { state: 'activated', postMessage: vi.fn() };
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
+      waiting: worker, active: {}, update: vi.fn(() => Promise.resolve()),
+    } as unknown as ServiceWorkerRegistration);
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить приложение' }));
+    await act(async () => { vi.advanceTimersByTime(15_000); });
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeVisible();
+  });
+
+  it('prevents duplicate activation requests and retries after a timeout', async () => {
+    vi.useFakeTimers();
+    pwaRegisterMock.needRefresh = true;
+    const worker = { state: 'installed', postMessage: vi.fn() };
+    render(<UpdatePrompt />);
+    pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
+      waiting: worker, update: vi.fn(() => Promise.resolve()),
+    } as unknown as ServiceWorkerRegistration);
+    const button = screen.getByRole('button', { name: 'Обновить приложение' });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    expect(worker.postMessage).toHaveBeenCalledTimes(1);
+    await act(async () => { vi.advanceTimersByTime(15_000); });
+    fireEvent.click(button);
+    expect(worker.postMessage).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows a retryable error when the update message cannot be delivered', () => {
+    pwaRegisterMock.needRefresh = true;
+    render(<UpdatePrompt />);
+    pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
+      waiting: { postMessage: () => { throw new Error('worker unavailable'); } },
+      update: vi.fn(() => Promise.resolve()),
+    } as unknown as ServiceWorkerRegistration);
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить приложение' }));
+    expect(screen.getByRole('alert')).toBeVisible();
+    expect(screen.getByRole('button', { name: 'Обновить приложение' })).toBeEnabled();
+  });
+
+  it('cancels the pending fallback when the prompt unmounts', async () => {
+    vi.useFakeTimers();
+    const reload = vi.fn();
+    vi.stubGlobal('location', { reload });
+    const worker = { state: 'activated', postMessage: vi.fn() };
+    pwaRegisterMock.needRefresh = true;
+    const view = render(<UpdatePrompt />);
+    pwaRegisterMock.options?.onRegisteredSW?.('/sw.js', {
+      waiting: worker, active: worker, update: vi.fn(() => Promise.resolve()),
+    } as unknown as ServiceWorkerRegistration);
+    fireEvent.click(screen.getByRole('button', { name: 'Обновить приложение' }));
+    view.unmount();
+    await act(async () => { vi.advanceTimersByTime(15_000); });
+    expect(reload).not.toHaveBeenCalled();
   });
 
   it('checks for app updates after service worker registration', () => {
