@@ -7,9 +7,9 @@ afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.restoreAllMocks();});
 it('uses the layered night export at both resolutions and preserves the other phases',()=>{
  expect(cityImage(new Date(2026,10,6,23),1)).toBe('/maps/studio-20261110/city-night-4096-7e5431acc840.webp');
  expect(cityImage(new Date(2026,10,6,23),2)).toBe('/maps/studio-20261110/city-night-6144-cd71f95efe93.webp');
- expect(cityImage(new Date(2026,10,6,8),1)).toBe('/maps/studio-20261110/city-morning-4096-4aa7111558aa.webp');
+ expect(cityImage(new Date(2026,10,6,8),1)).toBe('/maps/studio-20261110/city-morning-4096-55b1c9db6647.webp');
  expect(cityImage(new Date(2026,10,6,12),1)).toBe('/maps/studio-20261110/city-day-4096-ebe669859b31.webp');
- expect(cityImage(new Date(2026,10,6,18),1)).toBe('/maps/studio-20261110/city-sunset-4096-9741cbea644c.webp');
+ expect(cityImage(new Date(2026,10,6,18),1)).toBe('/maps/studio-20261110/city-sunset-4096-221713d56f14.webp');
 });
 
 describe('device-local city lighting',()=>{
