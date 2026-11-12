@@ -34,15 +34,13 @@ it('keeps the eastern panorama framing fixed between Igor and broadcasts', () =>
   expect((view.container.querySelector('[data-bar-wall="hall"] img') as HTMLElement).style.objectPosition).toBe(before);
 });
 
-it('uses baked background details and centers the office doorway before entering', () => {
+it('uses baked background details and opens the office doorway on the first click', () => {
   const layout = moveBarOccupant(createDefaultBarLayout(), 'bar-6', 'maria');
   const open = vi.fn();
   const view = render(<BarScene layout={layout} activeSlotId="bar-6" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
   expect(view.container.querySelector('[data-bar-decoration]')).toBeNull();
   fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
-  expect(open).not.toHaveBeenCalled();
-  view.rerender(<BarScene layout={layout} activeSlotId="bar-10" onSelectSlot={vi.fn()} onAction={vi.fn()} onStaffRoom={open}/>);
-  fireEvent.click(screen.getByRole('button', {name: 'Открыть служебную дверь'}));
+  expect(open).toHaveBeenCalledOnce();
   expect(open).toHaveBeenCalledWith('bar-10');
 });
 it('drags across the service door without opening it or selecting a page', () => {
