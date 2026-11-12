@@ -54,7 +54,7 @@ export function DailyResultFollowUp({ state, userId, novice, now, onOpenCourse }
     {state.state === 'closed' && <p>На сегодня игра завершена.</p>}
     {novice && exercise && breakRemaining > 0 && state.state === 'break_active' && <div className="daily-result-follow-up__invitation">
       <p>Используй перерыв для тренировки: пройди упражнение «{exercise.title}» и отработай броски перед следующим периодом.</p>
-      <button type="button" className="btn btn--cta" style={{ width: '100%', padding: '12px 0', fontSize: 14 }} onClick={() => onOpenCourse(exercise.key)}>Перейти к упражнению</button>
+      <button type="button" className="btn btn--cta daily-result-action" onClick={() => onOpenCourse(exercise.key)}>Перейти к упражнению</button>
     </div>}
   </section>;
 }

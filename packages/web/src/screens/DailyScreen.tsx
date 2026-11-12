@@ -1040,9 +1040,9 @@ export function DailyGameStatsModal({
 
         <button
           type="button"
-          className="btn btn--cta"
+          className="btn btn--cta daily-result-action"
           onClick={onClose}
-          style={{ marginTop: 18, width: '100%', padding: '12px 24px', fontSize: 12, letterSpacing: '0.06em' }}
+          style={{ marginTop: 18 }}
         >
           {comparison ? completionButtonLabel(comparison) : closeLabel}
         </button>

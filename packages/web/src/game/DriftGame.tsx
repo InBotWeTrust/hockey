@@ -54,7 +54,7 @@ export function DriftGame({
     confirmed = useRef(initial.completed),
     failed = useRef(false);
   const [percent, setPercent] = useState(0),
-    [instruction, setInstruction] = useState(initial.showInstruction),
+    [instruction, setInstruction] = useState(initial.version === engineVersion),
     [error, setError] = useState(''),
     [done, setDone] = useState(false),
     [seconds, setSeconds] = useState(
@@ -417,7 +417,7 @@ export function DriftGame({
           {variant==='blizzard'&&<small className="blizzard-wind" aria-label={presentation.directionLabel}>{weather}</small>}
         </div>
         <button
-          className="icon-btn"
+          className="icon-btn drift-rules-button"
           aria-label="Правила игры"
           onClick={() => {
             release();
