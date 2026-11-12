@@ -176,7 +176,18 @@ export function BarPanorama() {
     };
   }, [retry]);
   const [gameCharacter, setGameCharacter] = useState<GameCharacter | null>(null);
+  const rememberSlot = (id: string) => {
+    touched.current = true;
+    saveSectionTab(tabKey, id);
+    try {sessionStorage.setItem('bar-active-slot', id);sessionStorage.setItem('bar-active-slot-owner', account);}catch{/* Storage is optional. */}
+    setSlot(id);
+  };
+  const rememberOccupant = (id: BarOccupantId) => {
+    const target = layout.slots.find(item => item.occupantId === id);
+    if(target)rememberSlot(target.id);
+  };
   const action = (kind: BarAction, id: BarOccupantId) => {
+    rememberOccupant(id);
     if (kind === 'cards') setOpponent('maria');
     else if (kind === 'battleship' || kind === 'armwrestling' || kind === 'ochko' || kind === 'darts' || kind === 'billiards' || kind === 'checkers')
       setGameCharacter(id as GameCharacter);
@@ -193,13 +204,9 @@ export function BarPanorama() {
         characterEmotions={greeting&&!conversation?{...emotions,[greeting]:'greeting'}:thinking&&!['empathy','displeasure'].includes(emotions[thinking]??'neutral')?{...emotions,[thinking]:'interest'}:emotions}
         hideIdentity={conversation !== null}
         activeSlotId={slot}
-        onSelectSlot={(id) => {
-          touched.current = true;
-          sessionStorage.setItem('bar-active-slot', id);
-          setSlot(id);
-        }}
+        onSelectSlot={rememberSlot}
         onAction={action}
-        onTalk={setConversation}
+        onTalk={character => {rememberOccupant(character);setConversation(character);}}
         {...(!incidentError ? {onPhysicalIncident:(character:BarCharacter)=>void physicalIncident(character)} : {})}
         conversationStarted={!!started[selectedCharacter as BarCharacter]}
         onBack={() => navigate('/sections')}
