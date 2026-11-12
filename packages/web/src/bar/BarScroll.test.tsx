@@ -1,4 +1,5 @@
 import {useState} from 'react';
+import {MemoryRouter} from 'react-router-dom';
 import {fireEvent, render, screen} from '@testing-library/react';
 import {createDefaultBarLayout} from '@hockey/game-core';
 import {expect, it, vi} from 'vitest';
@@ -6,7 +7,7 @@ import {BarScene} from './BarScene.js';
 function setup(initial='bar-3') {
  const action=vi.fn(),incident=vi.fn(),select=vi.fn();
  function Scene(){const [slot,setSlot]=useState(initial);return <BarScene layout={createDefaultBarLayout()} activeSlotId={slot} onSelectSlot={id=>{select(id);setSlot(id);}} onAction={action} onPhysicalIncident={incident}/>;}
- const view=render(<Scene/>);
+ const view=render(<MemoryRouter><Scene/></MemoryRouter>);
  const viewport=screen.getByLabelText('Панорама бара');
  Object.defineProperty(viewport,'clientWidth',{configurable:true,value:390});
  Object.defineProperty(view.container.querySelector('.bar-space__track'),'clientWidth',{configurable:true,value:3900});
@@ -30,22 +31,21 @@ it('drags the panorama continuously through a game hotspot without switching pag
  pointer(hit,'pointerdown',200);pointer(hit,'pointermove',140);pointer(hit,'pointerup',140);fireEvent.click(hit,{detail:1});
  expect(viewport.scrollLeft).toBe(160);expect(select).not.toHaveBeenCalled();expect(action).not.toHaveBeenCalled();
 });
-it('centers a game object on the first click, then opens its original game',()=>{
+it('opens a game object on the first click while centering its owner',()=>{
  const {viewport,action,scroll}=setup('bar-1');viewport.scrollLeft=85;
  const hit=screen.getByRole('button',{name:'Играть в дартс с Дарьей'});
- fireEvent.click(hit,{detail:1});expect(scroll).toHaveBeenCalledWith({left:3510,behavior:'smooth'});expect(action).not.toHaveBeenCalled();
- viewport.scrollLeft=3510;fireEvent.click(hit,{detail:1});expect(action).toHaveBeenCalledWith('darts','daria');
+ fireEvent.click(hit,{detail:1});expect(scroll).toHaveBeenCalledWith({left:3510,behavior:'smooth'});expect(action).toHaveBeenCalledWith('darts','daria');expect(action).toHaveBeenCalledOnce();
 });
 it('recenters even the already selected circle without opening anything',()=>{
  const {viewport,scroll,action}=setup();viewport.scrollLeft=700;
  fireEvent.click(screen.getByRole('button',{name:'Мария'}));
  expect(scroll).toHaveBeenCalledWith({left:2730,behavior:'smooth'});expect(action).not.toHaveBeenCalled();
 });
-it('moves the terminal with its page and centers it before opening',()=>{
+it('opens the terminal on the first click while keeping it with its page',()=>{
  const {viewport,scroll}=setup('bar-5');viewport.scrollLeft=1450;
  fireEvent.click(screen.getByRole('button',{name:'Открыть терминал'}));
  expect(scroll).toHaveBeenCalledWith({left:1560,behavior:'smooth'});
- expect(screen.queryByRole('button',{name:'Закрыть терминал'})).not.toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Закрыть терминал'})).toBeInTheDocument();
 });
 it('cancels a hold when native scrolling starts and still allows keyboard actions after a drag',()=>{
  vi.useFakeTimers();
