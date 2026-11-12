@@ -16037,3 +16037,13 @@ button.daily-calendar__day:active {
 .novice-push-prompt__actions { display: flex; flex-wrap: wrap; gap: 16px; }
 .novice-push-prompt button { padding: 8px 0; border: 0; background: none; color: var(--liquid-ink); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
 .novice-push-prompt button:disabled { opacity: .6; cursor: default; }
+
+.daily-result-action.btn {
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 24px;
+  font-size: 12px;
+  line-height: 20px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}

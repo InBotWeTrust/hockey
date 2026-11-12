@@ -189,4 +189,26 @@
   font-weight: 400;
   margin-top: 14px;
 }
-.blizzard-wind {display:block; font-size:11px;line-height:1.3;margin-top:4px;color:var(--ink);font-weight:650;}
+.blizzard-wind {display:block; font-size:11px;line-height:1.3;margin-top:4px;color:inherit;font-weight:650;}
+
+:root .drift-game .drift-hud .icon-btn {
+  background: var(--liquid-inset-bg);
+  color: rgba(255, 255, 255, 0.96);
+  border: 1px solid var(--liquid-border);
+  backdrop-filter: blur(18px) saturate(1.45);
+  -webkit-backdrop-filter: blur(18px) saturate(1.45);
+  text-shadow: 0 1px 3px rgba(2, 10, 24, 0.92), 0 0 9px rgba(2, 10, 24, 0.72);
+  box-shadow:
+    0 3px 10px rgba(0, 10, 27, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(112, 182, 247, 0.12);
+}
+:root[data-theme='light'] .drift-game .drift-hud .icon-btn {
+  background: linear-gradient(135deg, rgba(7, 24, 45, 0.12), rgba(15, 51, 78, 0.06));
+  border-color: rgba(205, 232, 255, 0.46);
+}
+
+.drift-game .drift-hud .drift-rules-button {
+  font-size: 20px;
+  line-height: 1;
+}
