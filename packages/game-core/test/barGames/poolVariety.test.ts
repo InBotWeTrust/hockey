@@ -68,7 +68,7 @@ it('varies new runtime openings and preserves the version-22 opening', () => {
   expect(openings.size).toBeGreaterThanOrEqual(4);
 });
 
-it('reduces Veronika aiming error slightly in new matches while preserving version 23', () => {
+it('preserves the version-24 aiming improvement relative to version 23', () => {
   const game: pool.Game = {
     ...pool.create(1), break: false, groups: ['stripes', 'solids'],
     balls: [
@@ -80,7 +80,7 @@ it('reduces Veronika aiming error slightly in new matches while preserving versi
   };
   for (let seed = 1; seed <= 12; seed++) {
     const legacy = createMatch('billiards', 1, 0, true, seed, 23);
-    const current = createMatch('billiards', 1, 0, true, seed);
+    const current = createMatch('billiards', 1, 0, true, seed, 24);
     legacy.game = structuredClone(game);
     current.game = structuredClone(game);
     const previousAim = advance(legacy, legacy.animationUntil);
@@ -109,4 +109,25 @@ it('preserves the version-23 aiming choice for an existing match', () => {
   expect(aim.actor).toBe(1);
   expect(aim.angle).toBeCloseTo(-2.027851821278933, 12);
   expect(aim.power).toBeCloseTo(.6050142752749559, 12);
+});
+
+it('uses ball-in-hand planning only in new version-25 matches and preserves version 24', () => {
+ const game:pool.Game={...pool.create(1),break:false,ballInHand:true,groups:['stripes','solids'],balls:[
+  {id:0,x:.5,y:1.5,pocketed:true},{id:1,x:.15,y:.15,pocketed:false},
+  {id:8,x:.85,y:1.7,pocketed:false},{id:9,x:.1,y:.8,pocketed:false},
+  {id:10,x:.2,y:.8,pocketed:false},{id:11,x:.3,y:.8,pocketed:false},
+ ]};
+ const current=createMatch('billiards',1,0,true,7);
+ const legacy=createMatch('billiards',1,0,true,7,24);
+ current.game=structuredClone(game);legacy.game=structuredClone(game);
+ const modern=advance(current,current.animationUntil),old=advance(legacy,legacy.animationUntil);
+ expect(modern.engineVersion).toBe(25);
+ expect(old.engineVersion).toBe(24);
+ expect(old.game.kind).toBe('billiards');
+ expect((old.game as pool.Game).balls.find(b=>b.id===0)).toMatchObject({x:.1,y:1.5});
+ expect((modern.game as pool.Game).balls.find(b=>b.id===0)).not.toEqual((old.game as pool.Game).balls.find(b=>b.id===0));
+ const result=pool.shoot(modern.game as pool.Game,modern.poolAim!,'responsive',false);
+ expect(result.game.lastFoul).toBe(false);
+ expect(result.pocketed).toContain(1);
+ expect(modern).toEqual(advance(current,current.animationUntil));
 });
