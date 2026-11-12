@@ -1,4 +1,4 @@
 export const studioMapManifest = {
-  "sceneUrl": "/maps/studio-20261110/scene-64b94b469157.json",
-  "motionUrl": "/maps/studio-20261110/motion-f8c997c78d94.mjs"
+  "sceneUrl": "/maps/studio-20261110/scene-53c437333aee.json",
+  "motionUrl": "/maps/studio-20261110/motion-2e4915a917e7.mjs"
 } as const;

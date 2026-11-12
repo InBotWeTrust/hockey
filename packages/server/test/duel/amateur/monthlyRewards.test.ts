@@ -156,13 +156,13 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
         { scope: kind, user_id: users[1], stars: 0, experience: 0 },
       ]);
       const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!);
-      expect(pending[0]).toMatchObject({ stars: 330, experience: 30 });
+      expect(pending[0]).toMatchObject({ stars: 630, experience: 30 });
     },
   );
   it('pays a qualified solo-format winner even with fewer than ten eligible players', async () => {
     const users = await seedSeason('2026-08', 2);
     await reconcileCompletedMonthlyRating(pool, september);
-    expect((await placements()).map((row) => row.stars)).toEqual([300, 200]);
+    expect((await placements()).map((row) => row.stars)).toEqual([600, 300]);
     const format = await pool.query<{ user_id: string; scope: string; stars: number; experience: number }>(
       `select user_id, scope, stars, experience from monthly_duel_format_placement
         where season_key = '2026-08' order by place`,
@@ -174,7 +174,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     const winner = await pool.query<{ xp: number; experience: number }>(
       'select xp, experience from users where id = $1', [users[0]],
     );
-    expect(winner.rows[0]).toEqual({ xp: 330, experience: 30 });
+    expect(winner.rows[0]).toEqual({ xp: 630, experience: 30 });
     await pool.query(
       `insert into game_settings (key, value, label, description)
        values ('amateur.monthly_rating.classic.first.stars', '999'::jsonb, 'stars', 'test')
@@ -187,16 +187,16 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     const pending = await getPendingMonthlyRatingCongratulations(pool, users[0]!);
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({
-      season_key: '2026-08', points: expect.any(Number), stars: 330, experience: 30,
+      season_key: '2026-08', points: expect.any(Number), stars: 630, experience: 30,
       awards: [
-        { scope: 'overall', place: 1, points: expect.any(Number), stars: 300 },
+        { scope: 'overall', place: 1, points: expect.any(Number), stars: 600 },
         { scope: 'classic', place: 1, points: expect.any(Number), stars: 30, experience: 30 },
       ],
     });
     await acknowledgeMonthlyRatingCongratulations(pool, users[0]!, pending[0]!.id, september);
     expect(await getPendingMonthlyRatingCongratulations(pool, users[0]!)).toEqual([]);
     await acknowledgeMonthlyRatingCongratulations(pool, users[0]!, pending[0]!.id, september);
-    expect((await pool.query('select xp from users where id = $1', [users[0]])).rows[0]).toEqual({ xp: 330 });
+    expect((await pool.query('select xp from users where id = $1', [users[0]])).rows[0]).toEqual({ xp: 630 });
   });
 
   it('places and rewards players after only one completed ordinary duel', async () => {
@@ -212,8 +212,8 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
 
     expect((await placements()).map((row) => ({ user_id: row.user_id, place: row.place, stars: row.stars })))
       .toEqual([
-        { user_id: users[0], place: 1, stars: 300 },
-        { user_id: users[1], place: 2, stars: 200 },
+        { user_id: users[0], place: 1, stars: 600 },
+        { user_id: users[1], place: 2, stars: 300 },
       ]);
     expect((await pool.query(
       `select scope, user_id, place, stars from monthly_duel_format_placement order by place`,
@@ -309,8 +309,8 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
       users[8],
       users[9],
     ]);
-    expect(rows.slice(0, 3).map((row) => row.coins)).toEqual([15000, 10000, 7500]);
-    expect(rows[2]).toMatchObject({ user_id: users[3], place: 3, coins: 7500 });
+    expect(rows.slice(0, 3).map((row) => row.coins)).toEqual([110000, 50000, 25000]);
+    expect(rows[2]).toMatchObject({ user_id: users[3], place: 3, coins: 25000 });
     await expect(completedMonthlyAchievementIds(pool, users[0]!)).resolves.toEqual([]);
     await expect(completedMonthlyAchievementIds(pool, users[3]!)).resolves.toEqual(['monthly-top-3']);
   });
@@ -349,9 +349,9 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     await reconcileCompletedMonthlyRating(pool, september);
     const rows = await placements();
     for (const [place, coins, stars, tokens] of [
-      [1, 15000, 300, 10],
-      [2, 10000, 200, 7],
-      [3, 7500, 150, 5],
+      [1, 110000, 600, 10],
+      [2, 50000, 300, 7],
+      [3, 25000, 150, 5],
       [4, 0, 50, 3],
       [10, 0, 50, 3],
       [11, 0, 15, 1],
@@ -368,7 +368,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
           [users[0]],
         )
       ).rows[0],
-    ).toEqual({ xp: 330, balance: 15000, tokens: 10 });
+    ).toEqual({ xp: 630, balance: 110000, tokens: 10 });
     expect(
       (
         await pool.query(
@@ -391,8 +391,8 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
         )
       ).rows[0],
     ).toMatchObject({
-      available_delta: 15000,
-      metadata: { season_key: '2026-08', stars: 300, tokens: 10 },
+      available_delta: 110000,
+      metadata: { season_key: '2026-08', stars: 600, tokens: 10 },
     });
   }, 60_000);
 
@@ -438,7 +438,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
           "select sum(available_delta)::int as coins from currency_ledger where reason = 'monthly_duel_rating_reward'",
         )
       ).rows[0].coins,
-    ).toBe(32500);
+    ).toBe(185000);
   });
 
   it('pending reads do not reconcile an unfinished lifecycle', async () => {
@@ -466,7 +466,7 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
           [users[0]],
         )
       ).rows[0],
-    ).toEqual({ xp: 990, balance: 45000, tokens: 30 });
+    ).toEqual({ xp: 1890, balance: 330000, tokens: 30 });
     expect(await getPendingMonthlyRatingCongratulations(pool, users[9]!)).toEqual([]);
     const id = pending[0]!.id;
     await expect(
@@ -523,8 +523,8 @@ describe.skipIf(!hasIntegrationEnv)('monthly rating settlement', () => {
     expect(entry).toMatchObject({
       season_key: '2020-01',
       place: 1,
-      coins: 15000,
-      stars: 330,
+      coins: 110000,
+      stars: 630,
       tokens: 10,
     });
     expect(

@@ -29,10 +29,10 @@ type Level='beginner'|'amateur'|'professional';
 type Props={trafficPreview?:boolean;accidentPreview?:boolean;exercisesAction?:ReactNode;weeklyPanel?:ReactNode;tourRequested?:boolean;tourPreviewApi?:CityTourApi;highlightTasks?:boolean;noviceProgress?:{goals:number;target:number;status:'qualifying'|'onboarding_pending'|'complete'};city?:SelectedCity|null;currentWeather?:CityWeather|null;weatherStale?:boolean;weatherLoading?:boolean;maintenanceBlocked?:boolean;caretakerPreview?:CaretakerKind;isAdmin?:boolean;adminCount?:number;referralCount?:number;gameStatus?:GameDockStatus;onOpenGamePanel?:()=>void;gamePanel?:ReactNode;startAtDaily?:boolean;weatherOverride?:WeatherKind;owner?:string|undefined;level:Level;daily:string;training:string;tasks:string;bonus:string;attention?:boolean;avatarUrl?:string|null;chatCount?:number;gameCount?:number;taskCount?:number;barCount?:number;onNavigate:(path:string)=>void};
 const basePlaces=[
  {id:'profile',name:'Моя квартира',x:7.2,y:36,w:3,h:8},
- {id:'yard',name:'Дворовый каток',x:9.82566198126187,y:58.50034875586463,w:17.674288443740622,h:20.650549481232634,thumb:[9.82566198126187,58.50034875586463]},
+ {id:'yard',name:'Дворовый каток',x:8.847243271396138,y:58.50103286269475,w:17.674288443740622,h:20.650549481232634,thumb:[8.847243271396138,58.50103286269475]},
  {id:'shop',name:'Магазин',x:28.67103429185496,y:61.139598994525066,w:6.815514038689457,h:13.929249969937496,thumb:[28.67103429185496,61.139598994525066]},
  {id:'tasks',name:'Задания',x:39.395719929442386,y:60.39220355130808,w:6.901796434545493,h:15.082196893974787,thumb:[39.395719929442386,60.39220355130808]},
- {id:'chat',name:'Лента',x:20.65917526244217,y:46.19648532136225,w:2.0610480580676116,h:9.416227626909597,thumb:[20.65917526244217,46.19648532136225]},
+ {id:'chat',name:'Лента',x:20.866899807993367,y:47.145508124081516,w:1.6455989669652167,h:7.518182021471064,thumb:[20.866899807993367,47.145508124081516]},
  {id:'bank',name:'Банк',x:27.57693297769382,y:39.92718850497972,w:7.888254638020582,h:19.211703184613686,thumb:[27.57693297769382,39.92718850497972]},
  {id:'stadium',name:'Стадион «Центральный»',x:44.49462391527922,y:42.84123317686651,w:13.67187666666667,h:21.50378669500528,thumb:[44.49462391527922,42.84123317686651]},
  {id:'gym',name:'Спортзал',x:61.215532604721126,y:40.29530283733615,w:10.20077269774792,h:15.348634010695134,thumb:[61.215532604721126,40.29530283733615]},
@@ -45,7 +45,7 @@ const locationIcons:Record<string,typeof Shirt>={feed:Newspaper,yard:Fence,shop:
 function LocationIcon({id}:{id:string}){const Icon=locationIcons[id]??MapIcon;return <span className="district-profile district-location-icon"><Icon size={24} strokeWidth={1.5} aria-hidden="true"/></span>;}
 const homeVenues = {beginner:'yard',amateur:'stadium',professional:'pro'} as const;
 const lockerPositions = {
- beginner: {x:21.2197,y:59.7824}, amateur: {x:44.49,y:46}, professional: {x:85.77,y:50},
+ beginner: {x:21.21965028706964,y:59.78234381487841}, amateur: {x:44.49,y:46}, professional: {x:85.77,y:50},
 } as const;
 export function CityMap(props:Props){
  useFunnelObservation('city_first_seen');

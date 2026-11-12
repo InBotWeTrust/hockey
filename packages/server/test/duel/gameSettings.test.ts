@@ -56,11 +56,30 @@ describe('ordinary duel rewards', () => {
 });
 
 describe('inventory star price', () => {
-  it('exposes the admin divisor and uses 25 by default', async () => {
+  it('exposes the admin divisor and uses the approved 50 coins per star by default', async () => {
     const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
-    expect(settings.amateur.starInventoryPriceDivisor).toBe(25);
+    expect(settings.amateur.starInventoryPriceDivisor).toBe(50);
     expect(GAME_SETTING_DEFINITIONS.map((setting) => setting.key))
       .toContain('amateur.star_inventory_price_divisor');
+  });
+});
+
+describe('inventory star price overrides', () => {
+  it('preserves an explicitly configured custom divisor', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [
+      { key: 'amateur.star_inventory_price_divisor', value: 75 },
+    ] }) } as never);
+    expect(settings.amateur.starInventoryPriceDivisor).toBe(75);
+  });
+});
+
+describe('approved competition rewards', () => {
+  it('uses the approved overall podium without changing experience, tokens or format prizes', async () => {
+    const settings = await getGameSettings({ query: async () => ({ rows: [] }) } as never);
+    expect(settings.amateur.monthlyRating.overall.first).toEqual({ coins: 110000, stars: 600, experience: 0, tokens: 10 });
+    expect(settings.amateur.monthlyRating.overall.second).toEqual({ coins: 50000, stars: 300, experience: 0, tokens: 7 });
+    expect(settings.amateur.monthlyRating.overall.third).toEqual({ coins: 25000, stars: 150, experience: 0, tokens: 5 });
+    expect(settings.amateur.monthlyRating.classic.first).toEqual({ coins: 0, stars: 30, experience: 30, tokens: 0 });
   });
 });
 

@@ -252,8 +252,8 @@ describe.skipIf(!hasIntegrationEnv)('beginner read-only tournament routes', () =
       expect(economyPresetResponses[8]!.json()).toMatchObject({
         participantLimit: 16,
         entryFeeCoins: 10_000,
-        payoutValueCoins: 136_000,
-        sinkValueCoins: 24_000,
+        payoutValueCoins: 245_500,
+        sinkValueCoins: -85_500,
       });
 
       const reads = await Promise.all([
