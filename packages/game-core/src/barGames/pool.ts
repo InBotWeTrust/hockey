@@ -324,7 +324,8 @@ function clearPath(g: Game, a: Point, b: Point, ignored: number[]): boolean {
     return Math.hypot(ball.x-a.x-t*dx,ball.y-a.y-t*dy)>2*R+.002;
   });
 }
-export function bot(g: Game, smart = true, accuracyRoll?: number, strategySeed?: number): {placement: Point|null; shot: Shot} {
+export function bot(g: Game, smart = true, accuracyRoll?: number, strategySeed?: number, positionPlay = false): {placement: Point|null; shot: Shot} {
+  if (smart && positionPlay && !g.break) return positionalBot(g, accuracyRoll, strategySeed);
   const fallback=legacyBot(g);
   if(!smart)return fallback;
   const variation = strategySeed === undefined ? null : createRng(String(strategySeed));
@@ -412,4 +413,189 @@ export function bot(g: Game, smart = true, accuracyRoll?: number, strategySeed?:
     best = {...best, angle: best.angle + (accuracyRoll - .5) * spread};
   }
   return {placement:fallback.placement,shot:best};
+}
+
+interface PotCandidate {
+  shot: Shot;
+  cost: number;
+}
+function legalTargets(g: Game): Ball[] {
+  const own = g.groups[g.turn];
+  const balls = g.balls.filter(
+    (b) => !b.pocketed && b.id > 0 && b.id !== 8 && (!own || group(b.id) === own),
+  );
+  return own && !balls.length ? g.balls.filter((b) => !b.pocketed && b.id === 8) : balls;
+}
+function directPots(g: Game): PotCandidate[] {
+  const cue = g.balls.find((b) => b.id === 0)!;
+  const result: PotCandidate[] = [];
+  for (const ball of legalTargets(g))
+    for (const pocket of POCKETS) {
+      const d = Math.hypot(pocket.x - ball.x, pocket.y - ball.y);
+      if (d < 1e-6 || !clearPath(g, ball, pocket, [0, ball.id])) continue;
+      const ux = (pocket.x - ball.x) / d,
+        uy = (pocket.y - ball.y) / d;
+      const ghost = { x: ball.x - ux * 2 * R, y: ball.y - uy * 2 * R };
+      const travel = Math.hypot(ghost.x - cue.x, ghost.y - cue.y);
+      const alignment = ((ghost.x - cue.x) * ux + (ghost.y - cue.y) * uy) / (travel || 1);
+      if (
+        ghost.x < R ||
+        ghost.x > 1 - R ||
+        ghost.y < R ||
+        ghost.y > 2 - R ||
+        alignment < 0.18 ||
+        !clearPath(g, cue, ghost, [0, ball.id])
+      )
+        continue;
+      result.push({
+        shot: {
+          angle: Math.atan2(ghost.y - cue.y, ghost.x - cue.x),
+          power: Math.max(0.15, Math.min(0.9, (d + travel) * 0.28 + 0.15)),
+        },
+        cost: d + travel + (1 - alignment) * 1.5,
+      });
+    }
+  return result.sort((a, b) => a.cost - b.cost);
+}
+function positionalBot(
+  g: Game,
+  accuracyRoll?: number,
+  strategySeed?: number,
+): { placement: Point | null; shot: Shot } {
+  const fallback = bot(g, true, undefined, strategySeed, false);
+  const placements: { point: Point | null; cost: number }[] = [
+    { point: fallback.placement, cost: Infinity },
+  ];
+  if (g.ballInHand) {
+    for (const ball of legalTargets(g))
+      for (const pocket of POCKETS) {
+        const d = Math.hypot(pocket.x - ball.x, pocket.y - ball.y);
+        if (d < 1e-6 || !clearPath(g, ball, pocket, [0, ball.id])) continue;
+        const ux = (pocket.x - ball.x) / d,
+          uy = (pocket.y - ball.y) / d;
+        for (const gap of [0.14, 0.3, 0.55]) {
+          const point = { x: ball.x - ux * (2 * R + gap), y: ball.y - uy * (2 * R + gap) };
+          if (free(g.balls, point) && clearPath(g, point, ball, [0, ball.id]))
+            placements.push({ point, cost: d + gap * 0.25 });
+        }
+      }
+  }
+  const options = g.ballInHand
+    ? placements
+        .sort((a, b) => a.cost - b.cost)
+        .filter(
+          (p, i, all) =>
+            all.findIndex(
+              (q) =>
+                q.point &&
+                p.point &&
+                Math.hypot(q.point.x - p.point.x, q.point.y - p.point.y) < 0.015,
+            ) === i,
+        )
+        .slice(0, 8)
+    : placements;
+  const rng = strategySeed === undefined ? null : createRng(`pool-position:${strategySeed}`);
+  type Probe = {
+    shot: Shot;
+    placement: Point | null;
+    state: Game;
+    cost: number;
+    value: number;
+    nextState: Game | null;
+  };
+  const probes: Probe[] = [];
+  let best: Probe | null = null;
+  let count = 0;
+  const evaluate = (state: Game, placement: Point | null, shot: Shot, cost: number): void => {
+    if (count >= 72) return;
+    count++;
+    const sim = shoot(state, shot, 'responsive', false);
+    const own = state.groups[state.turn];
+    const ownPot = (id: number) => id > 0 && id !== 8 && (!own || group(id) === own);
+    let value =
+      sim.game.winner === state.turn
+        ? 10000
+        : sim.game.winner !== null
+          ? -10000
+          : (sim.game.lastFoul ? -1000 : 5) +
+            (sim.scratch ? -1000 : 0) +
+            sim.pocketed.filter(ownPot).length * 100 -
+            sim.pocketed.filter((id) => id > 0 && id !== 8 && !ownPot(id)).length * 10 -
+            shot.power -
+            Math.hypot(shot.spin?.x ?? 0, shot.spin?.y ?? 0) * 0.75;
+    if (sim.game.winner === null && !sim.game.lastFoul && sim.game.turn === state.turn) {
+      // A reachable ghost-ball route matters more than mere cue-to-ball distance.
+      const next = directPots(sim.game)[0];
+      value += next ? 12 + Math.max(0, 24 - next.cost * 8) : -20;
+    }
+    value += rng ? rng.next() * 0.5 : 0;
+    const nextState =
+      sim.game.winner === null && !sim.game.lastFoul && sim.game.turn === state.turn
+        ? sim.game
+        : null;
+    const probe = { state, placement, shot, cost, value, nextState };
+    probes.push(probe);
+    if (!best || value > best.value) best = probe;
+  };
+  const fallbackState = fallback.placement ? place(g, fallback.placement) : g;
+  evaluate(fallbackState, fallback.placement, fallback.shot, 3);
+  for (const { point } of options) {
+    const state = point ? place(g, point) : g;
+    for (const candidate of directPots(state).slice(0, g.ballInHand ? 2 : 4))
+      for (const factor of g.ballInHand ? [0.85, 1.1] : [0.8, 1, 1.2])
+        evaluate(
+          state,
+          point,
+          { ...candidate.shot, power: Math.min(1, candidate.shot.power * factor) },
+          candidate.cost,
+        );
+  }
+  // Refine a bounded set with follow, draw and side spin using the same physics.
+  for (const candidate of [...probes].sort((a, b) => b.value - a.value).slice(0, 4))
+    for (const spin of [
+      { x: 0, y: -0.75 },
+      { x: 0, y: 0.75 },
+      { x: -0.65, y: 0 },
+      { x: 0.65, y: 0 },
+      { x: -0.4, y: 0.6 },
+      { x: 0.4, y: 0.6 },
+      { x: -0.4, y: -0.6 },
+      { x: 0.4, y: -0.6 },
+    ])
+      evaluate(candidate.state, candidate.placement, { ...candidate.shot, spin }, candidate.cost);
+  // Confirm a real next pot for the finalists without an unbounded game-tree search.
+  let selected: Probe | null = null;
+  for (const candidate of [...probes].sort((a, b) => b.value - a.value).slice(0, 3)) {
+    let value = candidate.value;
+    if (candidate.nextState) {
+      const nextState = candidate.nextState;
+      const own = nextState.groups[nextState.turn];
+      let nextPot = false;
+      for (const next of directPots(nextState).slice(0, 2)) {
+        if (count >= 72) break;
+        count++;
+        const result = shoot(nextState, next.shot, 'responsive', false);
+        if (
+          result.game.winner === nextState.turn ||
+          (!result.game.lastFoul &&
+            result.pocketed.some((id) => id > 0 && id !== 8 && (!own || group(id) === own)))
+        ) {
+          nextPot = true;
+          break;
+        }
+      }
+      value += nextPot ? 32 : -12;
+    }
+    if (!selected || value > selected.value) selected = { ...candidate, value };
+  }
+  const chosen = selected ?? (best as Probe | null);
+  if (!chosen) return fallback;
+  const spread = 0.006 + Math.min(0.08, chosen.cost * 0.025);
+  return {
+    placement: chosen.placement,
+    shot:
+      accuracyRoll === undefined
+        ? chosen.shot
+        : { ...chosen.shot, angle: chosen.shot.angle + (accuracyRoll - 0.5) * spread },
+  };
 }
