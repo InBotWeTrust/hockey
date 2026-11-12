@@ -1,4 +1,4 @@
-import {test} from 'node:test';import assert from 'node:assert/strict';
+import {test} from 'vitest';import assert from 'node:assert/strict';
 import {createMotionSpriteCache} from '../public/maps/studio-20261110/motion-sprite-cache-9f8c2b4abc2c.mjs';
 test('prepares crop, scale and lighting once for repeated vehicle frames',()=>{
  const calls=[];const createCanvas=()=>({getContext:()=>({drawImage:(...args)=>calls.push(args)})});
