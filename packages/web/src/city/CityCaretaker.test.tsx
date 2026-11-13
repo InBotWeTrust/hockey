@@ -70,8 +70,8 @@ it('always floods the outdoor ice regardless of the player home venue',()=>{
  for(const venue of ['yard','stadium','pro'] as const){
   const view=render(<CityCaretaker kind="flood" venue={venue}/>);
   const figure=screen.getByRole('img',{name:'Григорий заливает лёд'});
-  expect(figure.style.left).toBe('10.5%');
-  expect(figure.style.top).toBe('54.5%');
+  expect(figure.style.left).toBe('11.9%');
+  expect(figure.style.top).toBe('59%');
   view.unmount();
  }
 });

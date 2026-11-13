@@ -1,4 +1,5 @@
-import {useEffect,useLayoutEffect,useRef,useState,type CSSProperties} from 'react';
+import {MapExitLink} from '../components/MapExitLink.js';
+import {useEffect,useLayoutEffect,useRef,useState,Fragment,type CSSProperties} from 'react';
 import {barActionsFor,isBarAssetPath,type BarAction,type BarOccupantId} from '@hockey/game-core';
 import {ArrowLeft,X} from 'lucide-react';
 import type {BarSceneProps} from './BarScene.js';
@@ -92,10 +93,10 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
   const left=destination(id);if(left===null)return;
   viewport.current?.scrollTo?.({left,behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':behavior});
  };
- const select=(id:BarOccupantId)=>{const next=layout.slots.find(s=>s.occupantId===id);if(next){if(owner!==id||!centered(id))gesture.cancel();if(owner===id)focus(id);onSelectSlot(next.id);}};
- const ready=(id:BarOccupantId)=>{if(owner!==id||!centered(id)){select(id);return false;}return true;};
+ const select=(id:BarOccupantId)=>{const next=layout.slots.find(s=>s.occupantId===id);if(next){if(owner!==id||!centered(id))gesture.cancel();if(owner!==id)setTerminalOpen(false);if(owner===id)focus(id);onSelectSlot(next.id);}};
+ const ready=(id:BarOccupantId)=>{if(!layout.slots.some(s=>s.occupantId===id))return false;select(id);return true;};
  const act=(action:BarAction,id:BarOccupantId)=>{if(ready(id))onAction(action,id);};
- useLayoutEffect(()=>{if(owner)focus(owner,positioned.current?'smooth':'auto');positioned.current=true;setTerminalOpen(false);gesture.cancel();gestureTarget.current=null;},[owner]);
+ useLayoutEffect(()=>{if(owner)focus(owner,positioned.current?'smooth':'auto');positioned.current=true;if(owner!=='online')setTerminalOpen(false);gesture.cancel();gestureTarget.current=null;},[owner]);
  useEffect(()=>{if(onlineGame&&owner==='online'&&!hideIdentity){setTerminalInvitation(null);setTerminalOpen(true);}},[onlineGame,onlineRequestKey,owner,hideIdentity]);
  useEffect(()=>()=>gesture.cancel(),[gesture]);
  useEffect(()=>{
@@ -121,12 +122,17 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
      const id=s.occupantId,place=id?places[id]:null,composition=id?layout.profiles[id].composition:null;
      if(!id||!place?.height||!isBarAssetPath(composition)||!barCharacters.includes(id as BarCharacter))return null;
      const width=place.height*2/9;
-     return <div key={s.id} className={`bar-map-character${id==='igor'?' bar-map-character--behind-counter':''}`} data-map-character={id}
+     return <Fragment key={s.id}><div className={`bar-map-character${id==='igor'?' bar-map-character--behind-counter':''}`} data-map-character={id}
       style={{left:`${place.x-width/2}%`,top:`${place.floor-place.height}%`,width:`${width}%`,height:`${place.height}%`}}
-      onClick={()=>select(id)}>
+      onClick={()=>{if(hideIdentity)return;select(id);onTalk?.(id as BarCharacter);}}>
       {layered&&newCharacters.has(id)?<img src={id==='arsenich'?'/bar/map-v36/arsenich-neutral-v1.webp':`/bar/map-v30/${id}-neutral-v1.webp`} alt="" draggable={false} style={{width:'100%',height:'100%',objectFit:'contain'}}/>:<CharacterEmotionFigure character={id} emotion={characterEmotions[id as BarCharacter]??'neutral'} fallback={composition} style={{width:'100%',height:'100%',objectFit:'contain'}} onFallbackError={()=>{}}/>}
-      {!hideIdentity&&<CharacterHitArea character={id as BarCharacter} x={50} y={50} style={{inset:0,width:'100%',height:'100%'}}/>}
-     </div>;
+     </div>
+     {!hideIdentity&&<div className={`bar-map-character bar-map-character--hit${id==='igor'?' bar-map-character--behind-counter':''}`} data-map-character-hit={id}
+      style={{left:`${place.x-width/2}%`,top:`${place.floor-place.height}%`,width:`${width}%`,height:`${place.height}%`}}
+      onClick={()=>{select(id);onTalk?.(id as BarCharacter);}}>
+      <CharacterHitArea character={id as BarCharacter} x={50} y={50} style={{inset:0,width:'100%',height:'100%'}}/>
+     </div>}
+     </Fragment>;
     })}
     <img className={layered?'bar-map-counter bar-map-counter--sprite':'bar-map-counter'} src={layered?'/bar/map-v31/counter-v1.webp':background} style={layered?rectangle([28.5,31,20,30]):undefined} alt="" draggable={false}/>
     {layered&&layeredProps.map(prop=><img key={prop.id} data-map-prop={prop.id} className="bar-map-prop" src={'asset' in prop?prop.asset:`/bar/map-v30/${prop.id}-v1.webp`} style={rectangle(prop.box)} alt="" draggable={false}/>)}
@@ -136,6 +142,7 @@ export function BarMapScene({layout,activeSlotId,onSelectSlot,onAction,onTalk,on
      else if(target.id==='terminal')setTerminalOpen(true);
      else if(target.id==='club-cards')onVisitorShop?.();
     }}><span className="bar-map-pulse" aria-hidden="true"><span className="bar-map-pulse__ring"/></span></button>)}
+    {!hideIdentity&&layered&&<MapExitLink className="bar-map-target bar-map-exit">{null}</MapExitLink>}
     {!hideIdentity&&onStaffRoom&&<button className="bar-map-target bar-map-target--secret" aria-label="Открыть служебную дверь" style={rectangle([27,16,3.3,8])} onClick={()=>onStaffRoom(layout.slots.find(s=>s.occupantId==='broadcasts')?.id??slot.id)}/>}
    </div>
   </div>

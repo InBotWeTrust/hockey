@@ -1,6 +1,6 @@
 import { it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act,waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter,Routes,Route,useNavigate } from 'react-router-dom';
 import { createDefaultBarLayout, type BarLayoutSnapshot } from '@hockey/game-core';
 import { BarPanorama } from './BarPanorama.js';
 import { fetchBarLayout } from './layoutApi.js';
@@ -289,4 +289,29 @@ it('returns an outgoing game to the online terminal with the requested game sele
  expect(screen.getByRole('tab',{name:'Очко'})).toHaveAttribute('aria-selected','true');
  expect(screen.getByRole('heading',{name:'Бар «4-й период»'})).toBeVisible();
  view.unmount();lobby.mockRestore();
+});
+
+it('keeps the clicked game location after closing its launch and after remounting the bar',async()=>{
+ vi.stubEnv('VITE_BAR_MAP_ENABLED','true');
+ try{
+  const data=fixture();data.layout.defaultSlotId='bar-6';vi.mocked(fetchBarLayout).mockResolvedValue(data);
+  const view=render(<MemoryRouter><BarPanorama/></MemoryRouter>);await screen.findByRole('heading',{name:'Олег'});
+  fireEvent.click(screen.getByRole('button',{name:'Играть в дартс с Дарьей'}));
+  expect(screen.getByRole('dialog')).toHaveTextContent('Дартс с Дарьей');
+  fireEvent.click(screen.getByRole('button',{name:/^Закрыть$/}));
+  expect(screen.queryByRole('dialog')).not.toBeInTheDocument();expect(screen.getByRole('heading',{name:'Дарья'})).toBeInTheDocument();
+  view.unmount();render(<MemoryRouter><BarPanorama/></MemoryRouter>);expect(await screen.findByRole('heading',{name:'Дарья'})).toBeInTheDocument();
+ }finally{vi.unstubAllEnvs();}
+});
+it('saves the target synchronously before routing away and restores it on return',async()=>{
+ vi.stubEnv('VITE_BAR_MAP_ENABLED','true');
+ try{
+  const data=fixture();data.layout.defaultSlotId='bar-3';vi.mocked(fetchBarLayout).mockResolvedValue(data);
+  const Broadcast=()=>{const navigate=useNavigate();return <button onClick={()=>navigate('/bar')}>Вернуться в бар</button>};
+  render(<MemoryRouter initialEntries={['/bar']}><Routes><Route path="/bar" element={<BarPanorama/>}/><Route path="/bar/broadcasts" element={<Broadcast/>}/></Routes></MemoryRouter>);
+  await screen.findByRole('heading',{name:'Мария'});fireEvent.click(screen.getByRole('button',{name:'Открыть трансляции'}));
+  const back=await screen.findByRole('button',{name:'Вернуться в бар'});const target=data.layout.slots.find(s=>s.occupantId==='broadcasts')!;
+  expect(localStorage.getItem('section-scroll:guest:bar:selected')).toBe(target.id);fireEvent.click(back);
+  expect(await screen.findByRole('heading',{name:data.layout.profiles.broadcasts.name})).toBeInTheDocument();
+ }finally{vi.unstubAllEnvs();}
 });

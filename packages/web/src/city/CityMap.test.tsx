@@ -194,7 +194,7 @@ it('keeps vehicle lights on at sunset and night, and off in daylight',()=>{
   for(const hour of [12,19,23]){
    vi.setSystemTime(new Date(2026,9,18,hour));
    const view=render(<CityMap {...base} level="beginner"/>);
-   expect(view.container.querySelector('.city-traffic')?.classList.contains('is-night')).toBe(hour!==12);
+   expect(view.container.querySelector('[data-testid="studio-city-motion"]')).toHaveAttribute('data-phase',hour===12?'day':hour===19?'sunset':'night');
    view.unmount();
   }
  }finally{vi.useRealTimers();}
@@ -261,7 +261,7 @@ it.each([['beginner','Дворовый каток'],['amateur','Стадион �
 });
 it('places the amateur locker on the stadium facade instead of the street',()=>{
  render(<CityMap {...base} level="amateur"/>);
- expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'49%',top:'57%'});
+ expect(screen.getByRole('button',{name:'На карте: Раздевалка'})).toHaveStyle({left:'44.49%',top:'46%'});
 });
 
 it('anchors the game menu outside the horizontally scrolling map',()=>{
@@ -305,8 +305,8 @@ it('renders the profile glass directly over the map while retaining the apartmen
  const hit=screen.getByRole('button',{name:'На карте: Моя квартира'});
  const marker=document.querySelector('.district-apartment-avatar');
  expect(marker?.parentElement).toBe(hit.parentElement);
- expect(hit).toHaveStyle({width:'4%',height:'9%'});
- expect(marker).toHaveStyle({left:'5.8%',top:'34.1%'});
+ expect(hit).toHaveStyle({width:'3%',height:'8%'});
+ expect(marker).toHaveStyle({left:'7.2%',top:'35.2%'});
 });
 
 it('keeps weather visible above the map when navigation is collapsed',()=>{

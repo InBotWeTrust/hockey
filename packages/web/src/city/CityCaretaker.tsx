@@ -33,10 +33,10 @@ export function useCaretakerVisit(owner:string|undefined,blocked:boolean):Careta
  },[owner,blocked]);
  return blocked?null:kind;
 }
-const locations={yard:{x:12,y:54.5},stadium:{x:44,y:65},pro:{x:86,y:65}};
+const locations={yard:{x:11.9,y:59},stadium:{x:44.3,y:51},pro:{x:87.3,y:60}};
 export function CityCaretaker({kind,venue}:{kind:CaretakerKind;venue:keyof typeof locations}){
  // Flooding belongs to the visible outdoor rink, not the player's indoor home venue.
- const point=kind==='flood'?{x:10.5,y:54.5}:locations[venue];
+ const point=kind==='flood'?{x:11.9,y:59}:locations[venue];
  const figure=useRef<HTMLDivElement>(null),sprite=useRef<HTMLImageElement>(null);
  useLayoutEffect(()=>{
   const root=figure.current,image=sprite.current,world=root?.parentElement,viewport=world?.parentElement;
