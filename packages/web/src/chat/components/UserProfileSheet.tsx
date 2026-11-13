@@ -44,7 +44,7 @@ interface UserProfileSheetProps {
   hideMessageAction?: boolean;
 }
 
-function PublicExperienceBadge({ experience }: { experience: number }): JSX.Element {
+export function PublicExperienceBadge({ experience }: { experience: number }): JSX.Element {
   const badgeRef = useRef<HTMLSpanElement>(null);
   const valueRef = useRef<HTMLSpanElement>(null);
   const iconRef = useRef<SVGSVGElement>(null);

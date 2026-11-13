@@ -499,7 +499,7 @@ function OfficialMessageModal({ onClose }: { onClose: () => void }): JSX.Element
   );
 }
 
-export function ProfileSupportSections({ profileReady }: { profileReady: boolean }): JSX.Element {
+export function ProfileSupportSections({ profileReady, section = 'all' }: { profileReady: boolean; section?: 'all' | 'notifications' | 'help' }): JSX.Element {
   const queryClient = useQueryClient();
   const isTelegramMiniApp = getTelegramMiniApp() !== null;
   const nativeAndroid = isNativeAndroid();
@@ -738,13 +738,14 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
 
   return (
     <>
+      {section !== 'help' && <>
       {!isTelegramMiniApp && (
         <>
           <div className="section-label" style={{ marginBottom: 8 }}>
             Уведомления
           </div>
           <div
-            className="glass"
+            className="glass profile-notification-settings"
             style={{
               margin: '0 14px 14px',
               padding: 16,
@@ -754,7 +755,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
               gap: 12,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div className="profile-notification-settings__summary" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <SettingsSectionIcon>
                 <Bell size={20} />
               </SettingsSectionIcon>
@@ -877,11 +878,13 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
         </>
       </AdminAndroidReleaseOnly>
 
+      </>}
+      {section !== 'notifications' && <>
       <div className="section-label" style={{ marginBottom: 8 }}>
         Обратная связь
       </div>
       <div
-        className="glass"
+        className="glass profile-feedback-links"
         style={{
           margin: '0 14px 14px',
           padding: 0,
@@ -907,11 +910,13 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
           <Fragment key={item.title}>
             {index > 0 && (
               <div
+                className="profile-feedback-links__divider"
                 aria-hidden="true"
                 style={{ height: 1, margin: '0 16px', background: 'var(--liquid-inset-bg)' }}
               />
             )}
             <div
+              className="profile-feedback-links__row"
               style={{
                 padding: 16,
                 display: 'flex',
@@ -968,6 +973,7 @@ export function ProfileSupportSections({ profileReady }: { profileReady: boolean
       </div>
 
       <CommunitySection />
+      </>}
 
       {feedbackOpen && <FeedbackModal onClose={() => setFeedbackOpen(false)} />}
       {officialMessageOpen && (

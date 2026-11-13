@@ -1,3 +1,5 @@
+import { GameMenuProvider } from '../city/GameMenuContext.js';
+import { LocalPreviewThemeSwitch } from './LocalPreviewThemeSwitch.js';
 import { ownProfileSummaryKey } from '../profile/useOwnProfileSummary.js';
 import { UserProfileSheet } from '../chat/components/UserProfileSheet.js';
 import { UserProfileScreen } from '../chat/screens/UserProfileScreen.js';
@@ -58,7 +60,7 @@ const level =
 const previewTime = ['morning', 'day', 'sunset', 'night'].includes(params.get('time') ?? '')
   ? (params.get('time') as CityTimeOfDay)
   : undefined;
-if (['map', 'locker', 'locker-alias'].includes(scene)) useDailyStore.setState({data: baseState});
+if (['map', 'locker', 'locker-alias', 'apartment'].includes(scene)) useDailyStore.setState({data: baseState});
 const inventory = structuredClone(inventoryWithItems);
 inventory.balances = { tokens: 43509, stars: 1860, experience: 77 };
 for (const kind of ['stick', 'skates', 'nutrition', 'recovery'] as const) {
@@ -320,6 +322,7 @@ function MapNavigationPreview() {
   const city=useProfileCity('navigation-labels-qa');
   const weather=useCityWeather('navigation-labels-qa',city.data?.city);
   return (
+    <GameMenuProvider>
     <main className="screen sections-city-screen">
       <CityMap
         city={city.data?.city??null}
@@ -327,9 +330,8 @@ function MapNavigationPreview() {
         weatherLoading={weather.isPending}
         weatherStale={params.get('weatherStale')==='1'}
         level={level}
-        owner="navigation-labels-qa"
+        owner={params.get('owner') ?? 'navigation-labels-qa'}
         startAtDaily
-        gamePanel={<GameHub presentation="city" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}} />}
         daily="0/90 бросков"
         training="0/500"
         tasks="Есть награда"
@@ -339,7 +341,9 @@ function MapNavigationPreview() {
         adminCount={2}
         onNavigate={navigate}
       />
+      <GameHub presentation="floating" onOpenDailyPlay={()=>{}} onOpenTraining={()=>{}} onOpenTrainingPlay={()=>{}} onOpenAmateurMatch={()=>{}} />
     </main>
+    </GameMenuProvider>
   );
 }
 const initial =
@@ -350,7 +354,7 @@ const initial =
         ? `/profile/${params.get('page')}`
         : '/profile'
     : scene === 'map'
-      ? '/preview-map'
+      ? '/sections'
       : scene === 'bar'
         ? '/preview-bar'
         : scene === 'yard'
@@ -365,6 +369,8 @@ const initial =
                   ? `/inventory?tab=${params.get('tab') ?? 'bank'}`
                   : `/inventory?category=${params.get('category') ?? 'stick'}`;
 const previewClient = new QueryClient({defaultOptions:{queries:{retry:false},mutations:{retry:false}}});
+// Keep the synthetic summary available when a preview section is opened after several minutes.
+previewClient.setQueryDefaults(ownProfileSummaryKey(useAuthStore.getState().user?.id), {gcTime: Infinity});
 // The preview has synthetic data and deliberately does not create an auth session.
 previewClient.setQueryData(ownProfileSummaryKey(useAuthStore.getState().user?.id), {...apartmentProfile, competitionLevel: level});
 previewClient.setQueryData(userKeys.summary(useAuthStore.getState().user?.id ?? null, 'public-profile-fixture'), {
@@ -379,13 +385,17 @@ createRoot(document.getElementById('root')!).render(
   <QueryClientProvider
     client={previewClient}
   >
+    <LocalPreviewThemeSwitch />
     <SocialProvider value={{viewerId:apartmentProfile.id,api:socialApi}}>
     <MemoryRouter initialEntries={[initial]}>
       <div
         className="app-shell app-shell--unified-glass"
         style={
           {
-            height: '100dvh',
+            height: 'calc(100dvh - 36px)',
+            minHeight: 0,
+            position: 'relative',
+            overflow: 'hidden',
             width: '100%',
             maxWidth: 430,
             margin: '0 auto',

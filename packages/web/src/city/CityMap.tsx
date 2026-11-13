@@ -1,3 +1,4 @@
+import {useMapIconPosition} from '../app/mapIconPosition.js';
 import {MapActionButton} from './MapActionButton.js';
 import {useGameMenu} from './GameMenuContext.js';
 import {chatResumeRoute} from '../chat/chatResume.js';
@@ -64,6 +65,7 @@ export function CityMap(props:Props){
   return()=>{observer?.disconnect();window.removeEventListener('resize',update);};
  },[]);
  const {owner,level,daily,training,tasks,bonus,onNavigate}=props;
+ const iconSide=useMapIconPosition(owner);
  const navigationKey=`city-navigation-collapsed-v1:${props.owner??'anonymous'}`;
  const [navigationCollapsed,setNavigationCollapsed]=useState(()=>{try{return localStorage.getItem(navigationKey)==='1';}catch{return false;}});
  const toggleNavigation=()=>{setNavigationCollapsed(value=>{const next=!value;try{localStorage.setItem(navigationKey,next?'1':'0');}catch{/* Storage is optional. */}return next;});};
@@ -185,7 +187,7 @@ export function CityMap(props:Props){
   const label=id==='chat'?'Непрочитанные':id==='stadium'?'Дуэли и турниры':id==='tasks'?'Задания и челленджи':'Приглашения в бар';
   return (count??0)>0?<small className="district-badge" aria-label={`${label}: ${count}`}>{count!>99?'99+':count}</small>:null;
  };
- return <section ref={district} className={`district${props.city?' district--weather':''}`} aria-label="Хоккейный район">
+ return <section ref={district} className={`district district--icons-${iconSide}${props.city?' district--weather':''}`} aria-label="Хоккейный район">
   <div ref={viewport} className="district-viewport" tabIndex={0} aria-label="Карта района"
    onPointerDown={e=>{if(!e.isPrimary||e.button!==0)return;blockUntil.current=0;drag.current={x:e.clientX,y:e.clientY,left:e.currentTarget.scrollLeft,type:e.pointerType,moved:false};e.currentTarget.scrollTo?.({left:e.currentTarget.scrollLeft,behavior:'instant' as ScrollBehavior});}}
    onPointerMove={e=>{const d=drag.current;if(!d)return;if(Math.hypot(e.clientX-d.x,e.clientY-d.y)>8)d.moved=true;if(d.moved&&d.type==='mouse'){e.currentTarget.setPointerCapture(e.pointerId);e.currentTarget.scrollLeft=d.left+d.x-e.clientX;}}}

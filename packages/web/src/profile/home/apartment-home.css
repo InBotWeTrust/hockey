@@ -1,0 +1,1008 @@
+.home-apartment {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  isolation: isolate;
+  background: #d2cbbd;
+  color: #253330;
+}
+.home-apartment__scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: -1;
+}
+.home-apartment__header {
+  position: absolute;
+  top: calc(12px + var(--app-safe-top, 0px));
+  left: 12px;
+  right: 12px;
+  display: grid;
+  gap: 8px;
+}
+.home-apartment__identity,
+.home-apartment__wallet {
+  background: rgba(247, 246, 239, 0.84);
+  border: 1px solid #fff9;
+  box-shadow: 0 4px 18px #332b2114;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-radius: 18px;
+  color: #253330;
+}
+.home-apartment__identity {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  padding: 9px 12px 9px 8px;
+  min-width: 0;
+}
+.home-apartment .icon-btn {
+  color: #33443e;
+  background: #ffffff75;
+  border-color: #fff9;
+  flex: none;
+}
+.home-apartment__avatar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 42px;
+  height: 42px;
+  flex: none;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #c5d2c5;
+  border: 2px solid #fff;
+  color: #35483e;
+  font: 700 18px var(--font-sans, system-ui);
+  padding: 0;
+  cursor: pointer;
+}
+.home-apartment__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.home-apartment__name {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.home-apartment__wallet {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 9px 4px;
+  gap: 0;
+}
+.home-apartment__wallet > div {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 5px;
+}
+.home-apartment__wallet > div + div {
+  border-left: 1px solid #526a4724;
+}
+.home-apartment__wallet span {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+.home-apartment__wallet small {
+  font-size: 9px;
+  color: #667060;
+}
+.home-apartment__wallet strong {
+  font-size: 13px;
+  line-height: 1.1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.home-apartment__error {
+  padding: 10px;
+  border-radius: 12px;
+  background: #fff1df;
+  color: #6c3e20;
+  font-size: 12px;
+}
+.home-apartment__error button {
+  font: inherit;
+  border: 0;
+  background: transparent;
+  text-decoration: underline;
+  color: inherit;
+}
+.home-apartment-panel__content {
+  min-height: 0;
+}
+.home-apartment-panel__content .screen {
+  height: auto;
+  min-height: 0 !important;
+  padding: 0 !important;
+  overflow: visible;
+  background: transparent !important;
+}
+.home-apartment-panel__content .district-page-header,
+.home-apartment-panel__content .profile-settings-header,
+.home-apartment-panel__content .profile-page-header {
+  display: none;
+}
+.home-apartment-panel__content .profile-passport {
+  margin: 0 !important;
+}
+.home-apartment-panel__content .profile-sports-data {
+  padding: 0;
+}
+.home-apartment-panel__content .profile-detail-screen {
+  padding: 0 !important;
+}
+.home-apartment-panel__content .profile-settings-screen {
+  padding: 0 !important;
+}
+.home-apartment__designs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.home-apartment__designs > button {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-width: 0;
+  text-align: left;
+  padding: 12px;
+  border: 1px solid var(--liquid-border, #71857c55);
+  border-radius: 14px;
+  background: var(--liquid-inset-bg, #8a9c8b1a);
+  color: inherit;
+  cursor: pointer;
+}
+.home-apartment__designs > button[aria-pressed='true'] {
+  outline: 2px solid #8bad79;
+  outline-offset: -2px;
+}
+.home-apartment__designs img {
+  width: 100%;
+  height: 65px;
+  object-fit: contain;
+}
+.home-apartment__designs strong {
+  font-size: 12px;
+}
+.home-apartment__designs small {
+  font-size: 10px;
+  line-height: 1.5;
+  opacity: 0.7;
+}
+.home-apartment__decor {
+  border: 0;
+  padding: 16px 0 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.home-apartment__decor legend {
+  padding-top: 18px;
+  font-size: 13px;
+  font-weight: 700;
+}
+.home-apartment__decor label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  padding: 5px 0;
+}
+@media (max-height: 680px) {
+  .home-apartment__header {
+    top: calc(7px + var(--app-safe-top, 0px));
+    gap: 5px;
+  }
+  .home-apartment__identity {
+    padding: 5px 8px;
+  }
+  .home-apartment__avatar {
+    width: 34px;
+    height: 34px;
+  }
+  .home-apartment__wallet {
+    padding: 6px 4px;
+  }
+}
+
+.home-apartment__navigation .section-scene__dock {
+  justify-content: space-between;
+}
+.home-apartment__appearance-action {
+  width: 100%;
+  margin-bottom: 16px;
+}
+
+.home-apartment__pan {
+  position: absolute;
+  inset: 0;
+  touch-action: pan-x;
+  cursor: grab;
+  outline: none;
+}
+.home-apartment__pan:active {
+  cursor: grabbing;
+}
+.home-apartment__pan:focus-visible {
+  outline: 2px solid var(--liquid-ink);
+  outline-offset: -3px;
+}
+.home-apartment__pan .home-apartment__scene {
+  z-index: auto;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.home-apartment__objects {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: hidden;
+}
+.home-apartment__object {
+  cursor: pointer;
+  outline: none;
+}
+.home-apartment__object-hit {
+  pointer-events: auto;
+  touch-action: pan-x;
+}
+.home-apartment__pulse {
+  pointer-events: none;
+}
+.home-apartment__pulse-ring {
+  stroke: rgba(255, 255, 255, 0.6);
+  stroke-width: 2px;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: home-object-pulse 1s ease-out infinite;
+}
+.home-apartment__object.is-active .home-apartment__pulse {
+  opacity: 0;
+}
+.home-apartment__object:focus-visible .home-apartment__pulse-ring {
+  animation: none;
+  opacity: 0.6;
+  transform: scale(0.7);
+}
+@keyframes home-object-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.2);
+  }
+  15% {
+    opacity: 0.6;
+  }
+  85%,
+  100% {
+    opacity: 0;
+    transform: scale(1.2);
+  }
+}
+.home-apartment-panel {
+  position: absolute;
+  z-index: 3;
+  top: calc(145px + var(--app-safe-top, 0px));
+  bottom: calc(150px + var(--app-safe-bottom, 0px));
+  left: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 22px;
+  border: 1px solid var(--liquid-border, #ffffff80);
+  background: var(--liquid-card-bg, #f4f3ebed);
+  color: var(--liquid-ink, #253330);
+  box-shadow: var(--liquid-shadow, 0 8px 28px #34372e20);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  opacity: 0;
+  visibility: hidden;
+  transform: none;
+  transition:
+    opacity 0.14s ease-out,
+    visibility 0s 0.14s;
+  pointer-events: none;
+}
+.home-apartment-panel.is-open {
+  opacity: 1;
+  visibility: visible;
+  transform: none;
+  transition-delay: 0s;
+  pointer-events: auto;
+}
+.home-apartment-panel__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  flex: none;
+}
+.home-apartment-panel__header h2 {
+  flex: 1;
+  margin: 0;
+}
+.home-apartment-panel__header .icon-btn {
+  width: 38px;
+  height: 38px;
+}
+.home-apartment-panel__scroll {
+  overflow: auto;
+  min-height: 0;
+  padding: 0 14px 16px;
+  overscroll-behavior: contain;
+}
+.home-apartment-panel__content[hidden] {
+  display: none;
+}
+@media (max-height: 680px) {
+  .home-apartment-panel {
+    top: calc(112px + var(--app-safe-top, 0px));
+    bottom: calc(150px + var(--app-safe-bottom, 0px));
+  }
+  .home-apartment-panel__header {
+    padding: 8px 12px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .home-apartment__pulse-ring {
+    animation: none;
+    opacity: 0.18;
+    transform: scale(0.7);
+  }
+  .home-apartment-panel {
+    transition: none;
+    transform: none;
+  }
+}
+
+.home-apartment-panel__header h2:focus {
+  outline: none;
+}
+
+.home-apartment [hidden] {
+  display: none !important;
+}
+.home-apartment .home-apartment-panel {
+  top: calc(76px + var(--app-safe-top, 0px));
+  bottom: auto;
+  left: 12px;
+  right: 12px;
+  max-height: calc(100% - 226px - var(--app-safe-top, 0px) - var(--app-safe-bottom, 0px));
+  border: 1px solid var(--liquid-border);
+  border-radius: 24px;
+  background: var(--surface-card-bg, var(--liquid-card-bg));
+  color: var(--liquid-ink, #253330);
+  box-shadow: var(--surface-card-shadow, var(--liquid-shadow));
+  backdrop-filter: var(--surface-blur, var(--liquid-blur));
+  -webkit-backdrop-filter: var(--surface-blur, var(--liquid-blur));
+}
+.home-apartment .home-apartment-panel__header {
+  padding: 12px 14px;
+}
+.home-apartment .home-apartment-panel__scroll {
+  padding: 0 14px 16px;
+}
+.home-apartment__settings-menu {
+  display: grid;
+}
+.home-apartment__settings-menu button {
+  display: grid;
+  text-align: left;
+  gap: 4px;
+  padding: 17px 2px;
+  border: 0;
+  border-bottom: 1px solid #52634726;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.home-apartment__settings-menu strong {
+  font-size: 16px;
+}
+.home-apartment__settings-menu span {
+  font-size: 12px;
+  color: #677568;
+}
+.home-apartment--reading .profile-customization-card,
+.home-apartment--reading .profile-registration-account {
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+.home-apartment--reading .profile-customization-card {
+  padding: 0 !important;
+  margin: 0 !important;
+  gap: 14px !important;
+}
+.home-apartment--reading .profile-customization-card__avatar {
+  width: 52px;
+  height: 52px;
+}
+.home-apartment--reading .profile-customization-card__avatar-copy > span {
+  display: none;
+}
+.home-apartment--reading .profile-customization-card__fields input {
+  min-height: 44px;
+  padding: 10px;
+  border-radius: 12px;
+}
+.home-apartment--reading .profile-bio-field textarea {
+  min-height: 70px;
+  max-height: 100px;
+  border-radius: 12px;
+}
+.home-apartment--reading .profile-settings-screen > div > .section-label,
+.home-apartment--reading
+  .profile-settings-screen
+  > div
+  > .profile-customization-card
+  + .section-label {
+  display: none;
+}
+@media (max-height: 680px) {
+  .home-apartment .home-apartment-panel__header {
+    padding: calc(12px + var(--app-safe-top, 0px)) 18px 12px;
+  }
+  .home-apartment .home-apartment-panel__scroll {
+    padding: 0 18px 14px;
+  }
+  .home-apartment__settings-menu button {
+    padding: 12px 2px;
+  }
+}
+.home-apartment--reading .profile-customization-card__avatar {
+  flex: 0 0 52px;
+  min-width: 52px;
+  min-height: 52px;
+}
+.home-apartment--reading .profile-customization-card__avatar img,
+.home-apartment--reading .profile-customization-card__avatar span {
+  width: 100%;
+  height: 100%;
+}
+.home-apartment--reading .profile-customization-card__avatar img,
+.home-apartment--reading .profile-customization-card__avatar span {
+  min-width: 0;
+}
+.home-apartment--reading .profile-settings-screen .glass {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  backdrop-filter: none !important;
+}
+
+@media (max-height: 680px) {
+  .home-apartment .home-apartment-panel {
+    top: calc(64px + var(--app-safe-top, 0px));
+    max-height: calc(100% - 214px - var(--app-safe-top, 0px) - var(--app-safe-bottom, 0px));
+  }
+  .home-apartment .home-apartment-panel__header {
+    padding: 8px 12px;
+  }
+  .home-apartment .home-apartment-panel__scroll {
+    padding: 0 12px 12px;
+  }
+}
+
+/* Restore the existing apartment passport: identity, wallet rows, sporting rows. */
+.home-apartment .home-apartment-panel {
+  top: calc(16px + var(--app-safe-top, 0px));
+  max-height: calc(100% - 166px - var(--app-safe-top, 0px) - var(--app-safe-bottom, 0px));
+}
+@media (max-height: 680px) {
+  .home-apartment .home-apartment-panel {
+    top: calc(12px + var(--app-safe-top, 0px));
+    max-height: calc(100% - 162px - var(--app-safe-top, 0px) - var(--app-safe-bottom, 0px));
+  }
+}
+
+/* Shared liquid-glass cards, with no extra material on the passport wrapper. */
+.home-apartment .home-apartment-panel--passport {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-apartment .home-apartment-panel--passport .home-apartment-panel__header {
+  padding: 0 2px 12px;
+}
+.home-apartment .home-apartment-panel--passport .home-apartment-panel__scroll {
+  padding: 0 0 6px;
+}
+:root[data-theme]
+  .app-shell
+  .home-apartment
+  .home-apartment-panel--passport
+  .profile-passport--separate {
+  display: grid;
+  gap: 12px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-passport__top {
+  display: contents;
+}
+:root[data-theme]
+  .app-shell
+  .home-apartment
+  .home-apartment-panel--passport
+  .profile-passport--separate
+  :is(.apartment-profile-identity, .profile-balances, .profile-sporting-metrics) {
+  background: var(--liquid-card-bg);
+  color: var(--liquid-ink);
+  border: 1px solid var(--liquid-border);
+  border-radius: 22px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+.home-apartment-panel--passport .profile-passport--separate .apartment-profile-identity {
+  padding: 16px;
+}
+.home-apartment-panel--passport .apartment-profile-identity .profile-early-player-badge {
+  justify-self: end;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-balances {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-balance {
+  display: grid;
+  justify-content: stretch;
+  align-content: center;
+  gap: 6px;
+  padding: 12px 4px;
+  min-height: 62px;
+  text-align: center;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-balance__label {
+  font-size: 9px;
+  text-transform: uppercase;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-balance__amount {
+  justify-content: center;
+  font-size: 18px;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-balance + .profile-balance {
+  border-left: 1px solid var(--liquid-border);
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-sporting-metrics {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  padding: 0;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-sporting-metrics__item {
+  display: grid;
+  justify-content: stretch;
+  justify-items: center;
+  align-content: center;
+  padding: 12px 4px;
+  min-height: 74px;
+  gap: 6px;
+  text-align: center;
+}
+.home-apartment-panel--passport .profile-passport--separate .profile-sporting-metrics__item > span {
+  order: initial;
+  font-size: 8px;
+  text-transform: uppercase;
+  flex-shrink: 1;
+  text-align: center;
+}
+.home-apartment-panel--passport
+  .profile-passport--separate
+  .profile-sporting-metrics__item
+  > strong {
+  font-size: 17px;
+  line-height: 1.15;
+  text-align: center;
+}
+.home-apartment-panel--passport
+  .profile-passport--separate
+  .profile-sporting-metrics__item
+  + .profile-sporting-metrics__item {
+  border-left: 1px solid var(--liquid-border);
+}
+.home-apartment-panel--passport
+  .profile-passport--separate
+  :is(.profile-balance, .profile-sporting-metrics__item)::before {
+  display: none;
+}
+:root[data-theme]
+  .app-shell
+  .home-apartment
+  .home-apartment-panel--passport
+  .profile-sporting-metrics__item
+  :is(strong, .profile-fitted-number, .profile-registration-date) {
+  color: var(--liquid-ink);
+  text-shadow: none;
+}
+:root[data-theme]
+  .app-shell
+  .home-apartment
+  .home-apartment-panel--passport
+  .profile-sporting-metrics__item
+  :is(.profile-streak-record, .profile-registration-date__prefix) {
+  color: var(--liquid-muted);
+}
+.home-apartment-panel--passport .profile-sporting-metrics__item .profile-registration-date {
+  font-size: 10px !important;
+}
+.home-apartment-panel--passport .profile-sporting-metrics__item .profile-streak-record {
+  font-size: 0.72em;
+  font-weight: 500;
+}
+
+/* One compact identity HUD, using the public-profile experience badge. */
+.home-apartment__identity {
+  padding: 13px 12px;
+  gap: 12px;
+}
+.home-apartment__avatar-wrap {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+}
+.home-apartment__avatar-wrap .home-apartment__avatar {
+  width: 48px;
+  height: 48px;
+}
+.home-apartment__identity .home-apartment__wallet {
+  flex: none;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 7px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-apartment__identity .home-apartment__wallet > div {
+  justify-content: flex-end;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+}
+.home-apartment__identity .home-apartment__wallet strong {
+  font-size: 14px;
+}
+@media (max-height: 680px) {
+  .home-apartment__identity {
+    padding: 11px 10px;
+  }
+}
+.home-apartment .home-apartment__identity .home-apartment__avatar-wrap {
+  flex: 0 0 48px;
+  width: 48px;
+  height: 48px;
+}
+.home-apartment__avatar-wrap .public-profile-experience {
+  min-height: 18px;
+  padding: 2px 5px;
+  bottom: -6px;
+}
+.home-apartment__identity {
+  background: var(--liquid-card-bg);
+  color: var(--liquid-ink);
+  border-color: var(--liquid-border);
+  box-shadow: var(--liquid-shadow);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+
+/* The dock names and dismisses sections; content has no enclosing glass surface. */
+.home-apartment .home-apartment-panel {
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  outline: none;
+}
+.home-apartment .home-apartment-panel__scroll {
+  padding: 0 0 6px;
+}
+.home-apartment .home-apartment-panel__content .profile-rewards-screen > .glass,
+.home-apartment .home-apartment-panel__content .profile-rewards-item { box-shadow: inset 0 1px 0 rgba(255,255,255,.18); }
+
+/* Content floats over the room: exterior shadows are clipped by its scrollport.
+ * Keep the glass material and its inner edge without casting another dark panel. */
+.home-apartment-panel__content {
+  --liquid-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), inset 0 -1px 0 rgba(255, 255, 255, 0.07);
+  --liquid-selected-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28);
+  --surface-card-shadow: var(--liquid-shadow);
+  --surface-filter-shadow: var(--liquid-shadow);
+  --shadow-glass: var(--liquid-shadow);
+  --shadow-cta: var(--liquid-selected-shadow);
+  --glass-select-shadow: var(--liquid-selected-shadow);
+}
+:root[data-theme='light'] .home-apartment-panel__content {
+  --liquid-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  --liquid-selected-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+.home-apartment .home-apartment-panel__content .icon-btn svg {
+  filter: none;
+}
+:root .app-shell .home-apartment .home-apartment-panel__content .referral-invite-field button {
+  box-shadow: var(--liquid-selected-shadow);
+}
+:root .app-shell .home-apartment .home-apartment-panel__content :is(.profile-identity__avatar, .profile-customization-card__avatar, .profile-logout-btn, .icon-btn, .segmented-tabs__item--active) {
+  box-shadow: var(--liquid-selected-shadow);
+}
+.home-apartment .home-apartment-panel__content svg {
+  filter: none;
+}
+/* Locked episodes use the same neutral material as apartment controls. */
+:root .app-shell .home-apartment .profile-story-series-card:not(.profile-story-series-card--unlocked) .profile-story-series-card__visual {
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-muted);
+  border: 1px solid var(--liquid-border-soft);
+  box-shadow: var(--liquid-selected-shadow);
+}
+/* Keep invitation level headings and empty states on a readable surface. */
+.home-apartment .home-apartment-panel__content .referral-list-section {
+  padding: 14px;
+  border: 1px solid var(--liquid-border);
+  border-radius: 24px;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-ink);
+  box-shadow: var(--liquid-shadow);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+.home-apartment .referral-list-section .referral-empty--inline {
+  margin-bottom: 0;
+}
+.home-apartment .referral-list-section .referral-player-list {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+/* Settings navigation shares one readable glass surface over the room. */
+.home-apartment .home-apartment__settings-menu {
+  padding: 0 16px;
+  border: 1px solid var(--liquid-border);
+  border-radius: 24px;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-ink);
+  box-shadow: var(--liquid-shadow);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+.home-apartment .home-apartment__settings-menu button {
+  border-bottom-color: var(--liquid-border-soft);
+}
+.home-apartment .home-apartment__settings-menu button:last-child {
+  border-bottom: 0;
+}
+.home-apartment .home-apartment__settings-menu span {
+  color: var(--liquid-muted);
+}
+
+.home-apartment .home-apartment__settings-menu button {
+  position: relative;
+  padding-right: 30px;
+}
+.home-apartment__settings-chevron {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--liquid-muted);
+  pointer-events: none;
+}
+
+/* The settings surface persists while its inner navigation changes levels. */
+.home-apartment .home-apartment-panel.home-apartment-panel--settings {
+  border: 1px solid var(--liquid-border);
+  border-radius: 24px;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-ink);
+  box-shadow: none;
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+  overflow: hidden;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__scroll {
+  padding: 16px;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__header {
+  padding: 14px 16px;
+  gap: 10px;
+  align-items: center;
+}
+.home-apartment__settings-title {
+  font-size: 16px;
+  font-weight: 800;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__settings-menu {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__settings-menu button:first-child {
+  padding-top: 0;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__settings-menu button:last-child {
+  padding-bottom: 0;
+}
+.home-apartment-panel--settings .profile-customization-card__fields {
+  gap: 12px;
+}
+.home-apartment-panel--settings .profile-bio-field {
+  margin-top: 0;
+}
+.home-apartment-panel--settings .profile-bio-field small {
+  text-align: right;
+  font-size: 11px;
+}
+.home-apartment-panel--settings .profile-customization-card__avatar-copy strong {
+  font-size: 14px;
+}
+.home-apartment-panel--settings .profile-customization-card__upload {
+  font-size: 12px;
+}
+.home-apartment-panel--settings .profile-customization-card__fields input,
+.home-apartment-panel--settings .profile-bio-field textarea {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--liquid-inset-bg);
+  color: var(--liquid-ink);
+}
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__header .icon-btn {
+  box-shadow: none;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__header svg {
+  filter: none;
+}
+/* The common settings card owns the gutters; subsections must not add another set. */
+.home-apartment .home-apartment-panel--settings .profile-theme-section {
+  margin: 0 0 24px;
+  gap: 10px;
+}
+.home-apartment .home-apartment-panel--settings .profile-theme-section:last-child {
+  margin-bottom: 0;
+}
+:root .app-shell .home-apartment .home-apartment-panel--settings .profile-theme-section > .section-label {
+  padding: 0;
+  margin: 0;
+  color: var(--liquid-muted);
+  text-shadow: none;
+}
+.home-apartment .home-apartment-panel--settings .profile-theme-settings {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+.home-apartment .home-apartment-panel--settings .profile-theme-settings p {
+  margin: 10px 0 0;
+}
+.home-apartment .home-apartment-panel--settings .profile-settings-screen {
+  padding: 0 !important;
+}
+
+/* Match map/bar: browser-native horizontal panning with momentum, no page snapping. */
+.home-apartment__pan {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.home-apartment__pan::-webkit-scrollbar { display: none; }
+.home-apartment__scroll-world { height: 100%; }
+.home-apartment__scroll-stage { position: sticky; left: 0; height: 100%; }
+
+/* Help shares the card gutters, without nested identities or separators. */
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links {
+  margin: 0 0 20px !important;
+  overflow: visible !important;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links__row {
+  padding: 12px 0 !important;
+  gap: 12px !important;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links__row:first-child {
+  padding-top: 0 !important;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links__divider {
+  display: none;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-community-section {
+  margin: 0 0 20px;
+  gap: 10px;
+}
+:root .app-shell .home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-community-icon-grid {
+  border: 0;
+  padding: 0;
+}
+:root .app-shell .home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-community-section > .section-label {
+  padding: 0;
+  color: var(--liquid-muted);
+  text-shadow: none;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-logout-wrap {
+  margin: 0;
+}
+
+/* Every settings subsection uses the outer card's 16px gutter exactly once. */
+.home-apartment .home-apartment-panel--settings .profile-notification-settings {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 16px !important;
+}
+.home-apartment .home-apartment-panel--settings .profile-city-section {
+  margin: 0;
+  gap: 10px;
+}
+.home-apartment .home-apartment-panel--settings .profile-city-settings {
+  margin: 0;
+  padding: 0;
+}
+:root .app-shell .home-apartment .home-apartment-panel--settings .profile-city-section > .section-label {
+  padding: 0;
+  color: var(--liquid-muted);
+  text-shadow: none;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__appearance > .modal-copy {
+  margin: 0 0 16px;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__decor {
+  padding-top: 10px;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__decor legend {
+  padding: 20px 0 0;
+}
+
+/* Keep the exit action visibly red in both apartment themes. */
+:root .app-shell .home-apartment .profile-logout-btn--danger {
+  background: rgba(211, 115, 115, 0.9);
+  border-color: rgba(104, 35, 35, 0.34);
+  color: #34202a;
+}
+
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__header + .home-apartment-panel__scroll {
+  padding-top: 0;
+}

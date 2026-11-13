@@ -1,8 +1,9 @@
+import { ApartmentClassicPassportContext } from '../profile/home/ApartmentSettingsContext.js';
 import { useTrophyHistory } from '../profile/useTrophyHistory.js';
 import {SectionLoading} from '../components/SectionLoading.js';
 import { useVenueNavigation } from '../components/VenuePanorama.js';
 import { VisitorCardSlot } from '../bar/VisitorCardSlot.js';
-import { type ReactNode, useCallback, useEffect, useState } from 'react';
+import { type ReactNode, useCallback, useContext, useEffect, useState } from 'react';
 import {DistrictPageHeader} from '../components/DistrictPageHeader.js';
 import { SocialProfile } from '../social/SocialProfile.js';
 import { ProfileBio } from '../social/ProfileBio.js';
@@ -685,6 +686,7 @@ function SportingMetrics({
   onOpenRating: (metric: StatRatingMetric) => void;
 }): JSX.Element {
   const apartment = useVenueNavigation() !== null;
+  const compact = useContext(ApartmentClassicPassportContext);
   const streakDays = profile.stats.playStreakDays;
   const dayWord = new Intl.PluralRules('ru-RU').select(streakDays);
   const streakLabel = `${formatProfileNumber(streakDays)} ${dayWord === 'one' ? 'день' : dayWord === 'few' ? 'дня' : 'дней'}`;
@@ -708,7 +710,7 @@ function SportingMetrics({
       metric: 'accuracy',
     },
     {
-      value: apartment ? <span className="apartment-streak-value">{streakLabel}<small>Рекорд: {formatProfileNumber(profile.stats.bestPlayStreakDays ?? streakDays)}</small></span> : (
+      value: apartment && !compact ? <span className="apartment-streak-value">{streakLabel}<small>Рекорд: {formatProfileNumber(profile.stats.bestPlayStreakDays ?? streakDays)}</small></span> : (
         <>
           {formatProfileNumber(profile.stats.playStreakDays)}{' '}
           <span className="profile-streak-record">
@@ -717,7 +719,7 @@ function SportingMetrics({
           </span>
         </>
       ),
-      label: apartment ? 'Дней в игре подряд' : 'Дней подряд',
+      label: apartment && !compact ? 'Дней в игре подряд' : 'Дней подряд',
       metric: 'streak',
     },
     {
@@ -739,7 +741,7 @@ function SportingMetrics({
         const content = (
           <>
             <strong>
-              {apartment ? value : <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>}
+              {apartment && !compact ? value : <FittedOneLineText maxFontSize={17}>{value}</FittedOneLineText>}
             </strong>
             <span>{label}</span>
           </>
@@ -888,7 +890,7 @@ export function ProfileScreen(): JSX.Element {
     <main
       className={`screen profile-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(profile.competitionLevel)}`}
     >
-      <DistrictPageHeader title="Профиль"/>
+      {!apartment && <DistrictPageHeader title="Профиль"/>}
       <section className={`profile-passport ${apartment ? 'profile-passport--separate' : 'glass'}`} aria-label="Спортивный паспорт">
         <div className="profile-passport__top">
           <div className={apartment ? 'glass apartment-profile-identity' : undefined}>
