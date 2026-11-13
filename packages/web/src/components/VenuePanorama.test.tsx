@@ -141,3 +141,14 @@ it('keeps ready duels and tournament games on their respective stadium circles',
  await waitFor(()=>expect(screen.getByRole('tab',{name:'Турниры'}).querySelector('.section-scene__attention')).toBeNull());
  view.unmount();client.clear();
 });
+
+it('renders the interactive apartment in a built app, not only the Vite dev server', async () => {
+ vi.stubEnv('DEV',false);
+ const {apartmentProfile}=await import('../section-preview/apartmentFixtures.js');
+ const client=new QueryClient({defaultOptions:{queries:{retry:false,staleTime:Infinity}}});
+ client.setQueryData(['profile'],apartmentProfile);
+ client.setQueryData(['referrals','summary'],{unclaimedRewardsCount:0});
+ render(<QueryClientProvider client={client}><MemoryRouter initialEntries={['/profile']}><VenuePanorama level="amateur" owner="build-check"><span>Профиль</span></VenuePanorama></MemoryRouter></QueryClientProvider>);
+ expect(screen.getByRole('region',{name:'Дом игрока'})).toBeInTheDocument();
+ expect(screen.getByRole('button',{name:'Дверь: выйти на карту'})).toBeInTheDocument();
+});

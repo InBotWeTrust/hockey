@@ -1,7 +1,6 @@
 import { ApartmentHome } from '../profile/home/ApartmentHome.js';
 import {useNavigationActivity} from './useNavigationActivity.js';
 import { AppToast } from './AppToast.js';
-import { ApartmentReferralAttention } from './ApartmentRoom.js';
 import { useYardLighting } from '../city/yardLighting.js';
 import type { CityTimeOfDay } from '../city/lighting.js';
 import {
@@ -55,7 +54,6 @@ export function VenuePanorama({
       setAttention((old) => (old[id] === value ? old : { ...old, [id]: value })),
     [],
   );
-  const updateReferrals = useCallback((count:number)=>update('friends',count),[update]);
   const onBack = useCallback(() => navigate('/sections'), [navigate]);
   const context = useMemo(() => ({ onBack, setAttention: update }), [onBack, update]);
   useEffect(() => {
@@ -76,7 +74,7 @@ export function VenuePanorama({
     <VenueContext.Provider value={context}>
       {developmentToast && <AppToast message="В разработке" onDismiss={() => setDevelopmentToast(false)}/>}
       <SectionPanorama
-        className={`venue-scene${scene.id === 'apartment' ? ` apartment-scene apartment-scene--${scene.selected}` : ''}`}
+        className="venue-scene"
         label={scene.label}
         pages={scene.pages.map((page) => ({
           ...page,
@@ -94,7 +92,6 @@ export function VenuePanorama({
         storageKey={`section-scroll:${owner ?? 'guest'}:${scene.id}`}
       >
         {scene.id === 'stadium' && <StadiumDuelAttention enabled={Boolean(owner)}/>}
-        {scene.id === 'apartment' && <ApartmentReferralAttention onCount={updateReferrals}/>}
         {scene.redirect ? <p role="status">Загрузка…</p> : children}
       </SectionPanorama>
     </VenueContext.Provider>
