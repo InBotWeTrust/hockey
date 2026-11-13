@@ -76,3 +76,11 @@ it('uses ventilation rules and title when the same game is played in the indoor 
  fireEvent.click(screen.getByText('Начать уборку'));
  expect(screen.getByLabelText('Направление продувки')).toBeInTheDocument();
 });
+it.each(['drift','blizzard'] as const)('shows the launch preview again for a returning %s player', variant => {
+ render(<DriftGame initial={{...initial,variant,version:variant==='blizzard'?2:initial.version,showInstruction:false}} onExit={()=>{}} onComplete={()=>{}}/>);
+ expect(screen.getByRole('dialog')).toHaveClass('bonus-game-launch-modal');
+ fireEvent.click(screen.getByRole('button',{name:'Начать уборку'}));
+ expect(screen.queryByRole('dialog')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Правила игры'}));
+ expect(screen.getByRole('dialog')).toBeInTheDocument();
+});

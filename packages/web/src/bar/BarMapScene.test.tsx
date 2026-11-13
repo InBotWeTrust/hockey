@@ -12,7 +12,7 @@ it('preserves physical character interactions and cancels them during a pan',()=
  const layout=createDefaultBarLayout(),incident=vi.fn();
  const id=layout.slots.find(slot=>slot.occupantId==='grigory')!.id;
  const view=render(<MemoryRouter><BarMapScene layered layout={layout} activeSlotId={id} onSelectSlot={vi.fn()} onAction={vi.fn()} onPhysicalIncident={incident}/></MemoryRouter>);
- const hit=view.container.querySelector('[data-map-character="grigory"] [data-bar-character]')!;
+ const hit=view.container.querySelector('[data-map-character-hit="grigory"] [data-bar-character]')!;
  const pointer=(type:string,x=0)=>{
   const event=new MouseEvent(type,{bubbles:true,button:0,clientX:x,clientY:100});
   Object.defineProperties(event,{pointerId:{value:1},pointerType:{value:'mouse'}});fireEvent(hit,event);
@@ -82,16 +82,21 @@ it('places eight separate characters over one map without duplicating TV or term
  for(const name of ['Играть в карты с Марией','Играть в очко с Григорием','Играть в морской бой с Тимофеем','Играть в шашки с Арсеничем','Играть в дартс с Дарьей','Играть в бильярд с Вероникой'])expect(screen.getByRole('button',{name})).toBeInTheDocument();
 });
 
-it('selects the game owner first and invokes the existing action after selection',()=>{
+it('opens a remote game on the first click and selects its owner before launching',()=>{
  const layout=createDefaultBarLayout(),select=vi.fn(),action=vi.fn();
- const props={layout,activeSlotId:layout.slots.find(s=>s.occupantId==='oleg')!.id,onSelectSlot:select,onAction:action};
- const view=render(<MemoryRouter><BarMapScene {...props}/></MemoryRouter>);
+ render(<MemoryRouter><BarMapScene layout={layout} activeSlotId={layout.slots.find(s=>s.occupantId==='oleg')!.id} onSelectSlot={select} onAction={action}/></MemoryRouter>);
  fireEvent.click(screen.getByRole('button',{name:'Играть в дартс с Дарьей'}));
- const id=layout.slots.find(s=>s.occupantId==='daria')!.id;
- expect(select).toHaveBeenCalledWith(id);expect(action).not.toHaveBeenCalled();
- view.rerender(<MemoryRouter><BarMapScene {...props} activeSlotId={id}/></MemoryRouter>);
- fireEvent.click(screen.getByRole('button',{name:'Играть в дартс с Дарьей'}));
+ expect(select).toHaveBeenCalledWith(layout.slots.find(s=>s.occupantId==='daria')!.id);
  expect(action).toHaveBeenCalledWith('darts','daria');
+ expect(select.mock.invocationCallOrder[0]).toBeLessThan(action.mock.invocationCallOrder[0]!);
+});
+it('opens a remote terminal on the first click even when the selected slot changes',()=>{
+ const layout=createDefaultBarLayout();function Controlled(){const[slot,setSlot]=useState('bar-3');return <MemoryRouter><BarMapScene layout={layout} activeSlotId={slot} onSelectSlot={setSlot} onAction={vi.fn()}/></MemoryRouter>}
+ render(<Controlled/>);fireEvent.click(screen.getByRole('button',{name:'Открыть терминал'}));expect(screen.getByRole('button',{name:'Закрыть терминал'})).toBeInTheDocument();
+});
+it('opens conversation on a character click and selects the return location',()=>{
+ const layout=createDefaultBarLayout(),select=vi.fn(),talk=vi.fn();const view=render(<MemoryRouter><BarMapScene layered layout={layout} activeSlotId="bar-3" onSelectSlot={select} onAction={vi.fn()} onTalk={talk}/></MemoryRouter>);
+ fireEvent.click(view.container.querySelector('[data-map-character="daria"]')!);expect(talk).toHaveBeenCalledWith('daria');expect(select).toHaveBeenCalledWith(layout.slots.find(s=>s.occupantId==='daria')!.id);
 });
 
 it('renders layered neutral masters and five independent game tables without switching back to old emotional furniture',()=>{
@@ -120,4 +125,17 @@ it('does not render removed novice characters or their game targets',()=>{
  expect(view.container.querySelector('[data-map-prop="checkers-table"]')).toHaveAttribute('src','/bar/novice-furniture-v1/checkers-table.png');
  expect(view.container.querySelector('[data-map-prop="maria-cards-table"]')).toHaveAttribute('src','/bar/novice-furniture-v1/cards-table.png');
  expect(view.container.querySelector('[data-map-prop="grigory-cards-table"]')).toHaveAttribute('src','/bar/map-v36/cards-table-v1.webp');
+});
+
+it('keeps the conversation hit contour above game targets without lifting character artwork',()=>{
+ const layout=createDefaultBarLayout(),talk=vi.fn(),action=vi.fn();const view=render(<MemoryRouter><BarMapScene layered layout={layout} activeSlotId="bar-3" onSelectSlot={vi.fn()} onAction={action} onTalk={talk}/></MemoryRouter>);
+ const hit=view.container.querySelector('[data-map-character-hit="veronika"]');expect(hit).not.toBeNull();
+ fireEvent.click(hit!);expect(talk).toHaveBeenCalledWith('veronika');expect(action).not.toHaveBeenCalled();
+ fireEvent.click(screen.getByRole('button',{name:'Играть в бильярд с Вероникой'}));expect(action).toHaveBeenCalledWith('billiards','veronika');
+ expect(view.container.querySelector('[data-map-character="veronika"] [data-map-character-hit]')).toBeNull();
+});
+it('uses the same map return route for the exit sign and the bottom back circle',()=>{
+ const view=render(<MemoryRouter><BarMapScene layered layout={createDefaultBarLayout()} activeSlotId="bar-3" onSelectSlot={vi.fn()} onAction={vi.fn()}/></MemoryRouter>);
+ const sign=view.container.querySelector('.bar-map-exit');expect(sign).not.toBeNull();
+ expect(sign).toHaveAttribute('href','/sections');expect(sign).toHaveAttribute('href',view.container.querySelector('.bar-avatar-dock__exit')!.getAttribute('href'));
 });
