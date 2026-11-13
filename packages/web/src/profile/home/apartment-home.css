@@ -231,7 +231,7 @@
 .home-apartment__pan {
   position: absolute;
   inset: 0;
-  touch-action: pan-y;
+  touch-action: pan-x;
   cursor: grab;
   outline: none;
 }
@@ -263,7 +263,7 @@
 }
 .home-apartment__object-hit {
   pointer-events: auto;
-  touch-action: pan-y;
+  touch-action: pan-x;
 }
 .home-apartment__pulse {
   pointer-events: none;
@@ -274,10 +274,6 @@
   transform-box: fill-box;
   transform-origin: center;
   animation: home-object-pulse 1s ease-out infinite;
-}
-.home-apartment__pulse-ring--screen {
-  stroke: rgba(20, 29, 42, 0.95);
-  filter: drop-shadow(0 0 1px rgba(255, 255, 255, 0.35));
 }
 .home-apartment__object.is-active .home-apartment__pulse {
   opacity: 0;
@@ -844,7 +840,7 @@
   padding: 16px;
 }
 .home-apartment .home-apartment-panel--settings .home-apartment-panel__header {
-  padding: 14px 16px 0;
+  padding: 14px 16px;
   gap: 10px;
   align-items: center;
 }
@@ -926,4 +922,87 @@
 }
 .home-apartment .home-apartment-panel--settings .profile-settings-screen {
   padding: 0 !important;
+}
+
+/* Match map/bar: browser-native horizontal panning with momentum, no page snapping. */
+.home-apartment__pan {
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+.home-apartment__pan::-webkit-scrollbar { display: none; }
+.home-apartment__scroll-world { height: 100%; }
+.home-apartment__scroll-stage { position: sticky; left: 0; height: 100%; }
+
+/* Help shares the card gutters, without nested identities or separators. */
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links {
+  margin: 0 0 20px !important;
+  overflow: visible !important;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links__row {
+  padding: 12px 0 !important;
+  gap: 12px !important;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links__row:first-child {
+  padding-top: 0 !important;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links__divider {
+  display: none;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-community-section {
+  margin: 0 0 20px;
+  gap: 10px;
+}
+:root .app-shell .home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-community-icon-grid {
+  border: 0;
+  padding: 0;
+}
+:root .app-shell .home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-community-section > .section-label {
+  padding: 0;
+  color: var(--liquid-muted);
+  text-shadow: none;
+}
+.home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-logout-wrap {
+  margin: 0;
+}
+
+/* Every settings subsection uses the outer card's 16px gutter exactly once. */
+.home-apartment .home-apartment-panel--settings .profile-notification-settings {
+  margin: 0 !important;
+  padding: 0 !important;
+  gap: 16px !important;
+}
+.home-apartment .home-apartment-panel--settings .profile-city-section {
+  margin: 0;
+  gap: 10px;
+}
+.home-apartment .home-apartment-panel--settings .profile-city-settings {
+  margin: 0;
+  padding: 0;
+}
+:root .app-shell .home-apartment .home-apartment-panel--settings .profile-city-section > .section-label {
+  padding: 0;
+  color: var(--liquid-muted);
+  text-shadow: none;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__appearance > .modal-copy {
+  margin: 0 0 16px;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__decor {
+  padding-top: 10px;
+}
+.home-apartment .home-apartment-panel--settings .home-apartment__decor legend {
+  padding: 20px 0 0;
+}
+
+/* Keep the exit action visibly red in both apartment themes. */
+:root .app-shell .home-apartment .profile-logout-btn--danger {
+  background: rgba(211, 115, 115, 0.9);
+  border-color: rgba(104, 35, 35, 0.34);
+  color: #34202a;
+}
+
+.home-apartment .home-apartment-panel--settings .home-apartment-panel__header + .home-apartment-panel__scroll {
+  padding-top: 0;
 }

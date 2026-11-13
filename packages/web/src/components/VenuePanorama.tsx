@@ -67,7 +67,7 @@ export function VenuePanorama({
     if (scene?.redirect) navigate(scene.redirect, { replace: true });
   }, [scene?.redirect, navigate, exercisesEnabled, location.pathname, location.search]);
   if (!scene) return <>{children}</>;
-  if (import.meta.env.DEV && scene.id === 'apartment') {
+  if (scene.id === 'apartment') {
     return <VenueContext.Provider value={context}>
       <ApartmentHome key={owner ?? 'guest'} owner={owner}>{children}</ApartmentHome>
     </VenueContext.Provider>;

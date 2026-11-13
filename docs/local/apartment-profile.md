@@ -79,3 +79,16 @@ Passport sections use the project liquid-card background, liquid border and liqu
 The local preview has a 36px toolbar with Light/Dark buttons. Switching updates only the document theme and the theme query parameter, preserving the open interface without reload or account-setting writes. The preview frame reserves the toolbar height and positions app-content within the frame.
 
 Checks: 61 targeted profile/apartment/theme-switch tests passed, web build and scoped ESLint passed, whitespace diff check passed. Browser inspected both themes at 430×932 and 360×640. Captures: passport-liquid-light.png and passport-liquid-dark.png. No deployment or live account mutation.
+
+## Interactive apartment objects
+
+Generated separate transparent phone, laptop, mirror, catalogue and base pendant sprites in
+`public/apartment/interactive/`; source paths, normalization and alpha checks are in `manifest.json`.
+Phone and laptop replace the SVG device placeholders. Existing character, trophies, TV, window and
+higher-tier lighting remain independent layers. A smaller v2 mirror sits beside the door on the left wall with matching perspective in all
+layouts; desk devices share the desk support height and render behind the chair.
+
+Room shortcuts: character -> profile, shelf -> rewards, phone -> friends, laptop -> settings menu,
+TV -> story, mirror -> profile editing, window -> city/weather, pendant -> theme only,
+catalogue -> apartment appearance. The laptop retains all settings. Shortcuts reuse the common
+settings container and back navigation. Local preview only; no release or account changes.

@@ -1,3 +1,4 @@
+import { apartmentInteractiveObjects, type ApartmentShortcut } from './apartmentInteractiveObjects.js';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -91,7 +92,7 @@ export function ApartmentScene({
       role="img"
       aria-label={`Квартира: ${design.title}`}
     >
-      {design.layers.map((layer) => {
+      {apartmentInteractiveObjects(design).layers.map((layer) => {
         if ('decor' in layer && layer.decor && !decor.includes(layer.decor)) return null;
         if (layer.kind === 'image-shadow') {
           const filter = `${id}-${layer.id}`;
@@ -233,6 +234,26 @@ export function ApartmentHome({
   const preferenceKey = `apartment-appearance:${owner ?? 'guest'}`;
   const [appearance, setAppearance] = useState(() => readAppearance(preferenceKey));
   const [camera, setCamera] = useState(-30);
+  const [panSize, setPanSize] = useState({ width: 450, height: 840 });
+  const panScale = Math.max(panSize.width / 450, panSize.height / 840);
+  useEffect(() => {
+    const viewport = panRef.current;
+    if (!viewport) return;
+    const measure = () => {
+      const bounds = viewport.getBoundingClientRect();
+      setPanSize({ width: bounds.width || 450, height: bounds.height || 840 });
+    };
+    measure();
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    observer?.observe(viewport);
+    return () => observer?.disconnect();
+  }, []);
+  useEffect(() => {
+    const viewport = panRef.current;
+    if (!viewport) return;
+    const left = Math.max(0, Math.min(894 * panScale - panSize.width, (camera + 30) * panScale));
+    if (Math.abs(viewport.scrollLeft - left) > 0.5) viewport.scrollLeft = left;
+  }, [camera, panScale, panSize.width]);
   const clampCamera = (value: number) => {
     const bounds = panRef.current?.getBoundingClientRect();
     const width = bounds?.width || 450;
@@ -265,6 +286,7 @@ export function ApartmentHome({
   };
   const [profileOpen, setProfileOpen] = useState(location.pathname !== '/profile'),
     [appearanceOpen, setAppearanceOpen] = useState(false);
+  const [settingsFromObject, setSettingsFromObject] = useState(false);
   const [settingsSection, setSettingsSection] = useState<ApartmentSettingsSection>('menu');
   const [visited, setVisited] = useState(location.pathname !== '/profile');
   const panelRef = useRef<HTMLElement>(null);
@@ -303,14 +325,13 @@ export function ApartmentHome({
   const panelTitle = appearanceOpen
     ? 'Оформление квартиры'
     : page.id === 'settings' && settingsSection !== 'menu'
-      ? apartmentSettingsSections.find((s) => s.id === settingsSection)!.title
+      ? settingsSection === 'theme' ? 'Тема приложения' : apartmentSettingsSections.find((s) => s.id === settingsSection)!.title
       : page.title;
   useEffect(() => {
     if (previousPath.current !== location.pathname) {
       previousPath.current = location.pathname;
       setProfileOpen(true);
       setVisited(true);
-      setAppearanceOpen(false);
     }
   }, [location.pathname]);
   useEffect(() => {
@@ -333,12 +354,18 @@ export function ApartmentHome({
   useEffect(() => {
     if (panelOpen) panelRef.current?.focus({ preventScroll: true });
   }, [panelOpen, page.id, appearanceOpen, settingsSection]);
-  const openPage = (id: PageId, trigger?: HTMLElement | SVGElement): void => {
+  const openPage = (id: PageId, trigger?: HTMLElement | SVGElement, shortcut?: ApartmentShortcut): void => {
+    const sameShortcut = shortcut === (appearanceOpen ? 'appearance' : settingsSection === 'menu' ? undefined : settingsSection);
+    if (panelOpen && page.id === id && sameShortcut && trigger?.closest('.home-apartment__object')) {
+      setProfileOpen(false);
+      return;
+    }
     if (contentRef.current) scrollPositions.current[page.id] = contentRef.current.scrollTop;
     triggerRef.current = trigger ?? null;
     setVisited(true);
-    setSettingsSection('menu');
-    setAppearanceOpen(false);
+    setSettingsFromObject(shortcut !== undefined);
+    setSettingsSection(shortcut && shortcut !== 'appearance' ? shortcut : 'menu');
+    setAppearanceOpen(shortcut === 'appearance');
     setProfileOpen(true);
     navigate(pages.find((p) => p.id === id)!.path);
   };
@@ -381,6 +408,11 @@ export function ApartmentHome({
         role="group"
         aria-label="Перемещение по квартире"
         tabIndex={0}
+        onScroll={(event) => {
+          if (event.target !== event.currentTarget) return;
+          setCamera(clampCamera(-30 + event.currentTarget.scrollLeft / panScale));
+        }}
+        onWheel={stopCamera}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
@@ -396,6 +428,13 @@ export function ApartmentHome({
             suppressClick.current = false;
             e.preventDefault();
             e.stopPropagation();
+            return;
+          }
+          if ((e.target as Element).closest('.home-apartment__object')) return;
+          if (panelOpen) {
+            e.preventDefault();
+            e.stopPropagation();
+            closePanel();
           }
         }}
         onPointerDown={(e) => {
@@ -411,14 +450,17 @@ export function ApartmentHome({
             dy = e.clientY - g.y;
           if (!g.locked) {
             if (Math.abs(dy) > 8 && Math.abs(dy) >= Math.abs(dx)) {
+              suppressClick.current = true;
               gesture.current = null;
               return;
             }
             if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
             g.locked = true;
             suppressClick.current = true;
-            e.currentTarget.setPointerCapture?.(e.pointerId);
+            if (e.pointerType !== 'touch') e.currentTarget.setPointerCapture?.(e.pointerId);
           }
+          // Touch scrolling and its momentum belong to the browser, like the map and bar.
+          if (e.pointerType === 'touch') return;
           const width = e.currentTarget.getBoundingClientRect().width || 360;
           setCamera(clampCamera(g.camera - (dx * 430) / width));
         }}
@@ -436,6 +478,8 @@ export function ApartmentHome({
           suppressClick.current = true;
         }}
       >
+        <div className="home-apartment__scroll-world" style={{ width: 894 * panScale }}>
+        <div className="home-apartment__scroll-stage" style={{ width: panSize.width }}>
         <ApartmentScene
           design={design}
           camera={camera}
@@ -446,8 +490,12 @@ export function ApartmentHome({
           design={design}
           camera={camera}
           active={panelOpen ? page.id : null}
+          activeShortcut={appearanceOpen ? 'appearance' : settingsSection === 'menu' ? undefined : settingsSection}
           onOpen={openPage}
+          onExit={() => navigate('/sections')}
         />
+        </div>
+        </div>
       </div>
       <header className="home-apartment__header" hidden={panelOpen}>
         <div className="home-apartment__identity">
@@ -553,9 +601,10 @@ export function ApartmentHome({
             <div className="home-apartment-panel__header">
               <button
                 className="icon-btn"
-                aria-label="К настройкам"
+                aria-label={settingsFromObject ? 'Закрыть раздел' : 'К настройкам'}
                 onClick={() => {
-                  if (appearanceOpen) setAppearanceOpen(false);
+                  if (settingsFromObject) closePanel();
+                  else if (appearanceOpen) setAppearanceOpen(false);
                   else setSettingsSection('menu');
                 }}
               >

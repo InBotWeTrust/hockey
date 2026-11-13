@@ -1,4 +1,5 @@
 import type { ApartmentDesign, ApartmentImageLayer } from './apartmentTypes.js';
+import { apartmentInteractiveObjects, type ApartmentShortcut } from './apartmentInteractiveObjects.js';
 
 type Page = 'profile' | 'rewards' | 'friends' | 'settings' | 'story';
 export function ApartmentObjects({
@@ -6,25 +7,18 @@ export function ApartmentObjects({
   camera,
   active,
   onOpen,
+  activeShortcut,
+  onExit,
 }: {
   design: ApartmentDesign;
   camera: number;
   active: Page | null;
-  onOpen: (page: Page, trigger?: HTMLElement | SVGElement) => void;
+  activeShortcut?: ApartmentShortcut | undefined;
+  onExit: () => void;
+  onOpen: (page: Page, trigger?: HTMLElement | SVGElement, shortcut?: ApartmentShortcut) => void;
 }): JSX.Element {
-  const item = (id: string) =>
-    design.layers.find((l): l is ApartmentImageLayer => l.kind === 'image' && l.id === id)!;
-  const desk = item('desk');
-  const top = desk.supportY ?? desk.y;
-  const phone = { x: desk.x + desk.width * 0.13, y: top - 7, width: 18, height: 10 };
-  const laptop = { x: desk.x + desk.width * 0.48, y: top - 28, width: 42, height: 30 };
-  const targets = [
-    { page: 'profile' as const, label: 'Персонаж: профиль', box: item('player') },
-    { page: 'rewards' as const, label: 'Полки: награды', box: item('vitrine') },
-    { page: 'story' as const, label: 'Телевизор: сюжет', box: item('tv') },
-    { page: 'friends' as const, label: 'Телефон: друзья и болельщики', box: phone },
-    { page: 'settings' as const, label: 'Ноутбук: настройки', box: laptop },
-  ];
+  const { targets } = apartmentInteractiveObjects(design);
+  const door = design.layers.find((layer): layer is ApartmentImageLayer => layer.kind === 'image' && layer.id === 'door')!;
   return (
     <svg
       className="home-apartment__objects"
@@ -33,63 +27,59 @@ export function ApartmentObjects({
       role="group"
       aria-label="Предметы квартиры"
     >
-      <g aria-hidden="true" className="home-apartment__devices">
-        <ellipse cx={phone.x + 9} cy={top + 2} rx="11" ry="1.5" fill="#43443b" opacity=".18" />
-        <ellipse cx={laptop.x + 21} cy={top + 3} rx="23" ry="1.5" fill="#43443b" opacity=".16" />
-        <g transform={`translate(${phone.x} ${phone.y}) rotate(-12 9 5)`}>
-          <rect width="18" height="10" rx="2" fill="#4d5554" stroke="#a8aaa1" strokeWidth=".8" />
-          <rect x="1.5" y="2" width="14" height="6" rx="1" fill="#b3c4be" />
-          <path d="M16 4v3" stroke="#b9bcb4" strokeWidth=".7" />
+      <g
+        role="button"
+        aria-label="Дверь: выйти на карту"
+        tabIndex={0}
+        className="home-apartment__object"
+        onClick={onExit}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            onExit();
+          }
+        }}
+      >
+        <g className="home-apartment__pulse" transform={`translate(${door.x + door.width * 0.7} ${door.y + door.height * 0.52})`} aria-hidden="true">
+          <circle className="home-apartment__pulse-ring" r={12} fill="none" />
         </g>
-        <g transform={`translate(${laptop.x} ${laptop.y})`}>
-          <rect
-            x="3"
-            width="35"
-            height="25"
-            rx="2"
-            fill="#757d79"
-            stroke="#c5c7bc"
-            strokeWidth="1"
-          />
-          <rect x="5" y="2" width="31" height="20" rx="1" fill="#aabbb8" />
-          <path d="M3 25h35l4 5H0z" fill="#bcc0b7" stroke="#858e87" strokeWidth=".6" />
-          <path d="M14 27h13" stroke="#8f9a91" strokeWidth="1" />
-        </g>
+        <rect className="home-apartment__object-hit" x={door.x} y={door.y} width={door.width * 0.82} height={door.height} fill="transparent" />
+        <title>Выйти на карту</title>
       </g>
-      {targets.map(({ page, label, box }) => {
+      {targets.map(({ id, page, label, box, shortcut }) => {
         return (
           <g
-            key={page}
-            data-apartment-page={page}
+            key={id}
+            data-apartment-page={id}
             data-center-x={box.x + box.width / 2}
             role="button"
             aria-label={label}
-            aria-expanded={active === page}
+            aria-expanded={active === page && (shortcut ? activeShortcut === shortcut : !activeShortcut)}
             tabIndex={0}
-            className={`home-apartment__object${active === page ? ' is-active' : ''}`}
-            onClick={(e) => onOpen(page, e.currentTarget)}
+            className={`home-apartment__object${active === page && (shortcut ? activeShortcut === shortcut : !activeShortcut) ? ' is-active' : ''}`}
+            onClick={(e) => onOpen(page, e.currentTarget, shortcut)}
             onKeyDown={(e) => {
               if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                onOpen(page, e.currentTarget);
+                onOpen(page, e.currentTarget, shortcut);
               }
             }}
           >
             <g
               className="home-apartment__pulse"
-              transform={`translate(${box.x + box.width / 2} ${box.y + box.height / 2})`}
+              transform={`translate(${box.x + box.width / 2} ${box.y + box.height * (id === 'profile' ? 0.25 : 0.5)})`}
               aria-hidden="true"
             >
               <circle
-                className={`home-apartment__pulse-ring${page === 'story' ? ' home-apartment__pulse-ring--screen' : ''}`}
-                r="17"
+                className="home-apartment__pulse-ring"
+                r={id === 'profile' ? 14 : 12}
                 fill="none"
               />
             </g>
             <rect
               className="home-apartment__object-hit"
-              x={box.x - (page === 'friends' ? 12 : 0)}
-              y={box.y - (page === 'friends' ? 8 : 0)}
+              x={box.x - Math.max(0, (36 - box.width) / 2)}
+              y={box.y - Math.max(0, (36 - box.height) / 2)}
               width={Math.max(36, box.width)}
               height={Math.max(36, box.height)}
               fill="transparent"

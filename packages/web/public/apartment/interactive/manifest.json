@@ -1,0 +1,102 @@
+{
+  "style": "Soft painted warm neutral apartment, daylight from upper right",
+  "assets": [
+    {
+      "id": "laptop",
+      "source": "/Users/egorgumenyuk/.codex/generated_images/01a1c694-c74d-7702-ad66-eebeaaf4c08e/exec-32f3b973-24fc-4d42-95e6-12c4d54e96fa.png",
+      "file": "laptop-v1.webp",
+      "size": [
+        768,
+        534
+      ],
+      "alpha": [
+        0,
+        255
+      ],
+      "generation": "image_gen; apartment screenshot reference; transparent background",
+      "normalization": "crop to opaque object bounds; preserve generated alpha; resize and WebP encode"
+    },
+    {
+      "id": "phone",
+      "source": "/Users/egorgumenyuk/.codex/generated_images/01a1c694-c74d-7702-ad66-eebeaaf4c08e/exec-8e1a5d1b-de36-4b0b-b56b-e33c0d65591f.png",
+      "file": "phone-v1.webp",
+      "size": [
+        480,
+        768
+      ],
+      "alpha": [
+        0,
+        255
+      ],
+      "generation": "image_gen; apartment screenshot reference; transparent background",
+      "normalization": "crop to opaque object bounds; preserve generated alpha; resize and WebP encode"
+    },
+    {
+      "id": "mirror",
+      "source": "/Users/egorgumenyuk/.codex/generated_images/01a1c694-c74d-7702-ad66-eebeaaf4c08e/exec-9c103398-c79d-4181-bab1-70ce7b28a9d8.png",
+      "file": "mirror-v1.webp",
+      "size": [
+        391,
+        768
+      ],
+      "alpha": [
+        0,
+        255
+      ],
+      "generation": "image_gen; apartment screenshot reference; transparent background",
+      "normalization": "crop to opaque object bounds; preserve generated alpha; resize and WebP encode"
+    },
+    {
+      "id": "catalogue",
+      "source": "/Users/egorgumenyuk/.codex/generated_images/01a1c694-c74d-7702-ad66-eebeaaf4c08e/exec-650afc67-1273-4835-b43a-3efeee05ef80.png",
+      "file": "catalogue-v1.webp",
+      "size": [
+        768,
+        288
+      ],
+      "alpha": [
+        0,
+        255
+      ],
+      "generation": "image_gen; apartment screenshot reference; transparent background",
+      "normalization": "crop to opaque object bounds; preserve generated alpha; resize and WebP encode"
+    },
+    {
+      "id": "lamp",
+      "source": "/Users/egorgumenyuk/.codex/generated_images/01a1c694-c74d-7702-ad66-eebeaaf4c08e/exec-0e8930de-71b2-4f73-aa47-de05d9d0a08d.png",
+      "file": "lamp-v1.webp",
+      "size": [
+        272,
+        768
+      ],
+      "alpha": [
+        0,
+        255
+      ],
+      "generation": "image_gen; apartment screenshot reference; transparent background",
+      "normalization": "crop to opaque object bounds; preserve generated alpha; resize and WebP encode"
+    },
+    {
+      "id": "mirror-left-wall",
+      "source": "/Users/egorgumenyuk/.codex/generated_images/01a1c694-c74d-7702-ad66-eebeaaf4c08e/exec-19b7f7ae-23c8-451e-af2c-f39591e40f79.png",
+      "file": "mirror-v2.webp",
+      "size": [
+        245,
+        768
+      ],
+      "alpha": [
+        0,
+        255
+      ],
+      "generation": "image_gen edit: small mirror in left wall perspective near door",
+      "normalization": "crop opaque object bounds, preserve alpha, WebP"
+    },
+    {
+      "id": "floorlamp-base",
+      "file": "floorlamp-base-v1.webp",
+      "source": "../apartment-decor-floorlamp-1.webp",
+      "normalization": "crop transparent sprite margins to preserve floor contact and native aspect ratio; WebP",
+      "placement": "front right corner of base sofa, floor contact y=518"
+    }
+  ]
+}

@@ -3,6 +3,7 @@ export type ApartmentSettingsSection =
   | 'menu'
   | 'profile'
   | 'app'
+  | 'theme'
   | 'notifications'
   | 'city'
   | 'help';

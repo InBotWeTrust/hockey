@@ -186,6 +186,7 @@ export function ProfileSettingsScreen(): JSX.Element {
 
   return (
     <main
+      data-apartment-section={apartmentSection ?? undefined}
       className={`screen profile-settings-screen profile-screen--locker-bg ${lockerRoomBackgroundClass(data?.competitionLevel)}`}
       style={{ paddingTop: 'var(--app-safe-top)', paddingBottom: 16 }}
     >
@@ -207,6 +208,7 @@ export function ProfileSettingsScreen(): JSX.Element {
         <>
           <ApartmentSettingsGroup section="help">
           {isAdmin && <button className="btn btn--ghost" onClick={()=>navigate('/sections?tour=1')}>Знакомство с городом</button>}
+          {apartmentSection !== 'help' && <>
           <div className="section-label">Аккаунт</div>
           <div
             className="profile-registration-account glass"
@@ -237,6 +239,7 @@ export function ProfileSettingsScreen(): JSX.Element {
               </button>
             )}
           </div>
+          </>}
 
           </ApartmentSettingsGroup>
           <ApartmentSettingsGroup section="profile">
@@ -362,6 +365,8 @@ export function ProfileSettingsScreen(): JSX.Element {
           </ApartmentSettingsGroup>
           <ApartmentSettingsGroup section="app">
           <ChatPositionSettings owner={owner} />
+          </ApartmentSettingsGroup>
+          <ApartmentSettingsGroup section={apartmentSection === 'theme' ? 'theme' : 'app'}>
           <ThemeSettings />
           </ApartmentSettingsGroup>
           <ApartmentSettingsGroup section="city">

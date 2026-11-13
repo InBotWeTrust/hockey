@@ -296,3 +296,92 @@ it('never pans past the painted right edge of the room', () => {
  expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])+450).toBeLessThanOrEqual(864);
  vi.unstubAllGlobals();
 });
+
+it('opens settings shortcuts from room objects and retains the laptop settings menu', () => {
+ setup();
+ for (const [label, title] of [
+  ['Зеркало: имя, аватар и описание','Профиль'],
+  ['Окно: город и погода','Город'],
+  ['Лампа: тема приложения','Тема приложения'],
+  ['Каталог: оформление квартиры','Оформление квартиры'],
+ ] as const) {
+  fireEvent.click(screen.getByRole('button',{name:label}));
+  expect(screen.getByRole('region',{name:title})).toHaveClass('home-apartment-panel--settings');
+  expect(screen.getByRole('button',{name:'Закрыть раздел'})).toBeInTheDocument();
+  fireEvent.click(screen.getByRole('button',{name:'Закрыть раздел'}));
+ }
+ fireEvent.click(screen.getByRole('button',{name:'Ноутбук: настройки'}));
+ expect(screen.getByRole('navigation',{name:'Разделы настроек'})).toBeInTheDocument();
+ expect(screen.queryByRole('button',{name:'К настройкам'})).not.toBeInTheDocument();
+});
+
+it('renders generated phone and laptop sprites instead of geometric stand-ins', () => {
+ const view=setup();
+ for(const id of ['phone','laptop','mirror','catalogue','lamp']) {
+  expect(view.container.querySelector(`image[data-layer="${id}"]`)).toHaveAttribute('href',`/apartment/interactive/${id}-${id === 'mirror' ? 'v2' : 'v1'}.webp`);
+ }
+ expect(view.container.querySelector('.home-apartment__devices')).toBeNull();
+});
+
+it('dismisses content from empty room space and switches directly to another object', () => {
+ setup();
+ const room=screen.getByRole('group',{name:'Перемещение по квартире'});
+ fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
+ fireEvent.click(screen.getByRole('textbox',{name:'Черновик'}));
+ expect(screen.getByRole('region',{name:'Профиль'})).toBeInTheDocument();
+ fireEvent.click(room);
+ expect(screen.queryByRole('region',{name:'Профиль'})).toBeNull();
+ fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
+ fireEvent.click(screen.getByRole('button',{name:'Телевизор: сюжет'}));
+ expect(screen.queryByRole('region',{name:'Профиль'})).toBeNull();
+ expect(screen.getByLabelText('Маршрут')).toHaveTextContent('/profile/story');
+ expect(screen.getByRole('region',{name:'Сюжет'})).toBeInTheDocument();
+ fireEvent.click(screen.getByRole('button',{name:'Телевизор: сюжет'}));
+ expect(screen.queryByRole('region',{name:'Сюжет'})).toBeNull();
+});
+
+it.each([[220,255],[275,370]])('keeps content open after a swipe ending at %s,%s', (x,y) => {
+ vi.stubGlobal('PointerEvent',MouseEvent);
+ setup();
+ fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
+ const room=screen.getByRole('group',{name:'Перемещение по квартире'});
+ fireEvent.pointerDown(room,{clientX:280,clientY:250,button:0});
+ fireEvent.pointerMove(room,{clientX:x,clientY:y});
+ fireEvent.pointerUp(room,{clientX:x,clientY:y});
+ fireEvent.click(room);
+ expect(screen.getByRole('region',{name:'Профиль'})).toBeInTheDocument();
+ fireEvent.pointerDown(room,{clientX:200,clientY:250,button:0});
+ fireEvent.pointerUp(room,{clientX:200,clientY:250});
+ fireEvent.click(room);
+ expect(screen.queryByRole('region',{name:'Профиль'})).toBeNull();
+ vi.unstubAllGlobals();
+});
+
+it('uses native horizontal scroll position without closing content or snapping', () => {
+ setup();
+ fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
+ const viewport=screen.getByRole('group',{name:'Перемещение по квартире'});
+ viewport.scrollLeft=137;
+ fireEvent.scroll(viewport);
+ expect(Number(screen.getByRole('img',{name:'Квартира: Базовая'}).getAttribute('viewBox')?.split(' ')[0])).toBeCloseTo(107);
+ expect(screen.getByRole('region',{name:'Профиль'})).toBeInTheDocument();
+});
+
+it('exits to the map through the door even while content is open', () => {
+ setup();
+ fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
+ fireEvent.click(screen.getByRole('button',{name:'Дверь: выйти на карту'}));
+ expect(screen.getByLabelText('Маршрут')).toHaveTextContent('/sections');
+});
+
+it('returns to the room from an object shortcut but to the settings menu from menu navigation', () => {
+ setup();
+ fireEvent.click(screen.getByRole('button',{name:'Окно: город и погода'}));
+ fireEvent.click(screen.getByRole('button',{name:'Закрыть раздел'}));
+ expect(screen.queryByRole('region',{name:'Настройки'})).toBeNull();
+ expect(screen.queryByRole('region',{name:'Город'})).toBeNull();
+ fireEvent.click(screen.getByRole('tab',{name:'Настройки'}));
+ fireEvent.click(screen.getByRole('button',{name:'Город Погода и время суток'}));
+ fireEvent.click(screen.getByRole('button',{name:'К настройкам'}));
+ expect(screen.getByRole('navigation',{name:'Разделы настроек'})).toBeInTheDocument();
+});

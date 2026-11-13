@@ -534,4 +534,19 @@ describe('ProfileSettingsScreen', () => {
       message: 'Подскажите по турниру',
     });
   });
+  it('opens only theme controls through the lamp shortcut', async () => {
+    mockSettingsFetch();
+    renderProfileSettings('theme');
+    expect(await screen.findByRole('tablist', { name: 'Выбор темы' })).toBeInTheDocument();
+    expect(screen.queryByRole('tablist', { name: 'Положение иконок на карте' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('textbox', { name: 'Имя' })).not.toBeInTheDocument();
+  });
+
+  it('omits duplicated account identity from apartment help', async () => {
+    mockSettingsFetch();
+    renderProfileSettings('help');
+    expect(await screen.findByRole('button', { name: 'Написать в обратную связь' })).toBeInTheDocument();
+    expect(screen.queryByLabelText('Аккаунт Telegram')).not.toBeInTheDocument();
+  });
+
 });

@@ -745,7 +745,7 @@ export function ProfileSupportSections({ profileReady, section = 'all' }: { prof
             Уведомления
           </div>
           <div
-            className="glass"
+            className="glass profile-notification-settings"
             style={{
               margin: '0 14px 14px',
               padding: 16,
@@ -755,7 +755,7 @@ export function ProfileSupportSections({ profileReady, section = 'all' }: { prof
               gap: 12,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+            <div className="profile-notification-settings__summary" style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <SettingsSectionIcon>
                 <Bell size={20} />
               </SettingsSectionIcon>
@@ -884,7 +884,7 @@ export function ProfileSupportSections({ profileReady, section = 'all' }: { prof
         Обратная связь
       </div>
       <div
-        className="glass"
+        className="glass profile-feedback-links"
         style={{
           margin: '0 14px 14px',
           padding: 0,
@@ -910,11 +910,13 @@ export function ProfileSupportSections({ profileReady, section = 'all' }: { prof
           <Fragment key={item.title}>
             {index > 0 && (
               <div
+                className="profile-feedback-links__divider"
                 aria-hidden="true"
                 style={{ height: 1, margin: '0 16px', background: 'var(--liquid-inset-bg)' }}
               />
             )}
             <div
+              className="profile-feedback-links__row"
               style={{
                 padding: 16,
                 display: 'flex',
