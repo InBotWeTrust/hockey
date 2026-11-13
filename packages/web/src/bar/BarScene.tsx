@@ -87,7 +87,7 @@ function ClassicBarScene({
   const [terminalInvitation,setTerminalInvitation]=useState<PendingBarInvitation|null>(null);
   const openedInvitation=useRef<string|null>(null);
   const terminalDismissed=useRef(false);
-  useEffect(()=>{setTerminalOpen(false);setTerminalInvitation(null);openedInvitation.current=null;terminalDismissed.current=false;},[activeSlotId]);
+  useEffect(()=>{if(slot.occupantId!=='online')setTerminalOpen(false);setTerminalInvitation(null);openedInvitation.current=null;terminalDismissed.current=false;},[activeSlotId]);
   useEffect(()=>{
     if(slot.occupantId!=='online'||!incomingInvitation||openedInvitation.current===incomingInvitation.id)return;
     openedInvitation.current=incomingInvitation.id;
@@ -107,7 +107,7 @@ function ClassicBarScene({
     viewport.current?.scrollTo?.({left:i*pageWidth(),behavior:window.matchMedia?.('(prefers-reduced-motion: reduce)').matches?'auto':behavior});
   };
   const select = (id:string) => {const i=layout.slots.findIndex(s=>s.id===id);if(i<0)return;gesture.cancel();center(i);onSelectSlot(id);};
-  const ready = (i:number) => {if(i!==index||!centered(i)){select(layout.slots[i]!.id);return false;}return true;};
+  const ready = (i:number) => {select(layout.slots[i]!.id);return true;};
   const act = (action:BarAction,id:BarOccupantId) => {const i=layout.slots.findIndex(s=>s.occupantId===id);if(i>=0&&ready(i))onAction(action,id);};
   useLayoutEffect(()=>{center(index,positioned.current?'smooth':'auto');positioned.current=true;},[index,layout.slots.length]);
   useEffect(()=>{
@@ -159,7 +159,7 @@ function ClassicBarScene({
         onClick={e=>{
           const figure=(e.target as Element).closest('[data-bar-slot]');
           const id=figure?.getAttribute('data-bar-slot');
-          if(id){const i=layout.slots.findIndex(s=>s.id===id);if(i>=0)ready(i);}
+          if(id){const i=layout.slots.findIndex(s=>s.id===id);if(i>=0){ready(i);const character=layout.slots[i]!.occupantId;if(!hideIdentity&&character&&barCharacters.includes(character as BarCharacter)&&(e.target as Element).closest('[data-bar-character]'))onTalk?.(character as BarCharacter);}}
         }}>
       <div className="bar-space__world">
       <div ref={track} className="bar-space__track">

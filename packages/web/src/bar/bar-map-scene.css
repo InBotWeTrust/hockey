@@ -33,3 +33,9 @@
 .bar-map-background--enter {animation:bar-background-in .7s ease both;}
 .bar-map-scene .bar-space__header .icon-btn {pointer-events:auto;}
 @media(prefers-reduced-motion:reduce){.bar-map-background--enter {animation:none;}}
+
+/* Only precise character contours intercept overlapping game targets. Artwork keeps its depth. */
+.bar-map-character.bar-map-character--hit {z-index:6;}
+
+/* Exit sign coordinates on the full v41 panorama. */
+.bar-map-exit {left:.6%;top:13.5%;width:4.2%;height:7%;}
