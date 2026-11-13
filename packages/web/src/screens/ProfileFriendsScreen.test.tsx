@@ -63,3 +63,9 @@ it('keeps invitations accessible when the badge query fails', async () => {
   fireEvent.click(screen.getByRole('tab', { name: 'Приглашения' }));
   expect(screen.getByRole('region', { name: 'Реферальная страница' })).toBeVisible();
 });
+
+it('keeps the whole friends section on one surface while loading and after loading', async () => {
+  mount();
+  expect(screen.getByRole('status').closest('section')).toHaveClass('glass');
+  expect((await screen.findByRole('region', { name: 'Социальные связи' })).parentElement).toHaveClass('glass');
+});

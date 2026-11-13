@@ -63,20 +63,26 @@ export function PublicExperienceBadge({ experience }: { experience: number }): J
 
       const avatarWidth = badge.parentElement?.clientWidth ?? 0;
       const maxWidth = avatarWidth * 1.15;
-      const naturalWidth = badge.scrollWidth;
-      if (maxWidth === 0 || naturalWidth <= maxWidth) return;
+      // The flex item may already be clipped: measure its full text, not the badge.
+      const styles = getComputedStyle(badge);
+      const chrome = ['padding-left', 'padding-right', 'border-left-width', 'border-right-width']
+        .reduce((sum, property) => sum + (parseFloat(styles.getPropertyValue(property)) || 0), 0) + (parseFloat(styles.columnGap) || 3);
+      const naturalWidth = value.scrollWidth + 13;
+      if (maxWidth === 0 || naturalWidth + chrome <= maxWidth) return;
 
-      const scale = Math.max(0.45, maxWidth / naturalWidth);
+      const scale = Math.max(0.1, (maxWidth - chrome - 2) / naturalWidth);
       value.style.fontSize = `${12 * scale}px`;
       icon.style.width = `${13 * scale}px`;
       icon.style.height = `${13 * scale}px`;
     };
 
     fit();
+    let disposed = false;
+    void document.fonts?.ready.then(() => { if (!disposed) fit(); });
     const observer =
       typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(fit);
     observer?.observe(badge.parentElement ?? badge);
-    return () => observer?.disconnect();
+    return () => { disposed = true; observer?.disconnect(); };
   }, [formattedExperience]);
 
   return (

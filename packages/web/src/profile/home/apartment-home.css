@@ -1006,3 +1006,24 @@
 .home-apartment .home-apartment-panel--settings .home-apartment-panel__header + .home-apartment-panel__scroll {
   padding-top: 0;
 }
+
+/* Keep the heading, controls and all list states on the same readable surface. */
+.home-apartment .apartment-friends-list {
+  padding: 16px;
+  border: 1px solid var(--liquid-border);
+  border-radius: 22px;
+  background: var(--liquid-card-bg);
+  color: var(--liquid-ink);
+  box-shadow: var(--liquid-shadow);
+  backdrop-filter: var(--liquid-blur);
+  -webkit-backdrop-filter: var(--liquid-blur);
+}
+.home-apartment .apartment-friends-list .social-people-list {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
