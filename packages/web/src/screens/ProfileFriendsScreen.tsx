@@ -24,7 +24,7 @@ export function ProfileFriendsScreen(): JSX.Element {
           { id: 'invites', label: 'Приглашения', attention: (referrals.data?.unclaimedRewardsCount ?? 0) > 0 },
         ]}
       />
-      {tab === 'circle' ? <section className="apartment-friends-list">
+      {tab === 'circle' ? <section className="glass apartment-friends-list">
         {profile.isPending ? (
           <p role="status">Загружаем профиль…</p>
         ) : !profile.data ? (
