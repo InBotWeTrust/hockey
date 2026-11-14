@@ -16,6 +16,7 @@ import {
 import { PublicExperienceBadge } from '../../chat/components/UserProfileSheet.js';
 import { apiFetch } from '../../api/apiFetch.js';
 import { fetchReferralSummary } from '../../api/referrals.js';
+import { MapExitLink } from '../../components/MapExitLink.js';
 import { SectionNavigationIcon } from '../../components/SectionNavigationIcon.js';
 import '../../components/navigation-geometry.css';
 import '../../components/section-panorama.css';
@@ -558,35 +559,41 @@ export function ApartmentHome({
         <div className="section-scene__identity">
           <strong>{panelOpen ? page.title : 'Квартира'}</strong>
         </div>
-        <div
-          ref={dockRef}
-          className="section-scene__dock"
-          role="tablist"
-          aria-label="Разделы: Квартира"
-        >
-          {pages.map((p) => (
-            <button
-              key={p.id}
-              role="tab"
-              aria-label={p.title}
-              aria-selected={panelOpen && page.id === p.id}
-              onClick={(e) => {
-                if (panelOpen && page.id === p.id) closePanel();
-                else {
-                  centerObject(p.id);
-                  openPage(p.id, e.currentTarget);
-                }
-              }}
-            >
-              <SectionNavigationIcon id={p.id} label={p.title} />
-              <span>{p.title}</span>
-              {p.id === 'friends' && referralRewards > 0 && (
-                <span className="section-scene__attention" aria-label="Есть награды за приглашения">
-                  {referralRewards}
-                </span>
-              )}
-            </button>
-          ))}
+        <div className="section-scene__navigation">
+          <MapExitLink className="section-scene__exit">
+            <span><ArrowLeft size={22} aria-hidden="true" /></span>
+            <small>Назад</small>
+          </MapExitLink>
+          <div
+            ref={dockRef}
+            className="section-scene__dock"
+            role="tablist"
+            aria-label="Разделы: Квартира"
+          >
+            {pages.map((p) => (
+              <button
+                key={p.id}
+                role="tab"
+                aria-label={p.title}
+                aria-selected={panelOpen && page.id === p.id}
+                onClick={(e) => {
+                  if (panelOpen && page.id === p.id) closePanel();
+                  else {
+                    centerObject(p.id);
+                    openPage(p.id, e.currentTarget);
+                  }
+                }}
+              >
+                <SectionNavigationIcon id={p.id} label={p.title} />
+                <span>{p.title}</span>
+                {p.id === 'friends' && referralRewards > 0 && (
+                  <span className="section-scene__attention" aria-label="Есть награды за приглашения">
+                    {referralRewards}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
         </div>
       </section>
       {visited && (
