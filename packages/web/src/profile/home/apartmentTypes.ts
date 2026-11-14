@@ -1,3 +1,7 @@
+// The room art ends at x=864; the first 30 units are the visible left wall.
+export const apartmentBounds = { left: -30, top: -60, width: 894, height: 840, viewportWidth: 450 } as const;
+export const apartmentViewBox = `${apartmentBounds.left} ${apartmentBounds.top} ${apartmentBounds.width} ${apartmentBounds.height}`;
+
 export const decorCategories = [
   'floorlamp',
   'plant',
