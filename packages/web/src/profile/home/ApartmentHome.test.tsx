@@ -385,3 +385,13 @@ it('returns to the room from an object shortcut but to the settings menu from me
  fireEvent.click(screen.getByRole('button',{name:'К настройкам'}));
  expect(screen.getByRole('navigation',{name:'Разделы настроек'})).toBeInTheDocument();
 });
+
+it.each([false, true])('exits through the persistent bottom menu arrow with content open: %s', (open) => {
+  setup();
+  if (open) fireEvent.click(screen.getByRole('tab', { name: 'Друзья' }));
+  const exit = screen.getByRole('link', { name: 'На карту' });
+  expect(exit.closest('.home-apartment__navigation')).not.toBeNull();
+  expect(exit).toHaveAttribute('href', '/sections');
+  fireEvent.click(exit);
+  expect(screen.getByLabelText('Маршрут')).toHaveTextContent('/sections');
+});
