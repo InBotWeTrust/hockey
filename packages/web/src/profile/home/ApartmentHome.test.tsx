@@ -25,7 +25,7 @@ function setup(initial = '/profile', empty = false) {
         }
       : apartmentProfile.trophySummary,
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={[initial]}>
         <ApartmentHome owner="test">
@@ -36,6 +36,11 @@ function setup(initial = '/profile', empty = false) {
       </MemoryRouter>
     </QueryClientProvider>,
   );
+  const viewport = screen.getByRole('group', { name: 'Перемещение по квартире' });
+  viewport.scrollTo = vi.fn((options?: ScrollToOptions | number) => {
+    if (typeof options === 'object') viewport.scrollLeft = options.left ?? viewport.scrollLeft;
+  });
+  return view;
 }
 it('opens the existing profile as a dismissible interface over the room', async () => {
   setup();
@@ -77,27 +82,19 @@ it('uses the project navigation and has no extra home or back control in the hea
   expect(screen.queryByRole('button', { name: 'Домой' })).not.toBeInTheDocument();
 });
 
-it('keeps any intermediate camera position after releasing a drag', async () => {
-  vi.stubGlobal('PointerEvent', MouseEvent);
+it('keeps the native scroll offset after a mouse drag and supports dragging back', async () => {
   setup();
   const surface = screen.getByRole('group', { name: 'Перемещение по квартире' });
-  const scene = screen.getByRole('img', { name: 'Квартира: Базовая' });
-  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0 });
+  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0, pointerType: 'mouse', isPrimary: true });
   fireEvent.pointerMove(surface, { clientX: 220, clientY: 255 });
-  await waitFor(() =>
-    expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])).toBeGreaterThan(-30),
-  );
-  const afterMove = Number(scene.getAttribute('viewBox')?.split(' ')[0]);
-  expect(afterMove).toBeGreaterThan(-30);
-  expect(afterMove).toBeLessThan(400);
   fireEvent.pointerUp(surface, { clientX: 220, clientY: 255 });
+  expect(surface.scrollLeft).toBe(60);
   await new Promise((resolve) => setTimeout(resolve, 350));
-  expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])).toBeCloseTo(afterMove, 1);
-  fireEvent.pointerDown(surface, { clientX: 220, clientY: 250, button: 0 });
+  expect(surface.scrollLeft).toBe(60);
+  fireEvent.pointerDown(surface, { clientX: 220, clientY: 250, button: 0, pointerType: 'mouse', isPrimary: true });
   fireEvent.pointerMove(surface, { clientX: 250, clientY: 255 });
   fireEvent.pointerUp(surface, { clientX: 250, clientY: 255 });
-  expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])).toBeLessThan(afterMove);
-  vi.unstubAllGlobals();
+  expect(surface.scrollLeft).toBe(30);
 });
 it('uses one continuous floor image rather than wrapping it at the room edge', () => {
   const view = setup();
@@ -107,16 +104,15 @@ it('uses one continuous floor image rather than wrapping it at the room edge', (
   expect(floorImage?.closest('pattern')).toBeNull();
 });
 it('ignores vertical gestures and cancels interrupted drags', () => {
-  vi.stubGlobal('PointerEvent', MouseEvent);
   setup();
   const surface = screen.getByRole('group', { name: 'Перемещение по квартире' });
-  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0 });
+  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0, pointerType: 'mouse', isPrimary: true });
   fireEvent.pointerMove(surface, { clientX: 275, clientY: 370 });
   fireEvent.pointerUp(surface, { clientX: 275, clientY: 370 });
   expect(screen.getByRole('img', { name: 'Квартира: Базовая' }).getAttribute('viewBox')).toMatch(
     /^-30 /,
   );
-  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0 });
+  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0, pointerType: 'mouse', isPrimary: true });
   fireEvent.pointerCancel(surface);
   fireEvent.pointerMove(surface, { clientX: 30, clientY: 250 });
   fireEvent.pointerUp(surface, { clientX: 30, clientY: 250 });
@@ -165,31 +161,29 @@ it('retains draft values and scroll position when collapsed', () => {
   expect(scroller.scrollTop).toBe(123);
 });
 it('does not activate an object after dragging across it or block the next dock click', () => {
-  vi.stubGlobal('PointerEvent', MouseEvent);
   setup();
   const surface = screen.getByRole('group', { name: 'Перемещение по квартире' });
   const target = screen.getByRole('button', { name: 'Персонаж: профиль' });
-  fireEvent.pointerDown(target, { clientX: 280, clientY: 250, button: 0 });
+  fireEvent.pointerDown(target, { clientX: 280, clientY: 250, button: 0, pointerType: 'mouse', isPrimary: true });
   fireEvent.pointerMove(surface, { clientX: 220, clientY: 255 });
   fireEvent.pointerUp(surface, { clientX: 220, clientY: 255 });
-  fireEvent.click(target);
+  fireEvent.click(target, { detail: 1 });
   expect(screen.queryByRole('region', { name: 'Профиль' })).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole('tab', { name: 'Друзья' }));
   expect(screen.getByRole('region', { name: 'Друзья' })).toBeInTheDocument();
   vi.unstubAllGlobals();
 });
 
-it('marks objects with a fixed pulse anchor and a circular expanding ring like the bar', () => {
+it('keeps a fixed HTML pulse anchor for each object with the character marker on the chest', () => {
   const view = setup();
-  const objects = screen.getByRole('group', { name: 'Предметы квартиры' });
-  for (const target of objects.querySelectorAll('[role="button"]')) {
-    const anchor = target.querySelector('.home-apartment__pulse');
-    expect(anchor).not.toBeNull();
-    expect(anchor?.querySelector(':scope > circle.home-apartment__pulse-ring')).not.toBeNull();
-  }
+  const player = view.container.querySelector<HTMLElement>('[data-pulse-for="profile"]')!;
+  expect(player).not.toBeNull();
+  expect(player.querySelector('span.home-apartment__pulse-ring')).not.toBeNull();
+  const target = view.container.querySelector('[data-apartment-page="profile"] rect')!;
+  const chestY = Number(target.getAttribute('y')) + Number(target.getAttribute('height')) * .25;
+  expect(parseFloat(player.style.top)).toBeCloseTo((chestY + 60) / 840 * 100);
   expect(view.container.querySelector('.home-apartment__object-glow')).toBeNull();
 });
-
 it('keeps the dock while opening a terminal-style interface without duplicated identity', () => {
   setup();
   fireEvent.click(screen.getByRole('tab', { name: 'Профиль' }));
@@ -262,19 +256,13 @@ it('combines identity, avatar experience and two icon-only balances in one heade
   expect(identity.querySelector('.home-apartment__wallet')).toHaveTextContent(/1\s000/);
 });
 
-it('pans smoothly to the object selected from the dock', async () => {
+it('asks the browser to smoothly center the object selected from the dock', () => {
   const view = setup();
-  const scene = screen.getByRole('img', { name: 'Квартира: Базовая' });
+  const viewport = screen.getByRole('group', { name: 'Перемещение по квартире' });
   fireEvent.click(screen.getByRole('tab', { name: 'Настройки' }));
-  const initialCamera = Number(scene.getAttribute('viewBox')?.split(' ')[0]);
-  await waitFor(() => expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])).toBeGreaterThan(initialCamera));
-  await waitFor(() => {
-    const target = view.container.querySelector('[data-apartment-page="settings"]')!;
-    const center = Number(target.getAttribute('data-center-x'));
-    expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])).toBeCloseTo(Math.min(864 - 450, center - 225), 0);
-  });
+  const center = Number(view.container.querySelector('[data-apartment-page="settings"]')!.getAttribute('data-center-x'));
+  expect(viewport.scrollTo).toHaveBeenLastCalledWith({ left: Math.max(0, Math.min(894 - 450, center + 30 - 225)), behavior: 'smooth' });
 });
-
 it('keeps the same settings surface when entering and leaving a subsection', () => {
   setup('/profile/settings');
   const surface = screen.getByRole('region', { name: 'Настройки' });
@@ -286,17 +274,15 @@ it('keeps the same settings surface when entering and leaving a subsection', () 
   expect(screen.getByRole('region', { name: 'Настройки' })).toBe(surface);
 });
 
-it('never pans past the painted right edge of the room', () => {
- vi.stubGlobal('PointerEvent', MouseEvent);
+it('bounds the full room geometry at the painted right edge and clamps keyboard panning', () => {
  setup();
  const surface=screen.getByRole('group',{name:'Перемещение по квартире'});
- fireEvent.pointerDown(surface,{clientX:400,clientY:250,button:0});
- fireEvent.pointerMove(surface,{clientX:-1000,clientY:250});
- const scene=screen.getByRole('img',{name:'Квартира: Базовая'});
- expect(Number(scene.getAttribute('viewBox')?.split(' ')[0])+450).toBeLessThanOrEqual(864);
- vi.unstubAllGlobals();
+ for(let i=0;i<20;i++) fireEvent.keyDown(surface,{key:'ArrowRight'});
+ expect(surface.scrollLeft).toBe(894-450);
+ expect(screen.getByRole('img',{name:'Квартира: Базовая'})).toHaveAttribute('viewBox','-30 -60 894 840');
+ for(let i=0;i<20;i++) fireEvent.keyDown(surface,{key:'ArrowLeft'});
+ expect(surface.scrollLeft).toBe(0);
 });
-
 it('opens settings shortcuts from room objects and retains the laptop settings menu', () => {
  setup();
  for (const [label, title] of [
@@ -329,7 +315,7 @@ it('dismisses content from empty room space and switches directly to another obj
  fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
  fireEvent.click(screen.getByRole('textbox',{name:'Черновик'}));
  expect(screen.getByRole('region',{name:'Профиль'})).toBeInTheDocument();
- fireEvent.click(room);
+ fireEvent.click(room, { detail: 1 });
  expect(screen.queryByRole('region',{name:'Профиль'})).toBeNull();
  fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
  fireEvent.click(screen.getByRole('button',{name:'Телевизор: сюжет'}));
@@ -341,18 +327,17 @@ it('dismisses content from empty room space and switches directly to another obj
 });
 
 it.each([[220,255],[275,370]])('keeps content open after a swipe ending at %s,%s', (x,y) => {
- vi.stubGlobal('PointerEvent',MouseEvent);
  setup();
  fireEvent.click(screen.getByRole('tab',{name:'Профиль'}));
  const room=screen.getByRole('group',{name:'Перемещение по квартире'});
- fireEvent.pointerDown(room,{clientX:280,clientY:250,button:0});
+ fireEvent.pointerDown(room,{clientX:280,clientY:250,button:0,pointerType:'mouse',isPrimary:true});
  fireEvent.pointerMove(room,{clientX:x,clientY:y});
  fireEvent.pointerUp(room,{clientX:x,clientY:y});
- fireEvent.click(room);
+ fireEvent.click(room, { detail: 1 });
  expect(screen.getByRole('region',{name:'Профиль'})).toBeInTheDocument();
- fireEvent.pointerDown(room,{clientX:200,clientY:250,button:0});
+ fireEvent.pointerDown(room,{clientX:200,clientY:250,button:0,pointerType:'mouse',isPrimary:true});
  fireEvent.pointerUp(room,{clientX:200,clientY:250});
- fireEvent.click(room);
+ fireEvent.click(room, { detail: 1 });
  expect(screen.queryByRole('region',{name:'Профиль'})).toBeNull();
  vi.unstubAllGlobals();
 });
@@ -363,7 +348,8 @@ it('uses native horizontal scroll position without closing content or snapping',
  const viewport=screen.getByRole('group',{name:'Перемещение по квартире'});
  viewport.scrollLeft=137;
  fireEvent.scroll(viewport);
- expect(Number(screen.getByRole('img',{name:'Квартира: Базовая'}).getAttribute('viewBox')?.split(' ')[0])).toBeCloseTo(107);
+ expect(screen.getByRole('img',{name:'Квартира: Базовая'})).toHaveAttribute('viewBox','-30 -60 894 840');
+ expect(viewport.scrollLeft).toBe(137);
  expect(screen.getByRole('region',{name:'Профиль'})).toBeInTheDocument();
 });
 
@@ -394,4 +380,55 @@ it.each([false, true])('exits through the persistent bottom menu arrow with cont
   expect(exit).toHaveAttribute('href', '/sections');
   fireEvent.click(exit);
   expect(screen.getByLabelText('Маршрут')).toHaveTextContent('/sections');
+});
+
+it('keeps both scene viewBoxes fixed during native scroll without rebuilding room objects', () => {
+  const view = setup();
+  const surface = screen.getByRole('group', { name: 'Перемещение по квартире' });
+  const art = screen.getByRole('img', { name: 'Квартира: Базовая' });
+  const targets = screen.getByRole('group', { name: 'Предметы квартиры' });
+  const artBox = art.getAttribute('viewBox'), hitBox = targets.getAttribute('viewBox');
+  const furniture = view.container.querySelector('[data-layer="sofa"]');
+  for (const left of [25, 137, 250, 90]) {
+    surface.scrollLeft = left;
+    fireEvent.scroll(surface);
+    expect(art).toHaveAttribute('viewBox', artBox);
+    expect(targets).toHaveAttribute('viewBox', hitBox);
+    expect(view.container.querySelector('[data-layer="sofa"]')).toBe(furniture);
+    expect(surface.scrollLeft).toBe(left);
+  }
+});
+
+it('animates pulse indicators outside SVG while retaining every object hit target', () => {
+  const view = setup();
+  const targets = screen.getByRole('group', { name: 'Предметы квартиры' });
+  const pulses = view.container.querySelectorAll('.home-apartment__pulses .home-apartment__pulse');
+  expect(pulses.length).toBe(targets.querySelectorAll('[role="button"]').length);
+  for (const pulse of pulses) {
+    expect(pulse.namespaceURI).toBe('http://www.w3.org/1999/xhtml');
+    expect(pulse.querySelector('.home-apartment__pulse-ring')).not.toBeNull();
+  }
+  expect(targets.querySelector('.home-apartment__pulse-ring')).toBeNull();
+});
+
+it('leaves touch movement and momentum to the browser and does not move the scene from pointer events', () => {
+  setup();
+  const surface = screen.getByRole('group', { name: 'Перемещение по квартире' });
+  surface.scrollLeft = 137;
+  fireEvent.pointerDown(surface, { clientX: 280, clientY: 250, button: 0, pointerType: 'touch', isPrimary: true });
+  fireEvent.pointerMove(surface, { clientX: 50, clientY: 255, pointerType: 'touch' });
+  fireEvent.pointerCancel(surface);
+  expect(surface.scrollLeft).toBe(137);
+  surface.scrollLeft = 250;
+  fireEvent.scroll(surface);
+  expect(surface.scrollLeft).toBe(250);
+});
+
+it('centers immediately when reduced motion is enabled', () => {
+  vi.stubGlobal('matchMedia', () => ({ matches: true }));
+  try {
+    setup();
+    fireEvent.click(screen.getByRole('tab', { name: 'Настройки' }));
+    expect(screen.getByRole('group', { name: 'Перемещение по квартире' }).scrollTo).toHaveBeenLastCalledWith({ left: expect.any(Number), behavior: 'auto' });
+  } finally { vi.unstubAllGlobals(); }
 });

@@ -1,5 +1,5 @@
 import { apartmentInteractiveObjects, type ApartmentShortcut } from './apartmentInteractiveObjects.js';
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -37,6 +37,8 @@ import {
   apartmentSettingsSections,
   type ApartmentSettingsSection,
 } from './ApartmentSettingsContext.js';
+import { useHorizontalPan } from '../../bar/useHorizontalPan.js';
+import { apartmentBounds, apartmentViewBox } from './apartmentTypes.js';
 import { ApartmentObjects } from './ApartmentObjects.js';
 
 const pages = [
@@ -75,12 +77,10 @@ function readAppearance(key: string): Appearance {
 
 export function ApartmentScene({
   design,
-  camera,
   decor,
   trophyCount,
 }: {
   design: ApartmentDesign;
-  camera: number;
   decor: DecorCategory[];
   trophyCount: number;
 }): JSX.Element {
@@ -88,7 +88,7 @@ export function ApartmentScene({
   return (
     <svg
       className="home-apartment__scene"
-      viewBox={`${camera} -60 450 840`}
+      viewBox={apartmentViewBox}
       preserveAspectRatio="xMinYMid slice"
       role="img"
       aria-label={`Квартира: ${design.title}`}
@@ -223,20 +223,14 @@ export function ApartmentHome({
   owner: string | null;
 }): JSX.Element {
   const panRef = useRef<HTMLDivElement>(null);
-  const cameraFrame = useRef<number | null>(null);
-  const stopCamera = () => {
-    if (cameraFrame.current !== null) cancelAnimationFrame(cameraFrame.current);
-    cameraFrame.current = null;
-  };
-  useEffect(() => () => stopCamera(), []);
+  const pan = useHorizontalPan(panRef);
   const dockRef = useRef<HTMLDivElement>(null);
   const navigate = useNavigate(),
     location = useLocation();
   const preferenceKey = `apartment-appearance:${owner ?? 'guest'}`;
   const [appearance, setAppearance] = useState(() => readAppearance(preferenceKey));
-  const [camera, setCamera] = useState(-30);
   const [panSize, setPanSize] = useState({ width: 450, height: 840 });
-  const panScale = Math.max(panSize.width / 450, panSize.height / 840);
+  const panScale = Math.max(panSize.width / apartmentBounds.viewportWidth, panSize.height / apartmentBounds.height);
   useEffect(() => {
     const viewport = panRef.current;
     if (!viewport) return;
@@ -249,41 +243,21 @@ export function ApartmentHome({
     observer?.observe(viewport);
     return () => observer?.disconnect();
   }, []);
-  useEffect(() => {
+  const previousScale = useRef(panScale);
+  useLayoutEffect(() => {
     const viewport = panRef.current;
-    if (!viewport) return;
-    const left = Math.max(0, Math.min(894 * panScale - panSize.width, (camera + 30) * panScale));
-    if (Math.abs(viewport.scrollLeft - left) > 0.5) viewport.scrollLeft = left;
-  }, [camera, panScale, panSize.width]);
-  const clampCamera = (value: number) => {
-    const bounds = panRef.current?.getBoundingClientRect();
-    const width = bounds?.width || 450;
-    const scale = Math.max(width / 450, (bounds?.height || 840) / 840);
-    // The non-tiled room textures end at x=864. Never expose their empty edge.
-    return Math.max(-30, Math.min(864 - width / scale, value));
-  };
+    if (viewport && previousScale.current !== panScale) {
+      viewport.scrollLeft *= panScale / previousScale.current;
+    }
+    previousScale.current = panScale;
+  }, [panScale]);
+  const clampLeft = (left: number): number => Math.max(0, Math.min(apartmentBounds.width * panScale - panSize.width, left));
   const centerObject = (id: PageId) => {
-    stopCamera();
     const surface = panRef.current;
     const target = surface?.querySelector<SVGGElement>(`[data-apartment-page="${id}"]`);
     if (!surface || !target) return;
-    const bounds = surface.getBoundingClientRect();
-    const width = bounds.width || 450;
-    const scale = Math.max(width / 450, (bounds.height || 840) / 840);
-    const destination = clampCamera(Number(target.dataset.centerX) - width / (2 * scale));
-    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
-      setCamera(destination);
-      return;
-    }
-    let start: number | null = null;
-    const origin = camera;
-    const tick = (now: number) => {
-      start ??= now;
-      const progress = Math.max(0, Math.min(1, (now - start) / 420));
-      setCamera(origin + (destination - origin) * (1 - (1 - progress) ** 3));
-      cameraFrame.current = progress < 1 ? requestAnimationFrame(tick) : null;
-    };
-    cameraFrame.current = requestAnimationFrame(tick);
+    const left = clampLeft((Number(target.dataset.centerX) - apartmentBounds.left) * panScale - panSize.width / 2);
+    surface.scrollTo?.({ left, behavior: window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' });
   };
   const [profileOpen, setProfileOpen] = useState(location.pathname !== '/profile'),
     [appearanceOpen, setAppearanceOpen] = useState(false);
@@ -295,14 +269,6 @@ export function ApartmentHome({
   const triggerRef = useRef<HTMLElement | SVGElement | null>(null);
   const scrollPositions = useRef<Record<string, number>>({});
   const previousPath = useRef(location.pathname);
-  const suppressClick = useRef(false);
-  const gesture = useRef<{
-    id: number;
-    x: number;
-    y: number;
-    camera: number;
-    locked: boolean;
-  } | null>(null);
   const profile = useQuery<ProfileData>({
     queryKey: ['profile'],
     queryFn: () => apiFetch<ProfileData>('/me?summary=true'),
@@ -373,7 +339,7 @@ export function ApartmentHome({
   const closePanel = (): void => {
     setProfileOpen(false);
     setAppearanceOpen(false);
-    triggerRef.current?.focus();
+    triggerRef.current?.focus({ preventScroll: true });
   };
   useEffect(() => {
     if (!panelOpen) return;
@@ -409,28 +375,17 @@ export function ApartmentHome({
         role="group"
         aria-label="Перемещение по квартире"
         tabIndex={0}
-        onScroll={(event) => {
-          if (event.target !== event.currentTarget) return;
-          setCamera(clampCamera(-30 + event.currentTarget.scrollLeft / panScale));
-        }}
-        onWheel={stopCamera}
+        {...pan}
         onKeyDown={(e) => {
           if (e.target !== e.currentTarget) return;
           if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            stopCamera();
             e.preventDefault();
-            setCamera((current) =>
-              clampCamera(current + (e.key === 'ArrowLeft' ? -80 : 80)),
-            );
+            e.currentTarget.scrollLeft = clampLeft(e.currentTarget.scrollLeft + (e.key === 'ArrowLeft' ? -80 : 80) * panScale);
           }
         }}
         onClickCapture={(e) => {
-          if (suppressClick.current) {
-            suppressClick.current = false;
-            e.preventDefault();
-            e.stopPropagation();
-            return;
-          }
+          pan.onClickCapture?.(e);
+          if (e.defaultPrevented) return;
           if ((e.target as Element).closest('.home-apartment__object')) return;
           if (panelOpen) {
             e.preventDefault();
@@ -438,64 +393,22 @@ export function ApartmentHome({
             closePanel();
           }
         }}
-        onPointerDown={(e) => {
-          if (e.button !== 0 || gesture.current) return;
-          stopCamera();
-          suppressClick.current = false;
-          gesture.current = { id: e.pointerId, x: e.clientX, y: e.clientY, camera, locked: false };
-        }}
-        onPointerMove={(e) => {
-          const g = gesture.current;
-          if (!g || g.id !== e.pointerId) return;
-          const dx = e.clientX - g.x,
-            dy = e.clientY - g.y;
-          if (!g.locked) {
-            if (Math.abs(dy) > 8 && Math.abs(dy) >= Math.abs(dx)) {
-              suppressClick.current = true;
-              gesture.current = null;
-              return;
-            }
-            if (Math.abs(dx) < 8 || Math.abs(dx) < Math.abs(dy) * 1.2) return;
-            g.locked = true;
-            suppressClick.current = true;
-            if (e.pointerType !== 'touch') e.currentTarget.setPointerCapture?.(e.pointerId);
-          }
-          // Touch scrolling and its momentum belong to the browser, like the map and bar.
-          if (e.pointerType === 'touch') return;
-          const width = e.currentTarget.getBoundingClientRect().width || 360;
-          setCamera(clampCamera(g.camera - (dx * 430) / width));
-        }}
-        onPointerUp={(e) => {
-          const g = gesture.current;
-          if (!g || g.id !== e.pointerId) return;
-          gesture.current = null;
-          if (g.locked) {
-            if (e.currentTarget.hasPointerCapture?.(e.pointerId))
-              e.currentTarget.releasePointerCapture(e.pointerId);
-          }
-        }}
-        onPointerCancel={() => {
-          gesture.current = null;
-          suppressClick.current = true;
-        }}
       >
-        <div className="home-apartment__scroll-world" style={{ width: 894 * panScale }}>
-        <div className="home-apartment__scroll-stage" style={{ width: panSize.width }}>
-        <ApartmentScene
-          design={design}
-          camera={camera}
-          decor={appearance.decor}
-          trophyCount={Math.min(9, count)}
-        />
-        <ApartmentObjects
-          design={design}
-          camera={camera}
-          active={panelOpen ? page.id : null}
-          activeShortcut={appearanceOpen ? 'appearance' : settingsSection === 'menu' ? undefined : settingsSection}
-          onOpen={openPage}
-          onExit={() => navigate('/sections')}
-        />
-        </div>
+        <div className="home-apartment__scroll-world" style={{ width: apartmentBounds.width * panScale }}>
+          <div className="home-apartment__scroll-stage" style={{ height: apartmentBounds.height * panScale, top: (panSize.height - apartmentBounds.height * panScale) / 2 }}>
+          <ApartmentScene
+            design={design}
+            decor={appearance.decor}
+            trophyCount={Math.min(9, count)}
+          />
+          <ApartmentObjects
+            design={design}
+            active={panelOpen ? page.id : null}
+            activeShortcut={appearanceOpen ? 'appearance' : settingsSection === 'menu' ? undefined : settingsSection}
+            onOpen={openPage}
+            onExit={() => navigate('/sections')}
+          />
+          </div>
         </div>
       </div>
       <header className="home-apartment__header" hidden={panelOpen}>

@@ -265,23 +265,33 @@
   pointer-events: auto;
   touch-action: pan-x;
 }
+.home-apartment__pulses {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
 .home-apartment__pulse {
+  position: absolute;
+  aspect-ratio: 1;
+  transform: translate(-50%, -50%);
   pointer-events: none;
 }
 .home-apartment__pulse-ring {
-  stroke: rgba(255, 255, 255, 0.6);
-  stroke-width: 2px;
-  transform-box: fill-box;
-  transform-origin: center;
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border: 2px solid rgba(255, 255, 255, 0.6);
+  border-radius: 50%;
+  will-change: transform, opacity;
   animation: home-object-pulse 1s ease-out infinite;
 }
-.home-apartment__object.is-active .home-apartment__pulse {
-  opacity: 0;
+.home-apartment__pulse.is-active {
+  display: none;
 }
-.home-apartment__object:focus-visible .home-apartment__pulse-ring {
-  animation: none;
-  opacity: 0.6;
-  transform: scale(0.7);
+.home-apartment__object:focus-visible .home-apartment__object-hit {
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 2px;
 }
 @keyframes home-object-pulse {
   0% {
@@ -932,8 +942,8 @@
   scrollbar-width: none;
 }
 .home-apartment__pan::-webkit-scrollbar { display: none; }
-.home-apartment__scroll-world { height: 100%; }
-.home-apartment__scroll-stage { position: sticky; left: 0; height: 100%; }
+.home-apartment__scroll-world { position: relative; height: 100%; }
+.home-apartment__scroll-stage { position: absolute; left: 0; width: 100%; isolation: isolate; }
 
 /* Help shares the card gutters, without nested identities or separators. */
 .home-apartment .profile-settings-screen[data-apartment-section='help'] .profile-feedback-links {
