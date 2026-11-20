@@ -1,3 +1,4 @@
+import {acknowledgeShortcutHint, shortcutHintKey} from './shortcutHint.js';
 import {useLayoutEffect,useRef,useState,type ReactNode} from 'react';
 import './navigation-geometry.css';
 import './floating-chat.css';
@@ -107,8 +108,10 @@ export function FloatingShortcut({owner,storagePrefix,visible=true,playing=false
         const d = drag.current;
         if (!d || d.id !== e.pointerId) return;
         suppressClick.current = d.moved;
-        if (d.moved)
+        if (d.moved) {
+          acknowledgeShortcutHint(shortcutHintKey(owner));
           save(clamp({ x: d.start.x + e.clientX - d.x, y: d.start.y + e.clientY - d.y }));
+        }
         drag.current = null;
       }}
       onPointerCancel={() => {
