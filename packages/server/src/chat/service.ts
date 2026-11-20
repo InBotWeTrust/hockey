@@ -67,6 +67,14 @@ interface MyChatsRow {
 export const DEFAULT_NEWS_CHANNEL_SLUG = 'news';
 export const DEFAULT_NEWS_CHANNEL_NAME = 'Новости игры';
 
+// A player's first login creates their profile. Earlier game news is archive.
+const unreadCutoffSql = `greatest(
+  coalesce(cm.last_read_at, '1970-01-01'::timestamptz),
+  case when c.type = 'channel' and c.channel_slug = $2
+    then (select created_at from users where id = $1)
+  end
+)`;
+
 export async function ensureDefaultNewsChannel(
   pool: Pool,
   createdByUserId: string,
@@ -165,7 +173,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
       where m.chat_id = c.id
         and m.is_deleted = false
         and m.sender_id != $1
-        and m.created_at > coalesce(cm.last_read_at, '1970-01-01'::timestamptz)
+        and m.created_at > ${unreadCutoffSql}
     ) unread on true
     left join lateral (
       -- System channels are open to every active user (chat_members is lazy);
@@ -182,7 +190,7 @@ export async function getMyChats(pool: Pool, userId: string): Promise<ChatDTO[]>
              cm_self.pinned_at desc nulls last,
              c.last_message_at desc nulls last
   `;
-  const r = await pool.query<MyChatsRow>(sql, [userId]);
+  const r = await pool.query<MyChatsRow>(sql, [userId, DEFAULT_NEWS_CHANNEL_SLUG]);
   if (!r.rowCount) return [];
 
   const dmChatIds = r.rows.filter((row) => row.type === 'direct').map((row) => row.id);
@@ -990,7 +998,7 @@ export async function getUnreadCounts(pool: Pool, userId: string): Promise<Recor
 
   const sql = `
     with accessible_chats as (
-      select c.id
+      select c.id, c.type, c.channel_slug
         from chats c
         left join chat_members cm_access
           on cm_access.chat_id = c.id and cm_access.user_id = $1
@@ -1000,14 +1008,14 @@ export async function getUnreadCounts(pool: Pool, userId: string): Promise<Recor
     )
     select m.chat_id, count(m.id)::bigint as cnt
     from messages m
-    join accessible_chats ac on ac.id = m.chat_id
+    join accessible_chats c on c.id = m.chat_id
     left join chat_members cm on cm.chat_id = m.chat_id and cm.user_id = $1
-    where m.created_at > coalesce(cm.last_read_at, '1970-01-01'::timestamptz)
+    where m.created_at > ${unreadCutoffSql}
       and m.sender_id != $1
       and m.is_deleted = false
     group by m.chat_id
   `;
-  const r = await pool.query<{ chat_id: string; cnt: string }>(sql, [userId]);
+  const r = await pool.query<{ chat_id: string; cnt: string }>(sql, [userId, DEFAULT_NEWS_CHANNEL_SLUG]);
   const out: Record<string, number> = {};
   for (const row of r.rows) {
     out[row.chat_id] = Number(row.cnt);

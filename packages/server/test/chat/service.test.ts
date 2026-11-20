@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, beforeEach } from 'vitest';
 import { Pool } from 'pg';
 import { hasIntegrationEnv, createTestPool, resetDatabase } from '../helpers/testDb.js';
 import { applyMigrations } from '../../src/db/migrations.js';
-import { getMyChats, searchUsers, getUserPublicProfile } from '../../src/chat/service.js';
+import { ensureDefaultNewsChannel, getUnreadCounts, getMyChats, searchUsers, getUserPublicProfile } from '../../src/chat/service.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,6 +70,24 @@ describe.skipIf(!hasIntegrationEnv)('chat service', () => {
           channelSlug: 'news',
         }),
       ]);
+    });
+
+    it('starts game news as read and counts only publications after joining', async () => {
+      const news = await ensureDefaultNewsChannel(pool, userA);
+      const publish = (content: string) => pool.query(
+        'insert into messages (chat_id, sender_id, content) values ($1, $2, $3)',
+        [news.id, userA, content],
+      );
+      await pool.query(
+        `insert into messages (chat_id, sender_id, content, created_at)
+         select $1, $2, 'Archive', created_at - interval '1 second' from users where id = $3`,
+        [news.id, userA, userB],
+      );
+      expect((await getUnreadCounts(pool, userB))[news.id] ?? 0).toBe(0);
+      expect((await getMyChats(pool, userB)).find(chat => chat.id === news.id)?.unreadCount).toBe(0);
+      await publish('New announcement');
+      expect((await getUnreadCounts(pool, userB))[news.id]).toBe(1);
+      expect((await getMyChats(pool, userB)).find(chat => chat.id === news.id)?.unreadCount).toBe(1);
     });
 
     it('returns DM with counterpart info', async () => {
