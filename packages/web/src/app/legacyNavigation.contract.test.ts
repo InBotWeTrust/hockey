@@ -6,3 +6,8 @@ it.each(['./App.tsx', '../bar/cards/preview.tsx'])('does not mount the retired d
   expect(source).not.toMatch(/<BottomNav[\s/>]/);
   expect(source).not.toContain('app-shell--bottom-nav-visible');
 });
+
+it('keeps retired destination introductions out of the player shell', () => {
+  const app = readFileSync('src/app/App.tsx', 'utf8');
+  expect(app).not.toContain('<DestinationIntroductionGate');
+});

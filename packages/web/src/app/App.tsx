@@ -47,7 +47,6 @@ import { MandatoryAndroidUpdateModal } from '../components/MandatoryAndroidUpdat
 import { prepareInitialPlayerExperience } from './playerStartup.js';
 import { MARKSMANSHIP_CONSTRUCTOR_ENABLED } from './devOnlyFeatures.js';
 import { InviteScreen } from '../screens/InviteScreen.js';
-import { DestinationIntroductionGate } from '../arsenich/DestinationIntroductionGate.js';
 
 function loadDailyScreen() {
   return import('../screens/DailyScreen.js');
@@ -385,7 +384,6 @@ function AppScene(): JSX.Element {
       <CardInviteToast suppressed={isOpenRinkRoute(location)||location.pathname==='/sections'} />
       <AmateurAccessToast />
       <WeeklyChallengeStartModal enabled={weeklyStartModalEnabled} />
-      {user !== null && location.pathname !== '/admin' && <DestinationIntroductionGate />}
       {androidReleaseAccess && <MandatoryAndroidUpdateModal />}
       {androidReleaseAccess && <AndroidUpdateBanner />}
       <div
