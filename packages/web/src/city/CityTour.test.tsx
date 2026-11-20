@@ -74,7 +74,8 @@ it('resumes an interrupted tour without treating entry as play', async () => {
   t.view.unmount();
   render(<CityMap {...t.props} />);
   await screen.findByRole('button', { name: 'Продолжить знакомство' });
-  expect(document.querySelector('.city-tour-spotlight')).not.toBeNull();
+  expect(document.querySelector('.city-tour-spotlight')).toBeNull();
+  expect(document.querySelector('.city-tour-pointer')).not.toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Продолжить знакомство' }));
   expect(screen.getByText('6/13')).toBeVisible();
 });

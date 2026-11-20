@@ -127,27 +127,18 @@ export function CityMap(props:Props){
    const preferred=putAbove?object.top-bounds.top-48-height:object.bottom-bounds.top+48;
    card.style.top=`${Math.max(minTop,Math.min(bottom-height,preferred))}px`;
    card.style.bottom='auto';
-   const spotlight=root.querySelector<HTMLElement>('.city-tour-spotlight');
-   const hole=root.querySelector<HTMLElement>('.city-tour-spotlight__hole');
-   if(spotlight&&hole){
-    spotlight.style.height=`${Math.max(0,bottom+12)}px`;
-    hole.style.left=`${object.left-bounds.left-10}px`;
-    hole.style.top=`${object.top-bounds.top-10}px`;
-    hole.style.width=`${object.width+20}px`;
-    hole.style.height=`${object.height+20}px`;
-    const cardBounds=card.getBoundingClientRect();
-    const anchor=cityTourAnchor(object.left-bounds.left,object.right-bounds.left,bounds.width,cardBounds.left-bounds.left+cardBounds.width/2);
-    const targetX=anchor??0;
-    const x=Math.max(cardBounds.left-bounds.left+20,Math.min(cardBounds.right-bounds.left-20,targetX));
-    const direction=putAbove?1:-1;
-    const fromY=(putAbove?cardBounds.bottom:cardBounds.top)-bounds.top+direction*8;
-    const objectEdge=(putAbove?object.top-18:object.bottom+18)-bounds.top;
-    const toY=putAbove?Math.max(objectEdge,fromY+24):Math.min(objectEdge,fromY-24);
-    const length=Math.hypot(targetX-x,toY-fromY);
-    const ux=(targetX-x)/Math.max(1,length),uy=(toY-fromY)/Math.max(1,length);
-    const arrow=anchor!==null&&length>16?`M ${x} ${fromY} L ${targetX} ${toY} M ${targetX-ux*7-uy*5} ${toY-uy*7+ux*5} L ${targetX} ${toY} L ${targetX-ux*7+uy*5} ${toY-uy*7-ux*5}`:'';
-    root.querySelector('.city-tour-pointer')?.setAttribute('d',arrow);
-   }
+   const cardBounds=card.getBoundingClientRect();
+   const anchor=cityTourAnchor(object.left-bounds.left,object.right-bounds.left,bounds.width,cardBounds.left-bounds.left+cardBounds.width/2);
+   const targetX=anchor??0;
+   const x=Math.max(cardBounds.left-bounds.left+20,Math.min(cardBounds.right-bounds.left-20,targetX));
+   const direction=putAbove?1:-1;
+   const fromY=(putAbove?cardBounds.bottom:cardBounds.top)-bounds.top+direction*8;
+   const objectEdge=(putAbove?object.top-18:object.bottom+18)-bounds.top;
+   const toY=putAbove?Math.max(objectEdge,fromY+24):Math.min(objectEdge,fromY-24);
+   const length=Math.hypot(targetX-x,toY-fromY);
+   const ux=(targetX-x)/Math.max(1,length),uy=(toY-fromY)/Math.max(1,length);
+   const arrow=anchor!==null&&length>16?`M ${x} ${fromY} L ${targetX} ${toY} M ${targetX-ux*7-uy*5} ${toY-uy*7+ux*5} L ${targetX} ${toY} L ${targetX-ux*7+uy*5} ${toY-uy*7-ux*5}`:'';
+   root.querySelector('.city-tour-pointer')?.setAttribute('d',arrow);
   };
   update();
   const observer=typeof ResizeObserver==='undefined'?undefined:new ResizeObserver(update);
@@ -209,7 +200,7 @@ export function CityMap(props:Props){
    {tour.mode==='resume'&&tour.state&&<MapActionButton label="Знакомство" note={`${tour.state.viewed.length}/${cityTourPlaces.length}`} icon={<MapIcon/>} onClick={explore}/>}
    <MapActionButton label="Сообщения" icon={<MessageCircle/>} count={props.chatCount??0} onClick={()=>{rememberChatReturn(props.owner,'/sections');onNavigate(chatResumeRoute(props.owner));}}/>
   </aside>
-  {tourFocus&&<div className="city-tour-spotlight" aria-hidden="true"><div className="city-tour-spotlight__hole"/><svg className="city-tour-pointer-layer"><path className="city-tour-pointer"/></svg></div>}
+  {tourFocus&&<svg className="city-tour-pointer-layer" aria-hidden="true"><path className="city-tour-pointer"/></svg>}
   {props.noviceProgress&&props.noviceProgress.status!=='complete'&&<button type="button" className="district-novice-progress" onClick={()=>onNavigate('/daily')}>
    <strong><Target aria-hidden="true"/>Путь в Любители</strong>
    <span className="district-novice-progress__numbers"><span>{Math.min(props.noviceProgress.goals,props.noviceProgress.target)}/{props.noviceProgress.target}</span><span>осталось шайб: {Math.max(0,props.noviceProgress.target-props.noviceProgress.goals)}</span></span>
