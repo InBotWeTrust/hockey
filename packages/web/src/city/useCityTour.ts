@@ -15,8 +15,7 @@ const api: CityTourApi = {
 };
 export function hasUnseenTourPlaces(state: TourState) {
   return (
-    state.gameStarted &&
-    state.viewed.length > 0 &&
+    (state.eligible || state.viewed.length > 0) &&
     cityTourPlaces.some((place) => !state.viewed.includes(place.id))
   );
 }
@@ -117,13 +116,11 @@ export function useCityTour(
         setMode(
           requested
             ? 'tour'
-            : result.eligible
-              ? result.autoShow && queue.length === 0
-                ? 'intro'
-                : 'compact'
+            : result.eligible && result.autoShow && queue.length === 0
+              ? 'intro'
               : hasUnseenTourPlaces(merged)
                 ? 'resume'
-                : 'hidden',
+                : result.eligible && merged.completed ? 'compact' : 'hidden',
         );
         void syncRef.current();
       })

@@ -1,5 +1,6 @@
 import {render,screen,fireEvent} from '@testing-library/react';
 import {afterEach,expect,it,vi} from 'vitest';
+import {FloatingShortcut} from './FloatingShortcut';
 import {WindowHandleHint} from './WindowHandleHint';
 afterEach(()=>{localStorage.clear();vi.restoreAllMocks();});
 it('shows separate hints once per player and window kind',()=>{
@@ -38,4 +39,20 @@ it('remembers the shared shortcut hint separately from the window hints',()=>{
  expect(screen.queryByRole('status')).toBeNull();
  next.rerender(<WindowHandleHint owner="shortcut-player" kind="games"/>);
  expect(screen.getByRole('status')).toBeVisible();
+});
+
+it('keeps shortcut guidance across visits until a shortcut is dragged', () => {
+ const owner = 'first-drag';
+ const hint = () => render(<WindowHandleHint owner={owner} kind="shortcuts"/>);
+ const first = hint();
+ first.unmount();
+ hint();
+ expect(screen.getByRole('status')).toBeVisible();
+ render(<FloatingShortcut owner={owner} storagePrefix="test-position" label="Игры"
+   count={0} badgeLabel="Игры" className="floating-games" icon={null} onOpen={()=>{}}/>);
+ const button = screen.getByRole('button', {name:'Игры'});
+ for (const [type, x] of [['pointerdown',10], ['pointermove',40], ['pointerup',40]] as const) {
+   fireEvent(button, new MouseEvent(type, {bubbles:true, clientX:x, clientY:20, button:0}));
+ }
+ expect(screen.queryByRole('status')).toBeNull();
 });

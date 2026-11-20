@@ -65,19 +65,22 @@ it('offers the yard, explores all locations, returns to yard and starts directly
 it('resumes an interrupted tour without treating entry as play', async () => {
   const t = setup();
   fireEvent.click(await screen.findByRole('button', { name: 'Осмотреть город' }));
+  await waitFor(() => expect(t.api.action).toHaveBeenCalledWith({ action: 'view', location: 'locker' }));
   fireEvent.click(screen.getByRole('button', { name: 'Выбрать Банк' }));
   expect(screen.getByText('6/13')).toBeVisible();
   expect(t.navigate).not.toHaveBeenCalled();
   await waitFor(() =>
     expect(t.api.action).toHaveBeenCalledWith({ action: 'view', location: 'bank' }),
   );
+  fireEvent.click(screen.getByRole('button', { name: 'На карте: Банк' }));
+  expect(t.navigate).toHaveBeenCalled();
   t.view.unmount();
   render(<CityMap {...t.props} />);
-  await screen.findByRole('button', { name: 'Продолжить знакомство' });
-  expect(document.querySelector('.city-tour-spotlight')).toBeNull();
-  expect(document.querySelector('.city-tour-pointer')).not.toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Продолжить знакомство' }));
-  expect(screen.getByText('6/13')).toBeVisible();
+  const resume = await screen.findByRole('button', { name: 'Знакомство' });
+  expect(document.querySelector('.city-tour')).toBeNull();
+  expect(document.querySelector('.city-tour-pointer')).toBeNull();
+  fireEvent.click(resume);
+  expect(screen.getByText('3/13')).toBeVisible();
 });
 it('suppresses automatic guidance after play but permits manual review', async () => {
   const t = setup({ gameStarted: true, eligible: false });

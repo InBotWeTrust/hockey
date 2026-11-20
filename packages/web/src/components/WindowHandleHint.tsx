@@ -3,6 +3,8 @@ import {createPortal} from 'react-dom';
 import { X } from 'lucide-react';
 import './window-handle-hint.css';
 
+import {acknowledgeShortcutHint, hasAcknowledgedShortcutHint, shortcutHintAcknowledged, shortcutHintKey} from './shortcutHint.js';
+
 const memorySeen = new Set<string>();
 const copy = {
   shortcuts: { title: 'Игры и сообщения\nвсегда под рукой', text: 'Нажми на значок, чтобы открыть окно.\nЗначки можно перетаскивать –\nих положение сохранится.' },
@@ -14,7 +16,7 @@ function hasSeen(key: string): boolean {
   catch { return memorySeen.has(key); }
 }
 function HandleHint({ storageKey, kind, anchorRef }: { storageKey: string; kind: keyof typeof copy; anchorRef?: RefObject<HTMLElement | null> | undefined }): JSX.Element | null {
-  const [visible, setVisible] = useState(() => !hasSeen(storageKey));
+  const [visible, setVisible] = useState(() => !(kind === 'shortcuts' ? hasAcknowledgedShortcutHint(storageKey) : hasSeen(storageKey)));
   const hintRef = useRef<HTMLElement>(null);
   const [position, setPosition] = useState({left: 12, top: 12, arrow: ''});
   useLayoutEffect(() => {
@@ -67,21 +69,31 @@ function HandleHint({ storageKey, kind, anchorRef }: { storageKey: string; kind:
   }, [visible, anchorRef, kind]);
   useEffect(() => {
     if (!visible) return;
+    if (kind === 'shortcuts') {
+      const onAcknowledged = (event: Event) => {
+        if ((event as CustomEvent<string>).detail === storageKey) setVisible(false);
+      };
+      window.addEventListener(shortcutHintAcknowledged, onAcknowledged);
+      return () => window.removeEventListener(shortcutHintAcknowledged, onAcknowledged);
+    }
     memorySeen.add(storageKey);
     try { localStorage.setItem(storageKey, '1'); } catch { /* Remember in memory when storage is unavailable. */ }
-  }, [storageKey, visible]);
+  }, [kind, storageKey, visible]);
   if (!visible) return null;
   const content = copy[kind];
   return <>{position.arrow&&<svg className="window-handle-hint__arrow" aria-hidden="true"><path d={position.arrow}/></svg>}<aside ref={hintRef} style={{left:position.left,top:position.top}} className="glass window-handle-hint" role="status" aria-live="polite" aria-label={kind === 'shortcuts' ? 'Подсказка: игры и сообщения' : kind === 'games' ? 'Подсказка: окно игр' : 'Подсказка: сообщения'}>
     <div className="window-handle-hint__header">
       <strong>{content.title}</strong>
-      <button type="button" className="icon-btn" aria-label="Скрыть подсказку" onClick={() => setVisible(false)}><X size={14} aria-hidden="true" /></button>
+      <button type="button" className="icon-btn" aria-label="Скрыть подсказку" onClick={() => {
+        if (kind === 'shortcuts') acknowledgeShortcutHint(storageKey);
+        setVisible(false);
+      }}><X size={14} aria-hidden="true" /></button>
     </div>
     <p>{content.text}</p>
   </aside></>;
 }
 export function WindowHandleHint({ owner, kind, anchorRef }: { owner?: string | undefined; kind: keyof typeof copy; anchorRef?: RefObject<HTMLElement | null> | undefined }): JSX.Element {
-  const key = `window-handle-hint-v1:${owner ?? 'anonymous'}:${kind}`;
+  const key = kind === 'shortcuts' ? shortcutHintKey(owner) : `window-handle-hint-v1:${owner ?? 'anonymous'}:${kind}`;
   return <HandleHint key={key} storageKey={key} kind={kind} anchorRef={anchorRef} />;
 }
 
