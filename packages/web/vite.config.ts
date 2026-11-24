@@ -1,6 +1,7 @@
 import { criticalPwaAssets } from './src/performance/pwaCachePolicy.js';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -17,6 +18,25 @@ export default defineConfig({
   define: { 'import.meta.env.VITE_BAR_MAP_ENABLED': JSON.stringify(true), 'import.meta.env.VITE_PAGE_INTRODUCTIONS_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_TRAINING_EXERCISES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development'), 'import.meta.env.VITE_CHALLENGES_ENABLED': JSON.stringify(process.env.HOCKEY_DEPLOY_TARGET === 'development') },
   plugins: [
     react(),
+    {
+      name: 'hockey-public-partners',
+      configureServer(server) {
+        server.middlewares.use((request, _response, next) => {
+          if (/^\/partners\/?(?:\?|$)/.test(request.url ?? '')) {
+            request.url = request.url?.replace(/^\/partners\/?/, '/partners/index.html');
+          }
+          next();
+        });
+      },
+      configurePreviewServer(server) {
+        server.middlewares.use((request, _response, next) => {
+          if (/^\/partners\/?(?:\?|$)/.test(request.url ?? '')) {
+            request.url = request.url?.replace(/^\/partners\/?/, '/partners/index.html');
+          }
+          next();
+        });
+      },
+    },
     { name: 'hockey-critical-pwa', generateBundle(_options, bundle) { criticalAssets = criticalPwaAssets(bundle); } },
     {
       name: 'hockey-release-notes',
@@ -62,7 +82,8 @@ export default defineConfig({
         clientsClaim: true,
         importScripts: ['/push-sw.js', `/${notesWorker}`],
         globPatterns: ['**/*.{js,css,html,ico,woff2,webmanifest}'],
-        globIgnores: ['**/icons/app-logo.png'],
+        globIgnores: ['**/icons/app-logo.png', 'partners/**'],
+        navigateFallbackDenylist: [/^\/partners(?:\/|$)/],
         manifestTransforms: [async entries => ({
           manifest: entries.filter(entry => !/\.(js|css)$/.test(entry.url) || criticalAssets.has(entry.url)),
           warnings: [],
@@ -138,6 +159,7 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
+    rollupOptions: { input: { index: fileURLToPath(new URL('./index.html', import.meta.url)), partners: fileURLToPath(new URL('./partners/index.html', import.meta.url)) } },
     manifest: true,
     // Production maps would embed source text for the dev-only constructor.
     sourcemap: process.env.VITE_MARKSMANSHIP_CONSTRUCTOR === 'dev-only-enabled',

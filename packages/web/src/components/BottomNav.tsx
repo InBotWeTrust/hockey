@@ -118,6 +118,7 @@ export function isBottomNavVisible(location: string | NavLocation, user: AuthUse
     pathname !== '/privacy' &&
     pathname !== '/personal-data-consent' &&
     pathname !== '/demo' &&
+    pathname !== '/try' &&
     pathname !== '/profile/story/series-1' &&
     !isInChatRoom &&
     !isOpenRinkRoute(normalizeNavLocation(location)) &&
@@ -130,7 +131,7 @@ export function BottomNav({ preview = false }: { preview?: boolean } = {}): JSX.
   const updateUser = useAuthStore((s) => s.updateUser);
   const location = useLocation();
   const navigate = useNavigate();
-  const isDemo = location.pathname === '/demo';
+  const isDemo = location.pathname === '/demo' || location.pathname === '/try';
   const lastSectionsRouteRef = useRef(
     readRememberedRoute(LAST_SECTIONS_ROUTE_KEY, DEFAULT_SECTIONS_ROUTE),
   );

@@ -17,7 +17,15 @@ export function criticalPwaAssets(bundle: Record<string, BuildFile>): Set<string
     for (const dependency of file.imports ?? []) visit(dependency);
   };
   for (const [name, file] of Object.entries(bundle)) {
-    if (file.type === 'chunk' && (file.isEntry || file.facadeModuleId?.endsWith('/screens/SectionsScreen.tsx'))) visit(name);
+    const isPartnersEntry =
+      file.facadeModuleId?.endsWith('/partners/main.ts') ||
+      file.facadeModuleId?.endsWith('/partners/index.html');
+    if (
+      file.type === 'chunk' &&
+      ((file.isEntry && !isPartnersEntry) ||
+        file.facadeModuleId?.endsWith('/screens/SectionsScreen.tsx'))
+    )
+      visit(name);
   }
   return assets;
 }

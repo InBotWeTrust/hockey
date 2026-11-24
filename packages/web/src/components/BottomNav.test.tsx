@@ -258,8 +258,8 @@ describe('BottomNav remembered navigation', () => {
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();
   });
 
-  it('hides the dock on the demo rink', () => {
-    renderBottomNav('/demo');
+  it.each(['/demo', '/try'])('hides the dock on the demo rink at %s', path => {
+    renderBottomNav(path);
 
     expect(screen.queryByRole('navigation', { name: 'Демо-навигация' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Игра' })).toBeNull();

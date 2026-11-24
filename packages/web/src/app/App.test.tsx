@@ -152,6 +152,16 @@ describe('App routing + auth', () => {
     expect(document.querySelector('.locker-room-scene')).toBeNull();
   });
 
+  it.each(['/try', '/demo'])('opens the existing demo publicly at %s without onboarding', async path => {
+    await import('../screens/DailyScreen.js');
+    window.history.replaceState({}, '', path);
+    render(<App />);
+    expect(await screen.findByTestId('play-view')).toBeInTheDocument();
+    expect(window.location.pathname).toBe(path);
+    expect(appBackdropClassName(path)).toBe('');
+    expect(prepareInitialPlayerExperience).not.toHaveBeenCalled();
+  });
+
   it('opens a local second-period daily preview without authentication', async () => {
     // This tests the route, not cold Vite module compilation. Load the real
     // lazy screen before starting the DOM assertion's short wait budget.

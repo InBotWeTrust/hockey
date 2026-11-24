@@ -298,6 +298,7 @@ export function appBackdropClassName(pathname: string, search = ''): string {
       new URLSearchParams(search).get('play') === '1') ||
     pathname === '/test-court' ||
     pathname === '/demo' ||
+    pathname === '/try' ||
     (import.meta.env.DEV && pathname === '/dev/daily-period-preview') ||
     pathname.startsWith('/duel/') ||
     /^\/bonus-games\/[^/]+\/play$/.test(pathname)
@@ -364,6 +365,7 @@ function AppScene(): JSX.Element {
       '/privacy',
       '/personal-data-consent',
       '/demo',
+      '/try',
     ].includes(location.pathname);
   const hasArenaBackdrop = backdropClassName.split(' ').includes('app-shell--arena');
   const profileQuery = useOwnProfileSummary(user !== null && hasArenaBackdrop);
@@ -438,6 +440,7 @@ function AppScene(): JSX.Element {
               <Route path="/privacy" element={<PrivacyScreen />} />
               <Route path="/personal-data-consent" element={<PersonalDataConsentScreen />} />
               <Route path="/demo" element={<DemoScreen />} />
+              <Route path="/try" element={<DemoScreen />} />
               {DailyPeriodPreviewScreen && (
                 <Route
                   path="/dev/daily-period-preview"
@@ -697,6 +700,7 @@ function AppFrame(): JSX.Element {
     location.pathname === '/login' ||
     location.pathname === '/prices' ||
     location.pathname === '/demo' ||
+    location.pathname === '/try' ||
     (import.meta.env.DEV && location.pathname === '/dev/monthly-rating-reward-preview') ||
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
