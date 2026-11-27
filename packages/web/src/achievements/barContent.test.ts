@@ -1,10 +1,14 @@
-import live from '../../../server/src/achievements/barCatalog.json';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { existsSync, statSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { buildBarAchievements, barAchievementDefinitions } from './barCatalog.js';
 import { achievementThumbnailUrl } from './artwork.js';
 describe('bar achievement authored content', () => {
   it('keeps the real server catalogue equal to the reviewed preview', () => {
+    const live = JSON.parse(
+      readFileSync(resolve(process.cwd(), '../server/src/achievements/barCatalog.json'), 'utf8'),
+    );
     expect(live).toEqual(barAchievementDefinitions);
   });
   it('has authored descriptions distinct from exact level requirements', () => {
