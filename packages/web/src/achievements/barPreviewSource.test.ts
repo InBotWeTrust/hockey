@@ -4,7 +4,7 @@ describe('local reward source', () => {
   it('issues a reward once, advances the stage and never calls fetch', async () => {
     const source = createBarPreviewSource('amateur', true);
     const before = await source.fetch();
-    const first = before.achievements.find((x) => x.isClaimable)!;
+    const first = before.achievements.find((x) => x.isClaimable && (x.stage?.total ?? 0) > 1)!;
     const result = await source.claim(first.id);
     expect(result.rewards.stars).toBe(first.rewardStars);
     expect(result.stage?.opened).toBe(2);
