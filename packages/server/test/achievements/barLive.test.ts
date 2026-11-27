@@ -1,5 +1,5 @@
-import {durakTable} from '@hockey/game-core';
-import {commandCardRoom,readCardRoom} from '../../src/bar/durakRooms.js';
+import { durakTable } from '@hockey/game-core';
+import { commandCardRoom, readCardRoom } from '../../src/bar/durakRooms.js';
 import { actGame } from '../../src/bar/games/service.js';
 import { createMatch } from '@hockey/game-core';
 import { durak } from '@hockey/game-core';
@@ -12,6 +12,7 @@ import type { Pool, PoolClient } from 'pg';
 import { createTestPool, hasIntegrationEnv, resetDatabase } from '../helpers/testDb.js';
 import { applyMigrations } from '../../src/db/migrations.js';
 import {
+  observeBarFeats,
   recordBarGameResult,
   recordBarMessage,
   recordBarCardPurchase,
@@ -84,9 +85,30 @@ describe.skipIf(!hasIntegrationEnv)('bar live reward lifecycle', () => {
           "select count(*)::int as n,sum(reward_stars)::int as reward from achievement_stages where achievement_id like 'bar-%'",
         )
       ).rows[0],
-    ).toEqual({ n: 268, reward: 10363 });
+    ).toEqual({ n: 274, reward: 10413 });
     await result(id, randomUUID(), true, 'daria', new Date('2026-12-31Z'));
     expect((await card(id, 'bar-1-character')).stage?.progressValue).toBe(0);
+  });
+  it('keeps exact pool margins separate and retains future conditions until their stage opens', async () => {
+    const id = await user();
+    const observe = async (level: number) =>
+      transaction((c) => observeBarFeats(c, id, randomUUID(), at, { 9: level }, 'character'));
+    await observe(4);
+    expect((await card(id, 'bar-9-character')).isClaimable).toBe(false);
+    await observe(1);
+    expect((await card(id, 'bar-9-character')).isClaimable).toBe(true);
+    await transaction(async (c) => {
+      await claimCurrentAchievementStage(c, id, 'bar-9-character', at);
+    });
+    expect((await card(id, 'bar-9-character')).isClaimable).toBe(false);
+    for (const level of [2, 3]) {
+      await observe(level);
+      expect((await card(id, 'bar-9-character')).isClaimable).toBe(true);
+      await transaction(async (c) => {
+        await claimCurrentAchievementStage(c, id, 'bar-9-character', at);
+      });
+    }
+    expect((await card(id, 'bar-9-character')).isClaimable).toBe(true);
   });
   it('deduplicates results and pays each claimed stage once, retaining progress while waiting', async () => {
     const id = await user();
@@ -215,7 +237,13 @@ describe.skipIf(!hasIntegrationEnv)('bar live reward lifecycle', () => {
     const revision = v.revision;
     v = await getMariaMatch(pool, id, v.id, { revision, action: { type: 'finish' } });
     expect(v.result).toBe(0);
-    expect((await pool.query('select provenance,result from bar_computer_card_history where id=$1',[v.id])).rows[0]).toEqual({provenance:'server',result:'win'});
+    expect(
+      (
+        await pool.query('select provenance,result from bar_computer_card_history where id=$1', [
+          v.id,
+        ])
+      ).rows[0],
+    ).toEqual({ provenance: 'server', result: 'win' });
     await getMariaMatch(pool, id, v.id, { revision, action: { type: 'finish' } });
     expect((await card(id, 'bar-36-character')).isClaimable).toBe(true);
     expect((await card(id, 'bar-39-character')).isClaimable).toBe(true);
@@ -258,21 +286,56 @@ describe.skipIf(!hasIntegrationEnv)('bar live reward lifecycle', () => {
     expect((await card(id, 'bar-13-character')).isClaimable).toBe(true);
     expect((await card(id, 'bar-17-character')).isClaimable).toBe(true);
   });
-  it('credits an online table participant at their own finish before the rest of the table ends',async()=>{
-    const seats=[await user(),await user(),await user()],id=randomUUID();
-    const c=(suit:durak.Suit,rank:number)=>({id:`${suit}-${rank}`,suit,rank});
-    const game=durakTable.createTable(3,()=>0.4);
-    game.hands=[[c('clubs',6)],[c('hearts',9),c('spades',9)],[c('diamonds',9)]];
-    Object.assign(game,{deck:[],table:[],discard:[],attacker:0,defender:1,turn:0,limit:2,trump:'clubs',phase:'attack'});
-    const data={seats,capacity:3,owner:seats[0],status:'playing',ready:seats,searchUntil:null,countdownAt:null,proposed:false,revision:0,game,deadline:Date.now()+30000,achievementStartedAt:Date.now(),achievementTelemetry:createDurakAchievementTelemetry(game)};
-    await pool.query('insert into bar_card_rooms(id,data) values($1,$2)',[id,JSON.stringify(data)]);
-    let revision=0;
-    for(const [p,action] of [[0,{type:'play',cardId:'clubs-6'}],[1,{type:'take'}],[0,{type:'pass'}],[2,{type:'pass'}]] as [number,durakTable.TableAction][]) {
-      const v=await commandCardRoom(pool,seats[p]!,id,revision,{type:'move',action});revision=v.revision;
+  it('credits an online table participant at their own finish before the rest of the table ends', async () => {
+    const seats = [await user(), await user(), await user()],
+      id = randomUUID();
+    const c = (suit: durak.Suit, rank: number) => ({ id: `${suit}-${rank}`, suit, rank });
+    const game = durakTable.createTable(3, () => 0.4);
+    game.hands = [[c('clubs', 6)], [c('hearts', 9), c('spades', 9)], [c('diamonds', 9)]];
+    Object.assign(game, {
+      deck: [],
+      table: [],
+      discard: [],
+      attacker: 0,
+      defender: 1,
+      turn: 0,
+      limit: 2,
+      trump: 'clubs',
+      phase: 'attack',
+    });
+    const data = {
+      seats,
+      capacity: 3,
+      owner: seats[0],
+      status: 'playing',
+      ready: seats,
+      searchUntil: null,
+      countdownAt: null,
+      proposed: false,
+      revision: 0,
+      game,
+      deadline: Date.now() + 30000,
+      achievementStartedAt: Date.now(),
+      achievementTelemetry: createDurakAchievementTelemetry(game),
+    };
+    await pool.query('insert into bar_card_rooms(id,data) values($1,$2)', [
+      id,
+      JSON.stringify(data),
+    ]);
+    let revision = 0;
+    for (const [p, action] of [
+      [0, { type: 'play', cardId: 'clubs-6' }],
+      [1, { type: 'take' }],
+      [0, { type: 'pass' }],
+      [2, { type: 'pass' }],
+    ] as [number, durakTable.TableAction][]) {
+      const v = await commandCardRoom(pool, seats[p]!, id, revision, { type: 'move', action });
+      revision = v.revision;
     }
-    const finished=await readCardRoom(pool,seats[0]!,id);expect(finished.status).toBe('playing');expect(finished.seats[0]?.status).toBe('won');
-    expect((await card(seats[0]!,'bar-36-online')).isClaimable).toBe(true);
-    expect((await card(seats[1]!,'bar-36-online')).isClaimable).toBe(false);
+    const finished = await readCardRoom(pool, seats[0]!, id);
+    expect(finished.status).toBe('playing');
+    expect(finished.seats[0]?.status).toBe('won');
+    expect((await card(seats[0]!, 'bar-36-online')).isClaimable).toBe(true);
+    expect((await card(seats[1]!, 'bar-36-online')).isClaimable).toBe(false);
   });
-
 });

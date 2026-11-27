@@ -437,7 +437,7 @@ export function AchievementsScreen({
                 src={selected.photoUrl}
                 alt={selected.title}
               />
-              {selected.stage && (
+              {selected.stage && !(selected.bar && selected.stage.total === 1) && (
                 <AchievementLevelBadge stage={selected.stage} status={selected.status} />
               )}
             </div>
@@ -446,7 +446,11 @@ export function AchievementsScreen({
             </p>
           </div>
           {selected.stage && (
-            <AchievementStageDetails stage={selected.stage} status={selected.status} />
+            <AchievementStageDetails
+              stage={selected.stage}
+              status={selected.status}
+              singleTask={!!selected.bar && selected.stage.total === 1}
+            />
           )}
           {rewardText(selected) && (
             <div style={{ marginTop: 14, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
@@ -617,7 +621,7 @@ export function AchievementCard({
             <strong className="achievement-card__title" title={achievement.title}>
               {achievement.title}
             </strong>
-            {stage ? (
+            {stage && !(achievement.bar && stage.total === 1) ? (
               <span className="achievement-card__stage">
                 Уровень {stage.current} из {stage.total}
               </span>

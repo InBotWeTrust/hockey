@@ -4,7 +4,7 @@ export type NonDurakTelemetry = {
   darts180Streak: [number, number];
   dartsThrown: [number, number];
   dartsTurnPoints: [number, number];
-  poolFouled: [boolean, boolean];
+  poolFouls: [number, number];
   checkerOpponentKings: [number, number];
   checkerStartPieces: [number, number];
   ochkoFinalDeficit: [number, number];
@@ -21,7 +21,7 @@ const fresh = (): NonDurakTelemetry => ({
   darts180Streak: [0, 0],
   dartsThrown: [0, 0],
   dartsTurnPoints: [0, 0],
-  poolFouled: [false, false],
+  poolFouls: [0, 0],
   checkerOpponentKings: [0, 0],
   checkerStartPieces: [0, 0],
   ochkoFinalDeficit: [0, 0],
@@ -34,7 +34,7 @@ const copy = (value?: NonDurakTelemetry): NonDurakTelemetry =>
         darts180Streak: [...value.darts180Streak] as [number, number],
         dartsThrown: [...value.dartsThrown] as [number, number],
         dartsTurnPoints: [...(value.dartsTurnPoints ?? [0, 0])] as [number, number],
-        poolFouled: [...value.poolFouled] as [boolean, boolean],
+        poolFouls: [...(value.poolFouls ?? [0, 0])] as [number, number],
         checkerOpponentKings: [...value.checkerOpponentKings] as [number, number],
         checkerStartPieces: [...value.checkerStartPieces] as [number, number],
         ochkoFinalDeficit: [...value.ochkoFinalDeficit] as [number, number],
@@ -64,6 +64,7 @@ export function observeNonDurakTransition(
 ): NonDurakObservation {
   const telemetry = copy(stored),
     qualifiers: NonDurakObservation['qualifiers'] = [{}, {}];
+  if (after.game === before.game) return { telemetry, qualifiers };
   const game = after.game;
   if (game.kind === 'darts' && before.game.kind === 'darts' && after.feedback?.type === 'dart') {
     const player = after.feedback.actor;
@@ -83,7 +84,7 @@ export function observeNonDurakTransition(
   }
   if (game.kind === 'billiards' && before.game.kind === 'billiards') {
     if (after.feedback?.type === 'shot' && after.feedback.foul)
-      telemetry.poolFouled[after.feedback.actor] = true;
+      telemetry.poolFouls[after.feedback.actor]++;
     if (game.winner === 0 || game.winner === 1) {
       const winner = game.winner,
         own = game.groups[winner],
@@ -103,7 +104,7 @@ export function observeNonDurakTransition(
         add(qualifiers[winner], 8, margin === 1 ? 1 : 0);
         add(qualifiers[winner], 9, [3, 4, 5, 6].indexOf(margin) + 1);
         add(qualifiers[winner], 10, theirs === 0 ? 1 : 0);
-        add(qualifiers[winner], 11, telemetry.poolFouled[winner] ? 1 : 0);
+        add(qualifiers[winner], 11, levels(telemetry.poolFouls[winner], [1, 2, 3, 4]));
       }
     }
   }

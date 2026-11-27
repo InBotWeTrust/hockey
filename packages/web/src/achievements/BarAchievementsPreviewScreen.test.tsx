@@ -40,7 +40,7 @@ describe('bar achievement local preview', () => {
   });
   it.each([
     ['С запасом · Онлайн', 'Победить с разницей ровно в 3 обычных шара.'],
-    ['Фол не помеха · Вероника', 'Допустить собственный фол и всё равно выиграть партию.'],
+    ['Фол не помеха · Вероника', 'Выиграть одну партию, допустив не менее 1 собственного фола.'],
   ])('uses the hockey details layout for %s', async (title, requirement) => {
     render(
       <MemoryRouter initialEntries={['/dev/bar-achievements?level=amateur&filter=bar']}>
@@ -58,5 +58,19 @@ describe('bar achievement local preview', () => {
     ).toBeInTheDocument();
     expect(details.queryByLabelText('Все уровни задания')).not.toBeInTheDocument();
     expect(details.queryByText(/зв\. · .*опыта/)).not.toBeInTheDocument();
+  });
+  it('shows a single task without artificial level labels', async () => {
+    render(
+      <MemoryRouter initialEntries={['/dev/bar-achievements?level=amateur&filter=bar']}>
+        <BarAchievementsPreviewScreen />
+      </MemoryRouter>,
+    );
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Всухую · Онлайн. Открыть подробности' }),
+    );
+    const details = within(screen.getByRole('dialog'));
+    expect(details.getByText('Задание')).toBeInTheDocument();
+    expect(details.queryByText(/Текущий уровень|Задание для уровня/)).not.toBeInTheDocument();
+    expect(details.getByRole('progressbar', { name: 'Прогресс задания' })).toBeInTheDocument();
   });
 });

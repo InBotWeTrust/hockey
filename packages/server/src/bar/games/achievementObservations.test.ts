@@ -167,6 +167,41 @@ describe('non-Durak achievement observations', () => {
     expect(result.qualifiers[0]).toMatchObject({ 8: 1, 10: 1, 11: 1 });
   });
 
+  it.each([1, 2, 3, 4])(
+    'counts %i own fouls in one winning match without replaying stale feedback',
+    (count) => {
+      let before = runtime({
+        kind: 'billiards',
+        turn: 0,
+        winner: null,
+        groups: ['solids', 'stripes'],
+        break: false,
+        ballInHand: false,
+        lastFoul: false,
+        balls: [
+          { id: 1, x: 0, y: 0, pocketed: true },
+          { id: 9, x: 0, y: 0, pocketed: false },
+        ],
+      });
+      let telemetry: ReturnType<typeof observeNonDurakTransition>['telemetry'] | undefined;
+      for (let i = 0; i < count; i++) {
+        const after = {
+          ...runtime({ ...before.game }),
+          feedback: { type: 'shot' as const, actor: 0 as const, foul: true, pocketed: [] },
+        };
+        telemetry = observeNonDurakTransition(before, after, telemetry).telemetry;
+        telemetry = observeNonDurakTransition(after, { ...after }, telemetry).telemetry;
+        before = after;
+      }
+      const after = runtime({ ...before.game, winner: 0 });
+      expect(observeNonDurakTransition(before, after, telemetry).qualifiers[0][11]).toBe(count);
+      expect(
+        observeNonDurakTransition(before, runtime({ ...before.game, winner: 1 }), telemetry)
+          .qualifiers[1][11],
+      ).toBeUndefined();
+    },
+  );
+
   it('maps exact pool margins through six and never awards an unlisted seven-ball margin', () => {
     for (const [margin, expected] of [
       [3, 1],

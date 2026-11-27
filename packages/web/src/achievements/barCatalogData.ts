@@ -67,8 +67,8 @@ export const barAchievementSpecs: BarAchievementSpec[] = [
   {
     n: 11,
     name: 'Фол не помеха',
-    conditions: ['победа после собственного фола'],
-    rewards: [3],
+    conditions: [1, 2, 3, 4],
+    rewards: [3, 5, 8, 12],
     modes: 2,
   },
   {

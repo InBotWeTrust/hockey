@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import { buildBarAchievements, barAchievementDefinitions } from './barCatalog.js';
+it('defines four foul comeback levels', () => {
+  const task = barAchievementDefinitions.find((x) => x.id === 'bar-11-character')!;
+  expect(task.levels.map((x) => x.stars)).toEqual([3, 5, 8, 12]);
+});
 describe('bar achievement catalogue', () => {
   it('contains every separate mode and reward stage from the agreed list', () => {
     expect(barAchievementDefinitions).toHaveLength(95);
     expect(new Set(barAchievementDefinitions.map((x) => x.id)).size).toBe(95);
-    expect(barAchievementDefinitions.reduce((n, x) => n + x.levels.length, 0)).toBe(268);
+    expect(barAchievementDefinitions.reduce((n, x) => n + x.levels.length, 0)).toBe(274);
     expect(
       barAchievementDefinitions.reduce((n, x) => n + x.levels.reduce((s, l) => s + l.stars, 0), 0),
-    ).toBe(10363);
+    ).toBe(10413);
   });
   it('redacts inaccessible characters before the UI receives beginner cards', () => {
     const cards = buildBarAchievements('beginner');
