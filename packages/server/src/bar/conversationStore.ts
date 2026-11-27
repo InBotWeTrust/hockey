@@ -1,3 +1,4 @@
+import {recordBarMessage} from '../achievements/barProgress.js';
 import {completeElinaMeeting} from './elinaMeetingStore.js';
 import type {Interest} from './elinaMeeting.js';
 import {requireElinaOffice,recordOfficeConversationIncident} from './elinaOffice.js';
@@ -131,6 +132,7 @@ export class SqlConversationStore implements ConversationStore {
         [user, character, turn.id, JSON.stringify([turn])],
       );
       if (!rows[0]) throw new Error('reservation_lost');
+      if (!turn.speaker || turn.speaker === character) await recordBarMessage(db,user,turn.id,character,new Date(),true);
       if (enabled && usedStoryIds.length) {
         const authored = new Set(personaOf(character).biography.stories.map(story => story.id));
         const dynamic = await db.query<{ id: string }>(

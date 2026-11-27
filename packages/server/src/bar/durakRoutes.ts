@@ -1,5 +1,6 @@
-import type { FastifyPluginAsync } from 'fastify';
+import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import { z } from 'zod';
+import { AppError } from '../plugins/errors.js';
 import { joinCardRoom, readCardRoom, commandCardRoom, inviteToRoom, inviteCardsFromProfile } from './durakRooms.js';
 import {
   cardLobby,
@@ -7,6 +8,8 @@ import {
   inviteCards,
   respondCards,
   getCardMatch,
+  getMariaMatch,
+  startMariaMatch,
   tickCardMatches,
 } from './durakService.js';
 const idSchema = z.object({ id: z.string().uuid() });
@@ -22,6 +25,14 @@ const action = z.discriminatedUnion('type', [
 ]);
 export const durakRoutes: FastifyPluginAsync<{ backgroundTicksEnabled?: boolean }> = async (app, options) => {
   const auth = { preHandler: [app.authenticate] };
+  const mariaAccess = { preHandler: [app.authenticate, async (req: FastifyRequest) => {
+    const { rows } = await app.pg.query<{ completed:boolean }>('select (amateur_onboarding_completed or amateur_access_preserved) as completed from users where id=$1',[req.user.id]);
+    if (rows[0]?.completed !== true) throw new AppError('bar_character_unavailable','Этот собеседник пока недоступен.',403);
+  }] };
+  app.post('/bar/cards/maria', mariaAccess, req => startMariaMatch(app.pg, req.user.id));
+  app.get('/bar/cards/maria/:id', mariaAccess, req => getMariaMatch(app.pg, req.user.id, idSchema.parse(req.params).id));
+  app.post('/bar/cards/maria/:id', mariaAccess, req => getMariaMatch(app.pg, req.user.id, idSchema.parse(req.params).id,
+    z.object({ revision:z.number().int().nonnegative(), action:z.union([action,z.literal('surrender')]) }).parse(req.body)));
   app.post('/bar/cards/profile-invites', auth, (req) => {
     const body = z.object({ userId: z.string().uuid(), capacity: z.union([z.number().int().min(2).max(6), z.array(z.number().int().min(2).max(6)).min(1).max(5)]) }).strict().parse(req.body);
     return inviteCardsFromProfile(app.pg, req.user.id, body.userId, body.capacity);

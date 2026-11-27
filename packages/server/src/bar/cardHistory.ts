@@ -29,6 +29,6 @@ export class SqlCardHistoryStore implements CardHistoryStore {
       this.pool.query(`select result,count(*)::integer as count from bar_computer_card_history where user_id=$1 and character_id=$2 group by result`, [user,character]),
       this.pool.query(`select id,result,started_at,ended_at,surrendered,caught_cheats,provenance from bar_computer_card_history where user_id=$1 and character_id=$2 order by ended_at desc,id desc limit 5`, [user,character]),
     ]);
-    return { perspective: 'Результаты относительно игрока; источник — клиент игры. Ходы не записаны.', counts: counts.rows, recent: recent.rows };
+    return { perspective: 'Результаты относительно игрока; источник каждой записи указан в provenance. Ходы не записаны.', counts: counts.rows, recent: recent.rows };
   }
 }

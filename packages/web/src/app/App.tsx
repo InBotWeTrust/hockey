@@ -56,6 +56,9 @@ const DailyScreen = lazy(() => loadDailyScreen().then((module) => ({ default: mo
 const DemoScreen = lazy(() =>
   import('../screens/DailyScreen.js').then((module) => ({ default: module.DemoScreen })),
 );
+const BarAchievementsPreviewScreen = import.meta.env.DEV
+  ? lazy(() => import('../achievements/BarAchievementsPreviewScreen.js').then(module => ({default:module.BarAchievementsPreviewScreen})))
+  : null;
 const BeginnerOnboardingPreviewScreen = import.meta.env.DEV
   ? lazy(() => import('../onboarding/BeginnerOnboardingPreviewScreen.js').then((module) => ({
       default: module.BeginnerOnboardingPreviewScreen,
@@ -701,6 +704,9 @@ function AppFrame(): JSX.Element {
     location.pathname === '/auth/vk/callback' ||
     location.pathname === '/mobile-auth/telegram';
 
+  if (BarAchievementsPreviewScreen && location.pathname === '/dev/bar-achievements') {
+    return <Suspense fallback={<RouteLoading />}><BarAchievementsPreviewScreen /></Suspense>;
+  }
   if (BeginnerOnboardingPreviewScreen && location.pathname === '/dev/beginner-onboarding') {
     return <Suspense fallback={<RouteLoading />}><BeginnerOnboardingPreviewScreen /></Suspense>;
   }

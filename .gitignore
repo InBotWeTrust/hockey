@@ -50,3 +50,7 @@ caddy-config
 
 # local Liquid Glass browser acceptance artifacts
 /output/playwright/liquid-glass/
+
+# Generated source masters stay local; runtime WebP and provenance are tracked.
+/artifacts/bar-achievement-art-v1/sources/
+/artifacts/bar-achievement-art-v1/contact-sheet.png

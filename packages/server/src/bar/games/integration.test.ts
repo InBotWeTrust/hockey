@@ -1,3 +1,4 @@
+import {installInactiveBarAchievementSchema} from '../achievementTestSchema.js';
 import { findOrCreateDM, sendMessage } from '../../chat/service.js';
 import { installBarInviteSchema } from '../inviteChatTestSchema.js';
 import { readFile } from 'node:fs/promises';
@@ -58,6 +59,7 @@ describe.skipIf(!url)('bar games on an isolated PostgreSQL schema', () => {
         await readFile(new URL('../../../db/migrations/' + file, import.meta.url), 'utf8'),
       );
     await installBarInviteSchema(pool);
+    await installInactiveBarAchievementSchema(pool);
     for (const [id, name] of [
       [a, 'A'],
       [b, 'B'],

@@ -1,0 +1,56 @@
+.bar-preview {
+  min-height: 100dvh;
+  background: var(--app-background, #071a33);
+  padding-top: 16px;
+}
+.bar-preview__controls {
+  max-width: 732px;
+  margin: 0 auto;
+  padding: 14px;
+  border: 1px solid #ffffff20;
+  border-radius: 18px;
+  background: #112947;
+  color: #eef5ff;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.bar-preview__controls > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.bar-preview__controls > div:first-child > span {
+  font-size: 12px;
+  color: #a8bbd4;
+}
+.bar-preview__controls p {
+  font-size: 12px;
+  color: #a8bbd4;
+  margin: 0;
+  line-height: 1.5;
+}
+.bar-preview__scenario {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.bar-preview__scenario .btn {
+  font-size: 12px;
+  padding: 9px 12px;
+}
+.bar-preview .achievement-counts {
+  color: #bdcce0;
+}
+.bar-preview .achievements-screen > .screen-title-on-arena {
+  color: #eef5ff;
+}
+@media (max-width: 500px) {
+  .bar-preview__controls {
+    margin: 0 10px;
+  }
+  .bar-preview__controls > div:first-child {
+    flex-direction: column;
+  }
+}

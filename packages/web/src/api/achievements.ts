@@ -9,9 +9,33 @@ export interface AchievementDto {
   title: string;
   description: string;
   requirement: string;
-  category: 'career' | 'daily' | 'training' | 'duel' | 'tournament' | 'shop' | 'rating' | 'level' | 'fans';
+  category:
+    | 'career'
+    | 'daily'
+    | 'training'
+    | 'duel'
+    | 'tournament'
+    | 'shop'
+    | 'rating'
+    | 'level'
+    | 'fans'
+    | 'bar';
   availability: AchievementAvailability;
   futureTag: string | null;
+  accessRequirement?: 'amateur';
+  bar?: {
+    mode: 'character' | 'online' | 'social';
+    game?: string;
+    gameLabel?: string;
+    character?: string;
+  };
+  levels?: Array<{
+    level: number;
+    target: number;
+    requirement: string;
+    stars: number;
+    experience: number;
+  }>;
   rewardCurrency: number;
   rewardStars: number;
   rewardExperience: number;
@@ -72,12 +96,15 @@ export function claimAchievement(achievementId: string): Promise<ClaimAchievemen
 }
 
 export interface AchievementNotificationsResponse {
-  notifications: Array<{id: string}>;
+  notifications: Array<{ id: string }>;
   highlightTasks: boolean;
 }
 export function fetchAchievementNotifications(): Promise<AchievementNotificationsResponse> {
   return apiFetch('/achievements/notifications');
 }
-export function acknowledgeAchievementNotifications(ids: string[]): Promise<{ok: boolean}> {
-  return apiFetch('/achievements/notifications/seen', {method: 'POST', body: JSON.stringify({ids})});
+export function acknowledgeAchievementNotifications(ids: string[]): Promise<{ ok: boolean }> {
+  return apiFetch('/achievements/notifications/seen', {
+    method: 'POST',
+    body: JSON.stringify({ ids }),
+  });
 }

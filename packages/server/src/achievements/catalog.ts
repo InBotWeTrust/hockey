@@ -1,3 +1,4 @@
+import { BAR_DEFINITIONS } from './barCatalog.js';
 export const ACHIEVEMENT_CATEGORIES = [
   'career',
   'daily',
@@ -8,6 +9,7 @@ export const ACHIEVEMENT_CATEGORIES = [
   'rating',
   'level',
   'fans',
+  'bar',
 ] as const;
 
 export type AchievementCategory = (typeof ACHIEVEMENT_CATEGORIES)[number];
@@ -40,6 +42,7 @@ export interface AchievementSeed {
 }
 
 const DEFAULT_REWARD_BY_CATEGORY = {
+  bar: { rewardCurrency:0,rewardStars:0,rewardExperience:0 },
   fans: { rewardCurrency:0,rewardStars:0,rewardExperience:0 },
   career: { rewardCurrency: 0, rewardStars: 0, rewardExperience: 0 },
   daily: { rewardCurrency: 150, rewardStars: 1, rewardExperience: 75 },
@@ -894,6 +897,7 @@ const FAN_ACHIEVEMENT_SEEDS:AchievementSeed[] = [
 ].map(([threshold,title,reward],index)=>({id:`fans-${threshold}`,photoUrl:`/achievements/fans-${threshold}.webp`,title:String(title),description:'Трибуны поддерживают тебя.',requirement:`Набрать ${threshold} ${Number(threshold)===1?'болельщика':'болельщиков'}.`,category:'career',availability:'hidden',futureTag:null,rewardCurrency:0,rewardStars:Number(reward),rewardExperience:Number(reward),rewardTokens:0,sortOrder:30001+index}));
 
 export const ACHIEVEMENT_SEEDS: AchievementSeed[] = [...ACHIEVEMENT_SEED_DEFINITIONS,...FAN_ACHIEVEMENT_SEEDS,
+...BAR_DEFINITIONS.map((d,i):AchievementSeed=>({id:d.id,photoUrl:d.photoUrl,title:d.title,description:d.description,requirement:d.levels[0]!.requirement,category:'bar',availability:'active',futureTag:null,rewardCurrency:0,rewardStars:d.levels[0]!.stars,rewardExperience:d.levels[0]!.experience,rewardTokens:0,sortOrder:31000+i})),
 {id:'first-period',photoUrl:'/achievements/first-daily-game.webp',title:'Первый период',description:'Первый шаг на игровом льду сделан.',requirement:'Штатно завершить первый период ежедневной игры: по броскам или по времени.',category:'daily' as const,availability:'active' as const,futureTag:null,...approvedReward(0,2),sortOrder:30020},
 {id:'hockey-school',photoUrl:'/achievements/first-training.webp',title:'Школа хоккея',description:'Все упражнения начального курса позади.',requirement:'Пройти все 7 упражнений начального курса.',category:'training' as const,availability:'active' as const,futureTag:null,...approvedReward(0,10),sortOrder:30030},{id:'fans-support',photoUrl:'/achievements/fans-1.webp',title:'Болельщики',description:'Трибуны поддерживают тебя.',requirement:'Набрать 1 болельщика.',category:'career' as const,availability:'active' as const,futureTag:null,rewardCurrency:0,rewardStars:0,rewardExperience:0,rewardTokens:0,sortOrder:30000}].map(
   (achievement) => ({

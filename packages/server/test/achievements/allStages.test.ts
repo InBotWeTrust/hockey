@@ -31,7 +31,7 @@ describe.skipIf(!hasIntegrationEnv)('every enabled achievement ladder', () => {
     async (achievementId) => {
       const userId = randomUUID();
       await pool.query(
-        "insert into users(id,display_name,timezone) values($1,'Ladder test','UTC')",
+        "insert into users(id,display_name,timezone,amateur_onboarding_completed) values($1,'Ladder test','UTC',true)",
         [userId],
       );
       const stages = ACHIEVEMENT_STAGE_DEFINITIONS.filter(

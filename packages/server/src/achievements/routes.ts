@@ -32,6 +32,7 @@ export const achievementRoutes: FastifyPluginAsync = async (app) => {
       `select n.id from achievement_notifications n
        join achievements a on a.id=n.achievement_id
        where n.user_id=$1 and n.shown_at is null and a.availability='active'
+       and (a.id not in ('bar-13-character','bar-14-character','bar-15-character','bar-16-character','bar-17-character','bar-18-character','bar-19-character','bar-30-character','bar-31-character','bar-32-character','bar-33-character','bar-34-character','bar-35-character','bar-36-character','bar-37-character','bar-38-character','bar-39-character','bar-40-character','bar-41-character','bar-42-character','bar-43-character','bar-50-social','bar-51-social','bar-52-social','bar-53-social') or exists(select 1 from users u where u.id=$1 and (u.amateur_onboarding_completed or u.amateur_access_preserved)))
        order by n.created_at,n.id limit 200`, [req.user.id]);
     const hint = await app.pg.query<{unseen:boolean}>('select achievement_map_hint_shown_at is null as unseen from users where id=$1', [req.user.id]);
     return { notifications: rows, highlightTasks: hint.rows[0]?.unseen === true };

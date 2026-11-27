@@ -142,6 +142,7 @@ async function create(
     character,
     data: {
       runtime: createMatch(kind, starter, kind === 'armwrestling' && character ? now + 3000 : now, character !== null, randomInt(0x100000000)),
+      achievementStartedAt: character && kind !== 'battleship' ? now : null,
       starter,
       ready: character && kind!=='battleship'
         ? null
@@ -207,6 +208,7 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
     const row = await load(c, user, id, now, (r) => {
       storedRevision = r.data.runtime.revision;
     });
+    const beforeRuntime = row.data.runtime;
     const payload = JSON.stringify(input);
     const receipt = await c.query<{ user_id: string; payload: string }>(
       'select * from bar_game_commands where match_id=$1 and request_id=$2',
@@ -272,7 +274,7 @@ export const actGame = (pool: Pool, user: string, id: string, input: BarGameComm
           throw conflict();
         }
     }
-    await persist(c, row, now);
+    await persist(c, row, now, beforeRuntime);
     await c.query(
       'insert into bar_game_commands(match_id,request_id,user_id,payload) values($1,$2,$3,$4)',
       [id, input.requestId, user, payload],
