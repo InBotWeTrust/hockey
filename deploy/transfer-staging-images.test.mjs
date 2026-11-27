@@ -14,7 +14,16 @@ function run(scenario) {
       mode: 0o755,
     });
   mock('timeout', 'shift\nexec "$@"\n');
-  mock('python3', 'cp "$2" "$3"\n');
+  mock(
+    'python3',
+    `
+case "$2" in
+ --configs) printf '{}\\n' ;;
+ --verify-configs) cat >/dev/null; if [ "$IMAGE_TEST_CASE" = bad-id ] && [ "\${IMAGE_TEST_REMOTE:-0}" = 1 ]; then exit 8; fi ;;
+ *) cp "$2" "$3" ;;
+esac
+`,
+  );
   mock(
     'docker',
     `
@@ -82,7 +91,7 @@ test('a failed image producer cannot turn into a successful deployment', () => {
   assert.notEqual(r.status, 0);
   assert.doesNotMatch(r.stdout, /Verified staging image content/);
 });
-test('an image ID mismatch blocks container recreation', () => {
+test('an image config identity mismatch blocks container recreation', () => {
   const r = run('bad-id');
   assert.notEqual(r.status, 0);
   assert.doesNotMatch(r.stdout, /Verified staging image content/);

@@ -31,11 +31,6 @@ cleanup() {
 trap cleanup EXIT
 timeout 300 docker pull "$server_ref"
 timeout 300 docker pull "$web_ref"
-server_id="$(docker image inspect --format '{{.Id}}' "$server_ref")"
-web_id="$(docker image inspect --format '{{.Id}}' "$web_ref")"
-[[ "$server_id" =~ ^sha256:[0-9a-f]{64}$ ]]
-[[ "$web_id" =~ ^sha256:[0-9a-f]{64}$ ]]
-
 remote_dir="$(ssh "${ssh_options[@]}" "$ssh_target" 'mktemp -d /tmp/hockey-staging-images.XXXXXXXX' < /dev/null)"
 [[ "$remote_dir" =~ ^/tmp/hockey-staging-images\.[a-zA-Z0-9]+$ ]]
 archive_preparer="$(dirname "$0")/prepare-image-archive.py"
@@ -86,20 +81,19 @@ trap - ERR
 BASIS
 timeout 300 docker image save "$server_ref" "$web_ref" > "$local_dir/input.tar"
 timeout 300 python3 "$archive_preparer" "$local_dir/input.tar" "$local_dir/images.tar"
+timeout 300 python3 "$archive_preparer" --configs "$local_dir/input.tar" > "$local_dir/expected.json"
 rm -- "$local_dir/input.tar"
 # Prove the packaging is accepted by Docker before sending any image payload.
 timeout 300 docker image load < "$local_dir/images.tar"
-test "$(docker image inspect --format '{{.Id}}' "$server_ref")" = "$server_id"
-test "$(docker image inspect --format '{{.Id}}' "$web_ref")" = "$web_id"
+timeout 300 docker image save "$server_ref" "$web_ref" | \
+  timeout 300 python3 "$archive_preparer" --verify-configs "$local_dir/expected.json"
+ssh "${ssh_options[@]}" "$ssh_target" "cat > '$remote_dir/expected.json'" < "$local_dir/expected.json"
 printf -v rsync_shell '%q ' ssh "${ssh_options[@]}"
 timeout 900 rsync --no-whole-file --block-size=1024 --compress --checksum --stats \
   -e "$rsync_shell" "$local_dir/images.tar" "$ssh_target:$remote_dir/images.tar"
 ssh "${ssh_options[@]}" "$ssh_target" "timeout 300 docker image load < '$remote_dir/images.tar'" < /dev/null
 
-# A successful pipe alone is insufficient: both tags must name the exact runner images.
-ssh "${ssh_options[@]}" "$ssh_target" bash -s -- "$server_ref" "$server_id" "$web_ref" "$web_id" <<'VERIFY'
-set -euo pipefail
-test "$(docker image inspect --format '{{.Id}}' "$1")" = "$2"
-test "$(docker image inspect --format '{{.Id}}' "$3")" = "$4"
-printf 'Verified staging image content for %s and %s\n' "$1" "$3"
-VERIFY
+# OCI manifest IDs change with layer compression. The immutable config digest
+# includes every runtime setting and the ordered raw filesystem layer digests.
+ssh "${ssh_options[@]}" "$ssh_target" "bash -o pipefail -c 'timeout 300 docker image save $server_ref $web_ref | timeout 300 python3 $remote_dir/prepare.py --verify-configs $remote_dir/expected.json'" < /dev/null
+printf 'Verified staging image content for %s and %s\n' "$server_ref" "$web_ref"
