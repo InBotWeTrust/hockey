@@ -177,7 +177,7 @@ jobs:
             "${USER}@${HOST}:${REMOTE_PATH}/"
 
       - name: Transfer ready-built staging images over SSH
-        timeout-minutes: 20
+        timeout-minutes: 30
         env:
           STAGING_SSH_USER: ${{ secrets.DEPLOY_USER }}
           STAGING_SSH_HOST: ${{ secrets.DEPLOY_HOST }}

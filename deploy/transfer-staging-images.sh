@@ -19,7 +19,16 @@ ssh_options=(-i "$SSH_IDENTITY_FILE" -o BatchMode=yes -o ConnectTimeout=15)
 
 # GHCR downloads stay on the Actions runner; the VPS receives ready-built layers.
 printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin
-trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
+local_dir="$(mktemp -d)"
+remote_dir=""
+cleanup() {
+  docker logout ghcr.io >/dev/null 2>&1 || true
+  rm -rf -- "$local_dir"
+  if [[ "$remote_dir" =~ ^/tmp/hockey-staging-images\.[a-zA-Z0-9]+$ ]]; then
+    ssh "${ssh_options[@]}" "$ssh_target" "rm -rf -- '$remote_dir'" < /dev/null || true
+  fi
+}
+trap cleanup EXIT
 timeout 300 docker pull "$server_ref"
 timeout 300 docker pull "$web_ref"
 server_id="$(docker image inspect --format '{{.Id}}' "$server_ref")"
@@ -27,10 +36,25 @@ web_id="$(docker image inspect --format '{{.Id}}' "$web_ref")"
 [[ "$server_id" =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ "$web_id" =~ ^sha256:[0-9a-f]{64}$ ]]
 
-# Prune before loading: newly loaded images must survive until compose recreates services.
-ssh "${ssh_options[@]}" "$ssh_target" 'docker image prune -af' < /dev/null
-docker image save "$server_ref" "$web_ref" | gzip -1 | \
-  timeout 600 ssh "${ssh_options[@]}" "$ssh_target" 'bash -o pipefail -c "gzip -d | docker image load"'
+# Build a disposable basis from the images already serving dev. rsync reuses
+# unchanged asset/dependency bytes even when Docker COPY layer digests differ.
+# No image is built on the VPS, and running images remain available for rollback.
+remote_dir="$(ssh "${ssh_options[@]}" "$ssh_target" bash -s <<'BASIS'
+set -euo pipefail
+command -v rsync > /dev/null
+basis_dir="$(mktemp -d /tmp/hockey-staging-images.XXXXXXXX)"
+server_basis="$(docker inspect --format '{{.Config.Image}}' ultimate-hockey-server-dev-1)"
+web_basis="$(docker inspect --format '{{.Config.Image}}' ultimate-hockey-web-dev-1)"
+timeout 300 docker image save "$server_basis" "$web_basis" > "$basis_dir/images.tar"
+printf '%s\n' "$basis_dir"
+BASIS
+)"
+[[ "$remote_dir" =~ ^/tmp/hockey-staging-images\.[a-zA-Z0-9]+$ ]]
+docker image save "$server_ref" "$web_ref" > "$local_dir/images.tar"
+printf -v rsync_shell '%q ' ssh "${ssh_options[@]}"
+timeout 900 rsync --no-whole-file --compress --checksum --stats \
+  -e "$rsync_shell" "$local_dir/images.tar" "$ssh_target:$remote_dir/images.tar"
+ssh "${ssh_options[@]}" "$ssh_target" "timeout 300 docker image load < '$remote_dir/images.tar'" < /dev/null
 
 # A successful pipe alone is insufficient: both tags must name the exact runner images.
 ssh "${ssh_options[@]}" "$ssh_target" bash -s -- "$server_ref" "$server_id" "$web_ref" "$web_id" <<'VERIFY'
