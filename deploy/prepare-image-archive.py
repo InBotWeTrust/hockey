@@ -61,5 +61,36 @@ def prepare(source, destination):
             add(output, 'manifest.json', io.BytesIO(data), len(data))
 
 
+def config_identities(path):
+    """Config digests are stable across OCI compression and Docker store versions."""
+    hashes, manifest = {}, None
+    stream = sys.stdin.buffer if path == '-' else open(path, 'rb')
+    try:
+        with tarfile.open(fileobj=stream, mode='r|*') as archive:
+            for member in archive:
+                name = member.name.removeprefix('./')
+                if member.isfile() and member.size <= 8 * 1024 * 1024:
+                    data = archive.extractfile(member).read()
+                    hashes[name] = 'sha256:' + hashlib.sha256(data).hexdigest()
+                    if name == 'manifest.json':
+                        manifest = json.loads(data)
+        if manifest is None:
+            raise ValueError('Docker archive manifest is missing')
+        return {tag: hashes[image['Config'].removeprefix('./')]
+                for image in manifest for tag in image.get('RepoTags', [])}
+    finally:
+        if path != '-':
+            stream.close()
+
+
 if __name__ == '__main__':
-    prepare(sys.argv[1], sys.argv[2])
+    if sys.argv[1] == '--configs':
+        print(json.dumps(config_identities(sys.argv[2]), sort_keys=True))
+    elif sys.argv[1] == '--verify-configs':
+        expected = json.loads(pathlib.Path(sys.argv[2]).read_text())
+        actual = config_identities('-')
+        if not expected or actual != expected:
+            raise ValueError('Loaded image config identities do not match the built release')
+        print('Verified exact image config and rootfs identities')
+    else:
+        prepare(sys.argv[1], sys.argv[2])
