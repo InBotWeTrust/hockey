@@ -36,16 +36,24 @@ web_id="$(docker image inspect --format '{{.Id}}' "$web_ref")"
 [[ "$server_id" =~ ^sha256:[0-9a-f]{64}$ ]]
 [[ "$web_id" =~ ^sha256:[0-9a-f]{64}$ ]]
 
+remote_dir="$(ssh "${ssh_options[@]}" "$ssh_target" 'mktemp -d /tmp/hockey-staging-images.XXXXXXXX' < /dev/null)"
+[[ "$remote_dir" =~ ^/tmp/hockey-staging-images\.[a-zA-Z0-9]+$ ]]
+archive_preparer="$(dirname "$0")/prepare-image-archive.py"
+ssh "${ssh_options[@]}" "$ssh_target" "cat > '$remote_dir/prepare.py'" < "$archive_preparer"
+
 # Build a disposable basis from the images already serving dev. rsync reuses
 # unchanged asset/dependency bytes even when Docker COPY layer digests differ.
 # No image is built on the VPS, and running images remain available for rollback.
-remote_dir="$(ssh "${ssh_options[@]}" "$ssh_target" bash -s <<'BASIS'
+ssh "${ssh_options[@]}" "$ssh_target" bash -s -- "$remote_dir" <<'BASIS'
 set -euo pipefail
 command -v rsync > /dev/null
 # The superseded dev-only SSH pipe can outlive a cancelled Actions runner.
 # Match its exact command under our own user; production uses registry pulls.
 legacy_pids=""
-for legacy_pid in $(pgrep -u "$(id -u)" -f '^bash -o pipefail -c gzip -d \| docker image load$' || true); do
+for legacy_pid in $(
+  pgrep -u "$(id -u)" -f '^bash -o pipefail -c gzip -d \| docker image load$' || true
+  pgrep -u "$(id -u)" -f '^rsync --server .* /tmp/hockey-staging-images\.[a-zA-Z0-9]+/images\.tar$' || true
+); do
   legacy_pids="$legacy_pids $legacy_pid $(pgrep -P "$legacy_pid" || true)"
   pkill -TERM -P "$legacy_pid" || true
   kill -TERM "$legacy_pid" || true
@@ -59,7 +67,7 @@ for attempt in {1..10}; do
   sleep 1
 done
 [[ -z "$alive" ]] || { echo 'Legacy staging loader did not stop' >&2; exit 1; }
-basis_dir="$(mktemp -d /tmp/hockey-staging-images.XXXXXXXX)"
+basis_dir="$1"
 trap 'rm -rf -- "$basis_dir"' ERR
 basis_refs=()
 for container in ultimate-hockey-server-dev-1 ultimate-hockey-web-dev-1; do
@@ -68,18 +76,23 @@ for container in ultimate-hockey-server-dev-1 ultimate-hockey-web-dev-1; do
   fi
 done
 if (( ${#basis_refs[@]} )); then
-  timeout 300 docker image save "${basis_refs[@]}" > "$basis_dir/images.tar"
+  timeout 300 docker image save "${basis_refs[@]}" > "$basis_dir/input.tar"
+  timeout 300 python3 "$basis_dir/prepare.py" "$basis_dir/input.tar" "$basis_dir/images.tar"
+  rm -- "$basis_dir/input.tar"
 else
   : > "$basis_dir/images.tar"
 fi
 trap - ERR
-printf '%s\n' "$basis_dir"
 BASIS
-)"
-[[ "$remote_dir" =~ ^/tmp/hockey-staging-images\.[a-zA-Z0-9]+$ ]]
-timeout 300 docker image save "$server_ref" "$web_ref" > "$local_dir/images.tar"
+timeout 300 docker image save "$server_ref" "$web_ref" > "$local_dir/input.tar"
+timeout 300 python3 "$archive_preparer" "$local_dir/input.tar" "$local_dir/images.tar"
+rm -- "$local_dir/input.tar"
+# Prove the packaging is accepted by Docker before sending any image payload.
+timeout 300 docker image load < "$local_dir/images.tar"
+test "$(docker image inspect --format '{{.Id}}' "$server_ref")" = "$server_id"
+test "$(docker image inspect --format '{{.Id}}' "$web_ref")" = "$web_id"
 printf -v rsync_shell '%q ' ssh "${ssh_options[@]}"
-timeout 900 rsync --no-whole-file --compress --checksum --stats \
+timeout 900 rsync --no-whole-file --block-size=1024 --compress --checksum --stats \
   -e "$rsync_shell" "$local_dir/images.tar" "$ssh_target:$remote_dir/images.tar"
 ssh "${ssh_options[@]}" "$ssh_target" "timeout 300 docker image load < '$remote_dir/images.tar'" < /dev/null
 

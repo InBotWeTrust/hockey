@@ -14,6 +14,7 @@ function run(scenario) {
       mode: 0o755,
     });
   mock('timeout', 'shift\nexec "$@"\n');
+  mock('python3', 'cp "$2" "$3"\n');
   mock(
     'docker',
     `
@@ -108,7 +109,15 @@ test('real rsync reuses unchanged bytes while preserving the exact new archive',
     writeFileSync(source, next);
     const result = spawnSync(
       'rsync',
-      ['--checksum', '--no-whole-file', '--compress', '--stats', source, target],
+      [
+        '--checksum',
+        '--no-whole-file',
+        '--block-size=1024',
+        '--compress',
+        '--stats',
+        source,
+        target,
+      ],
       { encoding: 'utf8', env: { ...process.env, LC_ALL: 'C' } },
     );
     assert.equal(result.status, 0, result.stderr);
