@@ -111,6 +111,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: build-and-push
     timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read
 
     steps:
       - name: Checkout
@@ -173,14 +176,24 @@ jobs:
             docker-compose.yml docker-compose.staging.yml \
             "${USER}@${HOST}:${REMOTE_PATH}/"
 
-      - name: Pull staging images and restart services on VPS
+      - name: Transfer ready-built staging images over SSH
+        timeout-minutes: 20
+        env:
+          STAGING_SSH_USER: ${{ secrets.DEPLOY_USER }}
+          STAGING_SSH_HOST: ${{ secrets.DEPLOY_HOST }}
+          STAGING_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          node --test deploy/transfer-staging-images.test.mjs
+          bash deploy/transfer-staging-images.sh
+
+      - name: Migrate and restart staging services on VPS
         env:
           USER: ${{ secrets.DEPLOY_USER }}
           HOST: ${{ secrets.DEPLOY_HOST }}
           REMOTE_PATH: ${{ secrets.DEPLOY_PATH }}
           STAGING_IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           APP_DOMAIN: ${{ env.APP_DOMAIN }}
           LEGACY_APP_DOMAIN: ${{ env.LEGACY_APP_DOMAIN }}
           WWW_APP_DOMAIN: ${{ env.WWW_APP_DOMAIN }}
@@ -228,8 +241,6 @@ jobs:
 
           ssh -i ~/.ssh/id_ed25519 "${USER}@${HOST}" \
             STAGING_IMAGE_TAG="$STAGING_IMAGE_TAG" \
-            GHCR_USER="$GHCR_USER" \
-            GHCR_TOKEN="$GHCR_TOKEN" \
             REMOTE_PATH="$REMOTE_PATH" \
             APP_DOMAIN="$APP_DOMAIN" \
             LEGACY_APP_DOMAIN="$LEGACY_APP_DOMAIN" \
@@ -340,28 +351,9 @@ jobs:
           export STAGING_OBJECT_STORAGE_TENANT_ID STAGING_OBJECT_STORAGE_ACCESS_KEY_ID
           export STAGING_OBJECT_STORAGE_SECRET_ACCESS_KEY STAGING_OBJECT_STORAGE_PUBLIC_BASE_URL
 
-          # SHA-tagged deploy images accumulate on the shared VPS and are not
-          # removed by the dangling-only prune at the end of the workflow.
-          # Running containers keep their images, and older images remain in GHCR.
-          docker image prune -af
-
-          for i in 1 2 3 4 5; do
-            if echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_USER" --password-stdin; then
-              break
-            fi
-            [ "$i" = 5 ] && echo "docker login failed after 5 attempts" && exit 1
-            echo "docker login attempt $i failed, retry in 10s..."
-            sleep 10
-          done
-
-          for i in 1 2 3; do
-            if docker compose -f docker-compose.yml -f docker-compose.staging.yml pull server-dev push-worker-dev web-dev; then
-              break
-            fi
-            [ "$i" = 3 ] && echo "staging compose pull failed after 3 attempts" && exit 1
-            echo "staging compose pull attempt $i failed, retry in 10s..."
-            sleep 10
-          done
+          # Images were loaded and content-verified from the Actions runner.
+          docker image inspect "ghcr.io/inbotwetrust/hockey-server:$STAGING_IMAGE_TAG" >/dev/null
+          docker image inspect "ghcr.io/inbotwetrust/hockey-web:$STAGING_IMAGE_TAG" >/dev/null
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             run --rm -T server-dev node packages/server/dist/db/migrate-cli.js < /dev/null
