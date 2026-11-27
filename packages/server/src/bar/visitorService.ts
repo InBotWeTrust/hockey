@@ -1,3 +1,4 @@
+import {recordBarMessage,recordBarCardPurchase} from '../achievements/barProgress.js';
 import type { Pool, PoolClient } from 'pg';
 import type { VisitorSettings } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
@@ -183,6 +184,7 @@ export async function reserveVisitorMessage(
   );
   if (!inserted.rows.length)
     throw new AppError('conversation_stale', 'Запрос уже использован.', 409);
+  await recordBarMessage(db,user,id,character,new Date(now),false);
   return true;
 }
 export async function completeVisitorMessage(db: PoolClient, user: string, id: string) {
@@ -314,6 +316,7 @@ export async function purchaseVisitorProduct(
         }),
       ],
     );
+    if (product.kind === 'card') await recordBarCardPurchase(db,user,input.id,new Date(now));
     return visitorState(db, user, now);
   });
 }

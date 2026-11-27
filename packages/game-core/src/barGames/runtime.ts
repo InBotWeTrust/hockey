@@ -395,7 +395,8 @@ export function command(
   }
   return perform(m, action, now, true);
 }
-export function advance(m: Runtime, now: number): Runtime {
+/** Server callers can observe each authoritative step without affecting simulation output. */
+function advanceInternal(m: Runtime, now: number, transitions?: Array<[Runtime, Runtime]>): Runtime {
   if (!supportedVersion(m.engineVersion)) throw new Error('Unsupported game version');
   if (m.game.winner !== null) return m;
   if (m.game.kind === 'armwrestling') {
@@ -421,7 +422,9 @@ export function advance(m: Runtime, now: number): Runtime {
       n = { ...n, botAt: at + 250 };
     }
     game = arm.advanceArmwrestling(game, now);
-    return armRuntime(n, game, now);
+    const result = armRuntime(n, game, now);
+    if (result !== m) transitions?.push([m, result]);
+    return result;
   }
   if (m.game.kind === 'ochko' && m.engineVersion >= 12) {
     let n = m,
@@ -441,7 +444,9 @@ export function advance(m: Runtime, now: number): Runtime {
       g = series.act(g, 1, g.scores[1] < 17 ? 'hit' : 'stand', g.series.round, at);
       n = { ...n, botAt: at + 3700 };
     }
-    return seriesRuntime(n, series.advance(g, now), now);
+    const result = seriesRuntime(n, series.advance(g, now), now);
+    if (result !== m) transitions?.push([m, result]);
+    return result;
   }
   if (m.game.kind === 'ochko') {
     let n = m,
@@ -460,10 +465,13 @@ export function advance(m: Runtime, now: number): Runtime {
       n = { ...next, botAt: g.dealUntil[1] + pause };
     }
     g = ochko.advanceOchko(g, now);
-    return g === m.game && n === m ? m : ochkoRuntime(n, g, now);
+    const result = g === m.game && n === m ? m : ochkoRuntime(n, g, now);
+    if (result !== m) transitions?.push([m, result]);
+    return result;
   }
   let n = m;
   for (let i = 0; i < 64 && n.game.winner === null; i++) {
+    const prior = n;
     if (n.computer && n.game.turn === 1) {
       if (now < n.animationUntil) break;
       const at = n.animationUntil;
@@ -546,6 +554,7 @@ export function advance(m: Runtime, now: number): Runtime {
           reason: 'inactivity',
           revision: n.revision + 1,
         };
+        transitions?.push([prior, n]);
         break;
       }
       const checkersPath = n.game.kind === 'checkers' ? checkers.moves(n.game)[0]! : null;
@@ -587,6 +596,7 @@ export function advance(m: Runtime, now: number): Runtime {
         n.animationUntil += n.engineVersion === 1 ? 900 : botPause(n);
       n.deadline += duration;
     } else break;
+    if (n !== prior) transitions?.push([prior, n]);
   }
   return n;
 }
@@ -741,3 +751,10 @@ function armRuntime(m: Runtime, game: arm.ArmState, now: number): Runtime {
   };
 }
 export * as barArmwrestling from './armwrestling.js';
+
+/** Pure trace for server-side observation; returns the same runtime as advance. */
+export function advanceWithTransitions(m:Runtime,now:number):{runtime:Runtime;transitions:Array<[Runtime,Runtime]>} {
+  const transitions:Array<[Runtime,Runtime]>=[];
+  return {runtime:advanceInternal(m,now,transitions),transitions};
+}
+export function advance(m:Runtime,now:number):Runtime {return advanceInternal(m,now);}

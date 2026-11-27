@@ -1,3 +1,4 @@
+import {decorateBarAchievement,hasBarAmateurAccess} from './barAccess.js';
 import type { Pool, PoolClient } from 'pg';
 import { observeFanAchievement } from './fanStages.js';
 import { getGameSettings, type GameSettings } from '../duel/gameSettings.js';
@@ -38,6 +39,8 @@ export interface ProfileAchievementDTO {
   status: AchievementStatus;
   isUnlocked: boolean;
   isClaimable: boolean;
+  accessRequirement?: 'amateur';
+  bar?: {mode:'character'|'online'|'social';game:string;gameLabel:string;character:string};
   completedAt?: string;
   claimedAt?: string;
   stage?: {
@@ -343,7 +346,8 @@ export async function fetchAchievementCatalogueForUser(
     [userId],
   );
 
-  return rows.map(mapAchievementRow);
+  const amateur = rows.some(row=>row.category==='bar') ? await hasBarAmateurAccess(db,userId) : false;
+  return rows.map(row=>decorateBarAchievement(mapAchievementRow(row),amateur));
 }
 
 export interface CareerGoalObservation {

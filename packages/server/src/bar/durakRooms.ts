@@ -1,3 +1,5 @@
+import {createDurakAchievementTelemetry,observeDurakTableTransition,qualifiersForDurakPlayer,type DurakAchievementTelemetry} from './durakAchievementAdapter.js';
+import {observeBarFeats,recordBarGameResult} from '../achievements/barProgress.js';
 import {BAR_INVITATION_MS} from './invitationDeadline.js';
 import { createBarInviteMessage } from './inviteChat.js';
 import { randomInt, randomUUID } from 'node:crypto';
@@ -7,6 +9,8 @@ import { AppError } from '../plugins/errors.js';
 import { assertFree, cardTransaction, clearNewGameWaiting, inviteCards } from './durakService.js';
 
 type Room = {
+  achievementStartedAt?:number;
+  achievementTelemetry?:DurakAchievementTelemetry;
   seats: string[];
   capacity: number;
   formats?: number[];
@@ -75,6 +79,21 @@ function setFormats(room: Room, formats: number[]) {
   room.formats = formats;
   room.capacity = formats.includes(room.seats.length) ? room.seats.length : Math.max(...formats);
 }
+async function observeRoom(client:PoolClient,id:string,data:Room,before:durakTable.TableGame,after:durakTable.TableGame,actor:number,action:durakTable.TableAction|null,now:number) {
+  const telemetry=data.achievementTelemetry;
+  if(!telemetry||data.achievementStartedAt===undefined)return;
+  if(action)observeDurakTableTransition(telemetry,before,after,actor,action);
+  for(let p=0;p<data.seats.length;p++) {
+    const won=after.status[p]==='won'&&action!==null;
+    const q=telemetry.participated[p]?qualifiersForDurakPlayer(telemetry,p,won):{};
+    await observeBarFeats(client,data.seats[p]!,`room:${id}:${after.revision}:${p}`,new Date(now),q,'online');
+  }
+  for(let p=0;p<data.seats.length;p++) {
+    if(before.status[p]!=='playing'||after.status[p]==='playing')continue;
+    const won=after.status[p]==='won';
+    await recordBarGameResult(client,{eventId:`room:${id}`,game:'durak',mode:'online',startedAt:new Date(data.achievementStartedAt),occurredAt:new Date(now),eligible:action!==null,participants:[{userId:data.seats[p]!,opponentId:data.seats.filter((_,i)=>i!==p).slice().sort().join(':'),won,eligible:telemetry.participated[p]===true,qualifiers:qualifiersForDurakPlayer(telemetry,p,won&&action!==null)}]});
+  }
+}
 async function save(client: PoolClient, id: string, data: Room, now: number) {
   await client.query('update bar_card_rooms set data=$2,ended_at=$3 where id=$1', [
     id,
@@ -111,6 +130,8 @@ export async function reconcileRoom(
   }
   if (data.status === 'countdown' && data.countdownAt !== null && data.countdownAt <= now) {
     data.game = durakTable.createTable(data.seats.length, random);
+    data.achievementStartedAt=now;
+    data.achievementTelemetry=createDurakAchievementTelemetry(data.game);
     data.deadline = data.countdownAt + durakTable.turnDuration(data.game);
     data.status = 'playing';
     data.searchUntil = null;
@@ -124,7 +145,9 @@ export async function reconcileRoom(
   for (let i = 0; i < 1000 && data.status === 'playing' && data.deadline! <= now; i++) {
     const action = durakTable.timeout(data.game!);
     if (!action) break;
-    data.game = durakTable.apply(data.game!, data.game!.turn, action);
+    const before=data.game!;
+    data.game = durakTable.apply(before, before.turn, action);
+    await observeRoom(client,id,data,before,data.game,before.turn,action,now);
     data.deadline! += durakTable.turnDuration(data.game);
     data.revision++;
     dirty = true;
@@ -399,6 +422,8 @@ export async function commandCardRoom(
       const next = durakTable.apply(data.game, data.seats.indexOf(user), command.action);
       if (next === data.game)
         throw new AppError('card_invalid_move', 'Сейчас этот ход недоступен.', 400);
+      if(data.achievementTelemetry)data.achievementTelemetry.participated[data.seats.indexOf(user)]=true;
+      await observeRoom(client,id,data,data.game,next,data.seats.indexOf(user),command.action,now);
       data.game = next;
       data.deadline = now + durakTable.turnDuration(next);
       if (next.phase === 'ended') {
@@ -419,6 +444,7 @@ export async function commandCardRoom(
         if (next === data.game) return view(client, user, id, data, now);
         const previousTurn = data.game.turn;
         const previousPhase = data.game.phase;
+        await observeRoom(client,id,data,data.game,next,data.seats.indexOf(user),null,now);
         data.game = next;
         if (next.turn !== previousTurn || next.phase !== previousPhase)
           data.deadline = now + durakTable.turnDuration(next);

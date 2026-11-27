@@ -1,0 +1,29 @@
+.achievement-card--access-locked {
+  opacity: 0.75;
+}
+.achievement-card--access-locked .achievement-card__open {
+  cursor: default;
+}
+.bar-locked-art {
+  display: grid;
+  place-items: center;
+  min-height: 70px;
+  color: #abc3de;
+  background: linear-gradient(140deg, #1a3658, #0a1d35);
+}
+.bar-mode-label {
+  font-size: 11px;
+  color: #52637c;
+}
+
+.achievement-card__description {
+  font-size: 12px;
+  line-height: 1.45;
+  color: #52637c;
+  margin: 4px 0 6px;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-align: left;
+}

@@ -1,0 +1,3208 @@
+[
+  {
+    "id": "bar-1-character",
+    "number": 1,
+    "title": "Победы в дартс · Дарья",
+    "description": "Дротики на стойке, мишень свободна. Сыграй с Дарьей и собери свои победы в барном дартсе.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Дарья».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Дарья».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Дарья».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Дарья».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Дарья».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Дарья».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Дарья».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Дарья».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-1-online",
+    "number": 1,
+    "title": "Победы в дартс · Онлайн",
+    "description": "У каждого соперника свой прицел. Подстраивайся под ход партии и забирай победы у реальных игроков.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-2-character",
+    "number": 2,
+    "title": "Победная серия в дартс · Дарья",
+    "description": "Держи руку ровно от партии к партии. Дарья снова выходит к мишени, а твоя победная серия продолжается.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Дарья».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Дарья».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Дарья».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Дарья».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-2-online",
+    "number": 2,
+    "title": "Победная серия в дартс · Онлайн",
+    "description": "Новый соперник, новый матч — и снова твоя победа. Сохрани точность на целую серию партий.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-3-character",
+    "number": 3,
+    "title": "Большой заход · Дарья",
+    "description": "Три дротика сходятся в утроении двадцатки. Поймай это движение и повтори подход, в котором каждый бросок попадает куда надо.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-180-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 180,
+        "requirement": "Набрать 180 очков тремя дротиками за один свой ход.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 2,
+        "target": 180,
+        "requirement": "Набрать по 180 очков два своих хода подряд в одной партии.",
+        "stars": 20,
+        "experience": 20
+      }
+    ]
+  },
+  {
+    "id": "bar-3-online",
+    "number": 3,
+    "title": "Большой заход · Онлайн",
+    "description": "Три дротика сходятся в утроении двадцатки. Поймай это движение и повтори подход, в котором каждый бросок попадает куда надо.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-180-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 180,
+        "requirement": "Набрать 180 очков тремя дротиками за один свой ход.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 2,
+        "target": 180,
+        "requirement": "Набрать по 180 очков два своих хода подряд в одной партии.",
+        "stars": 20,
+        "experience": 20
+      }
+    ]
+  },
+  {
+    "id": "bar-4-character",
+    "number": 4,
+    "title": "Идеальная партия · Дарья",
+    "description": "Девять дротиков — и счёт закрыт. Идеальный лег, который хочется пересмотреть бросок за броском.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-perfect-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 9,
+        "requirement": "Законно завершить партию с 501 очка за девять дротиков.",
+        "stars": 50,
+        "experience": 50
+      }
+    ]
+  },
+  {
+    "id": "bar-4-online",
+    "number": 4,
+    "title": "Идеальная партия · Онлайн",
+    "description": "Девять дротиков — и счёт закрыт. Идеальный лег, который хочется пересмотреть бросок за броском.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-perfect-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 9,
+        "requirement": "Законно завершить партию с 501 очка за девять дротиков.",
+        "stars": 50,
+        "experience": 50
+      }
+    ]
+  },
+  {
+    "id": "bar-5-character",
+    "number": 5,
+    "title": "Реванш в дартс · Дарья",
+    "description": "Прошлая партия осталась за Дарьей. Собери дротики, вернись к мишени и забери следующую.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-5-online",
+    "number": 5,
+    "title": "Реванш в дартс · Онлайн",
+    "description": "Поражение ещё свежо, а соперник уже ждёт у мишени. В следующей встрече поменяйся с ним местами.",
+    "game": "darts",
+    "gameLabel": "Дартс",
+    "character": "Дарья",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/darts-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-6-character",
+    "number": 6,
+    "title": "Победы в бильярд · Вероника",
+    "description": "Сукно ровное, кий готов, Вероника у стола. Продумывай удары и пополняй счёт своих побед.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Вероника».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Вероника».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Вероника».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Вероника».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Вероника».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Вероника».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Вероника».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Вероника».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-6-online",
+    "number": 6,
+    "title": "Победы в бильярд · Онлайн",
+    "description": "У стола встретились два игрока со своим почерком. Навяжи свой темп и доведи партию до победного шара.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-7-character",
+    "number": 7,
+    "title": "Победная серия в бильярд · Вероника",
+    "description": "Вероника не отдаст стол без борьбы. Сохрани точность на несколько партий и продолжи свою серию.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Вероника».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Вероника».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Вероника».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Вероника».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-7-online",
+    "number": 7,
+    "title": "Победная серия в бильярд · Онлайн",
+    "description": "Соперники меняются, а стол снова остаётся за тобой. Проведи победную серию от первого удара до последнего шара.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-8-character",
+    "number": 8,
+    "title": "На тоненького · Вероника",
+    "description": "Один шар отделяет победу от поражения. Соберись у стола и доведи эту напряжённую партию до конца.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-close-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить с разницей ровно в один обычный шар.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-8-online",
+    "number": 8,
+    "title": "На тоненького · Онлайн",
+    "description": "Один шар отделяет победу от поражения. Соберись у стола и доведи эту напряжённую партию до конца.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-close-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить с разницей ровно в один обычный шар.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-9-character",
+    "number": 9,
+    "title": "С запасом · Вероника",
+    "description": "Оставь сопернику шары на столе, а себе — уверенную победу. Чем больше перевес, тем выше уровень достижения.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-margin-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 3,
+        "requirement": "Победить с разницей ровно в 3 обычных шара.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 4,
+        "requirement": "Победить с разницей ровно в 4 обычных шара.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 5,
+        "requirement": "Победить с разницей ровно в 5 обычных шаров.",
+        "stars": 8,
+        "experience": 8
+      },
+      {
+        "level": 4,
+        "target": 6,
+        "requirement": "Победить с разницей ровно в 6 обычных шаров.",
+        "stars": 12,
+        "experience": 12
+      }
+    ]
+  },
+  {
+    "id": "bar-9-online",
+    "number": 9,
+    "title": "С запасом · Онлайн",
+    "description": "Оставь сопернику шары на столе, а себе — уверенную победу. Чем больше перевес, тем выше уровень достижения.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-margin-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 3,
+        "requirement": "Победить с разницей ровно в 3 обычных шара.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 4,
+        "requirement": "Победить с разницей ровно в 4 обычных шара.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 5,
+        "requirement": "Победить с разницей ровно в 5 обычных шаров.",
+        "stars": 8,
+        "experience": 8
+      },
+      {
+        "level": 4,
+        "target": 6,
+        "requirement": "Победить с разницей ровно в 6 обычных шаров.",
+        "stars": 12,
+        "experience": 12
+      }
+    ]
+  },
+  {
+    "id": "bar-10-character",
+    "number": 10,
+    "title": "Всухую · Вероника",
+    "description": "Твой последний шар уходит в лузу, а все шары соперника ещё на сукне. Вот как выглядит сухая победа.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-shutout-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть всухую: у соперника ни одного зачтённого обычного шара.",
+        "stars": 15,
+        "experience": 15
+      }
+    ]
+  },
+  {
+    "id": "bar-10-online",
+    "number": 10,
+    "title": "Всухую · Онлайн",
+    "description": "Твой последний шар уходит в лузу, а все шары соперника ещё на сукне. Вот как выглядит сухая победа.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-shutout-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть всухую: у соперника ни одного зачтённого обычного шара.",
+        "stars": 15,
+        "experience": 15
+      }
+    ]
+  },
+  {
+    "id": "bar-11-character",
+    "number": 11,
+    "title": "Фол не помеха · Вероника",
+    "description": "Фол уже случился, но партия продолжается. Верни себе стол и закончи её победным ударом.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-foul-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Допустить собственный фол и всё равно выиграть партию.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-11-online",
+    "number": 11,
+    "title": "Фол не помеха · Онлайн",
+    "description": "Фол уже случился, но партия продолжается. Верни себе стол и закончи её победным ударом.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-foul-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Допустить собственный фол и всё равно выиграть партию.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-12-character",
+    "number": 12,
+    "title": "Реванш в бильярд · Вероника",
+    "description": "Вероника забрала прошлую партию. Оставайся у стола: следующий победный удар должен быть твоим.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-12-online",
+    "number": 12,
+    "title": "Реванш в бильярд · Онлайн",
+    "description": "Вы уже знаете, как играет каждый. Вернись за стол к тому же сопернику и возьми своё в следующей партии.",
+    "game": "billiards",
+    "gameLabel": "Бильярд",
+    "character": "Вероника",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/pool-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-13-character",
+    "number": 13,
+    "title": "Победы в шашки · Арсенич",
+    "description": "Арсенич смотрит на доску и ждёт твоего хода. Найди свой план и собери победы за шашечным столом.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Арсенич».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Арсенич».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Арсенич».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Арсенич».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Арсенич».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Арсенич».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Арсенич».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Арсенич».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-13-online",
+    "number": 13,
+    "title": "Победы в шашки · Онлайн",
+    "description": "За каждой шашкой стоит чужой замысел. Разгадывай планы живых соперников и доводи партии до победы.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-14-character",
+    "number": 14,
+    "title": "Победная серия в шашки · Арсенич",
+    "description": "Арсенич снова расставляет шашки. Сохрани расчёт и продолжи серию побед над опытным соперником.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Арсенич».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Арсенич».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Арсенич».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Арсенич».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-14-online",
+    "number": 14,
+    "title": "Победная серия в шашки · Онлайн",
+    "description": "Новая доска, новый соперник, новый замысел. Проведи несколько партий подряд по своему победному плану.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-15-character",
+    "number": 15,
+    "title": "Цепная реакция · Арсенич",
+    "description": "Первая взятая шашка открывает путь к следующей. Найди цепочку и пройди её одним непрерывным ходом.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-multicapture-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Взять 2 фигуры соперника одним ходом.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 3,
+        "requirement": "Взять 3 фигуры соперника одним ходом.",
+        "stars": 8,
+        "experience": 8
+      },
+      {
+        "level": 3,
+        "target": 4,
+        "requirement": "Взять 4 фигуры соперника одним ходом.",
+        "stars": 12,
+        "experience": 12
+      }
+    ]
+  },
+  {
+    "id": "bar-15-online",
+    "number": 15,
+    "title": "Цепная реакция · Онлайн",
+    "description": "Первая взятая шашка открывает путь к следующей. Найди цепочку и пройди её одним непрерывным ходом.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-multicapture-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Взять 2 фигуры соперника одним ходом.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 3,
+        "requirement": "Взять 3 фигуры соперника одним ходом.",
+        "stars": 8,
+        "experience": 8
+      },
+      {
+        "level": 3,
+        "target": 4,
+        "requirement": "Взять 4 фигуры соперника одним ходом.",
+        "stars": 12,
+        "experience": 12
+      }
+    ]
+  },
+  {
+    "id": "bar-16-character",
+    "number": 16,
+    "title": "Коронация · Арсенич",
+    "description": "Проведи шашку через всю доску. На последней линии она станет дамкой и получит простор для дальних ходов.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-crown-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Довести свою шашку до превращения в дамку.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-16-online",
+    "number": 16,
+    "title": "Коронация · Онлайн",
+    "description": "Проведи шашку через всю доску. На последней линии она станет дамкой и получит простор для дальних ходов.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-crown-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Довести свою шашку до превращения в дамку.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-17-character",
+    "number": 17,
+    "title": "Против дамок · Арсенич",
+    "description": "На доске появились дамки соперника, и привычные ходы стали опаснее. Перехвати инициативу и всё равно забери партию.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-kings-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть партию, в которой у соперника была хотя бы одна дамка.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 2,
+        "requirement": "Выиграть партию, в которой у соперника были две дамки одновременно. Дамки могут быть затем срублены.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-17-online",
+    "number": 17,
+    "title": "Против дамок · Онлайн",
+    "description": "На доске появились дамки соперника, и привычные ходы стали опаснее. Перехвати инициативу и всё равно забери партию.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-kings-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть партию, в которой у соперника была хотя бы одна дамка.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 2,
+        "requirement": "Выиграть партию, в которой у соперника были две дамки одновременно. Дамки могут быть затем срублены.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-18-character",
+    "number": 18,
+    "title": "Свои люди · Арсенич",
+    "description": "Каждая сохранённая шашка пригодится в концовке. Доведи партию до победы и сбереги хотя бы половину своего состава.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-survivors-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть, потеряв не больше шести из двенадцати своих шашек.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-18-online",
+    "number": 18,
+    "title": "Свои люди · Онлайн",
+    "description": "Каждая сохранённая шашка пригодится в концовке. Доведи партию до победы и сбереги хотя бы половину своего состава.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-survivors-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть, потеряв не больше шести из двенадцати своих шашек.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-19-character",
+    "number": 19,
+    "title": "Реванш в шашки · Арсенич",
+    "description": "Арсенич выиграл прошлую встречу. Расставь шашки заново, учти его приёмы и ответь победой.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/checkers-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-19-online",
+    "number": 19,
+    "title": "Реванш в шашки · Онлайн",
+    "description": "Вы уже обменялись первой партией. Во второй встрече с тем же соперником найди ход, которого он не ждёт.",
+    "game": "checkers",
+    "gameLabel": "Шашки",
+    "character": "Арсенич",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/checkers-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-20-character",
+    "number": 20,
+    "title": "Победы в очко · Григорий",
+    "description": "Григорий уже раздаёт карты. Следи за счётом, вовремя останавливайся и собирай победы за его столом.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Григорий».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Григорий».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Григорий».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Григорий».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Григорий».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Григорий».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Григорий».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Григорий».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-20-online",
+    "number": 20,
+    "title": "Победы в очко · Онлайн",
+    "description": "Карта открыта, решение за тобой. Чувствуй риск и выигрывай партии в очко у реальных игроков.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-21-character",
+    "number": 21,
+    "title": "Победная серия в очко · Григорий",
+    "description": "Григорий снова берётся за колоду. Сохрани хладнокровие и продолжи победную серию за его столом.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Григорий».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Григорий».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Григорий».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Григорий».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-21-online",
+    "number": 21,
+    "title": "Победная серия в очко · Онлайн",
+    "description": "Каждая раздача требует нового решения. Удержи удачный ритм на несколько победных партий подряд.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-22-character",
+    "number": 22,
+    "title": "За руку поймал · Григорий",
+    "description": "Григорий объявил свой результат. Пересчитай карты внимательно: если он приписал лишнее, поймай его за руку.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-caught-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Успешно разоблачить жульничество Григория.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-23-character",
+    "number": 23,
+    "title": "Последнее слово · Григорий",
+    "description": "Перед последней раздачей ты позади. Сохрани холодную голову и переверни итоговый счёт в свою пользу.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-comeback-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть у Григория, уступая перед последней раздачей минимум на 1 очко.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть у Григория, уступая перед последней раздачей минимум на 5 очков.",
+        "stars": 8,
+        "experience": 8
+      },
+      {
+        "level": 3,
+        "target": 10,
+        "requirement": "Выиграть у Григория, уступая перед последней раздачей минимум на 10 очков.",
+        "stars": 12,
+        "experience": 12
+      }
+    ]
+  },
+  {
+    "id": "bar-24-character",
+    "number": 24,
+    "title": "На очко впереди · Григорий",
+    "description": "Все раздачи сыграны, карты лежат на столе. Всего одно очко перевеса — и эта напряжённая партия твоя.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-one-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить с итоговым перевесом ровно в одно очко за всю партию.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-24-online",
+    "number": 24,
+    "title": "На очко впереди · Онлайн",
+    "description": "Все раздачи сыграны, карты лежат на столе. Всего одно очко перевеса — и эта напряжённая партия твоя.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-one-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить с итоговым перевесом ровно в одно очко за всю партию.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-25-character",
+    "number": 25,
+    "title": "Реванш в очко · Григорий",
+    "description": "Прошлая партия осталась за Григорием. Прими новую раздачу и верни себе победу в следующей встрече.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-25-online",
+    "number": 25,
+    "title": "Реванш в очко · Онлайн",
+    "description": "Соперник только что выиграл у тебя. Сыграй с ним ещё раз и закончи следующую партию уже в свою пользу.",
+    "game": "ochko",
+    "gameLabel": "Очко",
+    "character": "Григорий",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/ochko-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-26-character",
+    "number": 26,
+    "title": "Победы в армрестлинге · Олег",
+    "description": "Локти на стол, ладони в замок. Сойдись с Олегом в силовом поединке и собери свои победы.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Олег».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Олег».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Олег».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Олег».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Олег».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Олег».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Олег».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Олег».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-26-online",
+    "number": 26,
+    "title": "Победы в армрестлинге · Онлайн",
+    "description": "С другой стороны стола живой соперник. Поймай его усилие, выбери момент и доведи поединок до победы.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-27-character",
+    "number": 27,
+    "title": "Победная серия в армрестлинге · Олег",
+    "description": "Олег снова протягивает руку через стол. Сохрани силу и расчёт на целую серию победных поединков.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Олег».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Олег».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Олег».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Олег».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-27-online",
+    "number": 27,
+    "title": "Победная серия в армрестлинге · Онлайн",
+    "description": "Каждый новый соперник давит по-своему. Удержи победный ритм в нескольких схватках подряд.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-28-character",
+    "number": 28,
+    "title": "Прижал! · Олег",
+    "description": "Стрелка ещё движется, а рука соперника уже у стола. Дожми поединок до явной победы раньше сигнала времени.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-pin-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить прижатием до окончания времени.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-28-online",
+    "number": 28,
+    "title": "Прижал! · Онлайн",
+    "description": "Стрелка ещё движется, а рука соперника уже у стола. Дожми поединок до явной победы раньше сигнала времени.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-pin-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить прижатием до окончания времени.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-29-character",
+    "number": 29,
+    "title": "Реванш в армрестлинге · Олег",
+    "description": "Олег оказался сильнее в прошлой схватке. Снова берись за его руку и найди свой победный момент.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "character",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-29-online",
+    "number": 29,
+    "title": "Реванш в армрестлинге · Онлайн",
+    "description": "Руку отпустили, но счёты остались. Встреться с тем же соперником ещё раз и возьми реванш.",
+    "game": "armwrestling",
+    "gameLabel": "Армрестлинг",
+    "character": "Олег",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/arm-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-30-character",
+    "number": 30,
+    "title": "Победы в морской бой · Тимофей",
+    "description": "Тимофей расставил флот и ждёт твоих координат. Найди его корабли и собирай победы на морской карте.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/naval-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Тимофей».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Тимофей».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Тимофей».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Тимофей».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Тимофей».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Тимофей».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Тимофей».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Тимофей».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-30-online",
+    "number": 30,
+    "title": "Победы в морской бой · Онлайн",
+    "description": "Чужой флот скрыт за клетками поля. Читай следы попаданий и отправляй корабли реальных соперников на дно.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/naval-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-31-character",
+    "number": 31,
+    "title": "Победная серия в морской бой · Тимофей",
+    "description": "Новый флот Тимофея уже на карте. Сохрани расчёт и проведи серию победных морских сражений.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/naval-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Тимофей».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Тимофей».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Тимофей».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Тимофей».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-31-online",
+    "number": 31,
+    "title": "Победная серия в морской бой · Онлайн",
+    "description": "Новые расстановки, новые соперники. Найди победный курс и держись его несколько сражений подряд.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/naval-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-32-character",
+    "number": 32,
+    "title": "Лодка вернулась · Тимофей",
+    "description": "Подлодка ещё на плаву, а бой подходит к концу. Сохрани её до победы, даже если корпус уже получил повреждение.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/naval-submarine-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить, сохранив свою подлодку на плаву. Повреждение допустимо.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-32-online",
+    "number": 32,
+    "title": "Лодка вернулась · Онлайн",
+    "description": "Подлодка ещё на плаву, а бой подходит к концу. Сохрани её до победы, даже если корпус уже получил повреждение.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/naval-submarine-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить, сохранив свою подлодку на плаву. Повреждение допустимо.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-33-character",
+    "number": 33,
+    "title": "Пристрелялся · Тимофей",
+    "description": "Попадание открывает следующую цель. Выбирай координаты точно и продли цепочку собственных выстрелов без промаха.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/naval-hits-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 3,
+        "requirement": "Сделать 3 попадания подряд в одной партии. Собственный промах обрывает серию.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Сделать 5 попаданий подряд в одной партии. Собственный промах обрывает серию.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 10,
+        "requirement": "Сделать 10 попаданий подряд в одной партии. Собственный промах обрывает серию.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-33-online",
+    "number": 33,
+    "title": "Пристрелялся · Онлайн",
+    "description": "Попадание открывает следующую цель. Выбирай координаты точно и продли цепочку собственных выстрелов без промаха.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/naval-hits-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 3,
+        "requirement": "Сделать 3 попадания подряд в одной партии. Собственный промах обрывает серию.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Сделать 5 попаданий подряд в одной партии. Собственный промах обрывает серию.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 10,
+        "requirement": "Сделать 10 попаданий подряд в одной партии. Собственный промах обрывает серию.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-34-character",
+    "number": 34,
+    "title": "С первого выстрела · Тимофей",
+    "description": "Поле ещё чистое, следов выстрелов нет. Назови первую координату и сразу найди корабль соперника.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/naval-first-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Попасть первым же собственным выстрелом в партии.",
+        "stars": 2,
+        "experience": 2
+      }
+    ]
+  },
+  {
+    "id": "bar-34-online",
+    "number": 34,
+    "title": "С первого выстрела · Онлайн",
+    "description": "Поле ещё чистое, следов выстрелов нет. Назови первую координату и сразу найди корабль соперника.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/naval-first-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Попасть первым же собственным выстрелом в партии.",
+        "stars": 2,
+        "experience": 2
+      }
+    ]
+  },
+  {
+    "id": "bar-35-character",
+    "number": 35,
+    "title": "Реванш в морской бой · Тимофей",
+    "description": "Тимофей выиграл прошлый бой. Выставляй новый флот и ответь ему победой в следующем сражении.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/naval-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-35-online",
+    "number": 35,
+    "title": "Реванш в морской бой · Онлайн",
+    "description": "Ваши флоты уже встречались, и первый бой остался за соперником. Во второй встрече поменяй итог.",
+    "game": "battleship",
+    "gameLabel": "Морской бой",
+    "character": "Тимофей",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/naval-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-36-character",
+    "number": 36,
+    "title": "Победы в дурака · Мария",
+    "description": "Мария тасует колоду и оставляет тебе место за столом. Найди подход к её игре и собирай победные партии.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против персонажа «Мария».",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против персонажа «Мария».",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против персонажа «Мария».",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против персонажа «Мария».",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против персонажа «Мария».",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против персонажа «Мария».",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против персонажа «Мария».",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против персонажа «Мария».",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-36-online",
+    "number": 36,
+    "title": "Победы в дурака · Онлайн",
+    "description": "На руках карты, напротив — живые соперники. Выбирай момент для атаки и заканчивай партии победителем.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-wins-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Победить в этой игре 1 раз против реальных игроков.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Победить в этой игре 5 раз против реальных игроков.",
+        "stars": 7,
+        "experience": 7
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Победить в этой игре 15 раз против реальных игроков.",
+        "stars": 15,
+        "experience": 15
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Победить в этой игре 50 раз против реальных игроков.",
+        "stars": 30,
+        "experience": 30
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Победить в этой игре 100 раз против реальных игроков.",
+        "stars": 50,
+        "experience": 50
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Победить в этой игре 250 раз против реальных игроков.",
+        "stars": 90,
+        "experience": 90
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Победить в этой игре 500 раз против реальных игроков.",
+        "stars": 150,
+        "experience": 150
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Победить в этой игре 1000 раз против реальных игроков.",
+        "stars": 250,
+        "experience": 250
+      }
+    ]
+  },
+  {
+    "id": "bar-37-character",
+    "number": 37,
+    "title": "Победная серия в дурака · Мария",
+    "description": "Мария предлагает новую раздачу. Продолжи свою серию: отбивайся внимательно и вовремя освобождай руку.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против персонажа «Мария».",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против персонажа «Мария».",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против персонажа «Мария».",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против персонажа «Мария».",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-37-online",
+    "number": 37,
+    "title": "Победная серия в дурака · Онлайн",
+    "description": "Каждая раздача начинает новую историю. Проведи несколько победных партий подряд с реальными игроками.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-streak-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "Выиграть 2 партии подряд против реальных игроков.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Выиграть 5 партий подряд против реальных игроков.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 3,
+        "target": 7,
+        "requirement": "Выиграть 7 партий подряд против реальных игроков.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 4,
+        "target": 10,
+        "requirement": "Выиграть 10 партий подряд против реальных игроков.",
+        "stars": 35,
+        "experience": 35
+      }
+    ]
+  },
+  {
+    "id": "bar-38-character",
+    "number": 38,
+    "title": "Не в козырях счастье · Мария",
+    "description": "Козырей досталось мало, и обычные карты становятся особенно важны. Разыграй слабую руку так, чтобы победа осталась за тобой.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-trumps-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 5,
+        "requirement": "Выиграть, получив за всю партию не больше 5 козырей: из раздачи, добора и взятых со стола карт.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 3,
+        "requirement": "Выиграть, получив за всю партию не больше 3 козырей: из раздачи, добора и взятых со стола карт.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-38-online",
+    "number": 38,
+    "title": "Не в козырях счастье · Онлайн",
+    "description": "Козырей досталось мало, и обычные карты становятся особенно важны. Разыграй слабую руку так, чтобы победа осталась за тобой.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-trumps-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 5,
+        "requirement": "Выиграть, получив за всю партию не больше 5 козырей: из раздачи, добора и взятых со стола карт.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 2,
+        "target": 3,
+        "requirement": "Выиграть, получив за всю партию не больше 3 козырей: из раздачи, добора и взятых со стола карт.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-39-character",
+    "number": 39,
+    "title": "Погоны · Мария",
+    "description": "Две шестёрки дождались своего часа. Закончи ими победную партию и оставь сопернику погоны на память.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-epaulettes-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Закончить победную партию двумя шестёрками.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-39-online",
+    "number": 39,
+    "title": "Погоны · Онлайн",
+    "description": "Две шестёрки дождались своего часа. Закончи ими победную партию и оставь сопернику погоны на память.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-epaulettes-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Закончить победную партию двумя шестёрками.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-40-character",
+    "number": 40,
+    "title": "Непробиваемый · Мария",
+    "description": "Карты летят на стол одна за другой. Подбери ответ на каждую и отправь весь розыгрыш в отбой.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-defense-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "За одну защиту отбить 2 атакующие карты и отправить весь розыгрыш в отбой.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 4,
+        "requirement": "За одну защиту отбить 4 атакующие карты и отправить весь розыгрыш в отбой.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 6,
+        "requirement": "За одну защиту отбить 6 атакующих карт и отправить весь розыгрыш в отбой.",
+        "stars": 8,
+        "experience": 8
+      }
+    ]
+  },
+  {
+    "id": "bar-40-online",
+    "number": 40,
+    "title": "Непробиваемый · Онлайн",
+    "description": "Карты летят на стол одна за другой. Подбери ответ на каждую и отправь весь розыгрыш в отбой.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-defense-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 2,
+        "requirement": "За одну защиту отбить 2 атакующие карты и отправить весь розыгрыш в отбой.",
+        "stars": 3,
+        "experience": 3
+      },
+      {
+        "level": 2,
+        "target": 4,
+        "requirement": "За одну защиту отбить 4 атакующие карты и отправить весь розыгрыш в отбой.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 6,
+        "requirement": "За одну защиту отбить 6 атакующих карт и отправить весь розыгрыш в отбой.",
+        "stars": 8,
+        "experience": 8
+      }
+    ]
+  },
+  {
+    "id": "bar-41-character",
+    "number": 41,
+    "title": "Не беру · Мария",
+    "description": "Рука пополняется из колоды, а со стола брать не приходится. Пройди всю партию с надёжной защитой и победи.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-no-take-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть партию, ни разу не взяв карты со стола.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-41-online",
+    "number": 41,
+    "title": "Не беру · Онлайн",
+    "description": "Рука пополняется из колоды, а со стола брать не приходится. Пройди всю партию с надёжной защитой и победи.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-no-take-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Выиграть партию, ни разу не взяв карты со стола.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-42-character",
+    "number": 42,
+    "title": "Всё на стол · Мария",
+    "description": "На руках полная шестёрка, на столе начинается твоя атака. Подкинь всё до последней карты за один розыгрыш.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-full-hand-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать атакующий розыгрыш с шестью картами на руках и выложить все шесть за этот розыгрыш.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-42-online",
+    "number": 42,
+    "title": "Всё на стол · Онлайн",
+    "description": "На руках полная шестёрка, на столе начинается твоя атака. Подкинь всё до последней карты за один розыгрыш.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-full-hand-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать атакующий розыгрыш с шестью картами на руках и выложить все шесть за этот розыгрыш.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-43-character",
+    "number": 43,
+    "title": "Реванш в дурака · Мария",
+    "description": "Мария выиграла прошлую партию. Оставайся за столом и забери следующую раздачу себе.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "character",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/durak-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-43-online",
+    "number": 43,
+    "title": "Реванш в дурака · Онлайн",
+    "description": "Прошлая партия закончилась в пользу соперника. В следующей встрече с ним разыграй свои карты лучше.",
+    "game": "durak",
+    "gameLabel": "Дурак",
+    "character": "Мария",
+    "mode": "online",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/durak-rematch-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "После поражения выиграть следующую партию в этой игре у того же соперника.",
+        "stars": 5,
+        "experience": 5
+      }
+    ]
+  },
+  {
+    "id": "bar-44-social",
+    "number": 44,
+    "title": "Завсегдатай",
+    "description": "Загляни в «4-й период» после матча: сыграть партию, перекинуться словом, встретить знакомых. Постепенно бар становится привычным местом.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/bar-regular-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Посетить бар в 1 день: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 2,
+        "experience": 2
+      },
+      {
+        "level": 2,
+        "target": 5,
+        "requirement": "Посетить бар в 5 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 5,
+        "experience": 5
+      },
+      {
+        "level": 3,
+        "target": 15,
+        "requirement": "Посетить бар в 15 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 10,
+        "experience": 10
+      },
+      {
+        "level": 4,
+        "target": 50,
+        "requirement": "Посетить бар в 50 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 20,
+        "experience": 20
+      },
+      {
+        "level": 5,
+        "target": 100,
+        "requirement": "Посетить бар в 100 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 35,
+        "experience": 35
+      },
+      {
+        "level": 6,
+        "target": 250,
+        "requirement": "Посетить бар в 250 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 60,
+        "experience": 60
+      },
+      {
+        "level": 7,
+        "target": 500,
+        "requirement": "Посетить бар в 500 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 100,
+        "experience": 100
+      },
+      {
+        "level": 8,
+        "target": 1000,
+        "requirement": "Посетить бар в 1000 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
+        "stars": 150,
+        "experience": 150
+      }
+    ]
+  },
+  {
+    "id": "bar-45-social",
+    "number": 45,
+    "title": "Познакомиться с Игорем",
+    "description": "У стойки всегда найдётся повод поговорить о хоккее. Начни разговор с Игорем и познакомься с барменом «4-го периода».",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Игорь",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-igor-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Игорь»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-46-social",
+    "number": 46,
+    "title": "Познакомиться с Дарьей",
+    "description": "Дарья работает в баре и охотно поддерживает разговор. Подойди познакомиться и перекинься с ней первыми словами.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Дарья",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-daria-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Дарья»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-47-social",
+    "number": 47,
+    "title": "Познакомиться с Вероникой",
+    "description": "Вероника следит за порядком в «4-м периоде». Найди минуту познакомиться с управляющей бара.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Вероника",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-veronika-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Вероника»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-48-social",
+    "number": 48,
+    "title": "Познакомиться с Григорием",
+    "description": "Григорий любит карточный стол и хороший разговор. Познакомься с ним прежде, чем спорить о следующей раздаче.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Григорий",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-grigory-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Григорий»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-49-social",
+    "number": 49,
+    "title": "Познакомиться с Олегом",
+    "description": "Олег отвечает за спокойствие вокруг стадиона. Поздоровайся и начни разговор с человеком, который привык говорить по делу.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Олег",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-oleg-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Олег»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-50-social",
+    "number": 50,
+    "title": "Познакомиться с Арсеничем",
+    "description": "У Арсенича за плечами большой опыт и свой взгляд на хоккей. Присядь рядом и начни ваше знакомство.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Арсенич",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-arsenich-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Арсенич»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-51-social",
+    "number": 51,
+    "title": "Познакомиться с Тимофеем",
+    "description": "Тимофей руководит службой стадиона, а в баре отдыхает от дел. Подойди познакомиться и найди тему для первого разговора.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Тимофей",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-timofey-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Тимофей»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-52-social",
+    "number": 52,
+    "title": "Познакомиться с Марией",
+    "description": "Мария умеет поддержать беседу и составить компанию за карточным столом. Начни знакомство с простого разговора.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Мария",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-maria-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Мария»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-53-social",
+    "number": 53,
+    "title": "Познакомиться с Элиной",
+    "description": "У Элины свой бар и плотный рабочий день. Представься хозяйке «4-го периода» и начни знакомство по делу.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Элина",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-elina-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Элина»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-54-social",
+    "number": 54,
+    "title": "Стать членом клуба",
+    "description": "Знакомый стол, больше партий и времени на разговоры. Оформи клубную карту, чтобы чаще оставаться в «4-м периоде».",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/bar-card-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Купить или продлить клубную карту после запуска заданий.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  }
+]

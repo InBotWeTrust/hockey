@@ -418,13 +418,7 @@ jobs:
               run --rm -T server-dev node packages/server/dist/achievements/reset-dev-achievements-cli.js < /dev/null
           fi
 
-          docker compose -f docker-compose.yml -f docker-compose.staging.yml \
-            run --rm -T server-dev node packages/server/dist/auth/dev-access-code-cli.js \
-              --name "Егор Гуменюк" \
-              --tg-id 432014500 \
-              --role admin \
-              --label "Егор dev admin" \
-              --code "$STAGING_ADMIN_ACCESS_CODE" < /dev/null
+          # Access-code provisioning is an explicit admin operation. Releases preserve existing access codes.
 
           docker compose -f docker-compose.yml -f docker-compose.staging.yml \
             up -d --force-recreate server-dev push-worker-dev web-dev < /dev/null

@@ -5,18 +5,24 @@ import { randomUUID, randomInt } from 'node:crypto';
 import type { Pool, PoolClient } from 'pg';
 import { durak } from '@hockey/game-core';
 import { AppError } from '../plugins/errors.js';
-import { advanceDeadline, projectGame } from './durakState.js';
+import { projectGame } from './durakState.js';
 import { currentRoom, acceptRoomInvite, tickCardRooms } from './durakRooms.js';
+import { admitVisitorGame } from './visitorService.js';
+import { createDurakAchievementTelemetry, observeDurakGameTransition, qualifiersForDurakPlayer, type DurakAchievementTelemetry } from './durakAchievementAdapter.js';
+import { observeBarFeats, recordBarGameResult } from '../achievements/barProgress.js';
 type Match = {
   id: string;
   player_a: string;
   player_b: string;
   state: durak.Game & {
     readiness?: { ready: string[]; expiresAt: number; startsAt: number | null; cancelled: boolean };
+    telemetry?: DurakAchievementTelemetry;
   };
   deadline_at: Date | null;
   ended_at: Date | null;
+  created_at: Date;
 };
+type MariaMatch = { id:string; user_id:string; state:{ game: durak.Game; telemetry: DurakAchievementTelemetry }; deadline_at:Date|null; ended_at:Date|null; started_at:Date };
 export async function cardTransaction<T>(
   pool: Pool,
   run: (client: PoolClient, now: number) => Promise<T>,
@@ -68,6 +74,11 @@ async function save(
     ended_at: game.result === null ? null : new Date(now),
   };
 }
+async function publishCardProgress(client:PoolClient,match:Match,game:Match['state'],now:number,eligible=true) {
+  if(!game.telemetry)return;
+  for(const p of [0,1] as const)await observeBarFeats(client,p===0?match.player_a:match.player_b,`${match.id}:${game.revision}:${p}`,new Date(now),game.telemetry.participated[p]?qualifiersForDurakPlayer(game.telemetry,p,eligible&&game.result===p):{},'online');
+  if(game.result!==null)await recordBarGameResult(client,{eventId:match.id,game:'durak',startedAt:match.created_at,occurredAt:new Date(now),mode:'online',eligible,participants:([0,1] as const).map(p=>({userId:p===0?match.player_a:match.player_b,opponentId:p===0?match.player_b:match.player_a,won:game.result===p,eligible:game.telemetry!.participated[p]===true,outcome:game.result==='draw'?'draw':game.result===p?'win':'loss',qualifiers:qualifiersForDurakPlayer(game.telemetry!,p,eligible&&game.result===p)}))});
+}
 async function reconcile(client: PoolClient, match: Match, now: number): Promise<Match> {
   if (match.ended_at || !match.deadline_at) return match;
   const readiness = match.state.readiness;
@@ -93,8 +104,17 @@ async function reconcile(client: PoolClient, match: Match, now: number): Promise
     } else return match;
   }
   if (!match.deadline_at) return match;
-  const next = advanceDeadline(match.state, match.deadline_at.getTime(), now);
-  return next.game === match.state ? match : save(client, match, next.game, next.deadline, now);
+  let game=match.state,deadline=match.deadline_at.getTime();
+  for(let i=0;game.result===null&&deadline<=now&&i<1000;i++) {
+    const player=durak.activePlayer(game),action=durak.timeoutAction(game,player);
+    if(!action)break;
+    const next=durak.applyAction(game,player,action) as Match['state'];
+    if(next===game)break;
+    if(game.telemetry)next.telemetry=observeDurakGameTransition(game.telemetry,game,next,player,action);
+    await publishCardProgress(client,match,next,now);
+    game=next;deadline+=durak.turnDuration(game);
+  }
+  return game===match.state?match:save(client,match,game,deadline,now);
 }
 async function active(client: PoolClient, user: string, now: number) {
   const { rows } = await client.query<Match>(
@@ -108,6 +128,8 @@ async function active(client: PoolClient, user: string, now: number) {
   return null;
 }
 export async function assertFree(client: PoolClient, user: string, now: number) {
+  const maria=await client.query<MariaMatch>('select * from bar_maria_matches where user_id=$1 and ended_at is null',[user]);
+  if(maria.rows[0]&&!(await reconcileMaria(client,maria.rows[0],now)).ended_at)throw new AppError('card_busy','Сначала заверши текущую партию.',409);
   await assertNewGamesFree(client,user,now);
   const room = await currentRoom(client, user, now);
   if (room)
@@ -130,6 +152,7 @@ async function create(client: PoolClient, a: string, b: string, now: number) {
       b,
       JSON.stringify({
         ...game,
+        telemetry: createDurakAchievementTelemetry(game),
         readiness: { ready: [], expiresAt: now + 60000, startsAt: null, cancelled: false },
       }),
       new Date(now + 60000),
@@ -328,6 +351,13 @@ export async function getCardMatch(
           : durak.applyAction(match.state, player, command.action);
       if (game === match.state)
         throw new AppError('card_invalid_move', 'Этой картой сейчас нельзя ходить.', 400);
+      const telemetry = match.state.telemetry;
+      if(telemetry) {
+        telemetry.participated[player]=true;
+        if(command.action!=='surrender')observeDurakGameTransition(telemetry,match.state,game,player,command.action);
+        (game as Match['state']).telemetry=telemetry;
+      }
+      await publishCardProgress(client,match,game,now,command.action!=='surrender');
       match = await save(client, match, game, now + durak.turnDuration(game), now);
     }
     const opponent = await client.query<{ display_name: string; avatar_url: string | null }>(
@@ -369,7 +399,87 @@ export async function tickCardMatches(pool: Pool) {
       [new Date(now)],
     );
     for (const match of due.rows) await reconcile(client, match, now);
+    const maria=await client.query<MariaMatch>('select * from bar_maria_matches where ended_at is null and deadline_at<=$1 limit 50',[new Date(now)]);
+    for(const row of maria.rows)await reconcileMaria(client,row,now);
     await tickCardRooms(client, now);
+  });
+}
+
+function mariaView(row: MariaMatch, now: number) {
+  return { id: row.id, ...projectGame(row.state.game, 0), deadline: row.deadline_at?.getTime() ?? null, serverNow: now,
+    opponent: { displayName: 'Мария', avatarUrl: '/bar/cards/avatar-v2.webp' } };
+}
+function mariaDuration(game:durak.Game) {return durak.activePlayer(game)===1?900:durak.turnDuration(game);}
+function mariaAction(game:durak.Game):durak.Action|undefined {
+  const actions=durak.legalActions(game,1),cards=[...game.hands[1]].sort(durak.cardOrder(game.trump));
+  for(const c of cards){const a=actions.find(a=>(a.type==='beat'||a.type==='play')&&a.cardId===c.id);if(a)return a;}
+  return actions.find(a=>a.type==='finish'||a.type==='take');
+}
+async function saveMariaHistory(client:PoolClient,row:MariaMatch,now:number,surrendered=false) {
+  if(row.state.game.result===null)return;
+  const result=row.state.game.result==='draw'?'draw':row.state.game.result===0?'win':'loss';
+  await client.query(`insert into bar_computer_card_history(id,user_id,character_id,result,started_at,ended_at,surrendered,caught_cheats,provenance)
+    values($1,$2,'maria',$3,$4,$5,$6,0,'server') on conflict(id) do nothing`,[row.id,row.user_id,result,row.started_at,new Date(now),surrendered]);
+  await client.query(`update bar_visitor_receipts set payload=jsonb_build_object('finished',true) where user_id=$1 and id=$2 and kind='game' and character_id='maria'`,[row.user_id,row.id]);
+}
+async function saveMaria(client: PoolClient, row: MariaMatch, now: number,surrendered=false) {
+  const ended = row.state.game.result !== null;
+  row.deadline_at = ended ? null : new Date(now + mariaDuration(row.state.game));
+  row.ended_at = ended ? new Date(now) : null;
+  await client.query('update bar_maria_matches set state=$2,deadline_at=$3,ended_at=$4 where id=$1', [row.id, JSON.stringify(row.state), row.deadline_at, row.ended_at]);
+  if(ended)await saveMariaHistory(client,row,now,surrendered);
+}
+async function reconcileMaria(client: PoolClient, row: MariaMatch, now: number) {
+  if (row.ended_at || !row.deadline_at) return row;
+  let game = row.state.game;
+  let deadline = row.deadline_at.getTime();
+  for (let i=0;i<100 && game.result === null && deadline <= now;i++) {
+    const actor = durak.activePlayer(game);
+    const action = actor===1?mariaAction(game):durak.timeoutAction(game, actor);
+    if (!action) break;
+    const next = durak.applyAction(game, actor, action);
+    observeDurakGameTransition(row.state.telemetry, game, next, actor, action);
+    game = next; deadline += mariaDuration(game);
+    await observeBarFeats(client,row.user_id,`${row.id}:${next.revision}`,new Date(now),row.state.telemetry.participated[0]?qualifiersForDurakPlayer(row.state.telemetry,0,next.result===0):{},'character');
+  }
+  if (game !== row.state.game) {
+    row.state.game = game; row.deadline_at = game.result === null ? new Date(deadline) : null; row.ended_at = game.result === null ? null : new Date(now);
+    await client.query('update bar_maria_matches set state=$2,deadline_at=$3,ended_at=$4 where id=$1',[row.id,JSON.stringify(row.state),row.deadline_at,row.ended_at]);
+    if(game.result!==null)await saveMariaHistory(client,row,now);
+    if (game.result !== null) await recordBarGameResult(client,{eventId:row.id,game:'durak',occurredAt:new Date(now),startedAt:row.started_at,mode:'character',eligible:row.state.telemetry.participated[0]===true,participants:[{userId:row.user_id,opponentId:'maria',won:game.result===0,outcome:game.result==='draw'?'draw':game.result===0?'win':'loss',qualifiers:qualifiersForDurakPlayer(row.state.telemetry,0,row.state.game.result===0)}]});
+  }
+  return row;
+}
+export async function startMariaMatch(pool: Pool, user: string) {
+  return cardTransaction(pool, async (client, now) => {
+    const activeMaria = await client.query<MariaMatch>('select * from bar_maria_matches where user_id=$1 and ended_at is null', [user]);
+    if (activeMaria.rows[0]) return mariaView(await reconcileMaria(client, activeMaria.rows[0]!, now), now);
+    await assertFree(client, user, now);
+    const id = randomUUID();
+    await admitVisitorGame(client, user, 'maria', id, now);
+    const game = durak.createGame(() => randomInt(0, 0x100000000) / 0x100000000);
+    const state = { game, telemetry: createDurakAchievementTelemetry(game) };
+    const deadline = new Date(now + mariaDuration(game));
+    await client.query('insert into bar_maria_matches(id,user_id,state,deadline_at) values($1,$2,$3,$4)',[id,user,JSON.stringify(state),deadline]);
+    return mariaView({id,user_id:user,state,deadline_at:deadline,ended_at:null,started_at:new Date(now)}, now);
+  });
+}
+export async function getMariaMatch(pool: Pool, user: string, id: string, command?: {revision:number; action:durak.Action|'surrender'}) {
+  return cardTransaction(pool, async (client, now) => {
+    const result = await client.query<MariaMatch>('select * from bar_maria_matches where id=$1 and user_id=$2 for update',[id,user]);
+    let row=result.rows[0]; if(!row) throw new AppError('not_found','Партия не найдена.',404);
+    row=await reconcileMaria(client,row,now);
+    if(command && !row.ended_at && command.revision===row.state.game.revision) {
+      const before=row.state.game;
+      row.state.telemetry.participated[0]=true;
+      const next=command.action==='surrender'?{...before,phase:'ended' as const,result:1 as const,revision:before.revision+1}:durak.applyAction(before,0,command.action);
+      if(next===before) throw new AppError('card_invalid_move','Этой картой сейчас нельзя ходить.',400);
+      if(command.action!=='surrender')observeDurakGameTransition(row.state.telemetry,before,next,0,command.action);
+      row.state.game=next; await saveMaria(client,row,now,command.action==='surrender');
+      await observeBarFeats(client,user,`${row.id}:${next.revision}`,new Date(now),qualifiersForDurakPlayer(row.state.telemetry,0,row.state.game.result===0),'character');
+      if(next.result !== null) await recordBarGameResult(client,{eventId:row.id,game:'durak',occurredAt:new Date(now),startedAt:row.started_at,mode:'character',eligible:row.state.telemetry.participated[0]===true,participants:[{userId:user,opponentId:'maria',won:next.result===0,eligible:command.action!=='surrender',outcome:next.result==='draw'?'draw':next.result===0?'win':'loss',qualifiers:qualifiersForDurakPlayer(row.state.telemetry,0,row.state.game.result===0)}]});
+    }
+    return mariaView(row,now);
   });
 }
 

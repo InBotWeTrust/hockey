@@ -1,3 +1,6 @@
+import {assertBarAchievementAccess} from './barAccess.js';
+import {BAR_IDS} from './barCatalog.js';
+import {refreshBarAchievementStages} from './barProgress.js';
 import type { PoolClient } from 'pg';
 import { AppError } from '../plugins/errors.js';
 import { observeCareerExperience } from './service.js';
@@ -51,6 +54,7 @@ export async function claimCurrentAchievementStage(
   );
   if (lockedUser.rowCount === 0) throw new AppError('not_found', 'user not found', 404);
 
+  await assertBarAchievementAccess(client,userId,achievementId);
   const stageResult = await client.query<ClaimableStageRow>(
     `select user_stage.achievement_id, user_stage.stage_number, user_stage.completed_at,
             achievement.title, stage.reward_currency, stage.reward_stars,
@@ -217,6 +221,8 @@ export async function claimCurrentAchievementStage(
       ],
     );
   }
+
+  if (BAR_IDS.has(achievementId)) await refreshBarAchievementStages(client,userId,now);
 
   if (rewards.experience > 0) {
     await observeCareerExperience(client, userId, {

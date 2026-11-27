@@ -1,3 +1,4 @@
+import {installInactiveBarAchievementSchema} from './achievementTestSchema.js';
 import { createMatch } from '@hockey/game-core';
 import { reconcile, type MatchRow } from './games/admission.js';
 import { SqlConversationStore } from './conversationStore.js';
@@ -31,6 +32,7 @@ const user = '00000000-0000-4000-8000-000000000001';
 describe.skipIf(!enabled)('visitor SQL transactions in an isolated schema', () => {
   beforeAll(async () => {
     await admin.query(`create schema ${schema}`);
+    await installInactiveBarAchievementSchema(pool);
     await pool.query(
       `create table users(id uuid primary key,timezone text,xp integer); create table user_currency_account(user_id uuid primary key,balance integer,reserved_balance integer default 0,updated_at timestamptz); create table currency_ledger(user_id uuid,reason text,available_delta integer,reserved_delta integer,balance_after integer,reserved_after integer,metadata jsonb)`,
     );

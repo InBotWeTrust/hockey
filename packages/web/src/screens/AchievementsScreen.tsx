@@ -1,10 +1,12 @@
-import {SectionLoading} from '../components/SectionLoading.js';
+import '../achievements/barAchievements.css';
+import { SectionLoading } from '../components/SectionLoading.js';
 import { useVenueNavigation, useVenueAttention } from '../components/VenuePanorama.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { triggerHaptic } from '../feedback/haptics.js';
 import {
   ArrowLeft,
+  LockKeyhole,
   Check,
   CircleDollarSign,
   Star,
@@ -18,6 +20,8 @@ import {
   claimAchievement,
   fetchAchievements,
   type AchievementDto,
+  type AchievementsResponse,
+  type ClaimAchievementResponse,
 } from '../api/achievements.js';
 import { summarizeAchievementProgress } from '../achievements/progressSummary.js';
 import {
@@ -40,6 +44,7 @@ type AchievementFilter =
   | 'all'
   | 'claimable'
   | 'career'
+  | 'bar'
   | 'daily'
   | 'training'
   | 'duel'
@@ -52,6 +57,7 @@ type AchievementPageTab = 'achievements' | 'challenges';
 const FILTERS: Array<{ id: AchievementFilter; label: string }> = [
   { id: 'all', label: 'Все' },
   { id: 'claimable', label: 'Забрать' },
+  { id: 'bar', label: 'Бар' },
   { id: 'career', label: 'Карьера' },
   { id: 'daily', label: 'Ежедневная' },
   { id: 'training', label: 'Тренировка' },
@@ -92,14 +98,28 @@ function rewardPartItems(
   const prefix = opts.plus === true ? '+' : '';
   return [
     rewards.currency > 0
-      ? { tone: 'coin' as const, text: `${prefix}${rewards.currency} монет`, value: rewards.currency }
+      ? {
+          tone: 'coin' as const,
+          text: `${prefix}${rewards.currency} монет`,
+          value: rewards.currency,
+        }
       : null,
-    rewards.stars > 0 ? { tone: 'star' as const, text: `${prefix}${rewards.stars} зв.`, value: rewards.stars } : null,
+    rewards.stars > 0
+      ? { tone: 'star' as const, text: `${prefix}${rewards.stars} зв.`, value: rewards.stars }
+      : null,
     rewards.experience > 0
-      ? { tone: 'experience' as const, text: `${prefix}${rewards.experience} опыта`, value: rewards.experience }
+      ? {
+          tone: 'experience' as const,
+          text: `${prefix}${rewards.experience} опыта`,
+          value: rewards.experience,
+        }
       : null,
     rewards.tokens > 0
-      ? { tone: 'token' as const, text: `${prefix}${rewards.tokens} токенов`, value: rewards.tokens }
+      ? {
+          tone: 'token' as const,
+          text: `${prefix}${rewards.tokens} токенов`,
+          value: rewards.tokens,
+        }
       : null,
   ].filter((part): part is { tone: RewardTone; text: string; value: number } => part !== null);
 }
@@ -155,20 +175,35 @@ function rewardCardIcon(tone: RewardTone): JSX.Element {
   return <Ticket size={12} aria-hidden="true" />;
 }
 
+export interface AchievementsDataSource {
+  competitionLevel: 'beginner' | 'amateur';
+  fetch: () => Promise<AchievementsResponse>;
+  claim: (id: string) => Promise<ClaimAchievementResponse>;
+}
+
 export function AchievementsScreen({
   profileContext = false,
+  dataSource,
 }: {
   profileContext?: boolean;
+  dataSource?: AchievementsDataSource;
 }): JSX.Element {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const competitionLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const authenticatedLevel = useAuthStore((state) => state.user?.competitionLevel ?? null);
+  const competitionLevel = dataSource?.competitionLevel ?? authenticatedLevel;
   const backRoute = profileContext ? '/profile' : '/sections';
   const weeklyChallengeRoute = profileContext
     ? '/profile/achievements/weekly-challenge'
     : '/achievements/weekly-challenge';
   const [searchParams] = useSearchParams();
-  const [filter, setFilter] = useState<AchievementFilter>(() => searchParams.get('filter') === 'claimable' ? 'claimable' : 'all');
+  const [filter, setFilter] = useState<AchievementFilter>(() =>
+    searchParams.get('filter') === 'claimable'
+      ? 'claimable'
+      : searchParams.get('filter') === 'bar' || dataSource
+        ? 'bar'
+        : 'all',
+  );
   const [selected, setSelected] = useState<AchievementDto | null>(null);
   const [claimedReward, setClaimedReward] = useState<{
     title: string;
@@ -181,13 +216,14 @@ export function AchievementsScreen({
 
   const achievementsQuery = useQuery({
     queryKey: achievementKeys.all,
-    queryFn: fetchAchievements,
+    queryFn: dataSource?.fetch ?? fetchAchievements,
     refetchOnMount: 'always',
     refetchOnWindowFocus: true,
   });
   const weeklyChallengeQuery = useQuery({
     queryKey: weeklyChallengeKeys.current,
     queryFn: fetchWeeklyChallenge,
+    enabled: !dataSource,
   });
   const achievements = achievementsQuery.data?.achievements ?? [];
   const achievementsAttention = (achievementsQuery.data?.unclaimedCount ?? 0) > 0;
@@ -204,7 +240,15 @@ export function AchievementsScreen({
     ]) > 0;
   const venue = useVenueNavigation();
   useVenueAttention('tasks', achievementsQuery.data?.unclaimedCount ?? 0);
-  useVenueAttention('challenges', competitionLevel === 'beginner' ? 0 : countClaimableWeeklyChallenges([weeklyChallengeQuery.data?.challenge, ...(weeklyChallengeQuery.data?.pendingRewards ?? [])]));
+  useVenueAttention(
+    'challenges',
+    competitionLevel === 'beginner'
+      ? 0
+      : countClaimableWeeklyChallenges([
+          weeklyChallengeQuery.data?.challenge,
+          ...(weeklyChallengeQuery.data?.pendingRewards ?? []),
+        ]),
+  );
   const filtered = useMemo(
     () => achievements.filter((achievement) => categoryMatches(achievement, filter)),
     [achievements, filter],
@@ -226,11 +270,17 @@ export function AchievementsScreen({
   };
 
   useEffect(() => {
-    if (achievementsQuery.isSuccess && !achievementsQuery.isFetching && filter === 'claimable' && !hasClaimableAchievements) setFilter('all');
+    if (
+      achievementsQuery.isSuccess &&
+      !achievementsQuery.isFetching &&
+      filter === 'claimable' &&
+      !hasClaimableAchievements
+    )
+      setFilter('all');
   }, [filter, hasClaimableAchievements, achievementsQuery.isSuccess, achievementsQuery.isFetching]);
 
   const claimMutation = useMutation({
-    mutationFn: (achievementId: string) => claimAchievement(achievementId),
+    mutationFn: (achievementId: string) => (dataSource?.claim ?? claimAchievement)(achievementId),
     onSuccess: (response) => {
       triggerHaptic('success');
       queryClient.setQueryData(achievementKeys.all, {
@@ -305,7 +355,7 @@ export function AchievementsScreen({
             Задания
           </h1>
         </div>
-        {!venue && (
+        {!venue && !dataSource && (
           <SegmentedTabs
             items={ACHIEVEMENT_PAGE_TABS.map((tab) => ({
               ...tab,
@@ -319,7 +369,8 @@ export function AchievementsScreen({
           />
         )}
         <div className="section-label section-label--page achievement-counts">
-          Задания · {selectedFilterCounts.completed}/{selectedFilterCounts.total}, уровни · {selectedFilterCounts.levels.completed}/{selectedFilterCounts.levels.total}
+          Задания · {selectedFilterCounts.completed}/{selectedFilterCounts.total}, уровни ·{' '}
+          {selectedFilterCounts.levels.completed}/{selectedFilterCounts.levels.total}
         </div>
         <SegmentedTabs
           items={visibleFilters.map((item) => ({
@@ -337,11 +388,16 @@ export function AchievementsScreen({
           <SectionLoading />
         ) : (
           <div className="achievement-list">
+            {filtered.length === 0 && (
+              <p className="section-label">В этой категории пока нет доступных заданий.</p>
+            )}
             {filtered.map((achievement) => (
               <AchievementCard
                 key={achievement.id}
                 achievement={achievement}
-                onOpen={() => setSelected(achievement)}
+                onOpen={() => {
+                  if (!achievement.accessRequirement) setSelected(achievement);
+                }}
                 onClaim={() => claimMutation.mutate(achievement.id)}
                 claimDisabled={claimMutation.isPending}
               />
@@ -450,9 +506,7 @@ export function AchievementsScreen({
             ))}
           </div>
           {claimedReward.nextLevelOpened && (
-            <span className="achievement-reward-toast__next-level">
-              Следующий уровень открыт
-            </span>
+            <span className="achievement-reward-toast__next-level">Следующий уровень открыт</span>
           )}
         </div>
       )}
@@ -500,6 +554,25 @@ export function AchievementCard({
   onClaim: () => void;
   claimDisabled: boolean;
 }): JSX.Element {
+  if (achievement.accessRequirement)
+    return (
+      <article className="achievement-card achievement-card--list achievement-card--access-locked">
+        <button
+          type="button"
+          disabled
+          className="achievement-card__open"
+          aria-label="Неизвестное задание. Доступно со статуса Любитель"
+        >
+          <div className="achievement-card__thumbnail bar-locked-art">
+            <LockKeyhole size={26} aria-hidden="true" />
+          </div>
+          <div className="achievement-card__body">
+            <strong className="achievement-card__title">Неизвестное задание</strong>
+            <div className="achievement-card__requirement">Доступно со статуса «Любитель»</div>
+          </div>
+        </button>
+      </article>
+    );
   const claimable = achievement.status === 'completed_unclaimed';
   const stage = achievement.stage;
   const progressPercent =
@@ -545,12 +618,17 @@ export function AchievementCard({
               {achievement.title}
             </strong>
             {stage ? (
-              <span className="achievement-card__stage">Уровень {stage.current} из {stage.total}</span>
+              <span className="achievement-card__stage">
+                Уровень {stage.current} из {stage.total}
+              </span>
             ) : (
               <span className="achievement-card__status-copy">{statusText(achievement)}</span>
             )}
           </div>
 
+          {achievement.bar && (
+            <p className="achievement-card__description">{achievement.description}</p>
+          )}
           {rewards.length > 0 && (
             <span
               className="achievement-card__rewards achievement-card__rewards--inline"
@@ -564,9 +642,7 @@ export function AchievementCard({
             </span>
           )}
 
-          {!stage && (
-            <div className="achievement-card__requirement">{achievement.requirement}</div>
-          )}
+          {!stage && <div className="achievement-card__requirement">{achievement.requirement}</div>}
 
           {stage && stage.targetValue > 0 && (
             <div
@@ -577,8 +653,13 @@ export function AchievementCard({
               aria-valuenow={stage.progressValue}
               aria-valuemax={stage.targetValue}
             >
-              <span className="achievement-card__stage-progress-fill" style={{ width: `${progressPercent}%` }} />
-              <strong>{formatNumber(stage.progressValue)} / {formatNumber(stage.targetValue)}</strong>
+              <span
+                className="achievement-card__stage-progress-fill"
+                style={{ width: `${progressPercent}%` }}
+              />
+              <strong>
+                {formatNumber(stage.progressValue)} / {formatNumber(stage.targetValue)}
+              </strong>
             </div>
           )}
 

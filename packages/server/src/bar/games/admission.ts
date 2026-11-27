@@ -3,7 +3,7 @@ import { refundVisitorReceipt } from '../visitorService.js';
 import type { PoolClient } from 'pg';
 import { createPrivateOchko } from './ochkoDeck.js';
 import {
-  advance,
+  advanceWithTransitions,
   barBattleship,
   createMatch,
   type Runtime,
@@ -12,6 +12,7 @@ import {
   type GameCharacter,
 } from '@hockey/game-core';
 import { settleOchko } from './ochkoEconomy.js';
+import { observeNonDurakTransition, type NonDurakTelemetry } from './achievementObservations.js';
 import { AppError } from '../../plugins/errors.js';
 export interface MatchData {
   runtime: Runtime;
@@ -21,6 +22,8 @@ export interface MatchData {
   stake?: { amount: number; payout: number | null };
   stakeOfferId?: string;
   inputRate?: [number[], number[]];
+  achievementTelemetry?: NonDurakTelemetry;
+  achievementStartedAt?: number | null;
 }
 export interface MatchRow {
   id: string;
@@ -30,9 +33,48 @@ export interface MatchRow {
   character: GameCharacter | null;
   data: MatchData;
   ended_at: Date | null;
+  created_at?: Date;
 }
-export async function persist(client: PoolClient, row: MatchRow, now: number) {
+export async function persist(client: PoolClient, row: MatchRow, now: number, before?: Runtime, transitions?: Array<[Runtime, Runtime]>) {
   const ended = row.data.ready ? row.data.ready.cancelled : row.data.runtime.game.winner !== null;
+  if (before && before !== row.data.runtime) {
+    const observedTransitions = transitions?.length ? transitions : [[before, row.data.runtime] as [Runtime, Runtime]];
+    const observations = [] as ReturnType<typeof observeNonDurakTransition>[];
+    let observation = observeNonDurakTransition(observedTransitions[0]![0], observedTransitions[0]![1], row.data.achievementTelemetry);
+    observations.push(observation);
+    for (const [from, to] of observedTransitions.slice(1)) {
+      observation = observeNonDurakTransition(from, to, observation.telemetry);
+      observations.push(observation);
+    }
+    row.data.achievementTelemetry = observation.telemetry;
+    const startedAt = row.data.achievementStartedAt;
+    if (startedAt !== null && startedAt !== undefined) {
+      const progressModule = '../../achievements/' + 'barProgress.js';
+      const { observeBarFeats } = await import(progressModule) as {
+        observeBarFeats: (db: PoolClient, userId: string, eventKey: string, occurredAt: Date, qualifiers: Record<number, number>, mode: 'character' | 'online') => Promise<void>;
+      };
+      const mode = row.character ? 'character' as const : 'online' as const;
+      for (let index = 0; index < observations.length; index++) for (const player of [0, 1] as const) {
+        const userId = player === 0 ? row.player_a : row.player_b;
+        const revision = observedTransitions[index]![1].revision;
+        const terminal = observedTransitions[index]![1].game.winner !== null;
+        if (userId && (!terminal || observedTransitions[index]![1].reason === 'played')) await observeBarFeats(client, userId, `${row.id}:${revision}`, new Date(now), observations[index]!.qualifiers[player], mode);
+      }
+      if (ended) {
+        const { recordBarGameResult } = await import(progressModule) as {
+          recordBarGameResult: (db: PoolClient, event: { eventId: string; game: string; occurredAt: Date; startedAt: Date; participants: Array<{ userId: string; opponentId: string; won: boolean; qualifiers: Record<number, number> }>; eligible?: boolean; outcome?: 'win'|'loss'|'draw'; mode?: 'character' | 'online' }) => Promise<void>;
+        };
+        const winner = row.data.runtime.game.winner;
+        const opponentFor = (player: 0 | 1) => row.character ?? (player === 0 ? row.player_b : row.player_a);
+        const participants = ([0, 1] as const).flatMap(player => {
+          const userId = player === 0 ? row.player_a : row.player_b, opponentId = opponentFor(player);
+          return userId && opponentId ? [{ userId, opponentId, won: winner === player, qualifiers: observation.qualifiers[player] }] : [];
+        });
+        const outcome = winner === 'draw' ? 'draw' : winner === 0 ? 'win' : 'loss';
+        await recordBarGameResult(client, { eventId: row.id, game: row.kind, occurredAt: new Date(now), startedAt: new Date(startedAt), participants, mode, outcome, eligible: row.data.runtime.reason === 'played' });
+      }
+    }
+  }
   if (ended) {
     await settleOchko(client, row, now);
     if (row.character && (row.data.ready?.cancelled || row.data.runtime.reason === 'technical'))
@@ -85,6 +127,8 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
         prior.seed,
         prior.engineVersion,
       );
+      if (row.data.achievementStartedAt === null || row.data.achievementStartedAt === undefined)
+        row.data.achievementStartedAt = ready.startsAt;
       if (row.kind === 'ochko')
         row.data.runtime.game = createPrivateOchko(
           ready.startsAt,
@@ -104,8 +148,10 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
     } else return row;
   }
   const before = row.data.runtime;
+  const transitions: Array<[Runtime, Runtime]> = [];
   try {
-    row.data.runtime = advance(before, now);
+    const advanced=advanceWithTransitions(before,now);
+    row.data.runtime=advanced.runtime;transitions.push(...advanced.transitions);
   } catch (error) {
     if (
       !row.character &&
@@ -123,7 +169,7 @@ export async function reconcile(client: PoolClient, row: MatchRow, now: number):
       revision: before.revision + 1,
     };
   }
-  if (row.data.runtime !== before || ready) await persist(client, row, wallNow);
+  if (row.data.runtime !== before || ready) await persist(client, row, wallNow, before, transitions);
   return row;
 }
 export async function assertNewGamesFree(client: PoolClient, user: string, now: number) {
