@@ -1,3 +1,4 @@
+import {DUEL_FORMAT_DEFINITIONS} from './duelFormatCatalog.js';
 import {BAR_DEFINITIONS, barStageTarget} from './barCatalog.js';
 export interface AchievementStageDefinition {
   achievementId: string;
@@ -370,6 +371,7 @@ export const ACHIEVEMENT_STAGE_DEFINITIONS: readonly AchievementStageDefinition[
     'no-shake', 'accuracyPercent', [90, 92, 94, 95, 97, 99, 100], [20, 25, 30, 35, 40, 50, 65],
     (value) => `В матче плей-офф показать точность не ниже ${value}%`,
   ),
+  ...DUEL_FORMAT_DEFINITIONS.flatMap(d=>stages(d.id,d.levels.map(l=>({requirement:l.requirement,target:{total:l.target},stars:l.stars})))),
   ...BAR_DEFINITIONS.flatMap(d=>d.levels.map(l=>({achievementId:d.id,stageNumber:l.level,requirement:l.requirement,target:{total:barStageTarget(d.number,l.target,l.level)},rewardCurrency:0,rewardStars:l.stars,rewardExperience:l.experience,rewardTokens:0}))),
 ];
 

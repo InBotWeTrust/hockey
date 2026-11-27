@@ -1,3 +1,5 @@
+import {BAR_IDS} from '../../src/achievements/barCatalog.js';
+import {DUEL_FORMAT_IDS} from '../../src/achievements/duelFormatCatalog.js';
 import { describe, expect, it } from 'vitest';
 import { ACHIEVEMENT_CATEGORIES, ACHIEVEMENT_SEEDS } from '../../src/achievements/catalog.js';
 import {
@@ -128,7 +130,7 @@ describe('achievement economy catalog', () => {
       const stages = ACHIEVEMENT_STAGE_DEFINITIONS.filter(
         (stage) => stage.achievementId === achievementId,
       );
-      expect(stages.length, achievementId).toBeGreaterThan(1);
+      expect(stages.length, achievementId).toBeGreaterThan(BAR_IDS.has(achievementId)||DUEL_FORMAT_IDS.has(achievementId)?0:1);
       expect(
         stages.map((stage) => stage.stageNumber),
         achievementId,
@@ -147,6 +149,8 @@ describe('achievement economy catalog', () => {
 
     expect(TIERED_ACHIEVEMENT_IDS).toEqual(
       new Set([
+        ...BAR_IDS,
+        ...DUEL_FORMAT_IDS,
         'fans-support',
         'career-goals',
         'career-experience',

@@ -1,3 +1,5 @@
+import {DUEL_FORMAT_IDS} from './duelFormatCatalog.js';
+import {refreshDuelFormatAchievementStages} from './duelFormatProgress.js';
 import {assertBarAchievementAccess} from './barAccess.js';
 import {BAR_IDS} from './barCatalog.js';
 import {refreshBarAchievementStages} from './barProgress.js';
@@ -222,6 +224,7 @@ export async function claimCurrentAchievementStage(
     );
   }
 
+  if (DUEL_FORMAT_IDS.has(achievementId)) await refreshDuelFormatAchievementStages(client,userId,now);
   if (BAR_IDS.has(achievementId)) await refreshBarAchievementStages(client,userId,now);
 
   if (rewards.experience > 0) {
