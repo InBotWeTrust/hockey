@@ -34,8 +34,10 @@ export function AchievementLevelBadge({
 
 export function AchievementStageDetails({
   stage,
+  singleTask = false,
 }: {
   stage: AchievementStage;
+  singleTask?: boolean;
   status: 'locked' | 'completed_unclaimed' | 'claimed' | undefined;
 }): JSX.Element {
   const progressPercent =
@@ -48,7 +50,7 @@ export function AchievementStageDetails({
   return (
     <div className="achievement-stage-details">
       <div className="achievement-stage-details__current">
-        <strong>Задание для уровня {stage.current}</strong>
+        <strong>{singleTask ? 'Задание' : `Задание для уровня ${stage.current}`}</strong>
         <span>{stage.requirement}</span>
       </div>
 
@@ -56,7 +58,7 @@ export function AchievementStageDetails({
         <div
           className="achievement-card__stage-progress"
           role="progressbar"
-          aria-label="Прогресс текущего уровня"
+          aria-label={singleTask ? 'Прогресс задания' : 'Прогресс текущего уровня'}
           aria-valuemin={0}
           aria-valuenow={stage.progressValue}
           aria-valuemax={stage.targetValue}
@@ -70,7 +72,6 @@ export function AchievementStageDetails({
           </strong>
         </div>
       )}
-
     </div>
   );
 }

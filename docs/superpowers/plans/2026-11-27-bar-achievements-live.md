@@ -11,7 +11,7 @@
 **Spec:** Agreed catalogue in packages/web/src/achievements/barCatalogData.ts and barCatalog.ts; authored content in barDescriptions.ts.
 
 ## Global constraints
-- 95 cards, 268 stages, 10363 stars and same XP; no coins.
+- 95 cards, 274 stages, 10413 stars and same XP; no coins.
 - No historical backfill; matches started before launch excluded. Visits are distinct player-local days, completed game or accepted player message.
 - Hidden character tasks show only required amateur status; server redacts metadata and denies premature claims.
 - Win chains and streaks separated character/online per game; all bar cards in one Bar list.

@@ -56,7 +56,21 @@ export async function refreshBarAchievementStages(client: PoolClient, user: stri
     from achievement_stages definition,bar_achievement_totals totals
     where player.user_id=$1 and player.achievement_id=totals.achievement_id and totals.user_id=$1
       and player.achievement_id=definition.achievement_id and player.stage_number=definition.stage_number
+      and player.achievement_id not in ('bar-9-character','bar-9-online')
       and player.claimed_at is null and player.completed_at is null and definition.is_enabled`,
+    [user, now],
+  );
+  await client.query(
+    `update user_achievement_stages player set
+      progress=jsonb_build_object('total',player.stage_number), completed_at=$2::timestamptz,
+      completion_context=jsonb_build_object('source','bar_events')
+    from bar_achievement_state observed, achievement_stages definition
+    where player.user_id=$1 and observed.user_id=$1
+      and observed.key='exact:' || player.achievement_id
+      and observed.state ? player.stage_number::text
+      and player.achievement_id in ('bar-9-character','bar-9-online')
+      and definition.achievement_id=player.achievement_id and definition.stage_number=player.stage_number
+      and definition.is_enabled and player.claimed_at is null and player.completed_at is null`,
     [user, now],
   );
 }
@@ -69,8 +83,14 @@ async function feats(
 ) {
   for (const [number, level] of Object.entries(values)) {
     const id = `bar-${number}-${mode}`;
-    if (BAR_IDS.has(id) && Number.isSafeInteger(level) && level > 0)
-      await setValue(client, user, id, level, at);
+    if (!BAR_IDS.has(id) || !Number.isSafeInteger(level) || level <= 0) continue;
+    if (number === '9') {
+      await client.query(
+        `insert into bar_achievement_state(user_id,key,state) values($1,$2,$3::jsonb)
+         on conflict(user_id,key) do update set state=bar_achievement_state.state || excluded.state`,
+        [user, `exact:${id}`, JSON.stringify({ [level]: true })],
+      );
+    } else await setValue(client, user, id, level, at);
   }
 }
 export async function observeBarFeats(
