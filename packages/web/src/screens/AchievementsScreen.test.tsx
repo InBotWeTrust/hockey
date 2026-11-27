@@ -120,6 +120,19 @@ describe('AchievementsScreen', () => {
     mockAchievementsApi([]);
   });
 
+  it('shows a one-time hockey feat without an artificial level 1 of 1', async () => {
+    mockAchievementsApi([makeAchievement({id:'duel-sniper-jeweler',title:'Ювелир',category:'duel',rewardStars:10,rewardExperience:10,
+      description:'Два точных броска за одну дуэль.',stage:{current:1,total:1,requirement:'Дважды забить гол стоимостью 2 очка за одну игру.',progressValue:1,targetValue:2,history:[]}})]);
+    renderAchievements();
+    const open=await screen.findByRole('button',{name:'Ювелир. Открыть подробности'});
+    expect(screen.queryByText('Уровень 1 из 1')).not.toBeInTheDocument();
+    fireEvent.click(open);
+    const details=within(screen.getByRole('dialog',{name:'Ювелир'}));
+    expect(details.getByText('Задание')).toBeInTheDocument();
+    expect(details.queryByText(/Текущий уровень|Задание для уровня/)).not.toBeInTheDocument();
+    expect(details.getByRole('progressbar',{name:'Прогресс задания'})).toHaveAttribute('aria-valuemax','2');
+  });
+
   it('keeps the claimable deep link while the catalogue loads', async () => {
     mockAchievementsApi([
       makeAchievement({id:'ready',title:'Ready reward',status:'completed_unclaimed',isClaimable:true}),

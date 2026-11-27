@@ -115,71 +115,76 @@ const requirements: Record<number, (v: number, i: number) => string> = {
     'Начать атакующий розыгрыш с шестью картами на руках и выложить все шесть за этот розыгрыш.',
   54: () => 'Купить или продлить клубную карту после запуска заданий.',
 };
-export const barAchievementDefinitions: BarDefinition[] = barAchievementSpecs.flatMap((spec) => {
-  const game = games.find((g) => spec.n >= g.first && spec.n <= g.last);
-  const character = game?.character ?? acquaintances[spec.n - 45] ?? '';
-  const modes: BarDefinition['mode'][] =
-    spec.modes === 2 ? ['character', 'online'] : [game ? 'character' : 'social'];
-  return modes.map((mode) => {
-    const amateurOnly = mode !== 'online' && amateurCharacters.has(character);
-    return {
-      id: 'bar-' + spec.n + '-' + mode,
-      number: spec.n,
-      title: spec.name + (game ? ' · ' + (mode === 'online' ? 'Онлайн' : character) : ''),
-      description: barAchievementDescription(spec.n, mode),
-      game: game?.id ?? 'social',
-      gameLabel: game?.label ?? 'Посещения и знакомства',
-      character,
-      mode,
-      amateurOnly,
-      photoUrl: BAR_ARTWORK[spec.n]!,
-      levels: spec.rewards.map((stars, i) => {
-        const target =
-          typeof spec.conditions[i] === 'number'
-            ? (spec.conditions[i] as number)
-            : (targets[spec.n]?.[i] ?? 1);
-        let requirement = requirements[spec.n]?.(target, i);
-        if (cumulative.has(spec.n))
-          requirement =
-            'Победить в этой игре ' +
-            target +
-            ' раз ' +
-            (mode === 'online'
-              ? 'против реальных игроков.'
-              : 'против персонажа «' + character + '».');
-        if (streaks.has(spec.n))
-          requirement =
-            'Выиграть ' +
-            target +
-            (target < 5 ? ' партии подряд ' : ' партий подряд ') +
-            (mode === 'online'
-              ? 'против реальных игроков.'
-              : 'против персонажа «' + character + '».');
-        if (spec.name.startsWith('Реванш'))
-          requirement =
-            'После поражения выиграть следующую партию в этой игре у того же соперника.';
-        if (spec.n === 44)
-          requirement =
-            'Посетить бар в ' +
-            target +
-            (target === 1 ? ' день' : ' разных дней') +
-            ': завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.';
-        if (spec.n >= 45 && spec.n <= 53)
-          requirement =
-            'Начать разговор с персонажем «' +
-            character +
-            '»: отправить сообщение и получить ответ.';
-        return {
-          level: i + 1,
-          target,
-          requirement: requirement ?? String(spec.conditions[i]),
-          stars,
-          experience: stars,
-        };
-      }),
-    };
+export const barAchievementDefinitions: BarDefinition[] = barAchievementSpecs
+  .flatMap((spec) => {
+    const game = games.find((g) => spec.n >= g.first && spec.n <= g.last);
+    const character = game?.character ?? acquaintances[spec.n - 45] ?? '';
+    const modes: BarDefinition['mode'][] =
+      spec.modes === 2 ? ['character', 'online'] : [game ? 'character' : 'social'];
+    return modes.map((mode) => {
+      const amateurOnly = mode !== 'online' && amateurCharacters.has(character);
+      return {
+        id: 'bar-' + spec.n + '-' + mode,
+        number: spec.n,
+        title: spec.name + (game ? ' · ' + (mode === 'online' ? 'Онлайн' : character) : ''),
+        description: barAchievementDescription(spec.n, mode),
+        game: game?.id ?? 'social',
+        gameLabel: game?.label ?? 'Посещения и знакомства',
+        character,
+        mode,
+        amateurOnly,
+        photoUrl: BAR_ARTWORK[spec.n]!,
+        levels: spec.rewards.map((stars, i) => {
+          const target =
+            typeof spec.conditions[i] === 'number'
+              ? (spec.conditions[i] as number)
+              : (targets[spec.n]?.[i] ?? 1);
+          let requirement = requirements[spec.n]?.(target, i);
+          if (cumulative.has(spec.n))
+            requirement =
+              'Победить в этой игре ' +
+              target +
+              ' раз ' +
+              (mode === 'online'
+                ? 'против реальных игроков.'
+                : 'против персонажа «' + character + '».');
+          if (streaks.has(spec.n))
+            requirement =
+              'Выиграть ' +
+              target +
+              (target < 5 ? ' партии подряд ' : ' партий подряд ') +
+              (mode === 'online'
+                ? 'против реальных игроков.'
+                : 'против персонажа «' + character + '».');
+          if (spec.name.startsWith('Реванш'))
+            requirement =
+              'После поражения выиграть следующую партию в этой игре у того же соперника.';
+          if (spec.n === 44)
+            requirement =
+              'Посетить бар в ' +
+              target +
+              (target === 1 ? ' день' : ' разных дней') +
+              ': завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.';
+          if (spec.n >= 45 && spec.n <= 53)
+            requirement =
+              'Начать разговор с персонажем «' +
+              character +
+              '»: отправить сообщение и получить ответ.';
+          return {
+            level: i + 1,
+            target,
+            requirement: requirement ?? String(spec.conditions[i]),
+            stars,
+            experience: stars,
+          };
+        }),
+      };
+    });
+  })
+  .sort((a, b) => {
+    const priority = (number: number) => (number === 54 ? 0 : number >= 45 && number <= 53 ? 1 : 2);
+    return priority(a.number) - priority(b.number);
   });
-});
 export function buildBarAchievements(level: PreviewLevel): AchievementDto[] {
   return barAchievementDefinitions.map((def, index) => {
     const first = def.levels[0]!;

@@ -1,5 +1,215 @@
 [
   {
+    "id": "bar-54-social",
+    "number": 54,
+    "title": "Стать членом клуба",
+    "description": "Знакомый стол, больше партий и времени на разговоры. Оформи клубную карту, чтобы чаще оставаться в «4-м периоде».",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/bar-card-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Купить или продлить клубную карту после запуска заданий.",
+        "stars": 10,
+        "experience": 10
+      }
+    ]
+  },
+  {
+    "id": "bar-45-social",
+    "number": 45,
+    "title": "Познакомиться с Игорем",
+    "description": "У стойки всегда найдётся повод поговорить о хоккее. Начни разговор с Игорем и познакомься с барменом «4-го периода».",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Игорь",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-igor-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Игорь»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-46-social",
+    "number": 46,
+    "title": "Познакомиться с Дарьей",
+    "description": "Дарья работает в баре и охотно поддерживает разговор. Подойди познакомиться и перекинься с ней первыми словами.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Дарья",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-daria-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Дарья»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-47-social",
+    "number": 47,
+    "title": "Познакомиться с Вероникой",
+    "description": "Вероника следит за порядком в «4-м периоде». Найди минуту познакомиться с управляющей бара.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Вероника",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-veronika-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Вероника»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-48-social",
+    "number": 48,
+    "title": "Познакомиться с Григорием",
+    "description": "Григорий любит карточный стол и хороший разговор. Познакомься с ним прежде, чем спорить о следующей раздаче.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Григорий",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-grigory-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Григорий»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-49-social",
+    "number": 49,
+    "title": "Познакомиться с Олегом",
+    "description": "Олег отвечает за спокойствие вокруг стадиона. Поздоровайся и начни разговор с человеком, который привык говорить по делу.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Олег",
+    "mode": "social",
+    "amateurOnly": false,
+    "photoUrl": "/achievements/bar/meet-oleg-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Олег»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-50-social",
+    "number": 50,
+    "title": "Познакомиться с Арсеничем",
+    "description": "У Арсенича за плечами большой опыт и свой взгляд на хоккей. Присядь рядом и начни ваше знакомство.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Арсенич",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-arsenich-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Арсенич»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-51-social",
+    "number": 51,
+    "title": "Познакомиться с Тимофеем",
+    "description": "Тимофей руководит службой стадиона, а в баре отдыхает от дел. Подойди познакомиться и найди тему для первого разговора.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Тимофей",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-timofey-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Тимофей»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-52-social",
+    "number": 52,
+    "title": "Познакомиться с Марией",
+    "description": "Мария умеет поддержать беседу и составить компанию за карточным столом. Начни знакомство с простого разговора.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Мария",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-maria-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Мария»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
+    "id": "bar-53-social",
+    "number": 53,
+    "title": "Познакомиться с Элиной",
+    "description": "У Элины свой бар и плотный рабочий день. Представься хозяйке «4-го периода» и начни знакомство по делу.",
+    "game": "social",
+    "gameLabel": "Посещения и знакомства",
+    "character": "Элина",
+    "mode": "social",
+    "amateurOnly": true,
+    "photoUrl": "/achievements/bar/meet-elina-v1.webp",
+    "levels": [
+      {
+        "level": 1,
+        "target": 1,
+        "requirement": "Начать разговор с персонажем «Элина»: отправить сообщение и получить ответ.",
+        "stars": 3,
+        "experience": 3
+      }
+    ]
+  },
+  {
     "id": "bar-1-character",
     "number": 1,
     "title": "Победы в дартс · Дарья",
@@ -227,7 +437,7 @@
     "id": "bar-3-character",
     "number": 3,
     "title": "Большой заход · Дарья",
-    "description": "Три дротика сходятся в утроении двадцатки. Поймай это движение и повтори подход, в котором каждый бросок попадает куда надо.",
+    "description": "Три точных броска — 180 очков за ход.",
     "game": "darts",
     "gameLabel": "Дартс",
     "character": "Дарья",
@@ -255,7 +465,7 @@
     "id": "bar-3-online",
     "number": 3,
     "title": "Большой заход · Онлайн",
-    "description": "Три дротика сходятся в утроении двадцатки. Поймай это движение и повтори подход, в котором каждый бросок попадает куда надо.",
+    "description": "Три точных броска — 180 очков за ход.",
     "game": "darts",
     "gameLabel": "Дартс",
     "character": "Дарья",
@@ -3034,216 +3244,6 @@
         "requirement": "Посетить бар в 1000 разных дней: завершить игру или отправить сообщение любому персонажу. Пропуски не сбрасывают прогресс.",
         "stars": 150,
         "experience": 150
-      }
-    ]
-  },
-  {
-    "id": "bar-45-social",
-    "number": 45,
-    "title": "Познакомиться с Игорем",
-    "description": "У стойки всегда найдётся повод поговорить о хоккее. Начни разговор с Игорем и познакомься с барменом «4-го периода».",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Игорь",
-    "mode": "social",
-    "amateurOnly": false,
-    "photoUrl": "/achievements/bar/meet-igor-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Игорь»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-46-social",
-    "number": 46,
-    "title": "Познакомиться с Дарьей",
-    "description": "Дарья работает в баре и охотно поддерживает разговор. Подойди познакомиться и перекинься с ней первыми словами.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Дарья",
-    "mode": "social",
-    "amateurOnly": false,
-    "photoUrl": "/achievements/bar/meet-daria-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Дарья»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-47-social",
-    "number": 47,
-    "title": "Познакомиться с Вероникой",
-    "description": "Вероника следит за порядком в «4-м периоде». Найди минуту познакомиться с управляющей бара.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Вероника",
-    "mode": "social",
-    "amateurOnly": false,
-    "photoUrl": "/achievements/bar/meet-veronika-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Вероника»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-48-social",
-    "number": 48,
-    "title": "Познакомиться с Григорием",
-    "description": "Григорий любит карточный стол и хороший разговор. Познакомься с ним прежде, чем спорить о следующей раздаче.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Григорий",
-    "mode": "social",
-    "amateurOnly": false,
-    "photoUrl": "/achievements/bar/meet-grigory-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Григорий»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-49-social",
-    "number": 49,
-    "title": "Познакомиться с Олегом",
-    "description": "Олег отвечает за спокойствие вокруг стадиона. Поздоровайся и начни разговор с человеком, который привык говорить по делу.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Олег",
-    "mode": "social",
-    "amateurOnly": false,
-    "photoUrl": "/achievements/bar/meet-oleg-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Олег»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-50-social",
-    "number": 50,
-    "title": "Познакомиться с Арсеничем",
-    "description": "У Арсенича за плечами большой опыт и свой взгляд на хоккей. Присядь рядом и начни ваше знакомство.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Арсенич",
-    "mode": "social",
-    "amateurOnly": true,
-    "photoUrl": "/achievements/bar/meet-arsenich-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Арсенич»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-51-social",
-    "number": 51,
-    "title": "Познакомиться с Тимофеем",
-    "description": "Тимофей руководит службой стадиона, а в баре отдыхает от дел. Подойди познакомиться и найди тему для первого разговора.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Тимофей",
-    "mode": "social",
-    "amateurOnly": true,
-    "photoUrl": "/achievements/bar/meet-timofey-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Тимофей»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-52-social",
-    "number": 52,
-    "title": "Познакомиться с Марией",
-    "description": "Мария умеет поддержать беседу и составить компанию за карточным столом. Начни знакомство с простого разговора.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Мария",
-    "mode": "social",
-    "amateurOnly": true,
-    "photoUrl": "/achievements/bar/meet-maria-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Мария»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-53-social",
-    "number": 53,
-    "title": "Познакомиться с Элиной",
-    "description": "У Элины свой бар и плотный рабочий день. Представься хозяйке «4-го периода» и начни знакомство по делу.",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "Элина",
-    "mode": "social",
-    "amateurOnly": true,
-    "photoUrl": "/achievements/bar/meet-elina-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Начать разговор с персонажем «Элина»: отправить сообщение и получить ответ.",
-        "stars": 3,
-        "experience": 3
-      }
-    ]
-  },
-  {
-    "id": "bar-54-social",
-    "number": 54,
-    "title": "Стать членом клуба",
-    "description": "Знакомый стол, больше партий и времени на разговоры. Оформи клубную карту, чтобы чаще оставаться в «4-м периоде».",
-    "game": "social",
-    "gameLabel": "Посещения и знакомства",
-    "character": "",
-    "mode": "social",
-    "amateurOnly": false,
-    "photoUrl": "/achievements/bar/bar-card-v1.webp",
-    "levels": [
-      {
-        "level": 1,
-        "target": 1,
-        "requirement": "Купить или продлить клубную карту после запуска заданий.",
-        "stars": 10,
-        "experience": 10
       }
     ]
   }

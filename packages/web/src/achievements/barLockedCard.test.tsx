@@ -67,3 +67,60 @@ it('renders a bar description instead of the generic mode placeholder', () => {
   ).toBeInTheDocument();
   expect(screen.queryByText('С персонажем')).not.toBeInTheDocument();
 });
+
+it.each(['bar', 'duel'] as const)('shows descriptions only on one-off %s cards', (category) => {
+  const achievement = {
+    id: 'display-test',
+    title: 'Test task',
+    photoUrl: '/test.webp',
+    description: 'Full task description',
+    requirement: 'Task condition',
+    category,
+    availability: 'active' as const,
+    futureTag: null,
+    rewardCurrency: 0,
+    rewardStars: 3,
+    rewardExperience: 3,
+    status: 'locked' as const,
+    isUnlocked: true,
+    isClaimable: false,
+    ...(category === 'bar' ? { bar: { mode: 'social' as const } } : {}),
+    stage: {
+      current: 1,
+      total: 4,
+      requirement: 'Stage condition',
+      progressValue: 0,
+      targetValue: 4,
+      history: [],
+    },
+  };
+  const { rerender } = render(
+    <AchievementCard
+      achievement={achievement}
+      onOpen={vi.fn()}
+      onClaim={vi.fn()}
+      claimDisabled={false}
+    />,
+  );
+  expect(screen.queryByText('Full task description')).not.toBeInTheDocument();
+  expect(screen.getByRole('progressbar')).toBeInTheDocument();
+  rerender(
+    <AchievementCard
+      achievement={{ ...achievement, stage: { ...achievement.stage, total: 1 } }}
+      onOpen={vi.fn()}
+      onClaim={vi.fn()}
+      claimDisabled={false}
+    />,
+  );
+  expect(screen.getByText('Full task description')).toBeInTheDocument();
+  expect(screen.queryByRole('progressbar')).not.toBeInTheDocument();
+  rerender(
+    <AchievementCard
+      achievement={{ ...achievement, status: 'claimed', stage: { ...achievement.stage, total: 1 } }}
+      onOpen={vi.fn()}
+      onClaim={vi.fn()}
+      claimDisabled={false}
+    />,
+  );
+  expect(screen.queryByText('Все уровни пройдены')).not.toBeInTheDocument();
+});

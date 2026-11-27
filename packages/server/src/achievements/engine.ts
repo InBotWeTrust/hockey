@@ -1,3 +1,4 @@
+import {recordDuelFormatAchievements} from './duelFormatProgress.js';
 import type { Pool, PoolClient } from 'pg';
 import {
   deleteAchievementProgress,
@@ -531,6 +532,7 @@ export async function evaluateDuelSettledAchievements(
     ).rowCount
   )
     return;
+  await recordDuelFormatAchievements(db,event.matchId);
   const participants = await fetchDuelParticipants(db, event.matchId);
   if (participants.length === 0) return;
   const markEvaluated = () =>
@@ -563,9 +565,10 @@ export async function evaluateDuelSettledAchievements(
   const format = ctx.match.duel_kind === 'express_plus' ? 'mix' : ctx.match.duel_kind;
   const nonGoals = Math.max(0, ctx.winner.shots - ctx.winner.goals);
 
-  if (margin === 1) completed.add('nervous-finish');
-  if (margin === 2) completed.add('thin-edge');
-  await observeAchievementStage(db, ctx.winner.userId, 'blowout', {
+  const goalCountFormat = ['express','mix','classic'].includes(format);
+  if (goalCountFormat && margin === 1) completed.add('nervous-finish');
+  if (goalCountFormat && margin === 2) completed.add('thin-edge');
+  if (goalCountFormat) await observeAchievementStage(db, ctx.winner.userId, 'blowout', {
     eventKey,
     occurredAt,
     progress: { minimumMargin: margin },
@@ -587,7 +590,7 @@ export async function evaluateDuelSettledAchievements(
       : format === 'mix'
         ? 'no-error-mix'
         : 'no-error-classic';
-  await observeAchievementStage(db, ctx.winner.userId, noErrorAchievement, {
+  if (goalCountFormat) await observeAchievementStage(db, ctx.winner.userId, noErrorAchievement, {
     eventKey,
     occurredAt,
     progress: { format, maximumNonGoals: nonGoals },
