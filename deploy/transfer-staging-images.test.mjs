@@ -20,7 +20,7 @@ function run(scenario) {
 case "$1 $2" in
  'login ghcr.io') cat >/dev/null ;;
  'logout ghcr.io'|'pull '*|'image prune') ;;
- 'inspect --format') if [[ \"\${!#}\" == *web-dev* ]]; then printf 'ghcr.io/test/hockey-web:old\\n'; else printf 'ghcr.io/test/hockey-server:old\\n'; fi ;;
+ 'inspect --format') if [ \"\$IMAGE_TEST_CASE\" = no-basis ]; then exit 1; fi; if [[ \"\${!#}\" == *web-dev* ]]; then printf 'ghcr.io/test/hockey-web:old\\n'; else printf 'ghcr.io/test/hockey-server:old\\n'; fi ;;
  'image inspect')
    if [ "\$IMAGE_TEST_CASE" = bad-id ] && [ "\${IMAGE_TEST_REMOTE:-0}" = 1 ]; then printf 'sha256:%064d\\n' 0
    elif [[ "\${!#}" == *hockey-web* ]]; then printf 'sha256:%064d\\n' 2
@@ -125,4 +125,10 @@ test('real rsync reuses unchanged bytes while preserving the exact new archive',
   } finally {
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('can deploy without existing dev containers as a delta basis', () => {
+  const r = run('no-basis');
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /Verified staging image content/);
 });

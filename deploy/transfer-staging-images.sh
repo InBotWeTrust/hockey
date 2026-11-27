@@ -42,15 +42,42 @@ web_id="$(docker image inspect --format '{{.Id}}' "$web_ref")"
 remote_dir="$(ssh "${ssh_options[@]}" "$ssh_target" bash -s <<'BASIS'
 set -euo pipefail
 command -v rsync > /dev/null
+# The superseded dev-only SSH pipe can outlive a cancelled Actions runner.
+# Match its exact command under our own user; production uses registry pulls.
+legacy_pids=""
+for legacy_pid in $(pgrep -u "$(id -u)" -f '^bash -o pipefail -c gzip -d \| docker image load$' || true); do
+  legacy_pids="$legacy_pids $legacy_pid $(pgrep -P "$legacy_pid" || true)"
+  pkill -TERM -P "$legacy_pid" || true
+  kill -TERM "$legacy_pid" || true
+done
+for attempt in {1..10}; do
+  alive=""
+  for pid in $legacy_pids; do
+    if kill -0 "$pid" 2>/dev/null; then alive="$alive $pid"; fi
+  done
+  [[ -z "$alive" ]] && break
+  sleep 1
+done
+[[ -z "$alive" ]] || { echo 'Legacy staging loader did not stop' >&2; exit 1; }
 basis_dir="$(mktemp -d /tmp/hockey-staging-images.XXXXXXXX)"
-server_basis="$(docker inspect --format '{{.Config.Image}}' ultimate-hockey-server-dev-1)"
-web_basis="$(docker inspect --format '{{.Config.Image}}' ultimate-hockey-web-dev-1)"
-timeout 300 docker image save "$server_basis" "$web_basis" > "$basis_dir/images.tar"
+trap 'rm -rf -- "$basis_dir"' ERR
+basis_refs=()
+for container in ultimate-hockey-server-dev-1 ultimate-hockey-web-dev-1; do
+  if basis_ref="$(docker inspect --format '{{.Config.Image}}' "$container" 2>/dev/null)"; then
+    basis_refs+=("$basis_ref")
+  fi
+done
+if (( ${#basis_refs[@]} )); then
+  timeout 300 docker image save "${basis_refs[@]}" > "$basis_dir/images.tar"
+else
+  : > "$basis_dir/images.tar"
+fi
+trap - ERR
 printf '%s\n' "$basis_dir"
 BASIS
 )"
 [[ "$remote_dir" =~ ^/tmp/hockey-staging-images\.[a-zA-Z0-9]+$ ]]
-docker image save "$server_ref" "$web_ref" > "$local_dir/images.tar"
+timeout 300 docker image save "$server_ref" "$web_ref" > "$local_dir/images.tar"
 printf -v rsync_shell '%q ' ssh "${ssh_options[@]}"
 timeout 900 rsync --no-whole-file --compress --checksum --stats \
   -e "$rsync_shell" "$local_dir/images.tar" "$ssh_target:$remote_dir/images.tar"
